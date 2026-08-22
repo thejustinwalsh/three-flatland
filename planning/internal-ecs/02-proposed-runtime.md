@@ -74,11 +74,7 @@ Proposed internal surface:
 ```ts
 const world = createWorld()
 
-const entity = world.spawn(
-  SpriteUV({ x: 0.25 }),
-  SpriteColor,
-  IsRenderable,
-)
+const entity = world.spawn(SpriteUV({ x: 0.25 }), SpriteColor, IsRenderable)
 
 world.add(entity, EffectTrait(values))
 world.remove(entity, IsRenderable)
@@ -116,6 +112,11 @@ Properties:
 - No world ID bits because every operation takes its world explicitly.
 - No global universe.
 - A generation side table rejects stale handles after index reuse.
+- Handles are world-relative: two worlds may issue the same numeric handle. Passing a handle to the
+  wrong world is an internal ownership error, not something the packed value can identify by itself.
+- Worlds reject allocation beyond the 20-bit simultaneous-entity capacity. If one index reaches
+  the maximum safely packable generation, that index is retired instead of wrapping or aliasing a
+  stale handle.
 - Hot systems may extract the low index once and retain it on the owning `Sprite2D`, as they do today.
 
 The benchmark prototype must also measure raw non-generational indices. Generational safety remains the recommended production choice unless it measurably violates the end-to-end gate. It must not be removed merely to win a synthetic chart.
@@ -198,7 +199,10 @@ A command buffer is rejected unless migration proves an existing system requires
 ```ts
 const AddedRenderable = added(IsRenderable)
 const RemovedRenderable = removed(IsRenderable)
-const ChangedRouting = changed(SortLayer, SpriteMaterialRef, CameraLayersMask)
+const ChangedRouting = changed({
+  any: [SortLayer, SpriteMaterialRef, CameraLayersMask],
+  all: [IsBatched],
+})
 
 for (const entity of world.drain(AddedRenderable)) {
   // process once
@@ -213,10 +217,18 @@ Semantics:
 - A queue is a reusable dense/sparse set, so repeated changes before drain produce one entity.
 - `drain()` returns the reusable queue view and marks it consumed without allocating.
 - Added then removed before either drain produces an entry in both independent queues.
-- Removed events retain the entity handle long enough for the batch-removal system to read other still-present traits.
+- Explicit trait removal queues the entity while its other traits remain readable.
+- Entity destruction does not synthesize removed-trait events. Callers that need removal work must
+  remove the observed trait and drain that work before destroying the entity.
+- Queued generations remain distinct if an index is destroyed and recycled before a drain.
 - An untracked patch (`false`) emits no changed event.
-- A changed selector can cover all three routing traits directly, eliminating the post-query JavaScript `Set` deduplication.
-- Additional ordinary trait requirements, such as `IsBatched`, are compiled into the event selector or filtered before enqueue.
+- A multi-trait changed selector uses OR semantics across `any`: changing any observed routing trait
+  enqueues the entity. The dense/sparse queue deduplicates it once even if several observed traits
+  change before the drain.
+- Ordinary requirements use AND semantics across `all`. Here `IsBatched` must still be present when
+  enqueueing, so unrelated sprites cannot enter routing work.
+- This one combined selector replaces the separate changed queries and post-query JavaScript `Set`
+  union used by the current schedule.
 
 Exact edge cases are specified by the differential tests, not left to incidental implementation behavior.
 
@@ -290,7 +302,7 @@ It is not required to justify removing Koota because the relation engine and gen
 
 Development builds should detect:
 
-- stale or foreign entity handles,
+- stale entity handles and, where an owning object is available, mismatched world ownership,
 - reading or patching a missing trait,
 - duplicate trait addition where replacement was not requested,
 - selector mutation of its required structure during iteration,

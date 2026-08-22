@@ -186,7 +186,11 @@ That use is intentionally out of scope. The proposal removes Koota from the publ
 
 ## Test impact
 
-Many core tests call Koota's global `universe.reset()` for isolation. Migration requires world-owned cleanup and an internal test reset helper where necessary. Tests must stop depending on Koota global state; they should prove independent worlds do not share IDs, trackers, query results, or object-backed defaults.
+Many core tests call Koota's global `universe.reset()` for isolation. Migration requires world-owned
+cleanup and an internal test reset helper where necessary. Tests must stop depending on Koota global
+state; they should prove independent worlds do not share lifecycle state, trackers, query results,
+or object-backed defaults. Numeric handle values are world-relative and may overlap, so ownership is
+validated at object boundaries that retain a world rather than inferred from the bare number.
 
 ## Audit conclusion
 

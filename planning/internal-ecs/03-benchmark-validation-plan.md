@@ -22,11 +22,11 @@ Capture baselines from the exact merge base used for implementation and record:
 
 The current preliminary size baseline is:
 
-| Metric | Koota 0.6.5 |
-| --- | ---: |
+| Metric                          |       Koota 0.6.5 |
+| ------------------------------- | ----------------: |
 | Seven-import tree-shaken kernel | 34,846 B minified |
-| Gzip | 10,522 B |
-| Brotli | 9,368 B |
+| Gzip                            |          10,522 B |
+| Brotli                          |           9,368 B |
 
 These numbers must be recaptured after rebasing onto the implementation merge base.
 
@@ -170,12 +170,15 @@ Measure at least:
 
 Required result versus Koota baseline:
 
-- Koota absent from the production dependency graph,
+- Koota absent from the published `three-flatland` production dependency graph and emitted
+  artifacts,
 - at least 22 kB minified reduction,
 - at least 6 kB gzip reduction,
 - no compensating duplicate runtime chunk.
 
-The PR report includes metafile attribution so a hash or unrelated dependency change cannot be mistaken for the ECS saving.
+The PR report includes metafile attribution so a hash or unrelated dependency change cannot be
+mistaken for the ECS saving. Workspace minis and other packages that intentionally use Koota are
+reported separately; they do not fail this package-scoped removal gate.
 
 ## Behavioral reference tests
 
@@ -227,8 +230,9 @@ Run strict consumer declaration checks after the package build to prove Koota ty
 - Any Koota runtime/type reference in published `three-flatland` output.
 - Kernel above the bundle caps.
 - Representative gzip saving below 6 kB.
-- Steady-state schedule median more than 3% slower in any principal workload.
-- Schedule p95 more than 5% slower.
+- Steady-state schedule median more than 3% slower in any principal workload under the paired-run
+  policy below.
+- Schedule p95 more than 5% slower under the paired-run policy below.
 - New steady-state per-frame allocations.
 - Fixed entity capacity without an explicit supported growth strategy.
 
@@ -253,7 +257,20 @@ Deterministic gates belong in normal CI:
 - kernel and representative bundle-size budgets,
 - allocation counters where deterministic.
 
-Wall-clock benchmarks run in a dedicated, non-blocking benchmark lane and produce a base-versus-head artifact. PR approval treats a failed performance threshold as blocking even if the job is not a flaky required check.
+Wall-clock benchmarks run in a dedicated advisory lane and produce a base-versus-head artifact. The
+lane is not a required status check because a single noisy process must not block merging. The
+paired-run policy below produces the decision: a confirmed regression is a blocking approval
+failure even though the raw benchmark job itself is advisory.
+
+The lane uses a pinned Node version on one documented runner image and architecture. Each report
+runs base and head with the same fixture seed, warm-up count, sample count, and three fresh process
+executions on the same runner class. It records every observation, each process summary, and the
+aggregate median and p95; comparisons use the aggregate base and head values from that paired run.
+
+If either threshold is crossed, CI repeats the complete paired run twice on fresh runners. The PR is
+rejected when the same workload and statistic exceeds its limit in at least two of the three paired
+runs. One breach out of three is classified as noisy and retained in the PR evidence, not silently
+discarded. A code or fixture change invalidates the series and restarts it from the new head.
 
 ## Required PR evidence
 
