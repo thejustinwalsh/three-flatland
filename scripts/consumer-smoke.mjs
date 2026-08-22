@@ -13,8 +13,10 @@
  *      to npmjs.
  *   3. `npm publish` each packed tarball to it, at its real declared version.
  *   4. Install each CONSUMER from that registry with its manifest UNCHANGED, then
- *      `npm run build` + a Playwright render check (production `dist/`, plus a
- *      live `npm run dev` Vite server for the scaffolds). Two kinds of consumer:
+ *      `npm run build`. Scaffolds also run their unit suite and, unless
+ *      `--no-render` is set, install their exact Playwright browser revision and
+ *      run their e2e suite. The final Playwright render check covers production
+ *      `dist/` plus a live `npm run dev` Vite server for scaffolds. Two kinds:
  *        • examples — copied OUT of the repo (escapes the workspace/catalog).
  *        • scaffolds — `create-three-flatland` is itself installed from the
  *          registry, and its published CLI is run to generate a fresh project
@@ -29,6 +31,9 @@
  * bad `publishConfig`, a missing dependency, or an unresolvable range.
  *
  * Usage: node scripts/consumer-smoke.mjs [--only <sel>[,<sel>…]] [--no-render]
+ *
+ * `--no-render` skips every browser-backed check, including scaffold e2e tests,
+ * while retaining install, build, scaffold unit tests, and tree assertions.
  *
  * `--only` selects examples by slug (`skia` = both react and three) or by nx
  * project name (`example-react-skia` = just that one), and scaffolds by
@@ -506,11 +511,13 @@ for (const ex of CONSUMERS) {
     console.log(`  – [${id}] skipped (needs unpublished ${missing.join(', ')})`)
     continue
   }
+  let failureStage = 'setup'
   try {
     if (ex.kind === 'scaffold') {
       // Generate the project with the PUBLISHED CLI, into WORK. Non-interactive
       // (target dir + --template), which the CLI requires when stdin is not a TTY.
       console.log(`• [${id}] running the published CLI…`)
+      failureStage = 'scaffold'
       run(process.execPath, [ensureCli(), `${ex.type}-${ex.slug}`, '--template', ex.slug], WORK)
       if (!existsSync(join(dest, 'package.json'))) throw new Error(`CLI produced no package.json at ${dest}`)
     } else {
@@ -531,6 +538,7 @@ for (const ex of CONSUMERS) {
     // highest precedence, so this wins over any inherited scoped config.
     writeFileSync(join(dest, '.npmrc'), `registry=${REG_URL}/\n@three-flatland:registry=${REG_URL}/\n`)
 
+    failureStage = 'install'
     console.log(`• [${id}] npm install (from local registry)…`)
     // Force the registry on the COMMAND LINE, not just via .npmrc: CI sets a
     // higher-precedence `npm_config_registry` env var (env beats a project
@@ -540,6 +548,7 @@ for (const ex of CONSUMERS) {
     // beats env. The @three-flatland scope is pinned in the .npmrc (no env
     // competes for a scoped key); third-party scopes use the default → npmjs uplink.
     run('npm', ['install', '--no-audit', '--no-fund', '--loglevel', 'error', '--registry', `${REG_URL}/`], dest)
+    failureStage = 'build'
     console.log(`• [${id}] npm run build…`)
     run('npm', ['run', 'build'], dest)
     if (!existsSync(join(dest, 'dist', 'index.html'))) throw new Error('build produced no dist/index.html')
@@ -547,16 +556,26 @@ for (const ex of CONSUMERS) {
     // (a stray lockfile entry, a postinstall-written file), and that counts.
     if (ex.kind === 'scaffold') {
       checkScaffoldedTree(dest, ex.slug)
+      failureStage = 'unit test'
       console.log(`• [${id}] npm run test…`)
       run('npm', ['run', 'test'], dest)
-      console.log(`• [${id}] npm run test:e2e…`)
-      run('npm', ['run', 'test:e2e'], dest)
+      if (!NO_RENDER) {
+        // Install through the scaffold's own Playwright package. Its declared
+        // range can resolve a different browser revision than the root tool;
+        // this is a cache hit when CI already has that exact revision.
+        failureStage = 'e2e browser install'
+        console.log(`• [${id}] npm run test:e2e:install…`)
+        run('npm', ['run', 'test:e2e:install'], dest)
+        failureStage = 'e2e test'
+        console.log(`• [${id}] npm run test:e2e…`)
+        run('npm', ['run', 'test:e2e'], dest)
+      }
     }
     results.push({ id, dest, kind: ex.kind, build: 'ok' })
     console.log(`  ✓ [${id}] built and verified against the published packages`)
   } catch (err) {
     const msg = (err.stdout || '') + (err.stderr || '') || err.message
-    results.push({ id, build: 'fail', error: msg.slice(-1500) })
+    results.push({ id, build: 'fail', stage: failureStage, error: msg.slice(-1500) })
     console.error(`  ✗ [${id}] FAILED\n${msg.slice(-1500)}`)
   }
 }
@@ -887,7 +906,7 @@ console.log(
   `Consumer smoke: ${passed} passed, ${failed.length} failed, ${skipped.length} skipped (of ${results.length})`
 )
 for (const f of failed) {
-  const stage = f.build === 'fail' ? 'build' : f.render !== 'ok' ? 'render' : 'dev'
+  const stage = f.build === 'fail' ? (f.stage ?? 'build') : f.render !== 'ok' ? 'render' : 'dev'
   console.log(`  ✗ ${f.id} — ${stage} failed${f.error ? `\n      ${String(f.error).split('\n')[0]}` : ''}`)
 }
 if (assertionFailures.length) {
@@ -908,7 +927,8 @@ if (passed === 0) {
 rmSync(WORK, { recursive: true, force: true })
 console.log(
   'All packable consumers install + build' +
-    (NO_RENDER ? '' : ' + render (prod dist, and a live dev server for the scaffolds)') +
+    (WANTS_SCAFFOLD ? ' + scaffold unit tests' : '') +
+    (NO_RENDER ? '' : ' + render (scaffold e2e, prod dist, and live scaffold dev servers)') +
     ' from the local registry. ✓'
 )
 // Exit explicitly: the spawned Verdaccio child keeps the event loop alive, so
