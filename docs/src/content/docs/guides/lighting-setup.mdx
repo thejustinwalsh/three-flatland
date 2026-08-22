@@ -21,6 +21,9 @@ This guide covers the practical side of 2D lighting: adding `Light2D` sources, p
     const renderer = new WebGPURenderer({ antialias: false })
     await renderer.init()
     document.body.appendChild(renderer.domElement)
+    const resizeRenderer = () => renderer.setSize(window.innerWidth, window.innerHeight)
+    resizeRenderer()
+    window.addEventListener('resize', resizeRenderer)
 
     const flatland = new Flatland({ viewSize: 400, clearColor: 0x050508 })
 
@@ -58,7 +61,7 @@ This guide covers the practical side of 2D lighting: adding `Light2D` sources, p
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
-    import { Suspense, useRef, useEffect } from 'react'
+    import { Suspense, useRef } from 'react'
     import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
     import type { WebGPURenderer } from 'three/webgpu'
     import {
@@ -71,11 +74,7 @@ This guide covers the practical side of 2D lighting: adding `Light2D` sources, p
 
     function Scene() {
       const flatlandRef = useRef<Flatland>(null)
-      const { renderer, size } = useThree()
-
-      useEffect(() => {
-        flatlandRef.current?.resize(size.width, size.height)
-      }, [size.width, size.height])
+      const renderer = useThree((state) => state.renderer)
 
       useFrame(() => {
         flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
