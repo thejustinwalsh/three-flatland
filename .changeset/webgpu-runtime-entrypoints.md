@@ -4,6 +4,7 @@
 '@three-flatland/slug': patch
 'create-three-flatland': patch
 '@three-flatland/vscode': patch
+'@three-flatland/skills': patch
 ---
 
 Keep React runtime consumers on React Three Fiber's WebGPU entrypoint so Devtools, Skia, and the VS Code encoder webview do not retain the legacy R3F/WebGL module graph. A TypeScript-syntax-aware repository guard now catches multiline imports, re-exports, dynamic imports, and CommonJS requires while allowing type-only references.
