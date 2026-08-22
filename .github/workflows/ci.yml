@@ -19,6 +19,21 @@ jobs:
   changes:
     uses: ./.github/workflows/changes.yml
 
+  security-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Audit dependency graph
+        # Fail closed on registry errors: green means the advisory query completed.
+        run: pnpm audit --audit-level=moderate
+
   # Which projects does this PR affect, per the nx graph (transitively)? Lets the
   # heavy per-project jobs run only when actually relevant — e.g. vscode-e2e skips
   # a skia-only PR, since the extension doesn't depend on skia. Reads the graph
@@ -250,7 +265,7 @@ jobs:
   ci-passed:
     name: CI passed
     if: always()
-    needs: [changes, affected, build, smoke, size, vscode-e2e, consumer-smoke]
+    needs: [changes, security-audit, affected, build, smoke, size, vscode-e2e, consumer-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Gate
@@ -258,6 +273,7 @@ jobs:
           fail=0
           for job_result in \
               "changes:${{ needs.changes.result }}" \
+              "security-audit:${{ needs.security-audit.result }}" \
               "affected:${{ needs.affected.result }}" \
               "build:${{ needs.build.result }}" \
               "smoke:${{ needs.smoke.result }}" \

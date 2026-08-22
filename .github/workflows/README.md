@@ -10,14 +10,22 @@ graph TD
 
     subgraph CIOrch ["ci.yml (orchestrator)"]
         CIChanges["changes.yml"]
+        CIAudit["security-audit"]
+        CIChanges --> CIAffected["affected"]
         CIChanges --> CIBuild["build.yml (matrix: lts/*, lts/-1)"]
         CIChanges --> CISmoke["smoke.yml"]
         CIChanges --> CISize["size.yml (PRs only)"]
         CIChanges --> CIVscodeE2E["vscode-e2e.yml (xvfb)"]
-        CIBuild --> Gate["ci-passed (gate)"]
+        CIBuild --> CIConsumerSmoke["consumer-smoke.yml"]
+        CIAffected --> CIConsumerSmoke
+        CIChanges --> Gate["ci-passed (gate)"]
+        CIAudit --> Gate
+        CIAffected --> Gate
+        CIBuild --> Gate
         CISmoke --> Gate
         CISize --> Gate
         CIVscodeE2E --> Gate
+        CIConsumerSmoke --> Gate
     end
 
     subgraph DocsOrch ["docs.yml (orchestrator)"]
@@ -52,7 +60,7 @@ graph TD
 
 | File             | Role                                                                                                              | Trigger                               |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `ci.yml`         | Orchestrator: paths-filter → build matrix → smoke/size/vscode-e2e → gate                                          | `push`, `pull_request`                |
+| `ci.yml`         | Orchestrator: paths-filter → security audit/build matrix → smoke/size/vscode-e2e → gate                           | `push`, `pull_request`                |
 | `docs.yml`       | Orchestrator: paths-filter → smoke → build-pages → deploy                                                         | `push` to `main`, `workflow_dispatch` |
 | `changes.yml`    | dorny/paths-filter; emits `packages` / `minis` / `examples` / `docs` / `configs` / `vscode` / `ci` bucket outputs | `workflow_call`                       |
 | `build.yml`      | Build + typecheck + lint + test + skia test (single node version, takes `node-version` + `node-tag` inputs)       | `workflow_call`                       |
@@ -65,7 +73,7 @@ The matrix lives at the orchestrator layer (`ci.yml`) — `build.yml` is single-
 
 ## Repository Ruleset
 
-Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `build`, `smoke`, `size`, and `vscode-e2e`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
+Branch protection is a **repository ruleset** with a single required status check: **`CI passed`** (the `ci-passed` job in `ci.yml`). That job runs after `changes`, `security-audit`, `affected`, `build`, `smoke`, `size`, `vscode-e2e`, and `consumer-smoke`, and succeeds when each upstream job is either `success` or `skipped` — only `failure` or `cancelled` makes it fail.
 
 Doc-only or meta-only PRs (where build / smoke / size / vscode-e2e are skipped via paths-filter gating) still produce a passing `CI passed` check and can merge. Code-changing PRs wait for the real jobs to complete before `CI passed` resolves.
 
@@ -79,7 +87,7 @@ fast path described in [Changeset-only skip](#changeset-only-skip).
 
 | Workflow                      | File                                                                               | Triggers                                                    | Purpose                                                                                                                                                                                                                                                                                                                                   |
 | ----------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **CI**                        | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`, `vscode-e2e.yml`) | push to `main`, pull requests                               | Build matrix, lint, test, typecheck, smoke (Playwright), bundle size, VS Code extension e2e (real Electron under Playwright via xvfb), gated by `ci-passed`                                                                                                                   |
+| **CI**                        | `ci.yml` (+ `changes.yml`, `build.yml`, `smoke.yml`, `size.yml`, `vscode-e2e.yml`, `consumer-smoke.yml`) | push to `main`, pull requests                               | Dependency audit, build matrix, lint, test, typecheck, smoke (Playwright), bundle size, published-package consumer smoke, and VS Code extension e2e, gated by `ci-passed`                                                                                                   |
 | **Release**                   | `release.yml`                                                                      | after CI succeeds on `main`, manual                         | Publishes packages to npm via changesets; when the release bumps the private `@three-flatland/vscode` package, orchestrates the reusable `build-vscode-vsix.yml` (`build-vsix`) then creates the `fl-tools-v<version>` GitHub Release with the universal `.vsix` attached (`attach-vsix`)                                                    |
 | **Build VS Code Extension VSIX** | `build-vscode-vsix.yml`                                                          | `workflow_call` (from `release.yml`), manual                | Reusable/composable: builds a native codelens-service binary per platform (6-leg matrix, no cross-compilation — darwin x2, linux x2, win32 x2), merges them into one universal VSIX + audio-play, uploads it as the `vsix` artifact. Does **not** publish — marketplace publishing is manual (see `tools/vscode/PUBLISHING.md`)              |
 | **Deploy Docs**               | `docs.yml` (+ `changes.yml`, `smoke.yml`)                                          | push to `main`, manual                                      | Self-gated docs deploy: runs paths-filter + smoke before building the Pages artifact and deploying                                                                                                                                                                                                                                        |
@@ -104,6 +112,7 @@ Job gating:
 
 | Job                                | Runs when                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.security-audit`                | every run — audits the resolved lockfile at moderate severity or higher, including changeset-only updates                                                                                                                                                                                                                                                                                                             |
 | `ci.build` (matrix)                | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `vscode` ∨ `ci` — lint/typecheck/test are too valuable to bucket-gate; Nx cache makes the no-ops cheap                                                                                                                                                                                                                                                     |
 | `ci.smoke`                         | `packages` ∨ `minis` ∨ `examples` ∨ `docs` ∨ `configs` ∨ `ci` (and upstream `build` didn't fail)                                                                                                                                                                                                                                                                                                                       |
 | `ci.size`                          | `packages` ∨ `configs` ∨ `ci` (PR events only; size-limit only tracks published packages)                                                                                                                                                                                                                                                                                                                              |
