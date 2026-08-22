@@ -14,7 +14,7 @@ If you're new and not sure whether you need `Flatland` or `SpriteGroup` — star
 | | Flatland | SpriteGroup |
 |---|---------|-------------|
 | **Use case** | Self-contained 2D pipeline | Embed sprites into your own scene |
-| **Camera** | Internal orthographic camera | You provide the camera |
+| **Camera** | Internal pixel-perfect orthographic camera | You provide the camera |
 | **Post-processing** | Built-in pass effect pipeline | Not included |
 | **Global uniforms** | Automatic time, viewport, tint | Not included |
 | **Render call** | `flatland.render(...)` | `renderer.render(...)` |
@@ -97,17 +97,20 @@ In React Three Fiber, register `flatland.render()` in the **render phase** (`{ p
 ```typescript
 const flatland = new Flatland({
   viewSize: 400,         // Orthographic view height in world units
+  pixelPerfect: true,    // Managed PixelPerfectCamera (system default)
   clearColor: 0x1a1a2e,  // Background color
   clearAlpha: 1,          // Background alpha (< 1 for transparent)
   autoClear: true,        // Clear before each render
   postProcessing: false,  // Enable post-processing pipeline
-  aspect: undefined,      // Auto-sync from the render surface; set a number to pin it
+  aspect: undefined,      // Regular camera only: auto-sync, or set a number to pin it
   camera: null,           // Custom OrthographicCamera (null = internal)
   renderTarget: null,     // RenderTarget (null = render to viewport)
 })
 ```
 
 See the [FlatlandOptions API reference](/three-flatland/api/interfaces/flatlandoptions/) for full type details.
+
+Flatland's managed camera follows the library-wide `pixel-art` preset by default. See [Pixel-Perfect Rendering](../pixel-perfect-rendering/) for the camera, object snapping, HiDPI behavior, and the `FlatlandConfig` hierarchy. Pass `pixelPerfect: false` for a regular orthographic camera.
 
 ## Adding Objects
 
@@ -171,7 +174,7 @@ import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw';
 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
-Each frame, call `render()`. `Flatland` reads the renderer drawing buffer or active render target size and updates its camera aspect when the surface dimensions change:
+Each frame, call `render()`. `Flatland` reads the renderer drawing buffer or active render target size and updates its camera when the surface dimensions change:
 
 ```typescript
 function animate() {
@@ -180,7 +183,7 @@ function animate() {
 }
 ```
 
-`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches before drawing. Surface-dependent GPU resources use physical drawing-buffer pixels so canvas DPR and render-target texels stay in the same coordinate space; `globals.viewportSize` remains the renderer's logical size and is paired with `globals.pixelRatio`. To keep a fixed camera aspect, pass `aspect` or assign `flatland.aspect`. Calling `resize(width, height)` opts into manual surface sizing and keeps the previous explicit-resize behavior, including resizing the current render target with `setSize()`. Automatic sizing only observes user-owned render targets; it never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. The explicit sentinel works for conditional R3F props such as `aspect={locked ? 1 : 'auto'}`. Read `flatland.resolvedAspect` when you need the current numeric ratio.
+`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches before drawing. Surface-dependent GPU resources use physical drawing-buffer pixels so canvas DPR and render-target texels stay in the same coordinate space; `globals.viewportSize` remains the renderer's logical size and is paired with `globals.pixelRatio`. The default `PixelPerfectCamera` selects and centers an integer-sized viewport inside the physical surface, so `resolvedAspect` can differ from the full surface when letterboxing is active. With `pixelPerfect: false`, pass `aspect` or assign `flatland.aspect` to pin the regular internal camera. Calling `resize(width, height)` opts into manual surface sizing and keeps the previous explicit-resize behavior, including resizing the current render target with `setSize()`. Automatic sizing only observes user-owned render targets; it never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. Read `flatland.resolvedAspect` when you need the current numeric ratio.
 
 When you supply a camera through `camera`, Flatland preserves its authored frustum. The aspect controls above apply to the internal camera; `resolvedAspect` reports the supplied camera's actual frustum ratio.
 
@@ -338,4 +341,5 @@ This destroys the ECS world, sprite batches, render pipeline, and all pass effec
 - [2D Lighting](../lighting/) — Light2D sources and LightEffect presets
 - [Pass Effects](../pass-effects/) — Full-screen post-processing effects
 - [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
+- [Pixel-Perfect Rendering](../pixel-perfect-rendering/) — Camera scaling, projected-pivot snapping, and presets
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage
