@@ -7,6 +7,7 @@ describe('applyTextureOptions', () => {
     expect(() => applyTextureOptions(new Texture(), 'pixell-art' as never)).toThrow(
       'unknown texture preset "pixell-art"'
     )
+    expect(() => applyTextureOptions(new Texture(), 'toString' as never)).toThrow('unknown texture preset "toString"')
   })
 
   it('only touches colorSpace when the options object provides one', () => {

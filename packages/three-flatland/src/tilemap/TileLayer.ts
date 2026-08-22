@@ -19,6 +19,7 @@ import {
 import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, PIXEL_PERFECT_MASK } from '../materials/effectFlagBits'
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
+import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -59,6 +60,9 @@ interface ChunkData {
  * ```
  */
 export class TileLayer extends Group {
+  /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
+  static options: RenderingSetting | undefined = undefined
+
   /** Layer data */
   readonly data: TileLayerData
 
@@ -245,6 +249,9 @@ export class TileLayer extends Group {
 
   constructor(data: TileLayerData, tileset: Tileset, tileWidth: number, tileHeight: number, chunkSize: number = 256) {
     super()
+
+    const classOptions = (this.constructor as typeof TileLayer).options
+    if (resolvePixelPerfect(undefined, classOptions)) this._systemFlags |= PIXEL_PERFECT_MASK
 
     this.data = data
     this.tileset = tileset

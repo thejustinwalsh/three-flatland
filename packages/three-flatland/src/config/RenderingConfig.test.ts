@@ -4,6 +4,8 @@ import { AnimatedSprite2D } from '../sprites/AnimatedSprite2D'
 import { TextureConfig, resolveTextureOptions } from '../loaders/texturePresets'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { TileMap2D } from '../tilemap/TileMap2D'
+import { TileLayer } from '../tilemap/TileLayer'
+import { Tileset } from '../tilemap/Tileset'
 import { PixelPerfectCamera } from '../cameras/PixelPerfectCamera'
 import { FlatlandConfig } from './FlatlandConfig'
 import { RenderingConfig } from './RenderingConfig'
@@ -15,7 +17,27 @@ afterEach(() => {
   Flatland.options = undefined
   Sprite2D.options = undefined
   TileMap2D.options = undefined
+  TileLayer.options = undefined
 })
+
+function createTileLayer(): TileLayer {
+  return new TileLayer(
+    { data: Uint32Array.of(0), height: 1, id: 1, name: 'config-layer', width: 1 },
+    new Tileset({
+      columns: 1,
+      firstGid: 1,
+      imageHeight: 16,
+      imageWidth: 16,
+      name: 'config-tileset',
+      tileCount: 1,
+      tileHeight: 16,
+      tiles: new Map(),
+      tileWidth: 16,
+    }),
+    16,
+    16
+  )
+}
 
 describe('FlatlandConfig hierarchy', () => {
   it('defaults the complete pipeline to the pixel-art preset', () => {
@@ -23,6 +45,9 @@ describe('FlatlandConfig hierarchy', () => {
     expect(new Flatland().camera).toBeInstanceOf(PixelPerfectCamera)
     expect(new Sprite2D().pixelPerfect).toBe(true)
     expect(new TileMap2D().pixelPerfect).toBe(true)
+    const layer = createTileLayer()
+    expect(layer.pixelPerfect).toBe(true)
+    layer.dispose()
     expect(resolveTextureOptions()).toBe('pixel-art')
   })
 
@@ -32,6 +57,9 @@ describe('FlatlandConfig hierarchy', () => {
     expect(new Flatland().camera).not.toBeInstanceOf(PixelPerfectCamera)
     expect(new Sprite2D().pixelPerfect).toBe(false)
     expect(new TileMap2D().pixelPerfect).toBe(false)
+    const layer = createTileLayer()
+    expect(layer.pixelPerfect).toBe(false)
+    layer.dispose()
     expect(resolveTextureOptions()).toBe('smooth')
   })
 
@@ -108,5 +136,11 @@ describe('FlatlandConfig hierarchy', () => {
     FlatlandConfig.reset()
     RenderingConfig.options = 'pixell-art' as never
     expect(() => RenderingConfig.resolved).toThrow('unknown rendering preset "pixell-art"')
+
+    RenderingConfig.options = 'toString' as never
+    expect(() => RenderingConfig.resolved).toThrow('unknown rendering preset "toString"')
+
+    FlatlandConfig.options = 'toString' as never
+    expect(() => FlatlandConfig.resolved).toThrow('unknown Flatland preset "toString"')
   })
 })

@@ -82,8 +82,10 @@ export class TextureConfig {
 export function applyTextureOptions(texture: Texture, preset: TexturePreset | TextureOptions): void {
   let opts: TextureOptions
   if (typeof preset === 'string') {
+    if (!Object.hasOwn(TEXTURE_PRESETS, preset)) {
+      throw new TypeError(`three-flatland: unknown texture preset "${preset}"`)
+    }
     const namedPreset = TEXTURE_PRESETS[preset]
-    if (!namedPreset) throw new TypeError(`three-flatland: unknown texture preset "${preset}"`)
     opts = namedPreset
   } else {
     opts = preset

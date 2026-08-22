@@ -32,8 +32,10 @@ function applySetting(
   setting: FlatlandSetting
 ): Required<FlatlandConfigOptions> {
   if (typeof setting !== 'string') return { ...base, ...setting }
+  if (!Object.hasOwn(FLATLAND_PRESETS, setting)) {
+    throw new TypeError(`three-flatland: unknown Flatland preset "${setting}"`)
+  }
   const preset = FLATLAND_PRESETS[setting]
-  if (!preset) throw new TypeError(`three-flatland: unknown Flatland preset "${setting}"`)
   return { ...preset }
 }
 
