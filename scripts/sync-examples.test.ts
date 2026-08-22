@@ -47,6 +47,7 @@ describe('synced renderer fallbacks', () => {
     expect(source).toContain('fallback=')
     expect(source).toContain('<ExampleFallback />')
     expect(source).not.toContain('WebGPUFallback')
+    expect(source).not.toContain('renderStartupError')
   })
 
   it('keeps the React fallback on the audited message, color, and narrow-layout styles', () => {
@@ -55,6 +56,18 @@ describe('synced renderer fallbacks', () => {
     expect(source).toContain("from './rendererFailure'")
     expect(source).toContain('color: RENDERER_FAILURE_COLOR')
     expect(source).toContain('{RENDERER_FAILURE_MESSAGE}')
+    expect(source).toContain("boxSizing: 'border-box'")
+    expect(source).toContain("textAlign: 'center'")
+    expect(source).not.toContain("color: '#f4f7fb'")
+  })
+
+  it('keeps the Three.js startup error on the shared accessible presentation', () => {
+    const source = readFileSync(join(ROOT, 'examples', '_shared', 'renderStartupError.ts'), 'utf8')
+
+    expect(source).toContain("from './rendererFailure'")
+    expect(source).toContain("message.setAttribute('role', 'status')")
+    expect(source).toContain('color: RENDERER_FAILURE_COLOR')
+    expect(source).toContain('message.textContent = RENDERER_FAILURE_MESSAGE')
     expect(source).toContain("boxSizing: 'border-box'")
     expect(source).toContain("textAlign: 'center'")
     expect(source).not.toContain("color: '#f4f7fb'")
