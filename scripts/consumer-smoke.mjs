@@ -555,6 +555,7 @@ for (const ex of CONSUMERS) {
     // Run AFTER the build: an install can materialize wiring the CLI didn't emit
     // (a stray lockfile entry, a postinstall-written file), and that counts.
     if (ex.kind === 'scaffold') {
+      failureStage = 'tree check'
       checkScaffoldedTree(dest, ex.slug)
       failureStage = 'unit test'
       console.log(`• [${id}] npm run test…`)
@@ -925,10 +926,16 @@ if (passed === 0) {
   process.exit(1)
 }
 rmSync(WORK, { recursive: true, force: true })
+const ranScaffold = results.some((result) => result.kind === 'scaffold' && result.build === 'ok')
+const renderSummary = NO_RENDER
+  ? ''
+  : ranScaffold
+    ? ' + render (prod dist, scaffold e2e, and live scaffold dev servers)'
+    : ' + render (prod dist)'
 console.log(
   'All packable consumers install + build' +
-    (WANTS_SCAFFOLD ? ' + scaffold unit tests' : '') +
-    (NO_RENDER ? '' : ' + render (scaffold e2e, prod dist, and live scaffold dev servers)') +
+    (ranScaffold ? ' + scaffold unit tests' : '') +
+    renderSummary +
     ' from the local registry. ✓'
 )
 // Exit explicitly: the spawned Verdaccio child keeps the event loop alive, so

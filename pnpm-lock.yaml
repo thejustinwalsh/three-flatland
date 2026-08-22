@@ -1547,7 +1547,7 @@ importers:
         version: link:../../../three-flatland
     devDependencies:
       '@playwright/test':
-        specifier: ^1.61.1
+        specifier: 1.61.1
         version: 1.61.1
       '@types/react':
         specifier: ^19.0.2
@@ -1593,7 +1593,7 @@ importers:
         version: link:../../../three-flatland
     devDependencies:
       '@playwright/test':
-        specifier: ^1.61.1
+        specifier: 1.61.1
         version: 1.61.1
       '@types/three':
         specifier: ^0.185.4

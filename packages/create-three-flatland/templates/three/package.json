@@ -22,7 +22,7 @@
     "three-flatland": "^0.1.0-alpha.10"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "1.61.1",
     "@types/three": "^0.185.4",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
