@@ -1,0 +1,31 @@
+{
+  "esbuild": "0.28.1",
+  "koota": "0.6.5",
+  "measurements": [
+    {
+      "artifact": "Koota seven-import tree-shaken browser kernel",
+      "brotliBytes": 9362,
+      "gzipBytes": 10584,
+      "minifiedBytes": 34910
+    },
+    {
+      "artifact": "Sparse membership with persistent selector views",
+      "brotliBytes": 2710,
+      "gzipBytes": 2956,
+      "minifiedBytes": 7962
+    },
+    {
+      "artifact": "Signature membership with persistent selector views",
+      "brotliBytes": 2706,
+      "gzipBytes": 2953,
+      "minifiedBytes": 7968
+    },
+    {
+      "artifact": "Sparse membership with anchored selector scans",
+      "brotliBytes": 2702,
+      "gzipBytes": 2952,
+      "minifiedBytes": 7954
+    }
+  ],
+  "target": "es2022"
+}

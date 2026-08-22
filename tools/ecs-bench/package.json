@@ -1,0 +1,56 @@
+{
+  "name": "@three-flatland/ecs-bench",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Private differential, size, and performance harness for Flatland's entity runtime",
+  "type": "module",
+  "nx": {
+    "targets": {
+      "test": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "benchmark": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "node --expose-gc --experimental-strip-types src/benchmark.ts",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "baseline:size": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "node --experimental-strip-types src/measure-kernels-size.ts",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "baseline:size": "node --experimental-strip-types src/measure-kernels-size.ts",
+    "benchmark": "node --expose-gc --experimental-strip-types src/benchmark.ts",
+    "lint": "oxlint --type-aware .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "koota": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "esbuild": "0.28.1",
+    "typescript": "catalog:",
+    "vitest": "^3.2.6"
+  }
+}

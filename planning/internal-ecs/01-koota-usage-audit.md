@@ -164,12 +164,13 @@ Those are reasonable costs for Koota's public feature set. They are not required
 
 ## Measured size baseline
 
-Measurement environment: repository install on 2026-08-22, Koota 0.6.5, esbuild 0.25.12, browser ESM, minification and tree shaking enabled.
+Measurement environment: repository install on 2026-08-22, merge base `6868ff18`, Koota 0.6.5,
+esbuild 0.28.1, browser ESM, minification and tree shaking enabled.
 
 | Artifact                                      |      Raw/minified |     Gzip |       Brotli |
 | --------------------------------------------- | ----------------: | -------: | -----------: |
 | Installed Koota core ESM chunk                |      98,396 B raw | 17,310 B | not recorded |
-| Flatland's seven runtime imports in isolation | 34,846 B minified | 10,522 B |      9,368 B |
+| Flatland's seven runtime imports in isolation | 34,910 B minified | 10,584 B |      9,362 B |
 
 The installed package occupies 496 kB on disk. Disk size is not the product goal; the tree-shaken browser result is the meaningful replacement baseline.
 
