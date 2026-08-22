@@ -8,7 +8,6 @@ import {
   Discard,
   select,
   positionLocal,
-  positionView,
   positionPrevious,
   normalLocal,
   property,
@@ -510,8 +509,13 @@ export class Sprite2DMaterial extends EffectMaterial {
    *
    * @internal
    */
-  override setupModelViewProjection(): Node<'vec4'> {
-    const clipPosition = cameraProjectionMatrix.mul(positionView).toVar('spriteClipPosition')
+  override setupModelViewProjection(builder?: NodeBuilder): Node<'vec4'> {
+    // Build through NodeMaterial's view-position extension point at the point
+    // this clip expression is assembled. Using the shared `positionView` node
+    // instead lets Three cache it before our custom instance-matrix stack is
+    // emitted, which projects the untransformed unit quad for SpriteBatch.
+    const viewPosition = this.setupPositionView(builder!) as Node<'vec3'>
+    const clipPosition = cameraProjectionMatrix.mul(viewPosition).toVar('spriteClipPosition')
 
     If(readPixelPerfectFlag(), () => {
       const pivotClip = cameraProjectionMatrix.mul(modelViewMatrix.mul(spritePixelPivot)).toVar('spritePivotClip')

@@ -114,6 +114,19 @@ function expectPixelPivotTransformGuarded(vertexShader: string): void {
   expect(pivotAssignment, 'pivot transform must be inside the pixel-perfect branch').toBeLessThan(branchClose)
 }
 
+/** Guard SpriteBatch's custom instance transform from being projected early. */
+function expectInstanceTransformBeforeProjection(vertexShader: string): void {
+  const clipAssignment = vertexShader.indexOf('spriteClipPosition =')
+  expect(clipAssignment, 'sprite clip projection must be emitted').toBeGreaterThanOrEqual(0)
+
+  const finalPositionAssignment = vertexShader.lastIndexOf('positionLocal =')
+  expect(finalPositionAssignment, 'instance-transformed position must be emitted').toBeGreaterThanOrEqual(0)
+  expect(
+    finalPositionAssignment,
+    'instance transform must run before sprite clip projection or batched sprites collapse to the unit quad'
+  ).toBeLessThan(clipAssignment)
+}
+
 function registerCompilerAtlas(texture: Texture): void {
   const frame: SpriteFrame = {
     name: 'compiler-diamond',
@@ -203,6 +216,17 @@ describe('shader assertion contracts', () => {
       'pivot transform must be inside the pixel-perfect branch'
     )
   })
+
+  it('rejects clip projection emitted before the final instance transform', () => {
+    const unsafeShader = `
+      spriteClipPosition = cameraProjectionMatrix * positionView;
+      positionLocal = instanceMatrix * positionLocal;
+    `
+
+    expect(() => expectInstanceTransformBeforeProjection(unsafeShader)).toThrow(
+      'instance transform must run before sprite clip projection'
+    )
+  })
 })
 
 describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (backend) => {
@@ -234,6 +258,7 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
       expectPixelPivotTransformGuarded(program.vertexShader)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
       expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
       batch.dispose()
