@@ -1,6 +1,7 @@
 ---
 '@three-flatland/devtools': patch
 '@three-flatland/skia': patch
+'@three-flatland/slug': patch
 'create-three-flatland': patch
 '@three-flatland/vscode': patch
 ---
