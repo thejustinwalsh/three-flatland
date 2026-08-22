@@ -88,12 +88,31 @@ function expectSingleInstanceMatrixAttributeSet(backend: ShaderBackend, vertexSh
 /** Guard opted-out sprites from paying the projected-pivot matrix multiply. */
 function expectPixelPivotTransformGuarded(vertexShader: string): void {
   const pivotAssignment = vertexShader.indexOf('spritePivotClip =')
-  const enclosingBranch = vertexShader.lastIndexOf('if', pivotAssignment)
   expect(pivotAssignment, 'projected pivot transform must be emitted').toBeGreaterThanOrEqual(0)
-  expect(enclosingBranch, 'pivot transform must be emitted inside a branch').toBeGreaterThanOrEqual(0)
-  expect(vertexShader.slice(enclosingBranch, pivotAssignment), 'pivot branch must test the pixel-perfect flag').toContain(
-    '& 16'
-  )
+
+  const flagTest = vertexShader.indexOf('& 16')
+  const branchStart = vertexShader.lastIndexOf('if', flagTest)
+  const branchOpen = vertexShader.indexOf('{', flagTest)
+  expect(flagTest, 'pixel-perfect flag test must be emitted').toBeGreaterThanOrEqual(0)
+  expect(branchStart, 'pixel-perfect flag test must belong to a branch').toBeGreaterThanOrEqual(0)
+  expect(branchOpen, 'pixel-perfect branch must have a body').toBeGreaterThan(flagTest)
+
+  let depth = 0
+  let branchClose = -1
+  for (let index = branchOpen; index < vertexShader.length; index++) {
+    const token = vertexShader[index]
+    if (token === '{') depth++
+    if (token !== '}') continue
+    depth--
+    if (depth === 0) {
+      branchClose = index
+      break
+    }
+  }
+
+  expect(branchClose, 'pixel-perfect branch must close').toBeGreaterThan(branchOpen)
+  expect(pivotAssignment, 'pivot transform must be inside the pixel-perfect branch').toBeGreaterThan(branchOpen)
+  expect(pivotAssignment, 'pivot transform must be inside the pixel-perfect branch').toBeLessThan(branchClose)
 }
 
 function registerCompilerAtlas(texture: Texture): void {
@@ -171,6 +190,21 @@ afterAll(async () => {
     for (const texture of disposableTextures) texture.dispose()
   }
 }, 60_000)
+
+describe('shader assertion contracts', () => {
+  it('rejects a projected-pivot multiply hoisted after the pixel-perfect branch', () => {
+    const unsafeShader = `
+      if ((instanceSystem.z & 16) > 0) {
+        positionLocal.xy += vec2(1.0);
+      }
+      spritePivotClip = cameraProjectionMatrix * modelViewMatrix * vec4(spritePixelPivot, 1.0);
+    `
+
+    expect(() => expectPixelPivotTransformGuarded(unsafeShader)).toThrow(
+      'pivot transform must be inside the pixel-perfect branch'
+    )
+  })
+})
 
 describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (backend) => {
   it('compiles standalone sprite materials', () => {
