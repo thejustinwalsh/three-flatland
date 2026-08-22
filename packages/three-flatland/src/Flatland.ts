@@ -1663,7 +1663,9 @@ export class Flatland extends Group implements WorldProvider {
       return
     }
 
-    this._passNode.setViewport(null)
+    // Three r185 explicitly supports `null` to restore automatic sizing; the
+    // matching @types/three release omitted that documented overload.
+    ;(this._passNode as PassNode & { setViewport(viewport: Vector4 | null): void }).setViewport(null)
     this._passViewportUvScale.value.set(1, 1)
     this._passViewportUvOffset.value.set(0, 0)
   }

@@ -42,6 +42,14 @@ import { installInstanceEventUpdateBeforePatch } from '../pipeline/_instanceEven
 // too so custom InstancedMesh + Sprite2DMaterial users get the same behavior.
 installInstanceEventUpdateBeforePatch()
 
+// @types/three@0.185.4 does not yet expose these public r185 NodeBuilder
+// methods, although Three's own TSL nodes use both. Keep the compatibility
+// cast local so the material can follow Three's canonical instance path.
+type SpriteNodeBuilder = NodeBuilder & {
+  hasGeometryAttribute(name: string): boolean
+  needsPreviousData(): boolean
+}
+
 // Re-export types that moved to EffectMaterial for backwards compatibility
 export type { ColorTransformContext, ColorTransformFn } from './EffectMaterial'
 import type { ColorTransformFn } from './EffectMaterial'
@@ -285,6 +293,7 @@ export class Sprite2DMaterial extends EffectMaterial {
   override setupPosition(builder: NodeBuilder): Node<'vec3'> {
     spritePixelPivot.assign(vec3(0))
     const object = builder.object as InstancedMesh
+    const spriteBuilder = builder as SpriteNodeBuilder
 
     if (this.positionNode === null) {
       super.setupPosition(builder)
@@ -299,10 +308,12 @@ export class Sprite2DMaterial extends EffectMaterial {
       // Restoring normal/previous state ensures those transforms still apply
       // exactly once. No extra CPU upload or vertex binding is introduced.
       const transformedPosition = positionLocal.toVar('spriteInstancePosition')
-      const transformedNormal = builder.hasGeometryAttribute('normal')
+      const transformedNormal = spriteBuilder.hasGeometryAttribute('normal')
         ? normalLocal.toVar('spriteInstanceNormal')
         : null
-      const transformedPrevious = builder.needsPreviousData() ? positionPrevious.toVar('spriteInstancePrevious') : null
+      const transformedPrevious = spriteBuilder.needsPreviousData()
+        ? positionPrevious.toVar('spriteInstancePrevious')
+        : null
 
       positionLocal.assign(vec3(0))
       instancedMesh(object)
