@@ -33,7 +33,7 @@ All classes in Flatland extend three.js base classes, so they can be registered 
 ### 1. Register with extend()
 
 ```tsx
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { Flatland, Sprite2D } from 'three-flatland/react'
 
 // Register Flatland and its children with R3F
