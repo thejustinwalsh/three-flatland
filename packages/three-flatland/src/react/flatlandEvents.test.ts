@@ -93,7 +93,7 @@ describe('createFlatlandCompute', () => {
     expect(portalState.raycaster.camera).toBeUndefined()
   })
 
-  it('maps a marked parent pixel viewport back into a plain Flatland camera', () => {
+  it('keeps a marked parent pixel pointer in its inherited viewport for a plain Flatland camera', () => {
     const parentCamera = new PixelPerfectCamera({ viewSize: 480, viewWidth: 640 })
     parentCamera.setDrawingBufferSize(800, 600)
     expect(parentCamera.viewport.toArray()).toEqual([80, 60, 640, 480])
@@ -109,9 +109,13 @@ describe('createFlatlandCompute', () => {
 
     createFlatlandCompute(() => flatland)({} as never, portalState as never, parentState as never)
 
-    expect(portalState.pointer.x).toBeCloseTo(0.8)
+    expect(portalState.pointer.x).toBeCloseTo(1)
     expect(portalState.pointer.y).toBeCloseTo(0)
     expect(portalState.raycaster.camera).toBe(flatland.camera)
+
+    parentState.pointer.x = 1.01
+    createFlatlandCompute(() => flatland)({} as never, portalState as never, parentState as never)
+    expect(portalState.raycaster.camera).toBeUndefined()
   })
 
   it('leaves raycaster.camera unset when flatland is not ready (R3F skips the root)', () => {

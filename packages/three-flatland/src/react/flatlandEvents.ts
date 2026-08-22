@@ -95,10 +95,12 @@ export function createFlatlandCompute(getFlatland: () => Flatland | null) {
         state.raycaster.camera = undefined
         return
       }
-    } else if (surfaceX !== undefined && surfaceY !== undefined && previous.size) {
-      state.pointer.set((surfaceX / previous.size.width) * 2 - 1, 1 - (surfaceY / previous.size.height) * 2)
     } else {
       state.pointer.set(previous.pointer.x, previous.pointer.y)
+      if (parentPointerUsesPixelViewport && (Math.abs(state.pointer.x) > 1 || Math.abs(state.pointer.y) > 1)) {
+        state.raycaster.camera = undefined
+        return
+      }
     }
     state.raycaster.setFromCamera(state.pointer, targetCamera)
   }
