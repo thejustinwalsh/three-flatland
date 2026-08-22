@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode, type Ref } from 'react'
-import { extend, type ThreeElement } from '@react-three/fiber'
+import { extend, type ThreeElement } from '@react-three/fiber/webgpu'
 import type { SkiaContext } from '../context'
 import type { SkiaContextReady } from '../three/SkiaCanvas'
 import { SkiaReactContext } from './context'

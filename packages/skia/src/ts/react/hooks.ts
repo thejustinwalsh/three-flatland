@@ -1,5 +1,5 @@
 import { use, useContext } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber/webgpu'
 import { SkiaContext } from '../context'
 import { SkiaReactContext } from './context'
 import { Skia } from '../init'
