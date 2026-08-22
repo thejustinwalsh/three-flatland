@@ -64,6 +64,9 @@ export class PixelPerfectCamera extends OrthographicCamera {
   /** Canonical Three.js-style runtime type guard. */
   readonly isPixelPerfectCamera = true
 
+  /** Prevent React Three Fiber from replacing the authored projection. */
+  readonly manual = true
+
   /**
    * Centered physical-pixel viewport `(x, y, width, height)` for this
    * projection. Canvas renderers accept logical pixels, so divide by their DPR
@@ -79,6 +82,7 @@ export class PixelPerfectCamera extends OrthographicCamera {
   private _drawingBufferWidth = 400
   private _drawingBufferHeight = 400
   private readonly _logicalViewport = new Vector4()
+  private _updatingPixelProjection = false
 
   constructor(options: PixelPerfectCameraOptions = {}) {
     super(-200, 200, 200, -200, options.near ?? 0.1, options.far ?? 1000)
@@ -157,7 +161,17 @@ export class PixelPerfectCamera extends OrthographicCamera {
    */
   getLogicalViewport(pixelRatio = 1, target = new Vector4()): Vector4 {
     if (!isPositiveFinite(pixelRatio)) pixelRatio = 1
-    return target.copy(this.viewport).divideScalar(pixelRatio)
+    target.copy(this.viewport).divideScalar(pixelRatio)
+
+    // Renderer common converts logical values back to physical pixels with
+    // multiplyScalar(dpr).floor(). Nudge exact quotients upward by one ULP so
+    // non-dyadic DPRs (1.1, 1.3, 1.75, …) cannot lose a framebuffer pixel to
+    // floating-point round-off during that round trip.
+    for (let index = 0; index < 4; index++) {
+      const value = target.getComponent(index)
+      target.setComponent(index, value + Math.max(1, Math.abs(value)) * Number.EPSILON)
+    }
+    return target
   }
 
   /**
@@ -166,7 +180,10 @@ export class PixelPerfectCamera extends OrthographicCamera {
    * letterbox or pillarbox region and should not participate in picking.
    */
   getNormalizedDeviceCoordinates(x: number, y: number, pixelRatio = 1, target = new Vector2()): Vector2 {
-    const logicalViewport = this.getLogicalViewport(pixelRatio, this._logicalViewport)
+    if (!isPositiveFinite(pixelRatio)) pixelRatio = 1
+    // Pointer math uses the exact logical boundary. The renderer-only ULP
+    // nudge in getLogicalViewport must not move the event coordinate system.
+    const logicalViewport = this._logicalViewport.copy(this.viewport).divideScalar(pixelRatio)
     return target.set(
       ((x - logicalViewport.x) / logicalViewport.z) * 2 - 1,
       -((y - logicalViewport.y) / logicalViewport.w) * 2 + 1
@@ -228,11 +245,28 @@ export class PixelPerfectCamera extends OrthographicCamera {
     return this
   }
 
+  /**
+   * Rebuild the projection after canonical Three.js controls mutate `zoom`.
+   * Zoom is folded into the nearest positive integer pixel scale so it can
+   * never introduce fractional source-pixel coverage.
+   */
+  override updateProjectionMatrix(): void {
+    // OrthographicCamera's constructor dispatches here before subclass fields
+    // exist. Let that one initialization use Three's ordinary implementation.
+    if (this._updatingPixelProjection === undefined || this._updatingPixelProjection) {
+      super.updateProjectionMatrix()
+      return
+    }
+    this._updatePixelProjection()
+  }
+
   private _updatePixelProjection(): void {
     const verticalFit = this._drawingBufferHeight / this._viewSize
     const fit =
       this._viewWidth === undefined ? verticalFit : Math.min(verticalFit, this._drawingBufferWidth / this._viewWidth)
-    this._resolvedPixelScale = this._pixelScale === 'auto' ? Math.max(1, Math.floor(fit)) : this._pixelScale
+    const fittedPixelScale = this._pixelScale === 'auto' ? Math.max(1, Math.floor(fit)) : this._pixelScale
+    const zoom = isPositiveFinite(this.zoom) ? this.zoom : 1
+    this._resolvedPixelScale = Math.max(1, Math.round(fittedPixelScale * zoom))
 
     const desiredPhysicalWidth =
       this._viewWidth === undefined
@@ -251,6 +285,13 @@ export class PixelPerfectCamera extends OrthographicCamera {
     this.right = halfWidth
     this.top = halfHeight
     this.bottom = -halfHeight
-    this.updateProjectionMatrix()
+    // The integer scale above already contains zoom. Temporarily neutralize
+    // OrthographicCamera's own fractional zoom term while it builds the matrix.
+    this._updatingPixelProjection = true
+    const authoredZoom = this.zoom
+    this.zoom = 1
+    super.updateProjectionMatrix()
+    this.zoom = authoredZoom
+    this._updatingPixelProjection = false
   }
 }

@@ -29,11 +29,7 @@ export interface UsePixelPerfectCameraOptions extends PixelPerfectCameraOptions 
 export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}): PixelPerfectCamera {
   const cameraRef = useRef<PixelPerfectCamera | null>(null)
   if (cameraRef.current === null) {
-    const created = new PixelPerfectCamera(options) as PixelPerfectCamera & { manual?: boolean }
-    // R3F must never rewrite this camera's intentionally physical-pixel frustum,
-    // including when callers install a makeDefault={false} camera themselves.
-    created.manual = true
-    cameraRef.current = created
+    cameraRef.current = new PixelPerfectCamera(options)
   }
   const camera = cameraRef.current
 
@@ -45,6 +41,8 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
   const get = useThree((state) => state.get)
   const renderer = useThree((state) => state.renderer)
   const makeDefault = options.makeDefault ?? true
+  const surfaceSizeRef = useRef({ width, height })
+  surfaceSizeRef.current = { width, height }
 
   useLayoutEffect(() => {
     camera.viewSize = options.viewSize ?? 400
@@ -67,6 +65,45 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
 
   useLayoutEffect(() => {
     if (!makeDefault) return
+    const previousGetCurrentViewport = get().viewport.getCurrentViewport
+    const getCurrentViewport: typeof previousGetCurrentViewport = (
+      requestedCamera = get().camera,
+      target,
+      requestedSize = get().size
+    ) => {
+      const result = previousGetCurrentViewport(requestedCamera, target, requestedSize)
+      if (!(requestedCamera instanceof PixelPerfectCamera)) return result
+
+      const currentSize = get().size
+      let measuredCamera = requestedCamera
+      if (requestedSize.width !== currentSize.width || requestedSize.height !== currentSize.height) {
+        measuredCamera = requestedCamera.clone()
+        measuredCamera.setViewportSize(requestedSize.width, requestedSize.height, get().viewport.dpr)
+      }
+      const worldWidth = measuredCamera.right - measuredCamera.left
+      const worldHeight = measuredCamera.top - measuredCamera.bottom
+      return {
+        ...result,
+        width: worldWidth,
+        height: worldHeight,
+        aspect: worldWidth / worldHeight,
+        factor: measuredCamera.resolvedPixelScale / get().viewport.dpr,
+      }
+    }
+
+    set((state) => ({
+      viewport: { ...state.viewport, getCurrentViewport },
+    }))
+    return () => {
+      if (get().viewport.getCurrentViewport !== getCurrentViewport) return
+      set((state) => ({
+        viewport: { ...state.viewport, getCurrentViewport: previousGetCurrentViewport },
+      }))
+    }
+  }, [camera, get, makeDefault, set])
+
+  useLayoutEffect(() => {
+    if (!makeDefault) return
     const worldWidth = camera.right - camera.left
     const worldHeight = camera.top - camera.bottom
     set((state) => ({
@@ -83,11 +120,33 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
   useLayoutEffect(() => {
     if (!makeDefault) return
     const previousViewport = renderer.getViewport(new Vector4())
+    const initialSize = { ...surfaceSizeRef.current }
+    const wasFullViewport =
+      previousViewport.x === 0 &&
+      previousViewport.y === 0 &&
+      previousViewport.width === initialSize.width &&
+      previousViewport.height === initialSize.height
+    return () => {
+      const currentSize = surfaceSizeRef.current
+      if (wasFullViewport) {
+        renderer.setViewport(0, 0, currentSize.width, currentSize.height)
+      } else if (initialSize.width > 0 && initialSize.height > 0) {
+        renderer.setViewport(
+          (previousViewport.x * currentSize.width) / initialSize.width,
+          (previousViewport.y * currentSize.height) / initialSize.height,
+          (previousViewport.width * currentSize.width) / initialSize.width,
+          (previousViewport.height * currentSize.height) / initialSize.height
+        )
+      } else {
+        renderer.setViewport(previousViewport)
+      }
+    }
+  }, [makeDefault, renderer])
+
+  useLayoutEffect(() => {
+    if (!makeDefault) return
     const viewport = camera.viewport
     renderer.setViewport(viewport.x / dpr, viewport.y / dpr, viewport.z / dpr, viewport.w / dpr)
-    return () => {
-      renderer.setViewport(previousViewport)
-    }
   }, [camera, dpr, height, makeDefault, options.pixelScale, options.viewSize, options.viewWidth, renderer, width])
 
   useLayoutEffect(() => {

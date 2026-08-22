@@ -10,6 +10,7 @@ describe('PixelPerfectCamera', () => {
     expect(camera.isOrthographicCamera).toBe(true)
     expect(camera.isPixelPerfectCamera).toBe(true)
     expect(camera.type).toBe('PixelPerfectCamera')
+    expect(camera.manual).toBe(true)
     expect(camera.left).toBe(-200)
     expect(camera.right).toBe(200)
   })
@@ -92,6 +93,27 @@ describe('PixelPerfectCamera', () => {
     expect(camera.drawingBufferHeight).toBe(541)
   })
 
+  it('round-trips non-dyadic DPR viewports without losing a physical pixel', () => {
+    const camera = new PixelPerfectCamera({ viewSize: 240 })
+    camera.setDrawingBufferSize(1281, 801)
+
+    for (const dpr of [1.1, 1.3, 1.75, Math.PI]) {
+      const logical = camera.getLogicalViewport(dpr)
+      expect(logical.clone().multiplyScalar(dpr).floor().toArray()).toEqual(camera.viewport.toArray())
+    }
+  })
+
+  it('quantizes canonical Three.js zoom to an integer pixel scale', () => {
+    const camera = new PixelPerfectCamera({ viewSize: 240 })
+    camera.setDrawingBufferSize(1280, 720)
+    camera.zoom = 1.5
+    camera.updateProjectionMatrix()
+
+    expect(camera.zoom).toBe(1.5)
+    expect(camera.resolvedPixelScale).toBe(5)
+    expect(camera.top - camera.bottom).toBe(144)
+  })
+
   it('ignores invalid sizes and pixel scales without poisoning its projection', () => {
     const camera = new PixelPerfectCamera({ viewSize: 240 })
     camera.setDrawingBufferSize(1280, 720)
@@ -120,6 +142,10 @@ describe('PixelPerfectCamera', () => {
     const source = new PixelPerfectCamera({ viewSize: 180, pixelScale: 2 })
     source.setDrawingBufferSize(900, 540)
     source.position.set(12, 34, 100)
+    source.zoom = 1.5
+    source.near = 2
+    source.far = 500
+    source.updateProjectionMatrix()
 
     const copy = new PixelPerfectCamera().copy(source)
     const clone = source.clone()
@@ -132,6 +158,9 @@ describe('PixelPerfectCamera', () => {
       expect(camera.drawingBufferHeight).toBe(540)
       expect(camera.viewport.toArray()).toEqual(source.viewport.toArray())
       expect(camera.position).toEqual(source.position)
+      expect(camera.zoom).toBe(1.5)
+      expect(camera.near).toBe(2)
+      expect(camera.far).toBe(500)
       expect(camera.projectionMatrix.elements).toEqual(source.projectionMatrix.elements)
     }
   })

@@ -313,6 +313,10 @@ export class Flatland extends Group implements WorldProvider {
   /** Reusable logical canvas viewport derived from physical camera pixels. */
   private _drawingBufferViewport = new Vector4()
 
+  /** Pixel-camera sub-rectangle sampled from an auto pass's full-size target. */
+  private _passViewportUvScale = uniform(new Vector2(1, 1))
+  private _passViewportUvOffset = uniform(new Vector2(0, 0))
+
   /**
    * Camera frustum bounds as TSL uniform nodes. Created once per Flatland
    * instance so effect shaders can capture stable references at build
@@ -520,8 +524,12 @@ export class Flatland extends Group implements WorldProvider {
     replacement.quaternion.copy(previous.quaternion)
     replacement.scale.copy(previous.scale)
     replacement.up.copy(previous.up)
+    replacement.near = previous.near
+    replacement.far = previous.far
+    replacement.zoom = previous.zoom
     replacement.layers.mask = previous.layers.mask
     replacement.name = previous.name
+    replacement.updateProjectionMatrix()
     this._internalCamera = replacement
     if (this._ownsCamera) {
       this._setActiveCamera(this._internalCamera, true)
@@ -1612,27 +1620,52 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
+    this._syncAutoPassViewport()
+
     this._syncRenderPipelineOutputTransform()
 
     // Run postPassSystem to get sorted passes (returns null if not dirty)
     const sortedPasses = postPassSystem(this.world)
     if (sortedPasses && this._renderPipeline && this._passNode) {
-      if (sortedPasses.length === 0) {
-        // No passes — pass through scene directly
-        this._outputNode = this._passNode
-      } else {
-        // Convert PassNode to TextureNode so passes can .sample() at custom UVs
-        const uvCoord = uvNode()
-        let node: Node<'vec4'> = convertToTexture(this._passNode)
+      // PassNode's target stays full-surface sized, so sample only its active
+      // pixel viewport. The uniforms are (1,1)/(0,0) for ordinary cameras.
+      const uvCoord = uvNode()
+      let node: Node<'vec4'> = convertToTexture(this._passNode).sample(
+        uvCoord.mul(this._passViewportUvScale).add(this._passViewportUvOffset)
+      )
+      if (sortedPasses.length > 0) {
         for (const passFn of sortedPasses) {
           node = passFn(node, uvCoord)
         }
-        this._outputNode = node
       }
+      this._outputNode = node
 
       this._renderPipeline.outputNode = this._outputNode
       this._renderPipeline.needsUpdate = true
     }
+  }
+
+  /** Keep an auto scene pass and its sampling window on the pixel viewport. */
+  private _syncAutoPassViewport(): void {
+    if (!this._autoRenderPipeline || !this._passNode) return
+
+    if (this._camera instanceof PixelPerfectCamera) {
+      const viewport = this._camera.viewport
+      this._passNode.setViewport(viewport)
+      this._passViewportUvScale.value.set(
+        viewport.width / this._camera.drawingBufferWidth,
+        viewport.height / this._camera.drawingBufferHeight
+      )
+      this._passViewportUvOffset.value.set(
+        viewport.x / this._camera.drawingBufferWidth,
+        viewport.y / this._camera.drawingBufferHeight
+      )
+      return
+    }
+
+    this._passNode.setViewport(null)
+    this._passViewportUvScale.value.set(1, 1)
+    this._passViewportUvOffset.value.set(0, 0)
   }
 
   /** Keep the pipeline's final color transform aligned with its destination. */

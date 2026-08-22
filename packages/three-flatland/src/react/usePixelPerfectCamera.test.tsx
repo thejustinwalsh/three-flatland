@@ -45,9 +45,13 @@ describe('usePixelPerfectCamera', () => {
 
     const rootStore = root.render(null)
     const previous = rootStore.getState().camera
-    const previousViewport = { ...rootStore.getState().viewport }
+    const previousGetCurrentViewport = rootStore.getState().viewport.getCurrentViewport
     await act(async () => {
-      root.render(<Probe viewSize={240} />)
+      root.render(
+        <StrictMode>
+          <Probe viewSize={240} />
+        </StrictMode>
+      )
       await Promise.resolve()
     })
 
@@ -64,6 +68,18 @@ describe('usePixelPerfectCamera', () => {
     expect(mountedState.viewport.height).toBe(240)
     expect(mountedState.viewport.aspect).toBeCloseTo(426 / 240)
     expect(mountedState.viewport.factor).toBe(1.5)
+    expect(mountedState.viewport.getCurrentViewport(camera!).width).toBe(426)
+    expect(mountedState.viewport.getCurrentViewport(camera!).height).toBe(240)
+    expect(mountedState.viewport.getCurrentViewport(camera!).factor).toBe(1.5)
+    const measuredLargerViewport = mountedState.viewport.getCurrentViewport(camera!, undefined, {
+      width: 800,
+      height: 450,
+      top: 0,
+      left: 0,
+    })
+    expect(measuredLargerViewport.width).toBe(533)
+    expect(measuredLargerViewport.height).toBe(240)
+    expect(measuredLargerViewport.factor).toBe(1.5)
     const setFromCamera = vi.spyOn(mountedState.raycaster, 'setFromCamera')
     mountedState.events.compute?.({ offsetX: 0.5, offsetY: 180 } as PointerEvent, mountedState)
     expect(mountedState.pointer.toArray()).toEqual([-1, 0])
@@ -74,7 +90,11 @@ describe('usePixelPerfectCamera', () => {
     expect(mountedState.events.filter?.([{ distance: 1 }] as never, mountedState)).toEqual([])
 
     await act(async () => {
-      root.render(<Probe />)
+      root.render(
+        <StrictMode>
+          <Probe />
+        </StrictMode>
+      )
       await Promise.resolve()
     })
     expect(camera!.viewSize).toBe(400)
@@ -85,13 +105,23 @@ describe('usePixelPerfectCamera', () => {
     expect(rootStore.getState().viewport.factor).toBe(0.5)
 
     await act(async () => {
+      rootStore.getState().setSize(800, 450)
+      await Promise.resolve()
+    })
+    expect(camera!.drawingBufferWidth).toBe(1600)
+    expect(camera!.drawingBufferHeight).toBe(900)
+    expect(viewport.toArray()).toEqual([0, 25, 800, 400])
+
+    await act(async () => {
       root.render(null)
       await Promise.resolve()
     })
     expect(rootStore.getState().camera).toBe(previous)
-    expect(rootStore.getState().viewport.width).toBeCloseTo(previousViewport.width)
-    expect(rootStore.getState().viewport.height).toBeCloseTo(previousViewport.height)
-    expect(viewport.toArray()).toEqual([0, 0, 640, 360])
+    const restoredViewport = rootStore.getState().viewport.getCurrentViewport(previous)
+    expect(rootStore.getState().viewport.getCurrentViewport).toBe(previousGetCurrentViewport)
+    expect(rootStore.getState().viewport.width).toBeCloseTo(restoredViewport.width)
+    expect(rootStore.getState().viewport.height).toBeCloseTo(restoredViewport.height)
+    expect(viewport.toArray()).toEqual([0, 0, 800, 450])
 
     await act(async () => {
       root.unmount()

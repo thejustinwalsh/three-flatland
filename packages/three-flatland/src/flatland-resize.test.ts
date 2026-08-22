@@ -5,6 +5,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
 import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
+import { createPassEffect } from './pipeline/PassEffect'
 
 /**
  * Minimal renderer stub for exercising Flatland.render() headlessly.
@@ -134,7 +135,11 @@ describe('Flatland — pixel-perfect camera', () => {
     expect(camera.resolvedPixelScale).toBe(3)
     expect(camera.viewport.toArray()).toEqual([1, 0, 1278, 720])
     expect(flatland.resolvedAspect).toBeCloseTo(426 / 240)
-    expect(renderedViewports[0]?.toArray()).toEqual([0.5, 0, 639, 360])
+    const renderedViewport = renderedViewports[0]!
+    expect(renderedViewport.x).toBeCloseTo(0.5)
+    expect(renderedViewport.y).toBeCloseTo(0)
+    expect(renderedViewport.width).toBeCloseTo(639)
+    expect(renderedViewport.height).toBeCloseTo(360)
     expect(viewport.toArray()).toEqual([0, 0, 640, 360])
   })
 
@@ -166,6 +171,9 @@ describe('Flatland — pixel-perfect camera', () => {
     flatland.camera.position.set(12, 34, 56)
     flatland.camera.rotation.set(0.1, 0.2, 0.3)
     flatland.camera.layers.enable(4)
+    flatland.camera.zoom = 1.5
+    flatland.camera.near = 2
+    flatland.camera.far = 500
 
     flatland.pixelPerfect = true
     expect(flatland.camera).toBeInstanceOf(PixelPerfectCamera)
@@ -178,6 +186,34 @@ describe('Flatland — pixel-perfect camera', () => {
     expect(flatland.camera.rotation.y).toBeCloseTo(0.2)
     expect(flatland.camera.rotation.z).toBeCloseTo(0.3)
     expect(flatland.camera.layers.isEnabled(4)).toBe(true)
+    expect(flatland.camera.zoom).toBe(1.5)
+    expect(flatland.camera.near).toBe(2)
+    expect(flatland.camera.far).toBe(500)
+  })
+
+  it('preserves the centered pixel viewport through auto post-processing', () => {
+    const TestPass = createPassEffect({
+      name: 'pixelViewportTest',
+      schema: {},
+      pass: () => (input) => input,
+    })
+    const flatland = new Flatland({ viewSize: 400 })
+    const { renderer } = mockRenderer(1281, 801)
+    flatland.resize(1281, 801)
+    flatland.addPass(new TestPass())
+
+    const ensurePipeline = Reflect.get(flatland, '_ensureRenderPipeline') as (renderer: WebGPURenderer) => void
+    ensurePipeline.call(flatland, renderer)
+
+    const passNode = Reflect.get(flatland, '_passNode') as { _viewport: Vector4 | null }
+    const uvScale = Reflect.get(flatland, '_passViewportUvScale') as { value: Vector2 }
+    const uvOffset = Reflect.get(flatland, '_passViewportUvOffset') as { value: Vector2 }
+    expect(passNode._viewport?.toArray()).toEqual([0, 0, 1280, 800])
+    expect(uvScale.value.toArray()).toEqual([1280 / 1281, 800 / 801])
+    expect(uvOffset.value.toArray()).toEqual([0, 0])
+    expect(flatland.renderPipeline?.outputNode).not.toBe(passNode)
+
+    flatland.dispose()
   })
 
   it('ignores invalid view sizes without corrupting the managed projection', () => {
