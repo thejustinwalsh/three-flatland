@@ -164,7 +164,7 @@ Those are reasonable costs for Koota's public feature set. They are not required
 
 ## Measured size baseline
 
-Measurement environment: repository install on 2026-08-22, merge base `6868ff18`, Koota 0.6.5,
+Measurement environment: repository install on 2026-08-22, merge base `4824c475`, Koota 0.6.5,
 esbuild 0.28.1, browser ESM, minification and tree shaking enabled.
 
 | Artifact                                      |      Raw/minified |     Gzip |   Brotli |

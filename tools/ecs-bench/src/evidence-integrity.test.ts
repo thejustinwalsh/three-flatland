@@ -1,15 +1,18 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 interface EvidenceReport {
+  readonly esbuild?: string
   readonly environment?: {
     readonly harnessSha256: string
     readonly harnessSources: readonly string[]
   }
   readonly harnessSha256?: string
   readonly harnessSources?: readonly string[]
+  readonly koota?: string
   readonly measurements?: readonly {
     readonly artifact: string
     readonly brotliBytes: number
@@ -19,6 +22,7 @@ interface EvidenceReport {
 }
 
 const resultDirectory = resolve(import.meta.dirname, '../../../planning/internal-ecs/results')
+const require = createRequire(import.meta.url)
 
 function readReport(name: string): EvidenceReport {
   return JSON.parse(readFileSync(resolve(resultDirectory, name), 'utf8')) as EvidenceReport
@@ -49,6 +53,14 @@ function sourceHash(sources: readonly string[]): string {
   return hash.digest('hex')
 }
 
+function packageVersion(name: string): string {
+  const entry = require.resolve(name)
+  const packageJson = JSON.parse(readFileSync(resolve(dirname(entry), '../package.json'), 'utf8')) as {
+    version: string
+  }
+  return packageJson.version
+}
+
 describe('checked-in ECS evidence', () => {
   it.each(['kernel-baseline.json', 'kernel-size.json', 'numeric-storage.json'])(
     '%s matches the current harness source',
@@ -65,5 +77,11 @@ describe('checked-in ECS evidence', () => {
     expect(signature!.minifiedBytes).toBeLessThanOrEqual(12_000)
     expect(signature!.gzipBytes).toBeLessThanOrEqual(4_000)
     expect(signature!.brotliBytes).toBeLessThanOrEqual(3_800)
+  })
+
+  it('matches the resolved bundle-tool dependency versions', () => {
+    const report = readReport('kernel-size.json')
+    expect(report.koota).toBe(packageVersion('koota'))
+    expect(report.esbuild).toBe(packageVersion('esbuild'))
   })
 })

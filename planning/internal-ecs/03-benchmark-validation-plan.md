@@ -28,7 +28,7 @@ The merge-base size baseline is:
 | Gzip                            |          10,584 B |
 | Brotli                          |           9,362 B |
 
-These numbers were recaptured after rebasing onto implementation merge base `6868ff18` with
+These numbers were recaptured after rebasing onto implementation merge base `4824c475` with
 esbuild 0.28.1. Raw results are in
 [`results/kernel-size.json`](./results/kernel-size.json).
 

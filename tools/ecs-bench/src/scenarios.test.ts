@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { component, type Trait } from './adapter.ts'
 import { kootaAdapter } from './adapters/koota.ts'
 import { createReferenceAdapter } from './adapters/reference.ts'
 import { createAnchoredScanAdapter } from './candidates/anchored-scan.ts'
@@ -165,6 +166,27 @@ const KOOTA_BASELINE = {
 } satisfies ScenarioReport
 
 describe('Flatland entity-store behavior contract', () => {
+  it.each([
+    ['reference', createReferenceAdapter],
+    ['anchored scan', createAnchoredScanAdapter],
+    ['signature persistent', createSignaturePersistentAdapter],
+    ['sparse persistent', createSparsePersistentAdapter],
+  ])('%s keeps tag presence separate from its undefined value', (_name, createAdapter) => {
+    const adapter = createAdapter()
+    const Tag = adapter.tag()
+    const ChangedTag = adapter.event('changed', [Tag])
+    const world = adapter.createWorld()
+    const entity = world.spawn(component(Tag))
+
+    expect(world.has(entity, Tag)).toBe(true)
+    expect(world.read(entity, Tag)).toBeUndefined()
+    world.patch(entity, Tag as unknown as Trait<Record<string, never>>, {})
+    expect(world.drain(ChangedTag)).toEqual([entity])
+
+    world.dispose()
+    adapter.reset()
+  })
+
   it('keeps selector matching independent of multiword trait order', () => {
     const adapter = createSignaturePersistentAdapter()
     const traits = Array.from({ length: 40 }, () => adapter.tag())

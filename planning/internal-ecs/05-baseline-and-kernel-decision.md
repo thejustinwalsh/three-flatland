@@ -13,12 +13,12 @@ It is the best current balance for Flatland's bounded trait surface:
 
 - 68.5% less active heap than Koota at 60,000 entities,
 - 44.6% less active heap than the sparse-persistent candidate,
-- 59.2% lower median for the 60,000-entity lifecycle workload than Koota,
+- 59.9% lower median for the 60,000-entity lifecycle workload than Koota,
 - 99.8% lower median for repeated stable-query retrieval,
-- 57.8% lower median when actually iterating 16.384 million stable-query entities,
-- 60.6% lower median for 12,000 routing changes,
-- 87.5% lower median for 12,000 dynamic structural changes, and
-- 77.5% lower median for exclusive assignment lookup.
+- 57.4% lower median when actually iterating 16.384 million stable-query entities,
+- 62.4% lower median for 12,000 routing changes,
+- 87.8% lower median for 12,000 dynamic structural changes, and
+- 75.0% lower median for exclusive assignment lookup.
 
 The production runtime still has to pass the full `SystemSchedule`, allocation, representative
 consumer bundle, declaration, and live WebGPU gates. This decision chooses the implementation
@@ -28,7 +28,7 @@ direction; it does not waive any shipping threshold.
 
 | Input                 | Value                                      |
 | --------------------- | ------------------------------------------ |
-| Merge base            | `6868ff18d65ae5cb0edc75abef00d8f02e860ac6` |
+| Merge base            | `4824c47555a822b532ab8497c30c8e8d881529a2` |
 | Node                  | 26.5.0                                     |
 | pnpm                  | 10.28.1                                    |
 | OS                    | Darwin 25.5.0 arm64                        |
@@ -86,11 +86,11 @@ tests so they cannot be mistaken for accidental incompatibilities during migrati
 | Artifact                                  | Minified |     Gzip |  Brotli |
 | ----------------------------------------- | -------: | -------: | ------: |
 | Koota seven-import kernel                 | 34,910 B | 10,584 B | 9,362 B |
-| Shared candidate superset, signature mode |  8,490 B |  3,181 B | 2,893 B |
+| Shared candidate superset, signature mode |  8,488 B |  3,179 B | 2,891 B |
 
 The prototype result is conservative: the candidate artifact still contains the shared
-benchmark-adapter shell and branches for all three query modes. Even that superset is 26,420 bytes
-smaller minified, 7,403 bytes smaller gzip, and 6,469 bytes smaller Brotli than the exact Koota
+benchmark-adapter shell and branches for all three query modes. Even that superset is 26,422 bytes
+smaller minified, 7,405 bytes smaller gzip, and 6,471 bytes smaller Brotli than the exact Koota
 import surface. It is below the isolated kernel caps of 12,000 / 4,000 / 3,800 bytes.
 
 The specialized production kernel must be measured again. This isolated result does not substitute
@@ -102,16 +102,16 @@ Times are milliseconds per sample. Lower is better.
 
 | Workload                              | Koota median / p95 | Signature median / p95 | Median change |
 | ------------------------------------- | -----------------: | ---------------------: | ------------: |
-| Lifecycle, 1,000                      |      1.799 / 2.281 |          0.927 / 1.313 |        -48.5% |
-| Lifecycle, 16,384                     |    33.043 / 35.204 |        13.464 / 13.686 |        -59.3% |
-| Lifecycle, 60,000                     |  123.779 / 134.136 |        50.449 / 53.106 |        -59.2% |
-| Stable view retrieval, 1,000 calls    |      8.881 / 9.146 |          0.016 / 0.023 |        -99.8% |
-| Stable view iteration, 16.384M visits |    15.924 / 16.574 |          6.728 / 6.775 |        -57.8% |
-| Dynamic add/remove, 12,000            |    12.142 / 13.084 |          1.513 / 1.915 |        -87.5% |
-| Three routing writes, 12,000          |      4.118 / 4.453 |          1.623 / 1.752 |        -60.6% |
-| Exclusive assign/read/remove, 12,000  |      3.123 / 4.052 |          0.703 / 0.791 |        -77.5% |
+| Lifecycle, 1,000                      |      1.782 / 2.184 |          0.927 / 1.307 |        -48.0% |
+| Lifecycle, 16,384                     |    32.846 / 35.232 |        13.324 / 13.680 |        -59.4% |
+| Lifecycle, 60,000                     |  124.771 / 131.618 |        50.077 / 53.154 |        -59.9% |
+| Stable view retrieval, 1,000 calls    |      8.659 / 8.954 |          0.016 / 0.024 |        -99.8% |
+| Stable view iteration, 16.384M visits |    15.774 / 16.579 |          6.721 / 6.766 |        -57.4% |
+| Dynamic add/remove, 12,000            |    12.188 / 13.189 |          1.493 / 1.819 |        -87.8% |
+| Three routing writes, 12,000          |      4.221 / 4.563 |          1.586 / 1.654 |        -62.4% |
+| Exclusive assign/read/remove, 12,000  |      3.114 / 4.090 |          0.778 / 0.822 |        -75.0% |
 
-The direct-store loop showed a 10.3% slower signature median at 0.182 ms versus 0.165 ms. After setup,
+The direct-store loop showed a 2.5% faster signature median at 0.178 ms versus 0.182 ms. After setup,
 that loop performs only identical cached index and `number[]` operations—no adapter operation is in
 the timed region—so the disagreement is classified as sub-millisecond process/JIT noise rather
 than a kernel result. The end-to-end schedule gate remains authoritative.
@@ -136,21 +136,23 @@ read and write. All 110 measured sample checksums match across strategies.
 
 ### Selected: signatures plus persistent views
 
-The signature candidate is 15.8% faster than sparse-persistent at the 60,000-entity lifecycle,
-6.0% faster for routing events, 10.1% faster for structural churn, and uses 44.6% less active heap. Multiple 32-bit words support
-dynamic effect traits without a fixed 32-trait ceiling.
+The signature candidate is 16.3% faster than sparse-persistent at the 60,000-entity lifecycle,
+8.4% faster for routing events, 11.0% faster for structural churn, and uses 44.6% less active heap.
+Sparse-persistent is 9.8% faster for exclusive assignment in this run, but signatures retain the
+stronger result across the broader renderer-shaped workload. Multiple 32-bit words support dynamic
+effect traits without a fixed 32-trait ceiling.
 
 ### Rejected: sparse membership plus persistent views
 
 This candidate is viable and remains the rollback design. Its stable-view iteration is effectively
-tied with signatures, but its larger memory footprint and slower lifecycle, event, structural, and
-assignment paths make it the weaker overall kernel.
+tied with signatures, but its larger memory footprint and slower lifecycle, event, and structural
+paths make it the weaker overall kernel.
 
 ### Rejected: anchored scans
 
 Anchored scans are small and fast under structural churn, but the unchanged 16,384-entity query
-retrieval workload took 169.7 ms versus Koota's 8.9 ms, and full iteration took 175.5 ms versus
-15.9 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
+retrieval workload took 164.5 ms versus Koota's 8.7 ms, and full iteration took 170.5 ms versus
+15.8 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
 
 ## Next gate
 

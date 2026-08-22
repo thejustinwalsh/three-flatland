@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "b1c9615aba9b219d52822a999d099a0023eed5bd69521116d036dc6340fabaae",
+  "harnessSha256": "685d8e0f80707ea96889d89eff3fedd928bd78f052dc2a3a4848785a0b112683",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -24,24 +24,24 @@
     },
     {
       "artifact": "Sparse membership with persistent selector views",
-      "brotliBytes": 2897,
-      "gzipBytes": 3184,
-      "minifiedBytes": 8484
+      "brotliBytes": 2895,
+      "gzipBytes": 3182,
+      "minifiedBytes": 8482
     },
     {
       "artifact": "Signature membership with persistent selector views",
-      "brotliBytes": 2893,
-      "gzipBytes": 3181,
-      "minifiedBytes": 8490
+      "brotliBytes": 2891,
+      "gzipBytes": 3179,
+      "minifiedBytes": 8488
     },
     {
       "artifact": "Sparse membership with anchored selector scans",
-      "brotliBytes": 2895,
-      "gzipBytes": 3179,
-      "minifiedBytes": 8476
+      "brotliBytes": 2889,
+      "gzipBytes": 3177,
+      "minifiedBytes": 8474
     }
   ],
-  "mergeBase": "6868ff18d65ae5cb0edc75abef00d8f02e860ac6",
+  "mergeBase": "4824c47555a822b532ab8497c30c8e8d881529a2",
   "methodology": {
     "brotli": "node:zlib brotliCompressSync defaults",
     "bundle": "esbuild browser ESM bundle with minification and tree shaking",

@@ -512,7 +512,7 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       if (!has(entity, handle)) return undefined
       const index = entityIndex(entity)
       const state = traitStates[handle.id]!
-      if (handle.kind === 'tag') return {}
+      if (handle.kind === 'tag') return undefined
       if (handle.kind === 'object') return state.objects![index]
 
       const result: Record<string, number> = {}

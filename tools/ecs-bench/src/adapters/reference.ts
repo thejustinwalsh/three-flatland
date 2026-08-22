@@ -256,8 +256,8 @@ export function createReferenceAdapter(): EcsAdapter {
         ): void {
           const record = assertAlive(entity)
           const traitValue = asTrait(traitHandle)
+          if (!record.traits.has(traitValue.id)) throw new Error('Cannot patch a missing trait')
           const current = record.traits.get(traitValue.id)
-          if (current === undefined) throw new Error('Cannot patch a missing trait')
 
           if (traitValue.kind === 'numeric') {
             const store = numericStores.get(traitValue.id)!
@@ -265,8 +265,8 @@ export function createReferenceAdapter(): EcsAdapter {
             for (const [field, fieldValue] of Object.entries(value)) {
               store[field]![index] = fieldValue as number
             }
-          } else {
-            Object.assign(current, value)
+          } else if (traitValue.kind === 'object') {
+            Object.assign(current!, value)
           }
           if (tracked) emit('changed', entity, traitValue)
         },
