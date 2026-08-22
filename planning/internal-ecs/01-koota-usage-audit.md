@@ -167,12 +167,12 @@ Those are reasonable costs for Koota's public feature set. They are not required
 Measurement environment: repository install on 2026-08-22, merge base `6868ff18`, Koota 0.6.5,
 esbuild 0.28.1, browser ESM, minification and tree shaking enabled.
 
-| Artifact                                      |      Raw/minified |     Gzip |       Brotli |
-| --------------------------------------------- | ----------------: | -------: | -----------: |
-| Installed Koota core ESM chunk                |      98,396 B raw | 17,310 B | not recorded |
-| Flatland's seven runtime imports in isolation | 34,910 B minified | 10,584 B |      9,362 B |
+| Artifact                                      |      Raw/minified |     Gzip |   Brotli |
+| --------------------------------------------- | ----------------: | -------: | -------: |
+| Installed Koota core ESM chunk                |      98,396 B raw | 17,403 B | 14,623 B |
+| Flatland's seven runtime imports in isolation | 34,910 B minified | 10,584 B |  9,362 B |
 
-The installed package occupies 496 kB on disk. Disk size is not the product goal; the tree-shaken browser result is the meaningful replacement baseline.
+The installed package occupies 496 kB on disk. Disk size is not the product goal; the tree-shaken browser result is the meaningful replacement baseline. The supplemental row measures Koota's installed `dist/chunk-YHJT6WPS.js`; compressed values use Node's default `gzipSync` and `brotliCompressSync` settings.
 
 ## Dependency boundary
 
@@ -190,8 +190,9 @@ That use is intentionally out of scope. The proposal removes Koota from the publ
 Many core tests call Koota's global `universe.reset()` for isolation. Migration requires world-owned
 cleanup and an internal test reset helper where necessary. Tests must stop depending on Koota global
 state; they should prove independent worlds do not share lifecycle state, trackers, query results,
-or object-backed defaults. Numeric handle values are world-relative and may overlap, so ownership is
-validated at object boundaries that retain a world rather than inferred from the bare number.
+stores, or object-backed defaults. Numeric handle values are world-relative and may overlap, so
+ownership is validated at object boundaries that retain a world rather than inferred from the bare
+number.
 
 ## Audit conclusion
 

@@ -6,6 +6,7 @@
  * deterministic scenarios can exercise each runtime.
  */
 
+/** Numeric handle whose identity is meaningful only within its owning world. */
 export type Entity = number
 
 export type NumericSchema = Readonly<Record<string, number>>

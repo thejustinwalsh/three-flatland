@@ -18,6 +18,7 @@ import type {
 
 const INDEX_BITS = 20
 const INDEX_MASK = (1 << INDEX_BITS) - 1
+const MAX_GENERATION = Math.floor(Number.MAX_SAFE_INTEGER / 2 ** INDEX_BITS)
 
 type TraitShape = Record<string, number> | Record<string, unknown>
 type TraitDefinition = TraitShape | (() => TraitShape)
@@ -272,7 +273,9 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
     const selectorStates: Array<SelectorState | undefined> = []
     const eventStates: Array<EventState | undefined> = []
     const signatures: number[][] = []
+    const spawnTraitMarks: number[] = []
     let nextEntityIndex = 0
+    let spawnMark = 0
     let disposed = false
 
     function assertUsable(): void {
@@ -438,10 +441,7 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       const handle = isInitializer(input) ? input.trait : input
       const state = ensureTraitState(handle)
       if (hasIndex(index, handle)) {
-        if (initializer?.patch !== undefined) {
-          patch(entity, handle, initializer.patch, true)
-        }
-        return
+        throw new Error(`Entity ${entity} already has trait ${handle.id}`)
       }
 
       applyPatch(index, handle, initializer?.patch)
@@ -451,8 +451,28 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       emit('added', handle, index)
     }
 
+    function preflightSpawn(inputs: readonly CandidateTraitInput[]): void {
+      spawnMark++
+      if (spawnMark === Number.MAX_SAFE_INTEGER) {
+        spawnTraitMarks.fill(0)
+        spawnMark = 1
+      }
+
+      for (const input of inputs) {
+        const handle = isInitializer(input) ? input.trait : input
+        if (spawnTraitMarks[handle.id] === spawnMark) {
+          throw new Error(`Spawn contains duplicate trait ${handle.id}`)
+        }
+        spawnTraitMarks[handle.id] = spawnMark
+      }
+    }
+
     function spawn(...inputs: readonly CandidateTraitInput[]): Entity {
       assertUsable()
+      preflightSpawn(inputs)
+      if (free.length === 0 && nextEntityIndex > INDEX_MASK) {
+        throw new RangeError('Candidate world exhausted its 20-bit entity index capacity')
+      }
       const index = free.length > 0 ? free.pop()! : nextEntityIndex++
       const generation = generations[index] ?? 0
       generations[index] = generation
@@ -466,8 +486,7 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       for (const input of inputs) addOne(entity, input)
     }
 
-    function remove(entity: Entity, handle: CandidateTrait): void {
-      const index = assertAlive(entity)
+    function detachTrait(index: number, handle: CandidateTrait, emitRemoved: boolean): void {
       const state = traitStates[handle.id]
       if (state === undefined || !hasIndex(index, handle)) return
 
@@ -475,7 +494,12 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       setSignatureBit(index, handle.id, false)
       updatePersistentSelectors(index, handle.id)
       if (state.objects !== undefined) state.objects[index] = undefined
-      emit('removed', handle, index)
+      if (emitRemoved) emit('removed', handle, index)
+    }
+
+    function remove(entity: Entity, handle: CandidateTrait): void {
+      const index = assertAlive(entity)
+      detachTrait(index, handle, true)
     }
 
     function has(entity: Entity, handle: CandidateTrait): boolean {
@@ -561,11 +585,12 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
         const state = traitStates[traitId]
         if (state === undefined || !hasIndex(index, allTraits[traitId]!)) continue
         const handle = allTraits[traitId]!
-        remove(entity, handle)
+        detachTrait(index, handle, false)
       }
       alive.delete(index)
-      generations[index] = (generations[index] ?? 0) + 1
-      free.push(index)
+      const nextGeneration = (generations[index] ?? 0) + 1
+      generations[index] = Math.min(nextGeneration, MAX_GENERATION)
+      if (nextGeneration < MAX_GENERATION) free.push(index)
     }
 
     function dispose(): void {
@@ -623,6 +648,9 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
     name: kind,
     trait: createTrait,
     select(...traitsToSelect: readonly CandidateTrait[]): CandidateSelector {
+      if (traitsToSelect.length === 0) {
+        throw new Error('Candidate selectors require at least one trait')
+      }
       const selector = { id: nextSelectorId++, traits: traitsToSelect }
       selectors.push(selector)
       subscribeSelector(selector)

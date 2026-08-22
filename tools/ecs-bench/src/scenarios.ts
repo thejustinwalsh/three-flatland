@@ -7,16 +7,31 @@ export interface Snapshot {
 }
 
 export interface ScenarioReport extends Snapshot {
+  readonly emptySelector: Snapshot
   readonly initialization: Snapshot
+  readonly duplicateAdd: Snapshot
+  readonly duplicateSpawn: Snapshot
   readonly factoryIsolation: Snapshot
   readonly tags: Snapshot
   readonly numericStore: Snapshot
   readonly selectors: Snapshot
   readonly events: Snapshot
   readonly lifecycle: Snapshot
+  readonly generationSafety: Snapshot
+  readonly multiwordSelectors: Snapshot
   readonly disposal: Snapshot
   readonly dynamicTraits: Snapshot
   readonly exclusiveAssignment: Snapshot
+}
+
+function captureEmptySelector(adapter: EcsAdapter): Snapshot {
+  let threw = false
+  try {
+    adapter.select()
+  } catch {
+    threw = true
+  }
+  return { threw }
 }
 
 function required<TValue>(value: TValue | undefined, context: string): TValue {
@@ -43,6 +58,65 @@ function captureInitialization(adapter: EcsAdapter): Snapshot {
   }
   world.dispose()
   return result
+}
+
+function captureDuplicateAdd(adapter: EcsAdapter): Snapshot {
+  const State = adapter.numeric({ value: 1 })
+  const ChangedState = adapter.event('changed', [State])
+  const world = adapter.createWorld()
+  const entity = world.spawn(component(State, { value: 7 }))
+  let threw = false
+
+  try {
+    world.add(entity, component(State, { value: 99 }))
+  } catch {
+    threw = true
+  }
+
+  const result = {
+    threw,
+    preservedValue: value(world.read(entity, State), 'state after duplicate add').value,
+    changedEvents: world.drain(ChangedState).length,
+  }
+  world.dispose()
+  return result
+}
+
+function captureDuplicateSpawn(adapter: EcsAdapter): Snapshot {
+  const State = adapter.numeric({ value: 1 })
+  const StateEntities = adapter.select(State)
+  const AddedState = adapter.event('added', [State])
+
+  const pristineWorld = adapter.createWorld()
+  const pristineFirstIndex = pristineWorld.index(pristineWorld.spawn())
+  pristineWorld.dispose()
+
+  const world = adapter.createWorld()
+  let duplicateEntity: Entity | undefined
+  let threw = false
+  try {
+    duplicateEntity = world.spawn(component(State, { value: 7 }), component(State, { value: 99 }))
+  } catch {
+    threw = true
+  }
+
+  const traitQueryCount = world.view(StateEntities).length
+  const addedEvents = world.drain(AddedState).length
+  const store = world.store(State)
+  const storeDefinedValues = Array.from(store.value).filter((storedValue) => storedValue !== undefined).length
+  const returnedEntityAlive = duplicateEntity !== undefined && world.isAlive(duplicateEntity)
+  const firstAfterAttempt = world.spawn()
+  const nextIndexMatchesPristine = world.index(firstAfterAttempt) === pristineFirstIndex
+
+  world.dispose()
+  return {
+    threw,
+    returnedEntityAlive,
+    traitQueryCount,
+    addedEvents,
+    storeDefinedValues,
+    nextIndexMatchesPristine,
+  }
 }
 
 function captureFactoryIsolation(adapter: EcsAdapter): Snapshot {
@@ -228,15 +302,26 @@ function captureEvents(adapter: EcsAdapter): Snapshot {
 
 function captureLifecycle(adapter: EcsAdapter): Snapshot {
   const Data = adapter.numeric({ value: 0 })
+  const DataEntities = adapter.select(Data)
   const firstWorld = adapter.createWorld()
   const secondWorld = adapter.createWorld()
-  const stale = firstWorld.spawn(component(Data))
-  const foreign = secondWorld.spawn(component(Data))
+  const stale = firstWorld.spawn(component(Data, { value: 11 }))
+  const secondEntity = secondWorld.spawn(component(Data, { value: 22 }))
   const staleIndex = firstWorld.index(stale)
   const staleGeneration = firstWorld.generation(stale)
+  const isolatedValuesBefore = [
+    value(firstWorld.read(stale, Data), 'first-world state').value,
+    value(secondWorld.read(secondEntity, Data), 'second-world state').value,
+  ]
+  const isolatedSelectorsBefore = [firstWorld.view(DataEntities).length, secondWorld.view(DataEntities).length]
 
   firstWorld.destroy(stale)
   const staleAlive = firstWorld.isAlive(stale)
+  const secondAliveAfterFirstDestroy = secondWorld.isAlive(secondEntity)
+  const secondValueAfterFirstDestroy = value(
+    secondWorld.read(secondEntity, Data),
+    'second-world state after first-world destroy'
+  ).value
   const recycled = firstWorld.spawn(component(Data, { value: 1 }))
   const recycledIndex = firstWorld.index(recycled)
   const recycledGeneration = firstWorld.generation(recycled)
@@ -245,12 +330,119 @@ function captureLifecycle(adapter: EcsAdapter): Snapshot {
     recycledAlive: firstWorld.isAlive(recycled),
     reusedIndex: staleIndex === recycledIndex,
     advancedGeneration: recycledGeneration !== staleGeneration,
-    foreignRejected: !firstWorld.isAlive(foreign),
+    isolatedValuesBefore,
+    isolatedSelectorsBefore,
+    secondAliveAfterFirstDestroy,
+    secondValueAfterFirstDestroy,
   }
 
   firstWorld.dispose()
   secondWorld.dispose()
   return result
+}
+
+function captureGenerationSafety(adapter: EcsAdapter): Snapshot {
+  const Queued = adapter.tag()
+  const Selected = adapter.tag()
+  const Destroyed = adapter.tag()
+  const AddedQueued = adapter.event('added', [Queued])
+  const RemovedDestroyed = adapter.event('removed', [Destroyed])
+  const SelectedEntities = adapter.select(Selected)
+
+  const eventWorld = adapter.createWorld()
+  const staleQueued = eventWorld.spawn(component(Queued))
+  const staleQueuedIndex = eventWorld.index(staleQueued)
+  eventWorld.destroy(staleQueued)
+  const recycledQueued = eventWorld.spawn(component(Queued))
+  const queuedEvents = eventWorld.drain(AddedQueued)
+  const eventResult = {
+    recycledSameIndex: staleQueuedIndex === eventWorld.index(recycledQueued),
+    handlesDiffer: staleQueued !== recycledQueued,
+    queuedCount: queuedEvents.length,
+    containsStaleGeneration: queuedEvents.includes(staleQueued),
+    containsRecycledGeneration: queuedEvents.includes(recycledQueued),
+  }
+  eventWorld.dispose()
+
+  const selectorWorld = adapter.createWorld()
+  const staleSelected = selectorWorld.spawn(component(Selected))
+  const staleSelectedIndex = selectorWorld.index(staleSelected)
+  const selectedBeforeDestroy = selectorWorld.view(SelectedEntities).includes(staleSelected)
+  selectorWorld.destroy(staleSelected)
+  const recycledSelected = selectorWorld.spawn()
+  const selectorEmptyAfterRecycle = selectorWorld.view(SelectedEntities).length === 0
+  selectorWorld.add(recycledSelected, component(Selected))
+  const selectedAfterAdd = selectorWorld.view(SelectedEntities)
+  const selectorResult = {
+    recycledSameIndex: staleSelectedIndex === selectorWorld.index(recycledSelected),
+    selectedBeforeDestroy,
+    emptyAfterRecycle: selectorEmptyAfterRecycle,
+    containsOnlyRecycled:
+      selectedAfterAdd.length === 1 &&
+      selectedAfterAdd[0] === recycledSelected &&
+      !selectedAfterAdd.includes(staleSelected),
+  }
+  selectorWorld.dispose()
+
+  const destructionWorld = adapter.createWorld()
+  const destroyed = destructionWorld.spawn(component(Destroyed))
+  destructionWorld.destroy(destroyed)
+  const destructionResult = {
+    removedEvents: destructionWorld.drain(RemovedDestroyed).length,
+  }
+  destructionWorld.dispose()
+
+  const horizonWorld = adapter.createWorld()
+  const original = horizonWorld.spawn()
+  const originalIndex = horizonWorld.index(original)
+  let current = original
+  let sameIndexThroughout = true
+  let everAliasedOriginal = false
+  for (let cycle = 0; cycle < 4097; cycle++) {
+    horizonWorld.destroy(current)
+    current = horizonWorld.spawn()
+    sameIndexThroughout &&= horizonWorld.index(current) === originalIndex
+    everAliasedOriginal ||= current === original || horizonWorld.isAlive(original)
+  }
+  const horizonResult = {
+    sameIndexThroughout,
+    everAliasedOriginal,
+    originalAliveAtEnd: horizonWorld.isAlive(original),
+    finalHandleDiffers: current !== original,
+  }
+  horizonWorld.dispose()
+
+  return {
+    eventQueue: eventResult,
+    selector: selectorResult,
+    destruction: destructionResult,
+    recycleHorizon: horizonResult,
+  }
+}
+
+function captureMultiwordSelectors(adapter: EcsAdapter): Snapshot {
+  const traits = Array.from({ length: 40 }, () => adapter.tag())
+  const AllForty = adapter.select(...traits)
+  const world = adapter.createWorld()
+  const all = world.spawn(...traits.map((traitValue) => component(traitValue)))
+  const firstWordOnly = world.spawn(...traits.slice(0, 32).map((traitValue) => component(traitValue)))
+  const missingAcrossBoundary = world.spawn(
+    ...traits.filter((_traitValue, index) => index !== 33).map((traitValue) => component(traitValue))
+  )
+  const labels = new Map<Entity, string>([
+    [all, 'all'],
+    [firstWordOnly, 'first-word-only'],
+    [missingAcrossBoundary, 'missing-across-boundary'],
+  ])
+
+  const initial = entityLabels(world.view(AllForty), labels)
+  world.remove(all, traits[33]!)
+  const afterCrossWordRemove = entityLabels(world.view(AllForty), labels)
+  world.add(missingAcrossBoundary, component(traits[33]!))
+  const afterCrossWordAdd = entityLabels(world.view(AllForty), labels)
+
+  world.dispose()
+  return { initial, afterCrossWordRemove, afterCrossWordAdd }
 }
 
 function captureDisposal(adapter: EcsAdapter): Snapshot {
@@ -296,8 +488,26 @@ function captureExclusiveAssignment(adapter: EcsAdapter): Snapshot {
   world.unassign(sprite, AssignedTo)
   const cleared = world.target(sprite, AssignedTo) === undefined
 
+  world.assign(sprite, AssignedTo, firstBatch)
+  const destroyedBatchIndex = world.index(firstBatch)
+  world.destroy(firstBatch)
+  const invalidatedAfterTargetDestroy = world.target(sprite, AssignedTo) === undefined
+  const recycledBatch = world.spawn()
+  const recycledTargetIndex = world.index(recycledBatch)
+  const doesNotAliasRecycledTarget = world.target(sprite, AssignedTo) === undefined
+  world.assign(sprite, AssignedTo, recycledBatch)
+  const reassignedAfterRecycle = world.target(sprite, AssignedTo) === recycledBatch
+
   world.dispose()
-  return { firstTarget, replacementTarget, cleared }
+  return {
+    firstTarget,
+    replacementTarget,
+    cleared,
+    targetIndexReused: destroyedBatchIndex === recycledTargetIndex,
+    invalidatedAfterTargetDestroy,
+    doesNotAliasRecycledTarget,
+    reassignedAfterRecycle,
+  }
 }
 
 /** Capture the complete Flatland behavior contract for one adapter. */
@@ -305,13 +515,18 @@ export function captureReferenceScenarios(adapter: EcsAdapter): ScenarioReport {
   adapter.reset()
   try {
     return {
+      emptySelector: captureEmptySelector(adapter),
       initialization: captureInitialization(adapter),
+      duplicateAdd: captureDuplicateAdd(adapter),
+      duplicateSpawn: captureDuplicateSpawn(adapter),
       factoryIsolation: captureFactoryIsolation(adapter),
       tags: captureTags(adapter),
       numericStore: captureNumericStore(adapter),
       selectors: captureSelectors(adapter),
       events: captureEvents(adapter),
       lifecycle: captureLifecycle(adapter),
+      generationSafety: captureGenerationSafety(adapter),
+      multiwordSelectors: captureMultiwordSelectors(adapter),
       disposal: captureDisposal(adapter),
       dynamicTraits: captureDynamicTraits(adapter),
       exclusiveAssignment: captureExclusiveAssignment(adapter),

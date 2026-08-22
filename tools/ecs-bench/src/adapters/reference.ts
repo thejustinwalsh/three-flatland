@@ -66,6 +66,9 @@ function cloneNumeric(defaults: NumericSchema, initial?: object): Record<string,
 }
 
 export function createReferenceAdapter(): EcsAdapter {
+  const indexStride = 0x100000
+  const indexMask = indexStride - 1
+  const maxGeneration = Math.floor(Number.MAX_SAFE_INTEGER / indexStride)
   let nextTraitId = 0
   let nextSelectorId = 0
   let nextEventId = 0
@@ -101,6 +104,7 @@ export function createReferenceAdapter(): EcsAdapter {
     },
 
     select(...required: readonly AnyTrait[]): Selector {
+      if (required.length === 0) throw new Error('Selectors require at least one trait')
       const selector = {
         id: nextSelectorId++,
         required: required.map(asTrait),
@@ -129,9 +133,13 @@ export function createReferenceAdapter(): EcsAdapter {
       let nextIndex = 0
       let disposed = false
 
-      const entityIndex = (entity: Entity): number => entity & 0xfffff
+      const entityIndex = (entity: Entity): number => entity & indexMask
       const entityGeneration = (entity: Entity): number => Math.floor(entity / 0x100000)
-      const packEntity = (index: number): Entity => (generations[index] ?? 0) * 0x100000 + index
+      const packEntity = (index: number): Entity => {
+        const entity = (generations[index] ?? 0) * indexStride + index
+        if (!Number.isSafeInteger(entity)) throw new RangeError('Entity generation exhausted safe integer handles')
+        return entity
+      }
 
       function assertUsable(): void {
         if (disposed) throw new Error('Reference world has been disposed')
@@ -159,7 +167,9 @@ export function createReferenceAdapter(): EcsAdapter {
 
       function addComponent(record: EntityRecord, entity: Entity, value: Component): void {
         const traitValue = asTrait(value.trait)
-        if (record.traits.has(traitValue.id)) return
+        if (record.traits.has(traitValue.id)) {
+          throw new Error(`Duplicate trait add: ${traitValue.id}`)
+        }
 
         let state: object | undefined
         if (traitValue.kind === 'numeric') {
@@ -179,6 +189,15 @@ export function createReferenceAdapter(): EcsAdapter {
         emit('added', entity, traitValue)
       }
 
+      function assertUniqueComponents(components: readonly Component[]): void {
+        const traitIds = new Set<number>()
+        for (const value of components) {
+          const id = asTrait(value.trait).id
+          if (traitIds.has(id)) throw new Error(`Duplicate trait in spawn: ${id}`)
+          traitIds.add(id)
+        }
+      }
+
       return {
         get disposed(): boolean {
           return disposed
@@ -186,7 +205,14 @@ export function createReferenceAdapter(): EcsAdapter {
 
         spawn(...components: readonly Component[]): Entity {
           assertUsable()
-          const index = freeIndices.pop() ?? nextIndex++
+          assertUniqueComponents(components)
+          let index = freeIndices.pop()
+          if (index === undefined) {
+            // Capacity failure is atomic: reject before advancing the cursor
+            // or touching entity, selector, event, or trait state.
+            if (nextIndex > indexMask) throw new RangeError('Entity index capacity exhausted')
+            index = nextIndex++
+          }
           const entity = packEntity(index)
           const record: EntityRecord = { relations: new Map(), traits: new Map() }
           records.set(entity, record)
@@ -279,18 +305,23 @@ export function createReferenceAdapter(): EcsAdapter {
         },
 
         target(entity: Entity, relationValue: ExclusiveRelation): Entity | undefined {
-          return records.get(entity)?.relations.get(asRelation(relationValue).id)
+          const target = records.get(entity)?.relations.get(asRelation(relationValue).id)
+          return target !== undefined && records.has(target) ? target : undefined
         },
 
         destroy(entity: Entity): void {
-          const record = assertAlive(entity)
-          for (const traitId of record.traits.keys()) {
-            const traitValue = { id: traitId } as ReferenceTrait
-            emit('removed', entity, traitValue)
-          }
+          assertAlive(entity)
+          const nextGeneration = entityGeneration(entity) + 1
           records.delete(entity)
           const index = entityIndex(entity)
-          generations[index] = (entityGeneration(entity) + 1) & 0xfff
+          if (nextGeneration >= maxGeneration) {
+            // Destruction always succeeds. Once this index reaches the last
+            // safe generation, cap and retire it rather than ever aliasing a
+            // stale handle or producing a non-safe-integer entity.
+            generations[index] = maxGeneration
+            return
+          }
+          generations[index] = nextGeneration
           freeIndices.push(index)
         },
 

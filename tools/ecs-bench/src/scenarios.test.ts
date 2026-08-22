@@ -7,9 +7,23 @@ import { createSparsePersistentAdapter } from './candidates/sparse-persistent.ts
 import { captureReferenceScenarios, type ScenarioReport } from './scenarios.ts'
 
 const FLATLAND_CONTRACT = {
+  emptySelector: { threw: true },
   initialization: {
     defaults: { x: 1, y: 2 },
     partial: { x: 7, y: 2 },
+  },
+  duplicateAdd: {
+    threw: true,
+    preservedValue: 7,
+    changedEvents: 0,
+  },
+  duplicateSpawn: {
+    threw: true,
+    returnedEntityAlive: false,
+    traitQueryCount: 0,
+    addedEvents: 0,
+    storeDefinedValues: 0,
+    nextIndexMatchesPristine: true,
   },
   factoryIsolation: {
     firstOwner: 'first',
@@ -56,7 +70,37 @@ const FLATLAND_CONTRACT = {
     recycledAlive: true,
     reusedIndex: true,
     advancedGeneration: true,
-    foreignRejected: true,
+    isolatedValuesBefore: [11, 22],
+    isolatedSelectorsBefore: [1, 1],
+    secondAliveAfterFirstDestroy: true,
+    secondValueAfterFirstDestroy: 22,
+  },
+  generationSafety: {
+    eventQueue: {
+      recycledSameIndex: true,
+      handlesDiffer: true,
+      queuedCount: 2,
+      containsStaleGeneration: true,
+      containsRecycledGeneration: true,
+    },
+    selector: {
+      recycledSameIndex: true,
+      selectedBeforeDestroy: true,
+      emptyAfterRecycle: true,
+      containsOnlyRecycled: true,
+    },
+    destruction: { removedEvents: 0 },
+    recycleHorizon: {
+      sameIndexThroughout: true,
+      everAliasedOriginal: false,
+      originalAliveAtEnd: false,
+      finalHandleDiffers: true,
+    },
+  },
+  multiwordSelectors: {
+    initial: ['all'],
+    afterCrossWordRemove: [],
+    afterCrossWordAdd: ['missing-across-boundary'],
   },
   disposal: { readableBefore: true, disposed: true, entityAliveAfter: false },
   dynamicTraits: {
@@ -64,11 +108,33 @@ const FLATLAND_CONTRACT = {
     value: { strength: 0.75, radius: 0 },
     afterRemove: false,
   },
-  exclusiveAssignment: { firstTarget: true, replacementTarget: true, cleared: true },
+  exclusiveAssignment: {
+    firstTarget: true,
+    replacementTarget: true,
+    cleared: true,
+    targetIndexReused: true,
+    invalidatedAfterTargetDestroy: true,
+    doesNotAliasRecycledTarget: true,
+    reassignedAfterRecycle: true,
+  },
 } satisfies ScenarioReport
 
 const KOOTA_BASELINE = {
   ...FLATLAND_CONTRACT,
+  emptySelector: { threw: false },
+  duplicateAdd: {
+    threw: false,
+    preservedValue: 7,
+    changedEvents: 0,
+  },
+  duplicateSpawn: {
+    threw: false,
+    returnedEntityAlive: true,
+    traitQueryCount: 1,
+    addedEvents: 1,
+    storeDefinedValues: 1,
+    nextIndexMatchesPristine: false,
+  },
   factoryIsolation: {
     ...FLATLAND_CONTRACT.factoryIsolation,
     partialInitializerPreservesDefaults: false,
@@ -78,6 +144,23 @@ const KOOTA_BASELINE = {
     changedDeduplicated: ['not-batched', 'routed'],
     changedIndependent: ['not-batched', 'routed'],
     addThenRemoveAdded: [],
+  },
+  generationSafety: {
+    ...FLATLAND_CONTRACT.generationSafety,
+    eventQueue: {
+      recycledSameIndex: true,
+      handlesDiffer: true,
+      queuedCount: 1,
+      containsStaleGeneration: false,
+      containsRecycledGeneration: true,
+    },
+    destruction: { removedEvents: 1 },
+    recycleHorizon: {
+      sameIndexThroughout: true,
+      everAliasedOriginal: true,
+      originalAliveAtEnd: false,
+      finalHandleDiffers: true,
+    },
   },
 } satisfies ScenarioReport
 
@@ -98,12 +181,37 @@ describe('Flatland entity-store behavior contract', () => {
     expect(captureReferenceScenarios(createAdapter())).toEqual(FLATLAND_CONTRACT)
   })
 
-  it('classifies the three intentional Koota deltas explicitly', () => {
+  it('classifies the nine intentional Koota deltas explicitly', () => {
     const koota = captureReferenceScenarios(kootaAdapter)
 
     // Koota replaces an AoS factory result when an initializer is supplied;
     // Flatland's private runtime will merge the partial into a fresh result.
     expect(koota.factoryIsolation.partialInitializerPreservesDefaults).toBe(false)
+
+    // Koota silently ignores an initialized add for a trait the entity
+    // already owns. Flatland treats this as a composition bug in development,
+    // while preserving the original value and emitting no Changed event.
+    expect(koota.duplicateAdd).toEqual({
+      threw: false,
+      preservedValue: 7,
+      changedEvents: 0,
+    })
+
+    // The renderer never needs an all-entities selector. Flatland rejects an
+    // empty selector instead of maintaining a global membership index.
+    expect(koota.emptySelector).toEqual({ threw: false })
+
+    // Koota accepts duplicate traits during spawn and leaves one live entity,
+    // query membership, Added event, and store row behind. Flatland preflights
+    // composition before allocating an ID or touching any trait state.
+    expect(koota.duplicateSpawn).toEqual({
+      threw: false,
+      returnedEntityAlive: true,
+      traitQueryCount: 1,
+      addedEvents: 1,
+      storeDefinedValues: 1,
+      nextIndexMatchesPristine: false,
+    })
 
     // Koota 0.6.5 tracking queries do not enforce ordinary required traits.
     // The current routing system tolerates this only because it later rejects
@@ -115,5 +223,30 @@ describe('Flatland entity-store behavior contract', () => {
     // once by both consumers even when neither has drained yet.
     expect(koota.events.addThenRemoveAdded).toEqual([])
     expect(koota.events.addThenRemoveRemoved).toEqual(['transient'])
+
+    // Koota derives tracking results from current masks, so a queued Added
+    // event for a destroyed generation is gone after its index is recycled.
+    expect(koota.generationSafety.eventQueue).toEqual({
+      recycledSameIndex: true,
+      handlesDiffer: true,
+      queuedCount: 1,
+      containsStaleGeneration: false,
+      containsRecycledGeneration: true,
+    })
+
+    // Entity destruction cascades trait removal through Koota and therefore
+    // emits Removed. Flatland reserves Removed for explicit structural
+    // removal; destroy is terminal cleanup and emits no consumer event.
+    expect(koota.generationSafety.destruction).toEqual({ removedEvents: 1 })
+
+    // Koota's packed handle has a 12-bit generation and aliases the original
+    // handle on the 4,096th recycle. Flatland uses safe-integer generations
+    // and retires an index when it reaches the last safe generation.
+    expect(koota.generationSafety.recycleHorizon).toEqual({
+      sameIndexThroughout: true,
+      everAliasedOriginal: true,
+      originalAliveAtEnd: false,
+      finalHandleDiffers: true,
+    })
   })
 })

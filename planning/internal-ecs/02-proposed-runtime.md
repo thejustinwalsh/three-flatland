@@ -307,7 +307,8 @@ It is not required to justify removing Koota because the relation engine and gen
 
 Development builds should detect:
 
-- stale entity handles and, where an owning object is available, mismatched world ownership,
+- stale entity handles,
+- wrong-world ownership at the internal object boundary where the owner is available,
 - reading or patching a missing trait,
 - duplicate trait addition where replacement was not requested,
 - selector mutation of its required structure during iteration,
