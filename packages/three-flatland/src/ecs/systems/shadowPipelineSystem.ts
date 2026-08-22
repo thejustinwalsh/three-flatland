@@ -106,6 +106,10 @@ export function shadowPipelineSystem(world: World): void {
   const sdfW = Math.max(1, Math.floor(surfaceWidth * scale))
   const sdfH = Math.max(1, Math.floor(surfaceHeight * scale))
 
+  // OcclusionPass applies this same scale internally and stores only the
+  // resulting physical RT dimensions. If an unscaled surface change rounds
+  // to the same sdfW/sdfH (for example 512 → 513 at 0.5), neither shadow
+  // resource changes size and a resize/regeneration would be redundant.
   if (!pipeline.initialized) {
     pipeline.sdfGenerator.init(sdfW, sdfH)
     pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)

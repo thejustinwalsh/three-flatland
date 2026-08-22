@@ -154,6 +154,22 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
     expect(occlusionPass.resize).toHaveBeenCalledWith(320, 180)
   })
 
+  it('does not resize either scaled shadow resource when rounding keeps their size unchanged', () => {
+    const { sdfGenerator, occlusionPass, setOccludersDirty } = setup(world)
+    const ctx = world.query(LightingContext)[0]!.get(LightingContext)!
+    ctx.surfaceSize.set(512, 512)
+    shadowPipelineSystem(world)
+
+    sdfGenerator.resize.mockClear()
+    occlusionPass.resize.mockClear()
+    setOccludersDirty(false)
+    ctx.surfaceSize.set(513, 513)
+    shadowPipelineSystem(world)
+
+    expect(sdfGenerator.resize).not.toHaveBeenCalled()
+    expect(occlusionPass.resize).not.toHaveBeenCalled()
+  })
+
   it('skips regen when occludersDirty=false and camera unchanged', () => {
     const { sdfGenerator, setOccludersDirty } = setup(world, { occludersDirty: true })
 
