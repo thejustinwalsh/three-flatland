@@ -1,6 +1,6 @@
 # Internal ECS migration and rollout plan
 
-Status: implementation plan — blocked on design approval
+Status: design approved; evidence follows in the review stack
 
 Date: 2026-08-22
 
@@ -8,7 +8,15 @@ Date: 2026-08-22
 
 Work begins in a clean worktree rebased onto the then-current `origin/main`. Do not use the Driller branch or the camera stack worktrees.
 
-Recommended delivery: one focused PR with atomic Conventional Commits. The runtime and migration are tightly coupled, and splitting them across mergeable PRs would either ship dead infrastructure or require a temporary production abstraction. If review size proves too large, use a stack where only the final PR removes Koota.
+Delivery uses a small five-PR stack so CodeRabbit and human reviewers can assess one claim at a time:
+
+1. Design and migration contract, targeting `main`.
+2. Differential, size, storage, and performance evidence, targeting PR 1.
+3. Private typed runtime with no production consumer, targeting PR 2.
+4. Core migration, compiled event/selectors, and direct batch ownership, targeting PR 3.
+5. Koota removal, documentation, representative-consumer size gates, and live verification, targeting PR 4.
+
+Only PR 5 removes Koota. Earlier PRs remain inert or private, giving the stack a clean rollback boundary while keeping each review focused.
 
 Proposed commit sequence:
 
@@ -20,17 +28,22 @@ Proposed commit sequence:
 6. `refactor(three-flatland): remove koota peer dependency`
 7. `docs(three-flatland): remove koota installation requirement`
 
-The exact split follows diff cohesion. No hand-written changeset is added; repository automation derives release notes from Conventional Commits.
+The exact split follows diff cohesion. Every package change receives a hand-written changeset under
+the repository's current release policy. This includes the private `tools/ecs-bench` package because
+private and out-of-`packages/` workspaces are not discovered by the historical generator.
 
 ## Phase 0: approved design and fresh baseline
 
 - Resolve every review comment on this planning package.
 - Rebase a clean implementation worktree onto current main.
 - Record exact dependency and tool versions.
-- Capture Koota size, microbenchmark, schedule, memory, and live-example baselines.
+- Capture Koota size, kernel microbenchmark, and memory baselines before selecting the private runtime.
+- Capture the full schedule and live-example baselines immediately before the production migration,
+  so the comparison uses the exact core implementation being replaced.
 - Confirm whether concurrent open PRs modify `src/ecs`, SpriteGroup scheduling, or dependency declarations.
 
-Exit gate: baseline report checked into the PR branch; no production runtime change yet.
+Exit gate: kernel baseline report checked into the PR branch; no production runtime change yet. The
+schedule/live baseline remains a mandatory migration gate rather than being implied by the kernel report.
 
 ## Phase 1: reference model and kernel competition
 
@@ -149,7 +162,7 @@ Internal planning and code comments should document:
 
 ## Release classification
 
-The user-facing API does not intentionally break. Removing a required peer dependency is a compatibility improvement. The expected release signal is a performance-focused patch or minor feature according to repository commit-derived release policy.
+The user-facing API does not intentionally break. Removing a required peer dependency is a compatibility improvement. The hand-written changeset must classify the actual compatibility impact—likely patch or minor unless the declaration scan finds a public type break. The Conventional Commit describes commit intent; it does not replace or determine the changeset.
 
 If emitted public types currently expose Koota `World`, `Entity`, or `Trait`, that is an accidental public type dependency. The declaration scan must identify it before implementation. If removing it changes a documented public type, classify the release according to the actual public compatibility impact rather than assuming it is non-breaking.
 

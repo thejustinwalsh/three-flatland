@@ -10,7 +10,7 @@ Date: 2026-08-22
 
 The replacement surface is bounded enough to own:
 
-- 24 static declarations in `src/ecs/traits.ts`: 23 traits and one exclusive relation.
+- 25 static declarations in `src/ecs/traits.ts`: 24 traits and one exclusive relation.
 - Dynamic numeric traits created by `MaterialEffect`, `LightEffect`, and `PassEffect` subclasses.
 - Seven runtime imports.
 - Nine world/entity operations.
@@ -20,15 +20,15 @@ The replacement surface is bounded enough to own:
 
 Production code imports:
 
-| Koota symbol | Flatland purpose |
-| --- | --- |
-| `createWorld` | One world per `SpriteGroup`, plus a lazy fallback world |
-| `trait` | Numeric SoA schemas, object-backed values, and tags |
-| `relation` | One exclusive sprite-to-batch relation, `InBatch` |
-| `createAdded` | Newly renderable sprites |
-| `createChanged` | Batch routing changes |
-| `createRemoved` | Sprites leaving renderable state |
-| `getStore` | Direct numeric field arrays in sprite and transform/sort hot paths |
+| Koota symbol    | Flatland purpose                                                   |
+| --------------- | ------------------------------------------------------------------ |
+| `createWorld`   | One world per `SpriteGroup`, plus a lazy fallback world            |
+| `trait`         | Numeric SoA schemas, object-backed values, and tags                |
+| `relation`      | One exclusive sprite-to-batch relation, `InBatch`                  |
+| `createAdded`   | Newly renderable sprites                                           |
+| `createChanged` | Batch routing changes                                              |
+| `createRemoved` | Sprites leaving renderable state                                   |
+| `getStore`      | Direct numeric field arrays in sprite and transform/sort hot paths |
 
 Type-only usage is `World`, `Entity`, and `Trait`.
 
@@ -110,10 +110,10 @@ The replacement can fold the batch entity into `BatchSlot`, eliminating the rela
 
 ### Event queries
 
-| Consumer | Selector | Frequency |
-| --- | --- | --- |
-| batch assignment | added `IsRenderable` | each schedule run |
-| batch removal | removed `IsRenderable` | each schedule run |
+| Consumer           | Selector                                                                                 | Frequency         |
+| ------------------ | ---------------------------------------------------------------------------------------- | ----------------- |
+| batch assignment   | added `IsRenderable`                                                                     | each schedule run |
+| batch removal      | removed `IsRenderable`                                                                   | each schedule run |
 | batch reassignment | changed `SortLayer`, `SpriteMaterialRef`, or `CameraLayersMask`, filtered by `IsBatched` | each schedule run |
 
 The three changed streams are deduplicated in a reused `Set<Entity>` after Koota returns them.
@@ -166,10 +166,10 @@ Those are reasonable costs for Koota's public feature set. They are not required
 
 Measurement environment: repository install on 2026-08-22, Koota 0.6.5, esbuild 0.25.12, browser ESM, minification and tree shaking enabled.
 
-| Artifact | Raw/minified | Gzip | Brotli |
-| --- | ---: | ---: | ---: |
-| Installed Koota core ESM chunk | 98,396 B raw | 17,310 B | not recorded |
-| Flatland's seven runtime imports in isolation | 34,846 B minified | 10,522 B | 9,368 B |
+| Artifact                                      |      Raw/minified |     Gzip |       Brotli |
+| --------------------------------------------- | ----------------: | -------: | -----------: |
+| Installed Koota core ESM chunk                |      98,396 B raw | 17,310 B | not recorded |
+| Flatland's seven runtime imports in isolation | 34,846 B minified | 10,522 B |      9,368 B |
 
 The installed package occupies 496 kB on disk. Disk size is not the product goal; the tree-shaken browser result is the meaningful replacement baseline.
 
