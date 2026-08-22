@@ -40,9 +40,9 @@ function createPassNode() {
   } as unknown as PassNode
 }
 
-function createRenderer(initialTarget: RenderTarget | null = null) {
+function createRenderer(initialTarget: RenderTarget | null = null, width = 640, height = 360) {
   let currentTarget = initialTarget
-  const viewport = Object.assign(new Vector4(0, 0, 640, 360), { minDepth: 0.2, maxDepth: 0.8 })
+  const viewport = Object.assign(new Vector4(0, 0, width, height), { minDepth: 0.2, maxDepth: 0.8 })
   const setRenderTarget = vi.fn((target: RenderTarget | null) => {
     currentTarget = target
   })
@@ -53,8 +53,8 @@ function createRenderer(initialTarget: RenderTarget | null = null) {
     getPixelRatio: () => 1,
     getRenderTarget: () => currentTarget,
     getViewport: (target: Vector4) => target.copy(viewport),
-    getSize: (target: Vector2) => target.set(640, 360),
-    getDrawingBufferSize: (target: Vector2) => target.set(640, 360),
+    getSize: (target: Vector2) => target.set(width, height),
+    getDrawingBufferSize: (target: Vector2) => target.set(width, height),
     render: vi.fn((_scene: Scene, _camera: Camera) => undefined),
     setClearColor: vi.fn(),
     setRenderTarget,
@@ -73,10 +73,10 @@ function markPipelineAutoManaged(flatland: Flatland): void {
   const internal = flatland as unknown as {
     _autoRenderPipeline: boolean
     _passNode: PassNode
-    _installAutoPassSize(passNode: PassNode): void
+    _installManagedPassSize(passNode: PassNode): void
   }
   internal._autoRenderPipeline = true
-  internal._installAutoPassSize(internal._passNode)
+  internal._installManagedPassSize(internal._passNode)
   flatland.renderTarget = flatland.renderTarget
 }
 
@@ -227,5 +227,21 @@ describe('Flatland render-target color management', () => {
     flatland.renderTarget = null
 
     expect(pipeline.outputColorTransform).toBe(false)
+  })
+
+  it('renders a manual pipeline pass at the exact integer pixel viewport', () => {
+    const pipeline = createPipeline()
+    const flatland = new Flatland({ viewSize: 240 })
+    const { renderer } = createRenderer(null, 641, 481)
+    const passNode = createPassNode()
+    const originalSetSize = passNode.setSize
+
+    flatland.setRenderPipeline(pipeline, passNode)
+    flatland.render(renderer)
+    passNode.setSize(641, 481)
+
+    expect(originalSetSize).toHaveBeenLastCalledWith(640, 480)
+    flatland.clearRenderPipeline()
+    expect(passNode.setSize).toBe(originalSetSize)
   })
 })

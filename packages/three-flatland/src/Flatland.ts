@@ -323,10 +323,10 @@ export class Flatland extends Group implements WorldProvider {
   /** Whether the render pipeline was auto-initialized (vs. manual setRenderPipeline) */
   private _autoRenderPipeline = false
 
-  /** Original auto-pass sizing method while Flatland supplies target dimensions. */
-  private _autoPassNode: PassNode | null = null
-  private _autoPassOriginalSetSize: PassNode['setSize'] | null = null
-  private _autoPassWrappedSetSize: PassNode['setSize'] | null = null
+  /** Original pass sizing method while Flatland supplies exact destination dimensions. */
+  private _managedPassNode: PassNode | null = null
+  private _managedPassOriginalSetSize: PassNode['setSize'] | null = null
+  private _managedPassWrappedSetSize: PassNode['setSize'] | null = null
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
@@ -900,21 +900,25 @@ export class Flatland extends Group implements WorldProvider {
    * ```
    * Flatland preserves the pipeline's outputColorTransform setting. Set it to
    * false when a manual pipeline writes working-space color to a render target.
+   * With a PixelPerfectCamera, Flatland sizes the supplied scene pass to the
+   * camera's integer viewport so the pipeline cannot introduce a fractional
+   * intermediate resample.
    */
   setRenderPipeline(renderPipeline: RenderPipeline, passNode: PassNode): void {
-    this._restoreAutoPassSize()
+    this._restoreManagedPassSize()
     this._renderPipeline = renderPipeline
     this._passNode = passNode
     this._outputNode = renderPipeline.outputNode
     this._renderPipelineEnabled = true
     this._autoRenderPipeline = false
+    this._installManagedPassSize(passNode)
   }
 
   /**
    * Clear the render pipeline setup.
    */
   clearRenderPipeline(): void {
-    this._restoreAutoPassSize()
+    this._restoreManagedPassSize()
     this._renderPipeline = null
     this._passNode = null
     this._outputNode = null
@@ -1669,7 +1673,7 @@ export class Flatland extends Group implements WorldProvider {
     if (!this._renderPipeline && this._passes.length > 0) {
       const rp = new RenderPipeline(renderer)
       const scenePass = pass(this.scene, this._camera)
-      this._installAutoPassSize(scenePass)
+      this._installManagedPassSize(scenePass)
       this._renderPipeline = rp
       this._passNode = scenePass
       this._autoRenderPipeline = true
@@ -1734,34 +1738,41 @@ export class Flatland extends Group implements WorldProvider {
   /**
    * PassNode normally allocates from the canvas drawing buffer even while the
    * renderer targets an offscreen surface. Keep its public `setSize` contract,
-   * but substitute Flatland's target dimensions for the auto-owned pass.
+   * but substitute Flatland's destination dimensions. A user-supplied pass is
+   * viewport-sized under a pixel camera; an auto pass remains full-surface so
+   * Flatland's generated output can crop it through `_passViewportUv*`.
    */
-  private _installAutoPassSize(passNode: PassNode): void {
-    this._restoreAutoPassSize()
-    const original = passNode.setSize.bind(passNode)
+  private _installManagedPassSize(passNode: PassNode): void {
+    this._restoreManagedPassSize()
+    // oxlint-disable-next-line typescript/unbound-method -- restored by identity and invoked with passNode via call().
+    const original = passNode.setSize
     const wrapped: PassNode['setSize'] = (width, height) => {
+      if (!this._autoRenderPipeline && this._camera instanceof PixelPerfectCamera) {
+        original.call(passNode, this._camera.viewport.width, this._camera.viewport.height)
+        return
+      }
       const target = this._renderTarget
-      original(target?.width ?? width, target?.height ?? height)
+      original.call(passNode, target?.width ?? width, target?.height ?? height)
     }
-    this._autoPassNode = passNode
-    this._autoPassOriginalSetSize = original
-    this._autoPassWrappedSetSize = wrapped
+    this._managedPassNode = passNode
+    this._managedPassOriginalSetSize = original
+    this._managedPassWrappedSetSize = wrapped
     passNode.setSize = wrapped
   }
 
   /** Restore a pass before it becomes user-owned or is disposed. */
-  private _restoreAutoPassSize(): void {
+  private _restoreManagedPassSize(): void {
     if (
-      this._autoPassNode &&
-      this._autoPassOriginalSetSize &&
-      this._autoPassWrappedSetSize &&
-      this._autoPassNode.setSize === this._autoPassWrappedSetSize
+      this._managedPassNode &&
+      this._managedPassOriginalSetSize &&
+      this._managedPassWrappedSetSize &&
+      this._managedPassNode.setSize === this._managedPassWrappedSetSize
     ) {
-      this._autoPassNode.setSize = this._autoPassOriginalSetSize
+      this._managedPassNode.setSize = this._managedPassOriginalSetSize
     }
-    this._autoPassNode = null
-    this._autoPassOriginalSetSize = null
-    this._autoPassWrappedSetSize = null
+    this._managedPassNode = null
+    this._managedPassOriginalSetSize = null
+    this._managedPassWrappedSetSize = null
   }
 
   /** Keep the pipeline's final color transform aligned with its destination. */
@@ -2005,7 +2016,7 @@ export class Flatland extends Group implements WorldProvider {
 
     // Dispose render pipeline
     if (this._renderPipeline) {
-      this._restoreAutoPassSize()
+      this._restoreManagedPassSize()
       this._renderPipeline.dispose?.()
       this._renderPipeline = null
     }
