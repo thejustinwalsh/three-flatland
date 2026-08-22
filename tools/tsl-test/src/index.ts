@@ -27,6 +27,7 @@ import {
   type BufferGeometry,
   type Camera,
   type Object3D,
+  type Vector2,
 } from 'three'
 import { GLSLNodeBuilder, NodeMaterial, WGSLNodeBuilder } from 'three/webgpu'
 import { context, Fn } from 'three/tsl'
@@ -118,6 +119,7 @@ export function createMockRenderer(backend: ShaderBackend) {
     currentSamples: 1,
     depth: true,
     getMRT: () => null,
+    getDrawingBufferSize: (target: Vector2) => target.set(1, 1),
     getOutputBufferType: () => UnsignedByteType,
     getRenderTarget: () => null,
     hasCompatibility: () => false,

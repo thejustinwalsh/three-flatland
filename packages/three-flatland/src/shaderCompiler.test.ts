@@ -272,6 +272,7 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
     try {
       const program = capture('sprite-batch-large-matrix-attributes', backend, material, batch)
       expect(program.vertexShader).toContain('spritePixelPivot')
+      expectInstanceTransformBeforeProjection(program.vertexShader)
       expectSingleInstanceMatrixAttributeSet(backend, program.vertexShader)
     } finally {
       batch.dispose()
@@ -316,6 +317,7 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
       expect(program.vertexShader).toContain('spritePixelPivot')
       expect(program.vertexShader).toContain('floor')
       expectPixelPivotTransformGuarded(program.vertexShader)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
       expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
       batch.dispose()

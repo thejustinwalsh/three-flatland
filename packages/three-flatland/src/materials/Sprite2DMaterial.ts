@@ -514,7 +514,10 @@ export class Sprite2DMaterial extends EffectMaterial {
     // this clip expression is assembled. Using the shared `positionView` node
     // instead lets Three cache it before our custom instance-matrix stack is
     // emitted, which projects the untransformed unit quad for SpriteBatch.
-    const viewPosition = this.setupPositionView(builder!) as Node<'vec3'>
+    const viewPosition =
+      builder === undefined
+        ? (modelViewMatrix.mul(positionLocal).xyz as Node<'vec3'>)
+        : (this.setupPositionView(builder) as Node<'vec3'>)
     const clipPosition = cameraProjectionMatrix.mul(viewPosition).toVar('spriteClipPosition')
 
     If(readPixelPerfectFlag(), () => {
