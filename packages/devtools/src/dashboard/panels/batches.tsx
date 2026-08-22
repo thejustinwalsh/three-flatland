@@ -21,7 +21,7 @@
  */
 import { useMemo, useState } from 'preact/hooks'
 import { useDevtoolsState } from '../hooks.js'
-import type { BatchPassSnapshot } from '../../devtools-client.js'
+import type { BatchPassSnapshot, BatchSnapshot } from '../../devtools-client.js'
 
 interface GroupedRun {
   runKey: number
@@ -37,6 +37,76 @@ interface PassNode {
   pass: BatchPassSnapshot
   index: number
   children: PassNode[]
+}
+
+interface DerivedBatches {
+  frame: number
+  passCount: number
+  batchCount: number
+  passTotals: { calls: number; tris: number; cpuMs: number }
+  runs: GroupedRun[]
+  totalSprites: number
+  passRoots: PassNode[]
+}
+
+function deriveBatches(
+  frame: number,
+  passes: BatchSnapshot['passes'],
+  activeBatches: BatchSnapshot['batches']
+): DerivedBatches {
+  let calls = 0
+  let tris = 0
+  let cpuMs = 0
+  for (const pass of passes) {
+    if (pass.parent === -1) {
+      calls += pass.calls
+      tris += pass.triangles
+      cpuMs += pass.cpuMs
+    }
+  }
+
+  const groupedRuns = new Map<string, GroupedRun>()
+  let totalSprites = 0
+  for (const batch of activeBatches) {
+    const groupKey = `${batch.kind}:${batch.runKey}`
+    let run = groupedRuns.get(groupKey)
+    if (run === undefined) {
+      run = {
+        runKey: batch.runKey,
+        layer: batch.layer,
+        materialId: batch.materialId,
+        materialName: batch.materialName,
+        kind: batch.kind,
+        totalSprites: 0,
+        batches: [],
+      }
+      groupedRuns.set(groupKey, run)
+    }
+    run.totalSprites += batch.spriteCount
+    totalSprites += batch.spriteCount
+    run.batches.push({ batchIdx: batch.batchIdx, spriteCount: batch.spriteCount, label: batch.label })
+  }
+  const runs = Array.from(groupedRuns.values())
+  runs.sort((a, b) => a.kind.localeCompare(b.kind) || a.layer - b.layer || a.materialId - b.materialId)
+
+  const nodes: PassNode[] = passes.map((pass, index) => ({ pass, index, children: [] }))
+  const passRoots: PassNode[] = []
+  // Parents precede children in producer emission order, so the original
+  // array index remains a stable parent lookup while deriving this tree.
+  for (const node of nodes) {
+    if (node.pass.parent === -1) passRoots.push(node)
+    else nodes[node.pass.parent]?.children.push(node)
+  }
+
+  return {
+    frame,
+    passCount: passes.length,
+    batchCount: activeBatches.length,
+    passTotals: { calls, tris, cpuMs },
+    runs,
+    totalSprites,
+    passRoots,
+  }
 }
 
 export function BatchesPanel() {
@@ -60,77 +130,24 @@ export function BatchesPanel() {
     })
   }
 
-  const passTotals = useMemo(() => {
-    let calls = 0
-    let tris = 0
-    let cpuMs = 0
-    for (const p of batches.passes) {
-      if (p.parent === -1) {
-        calls += p.calls
-        tris += p.triangles
-        cpuMs += p.cpuMs
-      }
-    }
-    return { calls, tris, cpuMs }
-  }, [batches.frame])
-
-  const runs = useMemo(() => {
-    const m = new Map<string, GroupedRun>()
-    for (const b of batches.batches) {
-      const groupKey = `${b.kind}:${b.runKey}`
-      let run = m.get(groupKey)
-      if (run === undefined) {
-        run = {
-          runKey: b.runKey,
-          layer: b.layer,
-          materialId: b.materialId,
-          materialName: b.materialName,
-          kind: b.kind,
-          totalSprites: 0,
-          batches: [],
-        }
-        m.set(groupKey, run)
-      }
-      run.totalSprites += b.spriteCount
-      run.batches.push({ batchIdx: b.batchIdx, spriteCount: b.spriteCount, label: b.label })
-    }
-    const arr = Array.from(m.values())
-    arr.sort((a, b) => a.kind.localeCompare(b.kind) || a.layer - b.layer || a.materialId - b.materialId)
-    return arr
-  }, [batches.frame])
-
-  const totalSprites = useMemo(() => {
-    let n = 0
-    for (const r of runs) n += r.totalSprites
-    return n
-  }, [runs])
-
-  /**
-   * Rebuild the pass tree from the flat array. Parents come before
-   * children in the producer's emission order (frame first, then its
-   * children, etc.) so one linear pass + index lookup suffices.
-   */
-  const passRoots = useMemo(() => {
-    const nodes: PassNode[] = batches.passes.map((p, i) => ({
-      pass: p,
-      index: i,
-      children: [],
-    }))
-    const roots: PassNode[] = []
-    for (const n of nodes) {
-      if (n.pass.parent === -1) roots.push(n)
-      else nodes[n.pass.parent]?.children.push(n)
-    }
-    return roots
-  }, [batches.frame])
+  const { frame, passes, batches: activeBatches } = batches
+  const {
+    frame: derivedFrame,
+    passCount,
+    batchCount,
+    passTotals,
+    runs,
+    totalSprites,
+    passRoots,
+  } = useMemo(() => deriveBatches(frame, passes, activeBatches), [frame, passes, activeBatches])
 
   return (
     <section class="panel batches-panel">
       <header class="panel-header batches-header">
         <span>Batches</span>
         <span class="batches-header-meta">
-          frame {batches.frame} · {passTotals.calls} draws · {runs.length} runs · {batches.batches.length} batches ·{' '}
-          {totalSprites} sprites
+          frame {derivedFrame} · {passTotals.calls} draws · {runs.length} runs · {batchCount} batches · {totalSprites}{' '}
+          sprites
         </span>
       </header>
 
@@ -138,7 +155,7 @@ export function BatchesPanel() {
         <div class="batches-section">
           <div class="batches-section-title">
             <span>Active batches</span>
-            <span class="batches-section-count">{batches.batches.length}</span>
+            <span class="batches-section-count">{batchCount}</span>
           </div>
           <div class="batches-table-head batches-table-head--runs">
             <span class="batches-col-label">run / batch</span>
@@ -182,7 +199,7 @@ export function BatchesPanel() {
         <div class="batches-section">
           <div class="batches-section-title">
             <span>Passes</span>
-            <span class="batches-section-count">{batches.passes.length}</span>
+            <span class="batches-section-count">{passCount}</span>
           </div>
           <div class="batches-table-head batches-table-head--passes">
             <span class="batches-col-label">pass</span>

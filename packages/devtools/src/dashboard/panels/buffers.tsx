@@ -15,7 +15,7 @@
  * Multiple dashboard consumers (or the tweakpane modal) subscribing to
  * different entries is fine — the producer unions selections server-side.
  */
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import type { BufferChunkPayload } from '../../devtools-client.js'
 import { getClient } from '../client.js'
 import { getFrameCursor } from '../frame-cursor.js'
@@ -56,12 +56,10 @@ export function BuffersPanel() {
     panY: 0,
   })
 
-  // Stable sorted buffer list.
-  const entries = useMemo(() => {
-    const arr = Array.from(state.buffers.values())
-    arr.sort((a, b) => a.name.localeCompare(b.name))
-    return arr
-  }, [state.buffers, state.buffers.size])
+  // The client mutates this map in place; derive the live list on each
+  // subscribed frame so same-size delete/add replacements cannot go stale.
+  const entries = Array.from(state.buffers.values())
+  entries.sort((a, b) => a.name.localeCompare(b.name))
 
   const needle = filter.trim().toLowerCase()
   const visible =
