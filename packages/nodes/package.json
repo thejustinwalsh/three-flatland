@@ -1,6 +1,6 @@
 {
   "name": "@three-flatland/nodes",
-  "version": "0.1.0-alpha.8",
+  "version": "0.1.0-alpha.10",
   "description": "TSL shader nodes for sprite rendering and effects",
   "type": "module",
   "exports": {
@@ -174,15 +174,23 @@
   ],
   "sideEffects": false,
   "nx": {
-    "tags": ["scope:sibling"],
+    "tags": [
+      "scope:sibling"
+    ],
     "targets": {
       "test": {
         "executor": "nx:run-commands",
-        "options": { "command": "vitest run", "cwd": "{projectRoot}" }
+        "options": {
+          "command": "vitest run",
+          "cwd": "{projectRoot}"
+        }
       },
       "lint": {
         "executor": "nx:run-commands",
-        "options": { "command": "oxlint --type-aware .", "cwd": "{projectRoot}" }
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
       }
     }
   },
