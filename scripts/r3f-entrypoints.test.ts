@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import ts from 'typescript'
@@ -9,6 +9,8 @@ const SKIPPED_DIRECTORIES = new Set(['dist', 'node_modules', '.astro', '.nx'])
 const BARE_R3F = '@react-three/fiber'
 
 export function hasBareR3FRuntimeReference(source: string): boolean {
+  if (!source.includes(BARE_R3F)) return false
+
   const file = ts.createSourceFile('entrypoint-check.tsx', source, ts.ScriptTarget.Latest, false, ts.ScriptKind.TSX)
 
   for (const statement of file.statements) {
@@ -47,9 +49,10 @@ export function hasBareR3FRuntimeReference(source: string): boolean {
 
 function sourceFiles(directory: string): string[] {
   if (SKIPPED_DIRECTORIES.has(directory.split('/').at(-1)!)) return []
-  return readdirSync(directory).flatMap((entry) => {
-    const path = join(directory, entry)
-    if (statSync(path).isDirectory()) return sourceFiles(path)
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) return sourceFiles(path)
+    if (!entry.isFile()) return []
     if (!/\.[cm]?[jt]sx?$/.test(path) || /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path)) return []
     return [path]
   })
