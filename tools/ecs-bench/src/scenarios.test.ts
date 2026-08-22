@@ -165,6 +165,37 @@ const KOOTA_BASELINE = {
 } satisfies ScenarioReport
 
 describe('Flatland entity-store behavior contract', () => {
+  it('keeps selector matching independent of multiword trait order', () => {
+    const adapter = createSignaturePersistentAdapter()
+    const traits = Array.from({ length: 40 }, () => adapter.tag())
+    const selector = adapter.select(traits[0]!, traits[32]!, traits[1]!, traits[33]!)
+    const world = adapter.createWorld()
+    const complete = world.spawn(
+      ...[traits[0]!, traits[1]!, traits[32]!, traits[33]!].map((traitValue) => ({
+        trait: traitValue,
+      }))
+    )
+    world.spawn(...[traits[1]!, traits[32]!, traits[33]!].map((traitValue) => ({ trait: traitValue })))
+
+    expect(world.view(selector)).toEqual([complete])
+    world.dispose()
+    adapter.reset()
+  })
+
+  it('resets independent-reference declaration IDs', () => {
+    const adapter = createReferenceAdapter()
+    const ids = () => [
+      (adapter.tag() as unknown as { readonly id: number }).id,
+      (adapter.select(adapter.tag()) as unknown as { readonly id: number }).id,
+      (adapter.event('changed', [adapter.tag()]) as unknown as { readonly id: number }).id,
+      (adapter.exclusive() as unknown as { readonly id: number }).id,
+    ]
+
+    expect(ids()).toEqual([0, 0, 0, 0])
+    adapter.reset()
+    expect(ids()).toEqual([0, 0, 0, 0])
+  })
+
   it('is deterministic in the independent reference model', () => {
     expect(captureReferenceScenarios(createReferenceAdapter())).toEqual(FLATLAND_CONTRACT)
   })

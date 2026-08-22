@@ -347,6 +347,10 @@ export function createReferenceAdapter(): EcsAdapter {
     },
 
     reset(): void {
+      nextTraitId = 0
+      nextSelectorId = 0
+      nextEventId = 0
+      nextRelationId = 0
       selectors.length = 0
       eventSelectors.length = 0
     },
