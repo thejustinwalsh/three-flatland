@@ -518,9 +518,7 @@ export function nagaFailure(error: unknown): string {
     const output = typeof stderr === 'string' ? stderr.trim() : ''
     if (output) return `Naga rejected emitted WGSL:\n${output}`
   }
-  return error instanceof Error
-    ? `Naga validation failed: ${error.message}`
-    : 'Naga failed without diagnostic output'
+  return error instanceof Error ? `Naga validation failed: ${error.message}` : 'Naga failed without diagnostic output'
 }
 
 export async function validateShaderSources(shaders: ShaderSource[]): Promise<void> {
