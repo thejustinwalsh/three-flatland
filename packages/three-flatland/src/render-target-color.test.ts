@@ -33,6 +33,13 @@ function createPipeline(render = vi.fn()): RenderPipeline {
   } as unknown as RenderPipeline
 }
 
+function createPassNode() {
+  return {
+    setSize: vi.fn(),
+    setViewport: vi.fn(),
+  } as unknown as PassNode
+}
+
 function createRenderer(initialTarget: RenderTarget | null = null) {
   let currentTarget = initialTarget
   const viewport = new Vector4(0, 0, 640, 360)
@@ -57,8 +64,13 @@ function createRenderer(initialTarget: RenderTarget | null = null) {
 }
 
 function markPipelineAutoManaged(flatland: Flatland): void {
-  const internal = flatland as unknown as { _autoRenderPipeline: boolean }
+  const internal = flatland as unknown as {
+    _autoRenderPipeline: boolean
+    _passNode: PassNode
+    _installAutoPassSize(passNode: PassNode): void
+  }
   internal._autoRenderPipeline = true
+  internal._installAutoPassSize(internal._passNode)
   flatland.renderTarget = flatland.renderTarget
 }
 
@@ -101,7 +113,7 @@ describe('Flatland render-target color management', () => {
     const pipeline = createPipeline()
     const flatland = new Flatland({ renderTarget: target })
 
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
     markPipelineAutoManaged(flatland)
 
     expect(pipeline.outputColorTransform).toBe(false)
@@ -120,8 +132,13 @@ describe('Flatland render-target color management', () => {
     const pipeline = createPipeline()
     const flatland = new Flatland({ renderTarget: target })
     const { renderer, setRenderTarget } = createRenderer(previousTarget)
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    const passNode = createPassNode()
+    const originalSetSize = passNode.setSize
+    flatland.setRenderPipeline(pipeline, passNode)
     markPipelineAutoManaged(flatland)
+
+    passNode.setSize(640, 360)
+    expect(originalSetSize).toHaveBeenCalledWith(64, 64)
 
     flatland.render(renderer)
 
@@ -139,7 +156,7 @@ describe('Flatland render-target color management', () => {
     )
     const flatland = new Flatland({ renderTarget: target })
     const { renderer, setRenderTarget } = createRenderer(previousTarget)
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
     markPipelineAutoManaged(flatland)
 
     expect(() => flatland.render(renderer)).toThrow('pipeline failed')
@@ -170,7 +187,7 @@ describe('Flatland render-target color management', () => {
     const pipeline = createPipeline()
     const flatland = new Flatland()
     const { renderer, setRenderTarget } = createRenderer(previousTarget)
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
 
     flatland.render(renderer)
 
@@ -185,7 +202,7 @@ describe('Flatland render-target color management', () => {
     const flatland = new Flatland()
     const { renderer } = createRenderer()
 
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
     flatland.render(renderer)
     flatland.renderTarget = target
     flatland.renderTarget = null

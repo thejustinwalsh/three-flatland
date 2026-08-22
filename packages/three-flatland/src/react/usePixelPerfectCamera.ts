@@ -3,6 +3,8 @@ import { useThree, type ComputeFunction, type FilterFunction } from '@react-thre
 import { Vector4 } from 'three'
 import { PixelPerfectCamera, type PixelPerfectCameraOptions } from '../cameras/PixelPerfectCamera'
 
+const logicalPixelViewport = new Vector4()
+
 /** Options for {@link usePixelPerfectCamera}. */
 export interface UsePixelPerfectCameraOptions extends PixelPerfectCameraOptions {
   /** Install the camera as the R3F root's default camera. Default: `true`. */
@@ -145,8 +147,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
 
   useLayoutEffect(() => {
     if (!makeDefault) return
-    const viewport = camera.viewport
-    renderer.setViewport(viewport.x / dpr, viewport.y / dpr, viewport.z / dpr, viewport.w / dpr)
+    renderer.setViewport(camera.getLogicalViewport(dpr, logicalPixelViewport))
   }, [camera, dpr, height, makeDefault, options.pixelScale, options.viewSize, options.viewWidth, renderer, width])
 
   useLayoutEffect(() => {

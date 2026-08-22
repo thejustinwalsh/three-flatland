@@ -60,7 +60,7 @@ describe('usePixelPerfectCamera', () => {
     expect(camera!.drawingBufferHeight).toBe(720)
     expect(camera!.resolvedPixelScale).toBe(3)
     expect(camera!.viewport.toArray()).toEqual([1, 0, 1278, 720])
-    expect(viewport.toArray()).toEqual([0.5, 0, 639, 360])
+    expect(viewport.clone().multiplyScalar(2).floor().toArray()).toEqual(camera!.viewport.toArray())
     expect(readCamera!()).toBe(camera)
 
     const mountedState = rootStore.getState()
@@ -99,7 +99,7 @@ describe('usePixelPerfectCamera', () => {
     })
     expect(camera!.viewSize).toBe(400)
     expect(camera!.resolvedPixelScale).toBe(1)
-    expect(viewport.toArray()).toEqual([0, 80, 640, 200])
+    expect(viewport.clone().multiplyScalar(2).floor().toArray()).toEqual(camera!.viewport.toArray())
     expect(rootStore.getState().viewport.width).toBe(1280)
     expect(rootStore.getState().viewport.height).toBe(400)
     expect(rootStore.getState().viewport.factor).toBe(0.5)
@@ -110,7 +110,7 @@ describe('usePixelPerfectCamera', () => {
     })
     expect(camera!.drawingBufferWidth).toBe(1600)
     expect(camera!.drawingBufferHeight).toBe(900)
-    expect(viewport.toArray()).toEqual([0, 25, 800, 400])
+    expect(viewport.clone().multiplyScalar(2).floor().toArray()).toEqual(camera!.viewport.toArray())
 
     await act(async () => {
       root.render(null)
@@ -173,6 +173,50 @@ describe('usePixelPerfectCamera', () => {
     expect(camera!.manual).toBe(true)
     expect(rootStore.getState().camera).toBe(previous)
     expect(viewport.toArray()).toEqual([0, 0, 640, 360])
+
+    await act(async () => {
+      root.unmount()
+      await Promise.resolve()
+    })
+  })
+
+  it('round-trips a non-dyadic DPR viewport without losing a physical pixel', async () => {
+    vi.stubGlobal('requestAnimationFrame', () => 0)
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+    const viewport = new Vector4(0, 0, 640, 360)
+    const renderer = {
+      render() {},
+      setSize() {},
+      setPixelRatio() {},
+      getPixelRatio: () => 1.3,
+      getViewport: (target: Vector4) => target.copy(viewport),
+      setViewport: (x: number | Vector4, y?: number, width?: number, height?: number) => {
+        if (x instanceof Vector4) viewport.copy(x)
+        else viewport.set(x, y!, width!, height!)
+      },
+      hasInitialized: () => true,
+    }
+    const root = createRoot({ width: 0, height: 0 } as OffscreenCanvas)
+    await root.configure({
+      renderer,
+      dpr: 1.3,
+      frameloop: 'never',
+      size: { width: 640, height: 360, top: 0, left: 0 },
+    })
+
+    let camera: PixelPerfectCamera | null = null
+    function Probe() {
+      camera = usePixelPerfectCamera({ viewSize: 200 })
+      return null
+    }
+
+    await act(async () => {
+      root.render(<Probe />)
+      await Promise.resolve()
+    })
+
+    expect(camera!.viewport.toArray()).toEqual([0, 34, 832, 400])
+    expect(viewport.clone().multiplyScalar(1.3).floor().toArray()).toEqual(camera!.viewport.toArray())
 
     await act(async () => {
       root.unmount()

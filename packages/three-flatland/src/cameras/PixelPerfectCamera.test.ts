@@ -74,6 +74,16 @@ describe('PixelPerfectCamera', () => {
     expect(camera.getNormalizedDeviceCoordinates(0, 180, 2).x).toBeLessThan(-1)
   })
 
+  it('converts bottom-origin viewport bars to a top-origin pointer inset', () => {
+    const camera = new PixelPerfectCamera({ viewSize: 240, viewWidth: 320 })
+    camera.setDrawingBufferSize(640, 481)
+
+    expect(camera.viewport.toArray()).toEqual([0, 0, 640, 480])
+    expect(camera.getNormalizedDeviceCoordinates(320, 1).y).toBe(1)
+    expect(camera.getNormalizedDeviceCoordinates(320, 481).y).toBe(-1)
+    expect(camera.getNormalizedDeviceCoordinates(320, 0).y).toBeGreaterThan(1)
+  })
+
   it('explicitly snaps camera pans without mutating depth', () => {
     const camera = new PixelPerfectCamera({ viewSize: 240 })
     camera.setDrawingBufferSize(1280, 720)

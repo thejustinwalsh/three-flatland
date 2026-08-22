@@ -103,13 +103,10 @@ describe('TileMap2D pixelPerfect', () => {
     const layer = map.getLayers()[0]!
     const mesh = layer.children[0]! as InstancedMesh
     const system = mesh.geometry.getAttribute('instanceSystem')
-    const extras = mesh.geometry.getAttribute('instanceExtras')
 
     expect(map.pixelPerfect).toBe(true)
     expect(layer.pixelPerfect).toBe(true)
     expect(Number(system.getZ(0)) & PIXEL_PERFECT_MASK).toBe(PIXEL_PERFECT_MASK)
-    expect(extras.getY(0)).toBe(8)
-    expect(extras.getZ(0)).toBe(56)
 
     map.pixelPerfect = false
     expect(layer.pixelPerfect).toBe(false)

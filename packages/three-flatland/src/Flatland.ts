@@ -115,7 +115,9 @@ export interface FlatlandOptions {
   /**
    * Use a managed {@link PixelPerfectCamera} when no custom camera is
    * supplied. The camera follows the physical drawing buffer or render target
-   * and selects an integer world-to-pixel scale. Default: `true`.
+   * and selects an integer world-to-pixel scale. This camera-only switch does
+   * not change sprite or tile snapping; use {@link FlatlandConfig} or
+   * {@link RenderingConfig} to change the rendering preset. Default: `true`.
    */
   pixelPerfect?: boolean
   /** Orthographic view size in pixels (default: 400) */
@@ -300,6 +302,11 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Whether the render pipeline was auto-initialized (vs. manual setRenderPipeline) */
   private _autoRenderPipeline = false
+
+  /** Original auto-pass sizing method while Flatland supplies target dimensions. */
+  private _autoPassNode: PassNode | null = null
+  private _autoPassOriginalSetSize: PassNode['setSize'] | null = null
+  private _autoPassWrappedSetSize: PassNode['setSize'] | null = null
 
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
@@ -844,6 +851,7 @@ export class Flatland extends Group implements WorldProvider {
    * false when a manual pipeline writes working-space color to a render target.
    */
   setRenderPipeline(renderPipeline: RenderPipeline, passNode: PassNode): void {
+    this._restoreAutoPassSize()
     this._renderPipeline = renderPipeline
     this._passNode = passNode
     this._outputNode = renderPipeline.outputNode
@@ -855,6 +863,7 @@ export class Flatland extends Group implements WorldProvider {
    * Clear the render pipeline setup.
    */
   clearRenderPipeline(): void {
+    this._restoreAutoPassSize()
     this._renderPipeline = null
     this._passNode = null
     this._outputNode = null
@@ -1609,6 +1618,7 @@ export class Flatland extends Group implements WorldProvider {
     if (!this._renderPipeline && this._passes.length > 0) {
       const rp = new RenderPipeline(renderer)
       const scenePass = pass(this.scene, this._camera)
+      this._installAutoPassSize(scenePass)
       this._renderPipeline = rp
       this._passNode = scenePass
       this._autoRenderPipeline = true
@@ -1668,6 +1678,39 @@ export class Flatland extends Group implements WorldProvider {
     ;(this._passNode as PassNode & { setViewport(viewport: Vector4 | null): void }).setViewport(null)
     this._passViewportUvScale.value.set(1, 1)
     this._passViewportUvOffset.value.set(0, 0)
+  }
+
+  /**
+   * PassNode normally allocates from the canvas drawing buffer even while the
+   * renderer targets an offscreen surface. Keep its public `setSize` contract,
+   * but substitute Flatland's target dimensions for the auto-owned pass.
+   */
+  private _installAutoPassSize(passNode: PassNode): void {
+    this._restoreAutoPassSize()
+    const original = passNode.setSize
+    const wrapped: PassNode['setSize'] = (width, height) => {
+      const target = this._renderTarget
+      original.call(passNode, target?.width ?? width, target?.height ?? height)
+    }
+    this._autoPassNode = passNode
+    this._autoPassOriginalSetSize = original
+    this._autoPassWrappedSetSize = wrapped
+    passNode.setSize = wrapped
+  }
+
+  /** Restore a pass before it becomes user-owned or is disposed. */
+  private _restoreAutoPassSize(): void {
+    if (
+      this._autoPassNode &&
+      this._autoPassOriginalSetSize &&
+      this._autoPassWrappedSetSize &&
+      this._autoPassNode.setSize === this._autoPassWrappedSetSize
+    ) {
+      this._autoPassNode.setSize = this._autoPassOriginalSetSize
+    }
+    this._autoPassNode = null
+    this._autoPassOriginalSetSize = null
+    this._autoPassWrappedSetSize = null
   }
 
   /** Keep the pipeline's final color transform aligned with its destination. */
@@ -1885,6 +1928,7 @@ export class Flatland extends Group implements WorldProvider {
 
     // Dispose render pipeline
     if (this._renderPipeline) {
+      this._restoreAutoPassSize()
       this._renderPipeline.dispose?.()
       this._renderPipeline = null
     }

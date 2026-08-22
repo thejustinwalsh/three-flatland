@@ -148,6 +148,8 @@ RenderingConfig.options = 'smooth';
 
 An individual sprite or tilemap can opt out with `pixelPerfect: false`. This is also the correct setting for sprites rendered through a perspective camera: their screen-space scale changes with depth, so a single scene-wide pixel grid cannot remain stable.
 
+`new Flatland({ pixelPerfect: false })` switches only Flatland's managed camera. It deliberately does not override independently configured sprites or tilemaps. Use `FlatlandConfig.options = 'smooth'` when the whole rendering hierarchy should opt out together.
+
 ## Limitations
 
 Perspective scale changes with depth, so one camera cannot keep every plane on a single pixel grid. `PixelPerfectCamera` is orthographic. Its zoom is intentionally quantized; switch presentation to `smooth` for continuous eased zoom.

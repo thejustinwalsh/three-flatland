@@ -184,9 +184,10 @@ export class PixelPerfectCamera extends OrthographicCamera {
     // Pointer math uses the exact logical boundary. The renderer-only ULP
     // nudge in getLogicalViewport must not move the event coordinate system.
     const logicalViewport = this._logicalViewport.copy(this.viewport).divideScalar(pixelRatio)
+    const topInset = (this._drawingBufferHeight - this.viewport.y - this.viewport.height) / pixelRatio
     return target.set(
       ((x - logicalViewport.x) / logicalViewport.z) * 2 - 1,
-      -((y - logicalViewport.y) / logicalViewport.w) * 2 + 1
+      -((y - topInset) / logicalViewport.w) * 2 + 1
     )
   }
 
