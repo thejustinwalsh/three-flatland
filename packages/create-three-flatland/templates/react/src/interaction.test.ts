@@ -1,6 +1,22 @@
-import { describe, expect, it } from 'vitest'
-import { vi } from 'vitest'
-import { approach, removeStartupLoader, SPRITE_SCALE, SPRITE_TINT, targetScale, tintFor } from './interaction'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  approach,
+  isTerminalRendererFallback,
+  removeStartupLoader,
+  SPRITE_SCALE,
+  SPRITE_TINT,
+  targetScale,
+  tintFor,
+} from './interaction'
+
+describe('isTerminalRendererFallback', () => {
+  it('distinguishes visible failure DOM from R3F canvas fallback content', () => {
+    expect(isTerminalRendererFallback({ parentElement: { tagName: 'DIV' } })).toBe(true)
+    expect(isTerminalRendererFallback({ parentElement: { tagName: 'CANVAS' } })).toBe(false)
+    expect(isTerminalRendererFallback({ parentElement: null })).toBe(false)
+    expect(isTerminalRendererFallback(null)).toBe(false)
+  })
+})
 
 describe('removeStartupLoader', () => {
   it('removes the static status when the renderer fallback takes over', () => {

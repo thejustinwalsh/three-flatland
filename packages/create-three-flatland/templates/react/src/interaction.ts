@@ -30,6 +30,16 @@ export interface PointerState {
   pressed: boolean
 }
 
+interface RendererFallbackElement {
+  parentElement: { tagName: string } | null
+}
+
+/** R3F mounts Canvas fallback children inside the canvas on healthy starts. */
+export function isTerminalRendererFallback(element: RendererFallbackElement | null): boolean {
+  const parent = element?.parentElement
+  return parent !== null && parent !== undefined && parent.tagName !== 'CANVAS'
+}
+
 /** Remove the static startup status once a terminal renderer state owns it. */
 export function removeStartupLoader(loader: { remove(): void } | null | undefined): void {
   loader?.remove()

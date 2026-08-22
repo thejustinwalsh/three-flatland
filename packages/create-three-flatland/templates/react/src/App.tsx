@@ -6,7 +6,14 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
 // Pure scene maths, extracted so it can be unit-tested without a GPU or a
 // React renderer. See src/interaction.test.ts — `npm run test`.
-import { approach, removeStartupLoader, SPRITE_SCALE, targetScale, tintFor } from './interaction'
+import {
+  approach,
+  isTerminalRendererFallback,
+  removeStartupLoader,
+  SPRITE_SCALE,
+  targetScale,
+  tintFor,
+} from './interaction'
 
 // R3F requires registration before Flatland classes appear as JSX elements.
 extend({ Flatland, Sprite2D })
@@ -103,12 +110,22 @@ export default function App() {
 
 /** Replace the startup status instead of leaving two live announcements. */
 function RendererUnavailable() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [isTerminal, setIsTerminal] = useState(false)
+
   useLayoutEffect(() => {
-    removeStartupLoader(document.querySelector<HTMLElement>('#loader'))
+    const terminal = isTerminalRendererFallback(ref.current)
+    setIsTerminal(terminal)
+    if (terminal) removeStartupLoader(document.querySelector<HTMLElement>('#loader'))
   }, [])
 
   return (
-    <div className="renderer-unavailable" role="status">
+    <div
+      ref={ref}
+      className="renderer-unavailable"
+      role={isTerminal ? 'status' : undefined}
+      aria-hidden={isTerminal ? undefined : true}
+    >
       This app could not initialize rendering.
     </div>
   )
