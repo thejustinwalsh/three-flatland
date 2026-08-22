@@ -25,7 +25,10 @@ function applySetting(
   base: Readonly<Required<RenderingOptions>>,
   setting: RenderingSetting
 ): Required<RenderingOptions> {
-  return typeof setting === 'string' ? { ...RENDERING_PRESETS[setting] } : { ...base, ...setting }
+  if (typeof setting !== 'string') return { ...base, ...setting }
+  const preset = RENDERING_PRESETS[setting]
+  if (!preset) throw new TypeError(`three-flatland: unknown rendering preset "${setting}"`)
+  return { ...preset }
 }
 
 /**

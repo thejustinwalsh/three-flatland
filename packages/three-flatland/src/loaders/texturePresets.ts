@@ -80,7 +80,14 @@ export class TextureConfig {
  * Apply texture preset or custom options to a texture.
  */
 export function applyTextureOptions(texture: Texture, preset: TexturePreset | TextureOptions): void {
-  const opts = typeof preset === 'string' ? TEXTURE_PRESETS[preset] : preset
+  let opts: TextureOptions
+  if (typeof preset === 'string') {
+    const namedPreset = TEXTURE_PRESETS[preset]
+    if (!namedPreset) throw new TypeError(`three-flatland: unknown texture preset "${preset}"`)
+    opts = namedPreset
+  } else {
+    opts = preset
+  }
 
   if (opts.minFilter !== undefined) texture.minFilter = opts.minFilter
   if (opts.magFilter !== undefined) texture.magFilter = opts.magFilter

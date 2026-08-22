@@ -100,4 +100,13 @@ describe('FlatlandConfig hierarchy', () => {
     expect(new Sprite2D().pixelPerfect).toBe(false)
     expect(resolveTextureOptions()).toBe('smooth')
   })
+
+  it('rejects unknown root and rendering presets at runtime', () => {
+    FlatlandConfig.options = 'pixell-art' as never
+    expect(() => FlatlandConfig.resolved).toThrow('unknown Flatland preset "pixell-art"')
+
+    FlatlandConfig.reset()
+    RenderingConfig.options = 'pixell-art' as never
+    expect(() => RenderingConfig.resolved).toThrow('unknown rendering preset "pixell-art"')
+  })
 })
