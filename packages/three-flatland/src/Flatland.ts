@@ -59,6 +59,7 @@ import { PERF_TRACK } from './debug/perf-track'
 import type { DevtoolsProvider } from './debug/DevtoolsProvider'
 import { beginDebugPass, endDebugPass } from './debug/debug-sink'
 import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
+import { getRendererViewportDepthRange, setRendererViewport } from './cameras/rendererViewport'
 import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
@@ -122,6 +123,12 @@ export interface FlatlandOptions {
   pixelPerfect?: boolean
   /** Orthographic view size in pixels (default: 400) */
   viewSize?: number
+  /**
+   * Optional fixed horizontal design extent for the managed pixel camera.
+   * Together with `viewSize`, this enables exact letterbox/pillarbox framing.
+   * Omit it to reveal additional world space and fill the available output.
+   */
+  viewWidth?: number
   /** Clear before render (default: true) */
   autoClear?: boolean
   /** Background color */
@@ -244,6 +251,9 @@ export class Flatland extends Group implements WorldProvider {
   /** Orthographic view size */
   private _viewSize: number
 
+  /** Optional fixed horizontal design extent for the pixel camera. */
+  private _viewWidth: number | undefined
+
   /** Whether Flatland's managed camera uses integer pixel scaling. */
   private _pixelPerfect: boolean
 
@@ -316,6 +326,9 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Saved output viewport while a PixelPerfectCamera owns one render. */
   private _savedViewport = new Vector4()
+
+  /** Saved WebGPU viewport depth range omitted by Three's Vector4 getter. */
+  private _savedViewportDepthRange = new Vector2(0, 1)
 
   /** Reusable logical canvas viewport derived from physical camera pixels. */
   private _drawingBufferViewport = new Vector4()
@@ -390,6 +403,7 @@ export class Flatland extends Group implements WorldProvider {
     const fixedAspect = options.aspect
     const hasFixedAspect = typeof fixedAspect === 'number' && Number.isFinite(fixedAspect) && fixedAspect > 0
     this._viewSize = this._isValidViewSize(options.viewSize) ? options.viewSize : 400
+    this._viewWidth = this._isValidViewSize(options.viewWidth) ? options.viewWidth : undefined
     this._aspect = hasFixedAspect ? fixedAspect : 1
     this._autoAspect = !hasFixedAspect
     const classOptions = (this.constructor as typeof Flatland).options
@@ -463,7 +477,7 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _createCamera(): OrthographicCamera {
     if (this._pixelPerfect) {
-      const camera = new PixelPerfectCamera({ viewSize: this._viewSize })
+      const camera = new PixelPerfectCamera({ viewSize: this._viewSize, viewWidth: this._viewWidth })
       camera.setDrawingBufferSize(this._viewSize * this._aspect, this._viewSize)
       _flatlandInternalCameras.set(camera, this)
       return camera
@@ -486,6 +500,7 @@ export class Flatland extends Group implements WorldProvider {
 
     if (this._camera instanceof PixelPerfectCamera) {
       this._camera.viewSize = this._viewSize
+      this._camera.viewWidth = this._viewWidth
       const hasSurface = this._isValidSize(this._lastSyncedWidth, this._lastSyncedHeight)
       this._camera.setDrawingBufferSize(
         hasSurface ? this._lastSyncedWidth : this._viewSize * this._aspect,
@@ -591,6 +606,18 @@ export class Flatland extends Group implements WorldProvider {
   set viewSize(value: number) {
     if (!this._isValidViewSize(value)) return
     this._viewSize = value
+    this._updateCameraFrustum()
+  }
+
+  /** Fixed horizontal design extent, or undefined for fill-at-integer-scale. */
+  get viewWidth(): number | undefined {
+    return this._viewWidth
+  }
+
+  set viewWidth(value: number | undefined) {
+    if (value !== undefined && !this._isValidViewSize(value)) return
+    if (value === this._viewWidth) return
+    this._viewWidth = value
     this._updateCameraFrustum()
   }
 
@@ -1530,17 +1557,17 @@ export class Flatland extends Group implements WorldProvider {
     // viewports already use physical texels. Restore user renderer state after
     // this Flatland render completes.
     const restorePixelViewport = this._applyPixelViewport(renderer)
-
-    // Bind Flatland's destination for both direct and post-processed
-    // rendering. RenderPipeline draws its final full-screen quad into the
-    // renderer's current target, so it does not manage this state itself.
-    const currentRenderTarget = renderer.getRenderTarget()
-    const renderTargetChanged = currentRenderTarget !== this._renderTarget
-    if (renderTargetChanged) {
-      renderer.setRenderTarget(this._renderTarget)
-    }
+    let currentRenderTarget: RenderTarget | null | undefined
+    let renderTargetChanged = false
 
     try {
+      // Bind Flatland's destination for both direct and post-processed
+      // rendering. Keep target lookup/binding inside the restoration boundary:
+      // a backend error here must not leak Flatland's pixel viewport.
+      currentRenderTarget = renderer.getRenderTarget()
+      renderTargetChanged = currentRenderTarget !== this._renderTarget
+      if (renderTargetChanged) renderer.setRenderTarget(this._renderTarget)
+
       if (this._renderPipeline && this._renderPipelineEnabled) {
         beginDebugPass('main.post', renderer)
         try {
@@ -1570,7 +1597,7 @@ export class Flatland extends Group implements WorldProvider {
         }
       }
     } finally {
-      if (renderTargetChanged) {
+      if (renderTargetChanged && currentRenderTarget !== undefined) {
         renderer.setRenderTarget(currentRenderTarget)
       }
       restorePixelViewport?.()
@@ -1687,10 +1714,10 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _installAutoPassSize(passNode: PassNode): void {
     this._restoreAutoPassSize()
-    const original = passNode.setSize
+    const original = passNode.setSize.bind(passNode)
     const wrapped: PassNode['setSize'] = (width, height) => {
       const target = this._renderTarget
-      original.call(passNode, target?.width ?? width, target?.height ?? height)
+      original(target?.width ?? width, target?.height ?? height)
     }
     this._autoPassNode = passNode
     this._autoPassOriginalSetSize = original
@@ -1743,10 +1770,15 @@ export class Flatland extends Group implements WorldProvider {
     }
 
     renderer.getViewport(this._savedViewport)
+    getRendererViewportDepthRange(renderer, this._savedViewportDepthRange)
     const pixelRatio = renderer.getPixelRatio()
-    renderer.setViewport(this._camera.getLogicalViewport(pixelRatio, this._drawingBufferViewport))
+    setRendererViewport(
+      renderer,
+      this._camera.getLogicalViewport(pixelRatio, this._drawingBufferViewport),
+      this._savedViewportDepthRange
+    )
     return () => {
-      renderer.setViewport(this._savedViewport)
+      setRendererViewport(renderer, this._savedViewport, this._savedViewportDepthRange)
     }
   }
 

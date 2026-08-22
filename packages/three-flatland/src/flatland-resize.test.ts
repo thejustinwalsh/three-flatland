@@ -143,6 +143,22 @@ describe('Flatland — pixel-perfect camera', () => {
     expect(viewport.toArray()).toEqual([0, 0, 640, 360])
   })
 
+  it('letterboxes a fixed two-dimensional design extent', () => {
+    const flatland = new Flatland({ viewSize: 180, viewWidth: 320 })
+    const { renderer } = mockRenderer(800, 720)
+
+    flatland.render(renderer)
+
+    const camera = flatland.camera as PixelPerfectCamera
+    expect(flatland.viewWidth).toBe(320)
+    expect(camera.resolvedPixelScale).toBe(2)
+    expect(camera.viewport.toArray()).toEqual([80, 180, 640, 360])
+
+    flatland.viewWidth = undefined
+    flatland.render(renderer)
+    expect(camera.viewport.toArray()).toEqual([0, 0, 800, 720])
+  })
+
   it('uses render-target texels without applying renderer DPR', () => {
     const flatland = new Flatland({ pixelPerfect: true, viewSize: 128 })
     const { renderer, renderedViewports } = mockRenderer(640, 360, 2)
@@ -354,9 +370,9 @@ describe('Flatland — automatic aspect sync in render()', () => {
     state.width = 1920
     state.height = 1080
     flatland.render(renderer)
-    // 800 authored rows fit at 1×, so the camera centers a 1920 × 800
-    // physical viewport instead of stretching those rows across 1080 pixels.
-    expect(flatland.resolvedAspect).toBeCloseTo(1920 / 800)
+    // viewSize is a minimum when no viewWidth is authored. The camera keeps
+    // its 1× scale and reveals the full 1920 × 1080 physical output.
+    expect(flatland.resolvedAspect).toBeCloseTo(1920 / 1080)
   })
 
   it('does not latch a bad aspect from a 0x0 first commit (R3F pre-measure)', () => {
@@ -545,10 +561,10 @@ describe('Flatland — LightEffect surface sizing', () => {
 
     flatland.render(renderer)
 
-    // DPR 2 produces a 2560 × 1440 framebuffer. The 400-row design
-    // resolves to a centered 2559 × 1200 viewport at 3×; the effect's
-    // own half-resolution resources do not alter that camera framing.
-    expect(flatland.resolvedAspect).toBeCloseTo(2559 / 1200)
+    // DPR 2 produces a 2560 × 1440 framebuffer. At 3×, the camera uses the
+    // largest full-frame integer viewport (2559 × 1440); the effect's own
+    // half-resolution resources do not alter that camera framing.
+    expect(flatland.resolvedAspect).toBeCloseTo(2559 / 1440)
     expect(events).toEqual(['init', 'resize:1280x720', 'update'])
   })
 

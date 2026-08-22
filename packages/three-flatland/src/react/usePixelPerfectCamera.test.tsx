@@ -16,7 +16,9 @@ describe('usePixelPerfectCamera', () => {
     const viewport = new Vector4(0, 0, 640, 360)
     const renderer = {
       render() {},
-      setSize() {},
+      setSize(width: number, height: number) {
+        viewport.set(0, 0, width, height)
+      },
       setPixelRatio() {},
       getPixelRatio: () => 2,
       getViewport: (target: Vector4) => target.copy(viewport),
@@ -78,7 +80,7 @@ describe('usePixelPerfectCamera', () => {
       left: 0,
     })
     expect(measuredLargerViewport.width).toBe(533)
-    expect(measuredLargerViewport.height).toBe(240)
+    expect(measuredLargerViewport.height).toBe(300)
     expect(measuredLargerViewport.factor).toBe(1.5)
     const setFromCamera = vi.spyOn(mountedState.raycaster, 'setFromCamera')
     mountedState.events.compute?.({ offsetX: 0.5, offsetY: 180 } as PointerEvent, mountedState)
@@ -101,7 +103,7 @@ describe('usePixelPerfectCamera', () => {
     expect(camera!.resolvedPixelScale).toBe(1)
     expect(viewport.clone().multiplyScalar(2).floor().toArray()).toEqual(camera!.viewport.toArray())
     expect(rootStore.getState().viewport.width).toBe(1280)
-    expect(rootStore.getState().viewport.height).toBe(400)
+    expect(rootStore.getState().viewport.height).toBe(720)
     expect(rootStore.getState().viewport.factor).toBe(0.5)
 
     await act(async () => {
@@ -110,6 +112,15 @@ describe('usePixelPerfectCamera', () => {
     })
     expect(camera!.drawingBufferWidth).toBe(1600)
     expect(camera!.drawingBufferHeight).toBe(900)
+    expect(viewport.clone().multiplyScalar(2).floor().toArray()).toEqual(camera!.viewport.toArray())
+
+    // Three resets to a full viewport during a surface resize. The earliest
+    // R3F frame callback must restore the camera viewport before drawing.
+    viewport.set(0, 0, 800, 450)
+    await act(async () => {
+      rootStore.getState().advance(1, true)
+      await Promise.resolve()
+    })
     expect(viewport.clone().multiplyScalar(2).floor().toArray()).toEqual(camera!.viewport.toArray())
 
     await act(async () => {
@@ -183,16 +194,19 @@ describe('usePixelPerfectCamera', () => {
   it('round-trips a non-dyadic DPR viewport without losing a physical pixel', async () => {
     vi.stubGlobal('requestAnimationFrame', () => 0)
     vi.stubGlobal('cancelAnimationFrame', () => {})
-    const viewport = new Vector4(0, 0, 640, 360)
+    const viewport = Object.assign(new Vector4(0, 0, 640, 360), { minDepth: 0.2, maxDepth: 0.8 })
     const renderer = {
+      _canvasTarget: { _viewport: viewport },
       render() {},
       setSize() {},
       setPixelRatio() {},
       getPixelRatio: () => 1.3,
       getViewport: (target: Vector4) => target.copy(viewport),
-      setViewport: (x: number | Vector4, y?: number, width?: number, height?: number) => {
+      setViewport: (x: number | Vector4, y?: number, width?: number, height?: number, minDepth = 0, maxDepth = 1) => {
         if (x instanceof Vector4) viewport.copy(x)
         else viewport.set(x, y!, width!, height!)
+        viewport.minDepth = minDepth
+        viewport.maxDepth = maxDepth
       },
       hasInitialized: () => true,
     }
@@ -203,10 +217,11 @@ describe('usePixelPerfectCamera', () => {
       frameloop: 'never',
       size: { width: 640, height: 360, top: 0, left: 0 },
     })
+    const rootStore = root.render(null)
 
     let camera: PixelPerfectCamera | null = null
     function Probe() {
-      camera = usePixelPerfectCamera({ viewSize: 200 })
+      camera = usePixelPerfectCamera({ viewSize: 200, viewWidth: 320 })
       return null
     }
 
@@ -215,12 +230,21 @@ describe('usePixelPerfectCamera', () => {
       await Promise.resolve()
     })
 
-    expect(camera!.viewport.toArray()).toEqual([0, 34, 832, 400])
+    expect(camera!.viewport.toArray()).toEqual([96, 34, 640, 400])
+    expect(viewport.clone().multiplyScalar(1.3).floor().toArray()).toEqual(camera!.viewport.toArray())
+    expect([viewport.minDepth, viewport.maxDepth]).toEqual([0.2, 0.8])
+
+    viewport.set(0, 0, 640, 360)
+    await act(async () => {
+      rootStore.getState().advance(1, true)
+      await Promise.resolve()
+    })
     expect(viewport.clone().multiplyScalar(1.3).floor().toArray()).toEqual(camera!.viewport.toArray())
 
     await act(async () => {
       root.unmount()
       await Promise.resolve()
     })
+    expect([viewport.minDepth, viewport.maxDepth]).toEqual([0.2, 0.8])
   })
 })

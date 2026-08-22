@@ -26,7 +26,17 @@ describe('PixelPerfectCamera', () => {
     expect(camera.viewport.toArray()).toEqual([1, 0, 1278, 720])
   })
 
-  it('letterboxes leftover physical pixels instead of revealing fractional world space', () => {
+  it('expands a one-axis minimum to fill the available integer-pixel viewport', () => {
+    const camera = new PixelPerfectCamera({ viewSize: 400 })
+    camera.setDrawingBufferSize(1280, 720)
+
+    expect(camera.resolvedPixelScale).toBe(1)
+    expect(camera.top - camera.bottom).toBe(720)
+    expect(camera.right - camera.left).toBe(1280)
+    expect(camera.viewport.toArray()).toEqual([0, 0, 1280, 720])
+  })
+
+  it('letterboxes only sub-scale leftover pixels for a one-axis minimum', () => {
     const camera = new PixelPerfectCamera({ viewSize: 400 })
     camera.setDrawingBufferSize(1281, 801)
 
@@ -53,6 +63,16 @@ describe('PixelPerfectCamera', () => {
     expect(camera.right - camera.left).toBe(320)
     expect(camera.top - camera.bottom).toBe(180)
     expect(camera.viewport.toArray()).toEqual([80, 180, 640, 360])
+  })
+
+  it('letterboxes a fixed two-dimensional design extent', () => {
+    const camera = new PixelPerfectCamera({ viewSize: 400, viewWidth: 640 })
+    camera.setDrawingBufferSize(1280, 720)
+
+    expect(camera.resolvedPixelScale).toBe(1)
+    expect(camera.right - camera.left).toBe(640)
+    expect(camera.top - camera.bottom).toBe(400)
+    expect(camera.viewport.toArray()).toEqual([320, 160, 640, 400])
   })
 
   it('uses physical viewport dimensions at HiDPI', () => {

@@ -11,8 +11,9 @@ export interface PixelPerfectCameraOptions {
    */
   viewSize?: number
   /**
-   * Optional minimum horizontal world span used together with `viewSize` for
-   * automatic scale-to-fit. Omit it when only vertical framing matters.
+   * Optional exact horizontal design extent used together with `viewSize` for
+   * automatic scale-to-fit. Omit it to reveal additional world space and fill
+   * the available output at an integer scale.
    */
   viewWidth?: number
   /**
@@ -112,7 +113,7 @@ export class PixelPerfectCamera extends OrthographicCamera {
     this._updatePixelProjection()
   }
 
-  /** Optional minimum horizontal world span used by automatic fitting. */
+  /** Optional exact horizontal design extent used by automatic fitting. */
   get viewWidth(): number | undefined {
     return this._viewWidth
   }
@@ -273,7 +274,10 @@ export class PixelPerfectCamera extends OrthographicCamera {
       this._viewWidth === undefined
         ? Math.floor(this._drawingBufferWidth / this._resolvedPixelScale) * this._resolvedPixelScale
         : Math.floor(this._viewWidth * this._resolvedPixelScale)
-    const desiredPhysicalHeight = Math.floor(this._viewSize * this._resolvedPixelScale)
+    const desiredPhysicalHeight =
+      this._viewWidth === undefined
+        ? Math.floor(this._drawingBufferHeight / this._resolvedPixelScale) * this._resolvedPixelScale
+        : Math.floor(this._viewSize * this._resolvedPixelScale)
     const viewportWidth = Math.max(1, Math.min(this._drawingBufferWidth, desiredPhysicalWidth))
     const viewportHeight = Math.max(1, Math.min(this._drawingBufferHeight, desiredPhysicalHeight))
     const viewportX = Math.floor((this._drawingBufferWidth - viewportWidth) / 2)

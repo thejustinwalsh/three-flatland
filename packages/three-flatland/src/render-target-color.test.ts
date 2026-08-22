@@ -42,12 +42,13 @@ function createPassNode() {
 
 function createRenderer(initialTarget: RenderTarget | null = null) {
   let currentTarget = initialTarget
-  const viewport = new Vector4(0, 0, 640, 360)
+  const viewport = Object.assign(new Vector4(0, 0, 640, 360), { minDepth: 0.2, maxDepth: 0.8 })
   const setRenderTarget = vi.fn((target: RenderTarget | null) => {
     currentTarget = target
   })
 
   const renderer = {
+    _canvasTarget: { _viewport: viewport },
     autoClear: true,
     getPixelRatio: () => 1,
     getRenderTarget: () => currentTarget,
@@ -57,10 +58,15 @@ function createRenderer(initialTarget: RenderTarget | null = null) {
     render: vi.fn((_scene: Scene, _camera: Camera) => undefined),
     setClearColor: vi.fn(),
     setRenderTarget,
-    setViewport: (value: Vector4) => viewport.copy(value),
+    setViewport: (x: number | Vector4, y?: number, width?: number, height?: number, minDepth = 0, maxDepth = 1) => {
+      if (x instanceof Vector4) viewport.copy(x)
+      else viewport.set(x, y!, width!, height!)
+      viewport.minDepth = minDepth
+      viewport.maxDepth = maxDepth
+    },
   } as unknown as WebGPURenderer
 
-  return { renderer, setRenderTarget }
+  return { renderer, setRenderTarget, viewport }
 }
 
 function markPipelineAutoManaged(flatland: Flatland): void {
@@ -163,6 +169,19 @@ describe('Flatland render-target color management', () => {
     expect(setRenderTarget.mock.calls).toEqual([[target], [previousTarget]])
     expect(beginDebugPass).toHaveBeenCalledWith('main.post', renderer)
     expect(endDebugPass).toHaveBeenCalledWith(renderer)
+  })
+
+  it('restores viewport coordinates and depth range when target lookup throws', () => {
+    const flatland = new Flatland()
+    const { renderer, viewport } = createRenderer()
+    renderer.getRenderTarget = () => {
+      throw new Error('target lookup failed')
+    }
+
+    expect(() => flatland.render(renderer)).toThrow('target lookup failed')
+    expect(viewport.toArray()).toEqual([0, 0, 640, 360])
+    expect(viewport.minDepth).toBe(0.2)
+    expect(viewport.maxDepth).toBe(0.8)
   })
 
   it('restores autoClear and the render target when direct rendering throws', () => {

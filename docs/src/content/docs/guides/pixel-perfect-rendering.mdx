@@ -20,7 +20,7 @@ No preset assignment is required. `FlatlandConfig.options` defaults to `'pixel-a
 
 ## Add the camera to an existing scene
 
-`PixelPerfectCamera` extends Three.js's `OrthographicCamera`. `viewSize` is the authored vertical resolution in world units; one world unit represents one source pixel.
+`PixelPerfectCamera` extends Three.js's `OrthographicCamera`. `viewSize` is the minimum visible vertical resolution in world units; one world unit represents one source pixel. With only `viewSize`, the camera reveals more world space as needed to fill the output at an integer scale.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -96,10 +96,15 @@ After a custom controller pans the camera, call `camera.snapPositionToPixelGrid(
 
 ## Choose the authored extent
 
-Add `viewWidth` when the whole design has a fixed width and height:
+Add `viewWidth` when the whole design has a fixed width and height. The camera then preserves that exact design extent and centers it with letterbox or pillarbox bars when the output shape does not match:
 
 ```typescript
 const camera = new PixelPerfectCamera({
+  viewSize: 180,
+  viewWidth: 320,
+});
+
+const flatland = new Flatland({
   viewSize: 180,
   viewWidth: 320,
 });
