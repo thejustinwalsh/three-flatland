@@ -6,6 +6,7 @@
 
 - Make the hierarchical `pixel-art` rendering preset the default for `Flatland`, `Sprite2D`, `AnimatedSprite2D`, and `TileMap2D`. Applications that require fractional presentation can set `FlatlandConfig.options = 'smooth'`, override `RenderingConfig`, or set `pixelPerfect: false` on an instance.
 - Default unconfigured Flatland render targets to sRGB output. Explicit target color spaces, including linear and HDR targets, remain untouched.
+- Treat `Flatland.resize()` dimensions as logical CSS pixels when called without a render target, applying renderer DPR to the camera, effects, and any target attached later. Calls made with a render target attached remain physical texels across target swaps. A later `resize()` call begins a new sizing session using the destination active at that time.
 
 Add `PixelPerfectCamera`, a no-argument-safe orthographic camera that maps world units to integer physical-pixel scales, fills the output by revealing additional world space when only `viewSize` is supplied, supports exact letterbox or pillarbox framing through `viewWidth`, preserves Three.js camera zoom through integer quantization, and exposes DPR-safe viewport and pointer helpers.
 

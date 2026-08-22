@@ -1820,9 +1820,12 @@ export class Flatland extends Group implements WorldProvider {
   /**
    * Resize the rendering area, taking manual control of the aspect ratio and
    * surface size (the automatic per-render sync is disabled from here on).
-   * Canvas dimensions are logical CSS pixels and are converted through the
-   * renderer's pixel ratio on the next render. Render-target dimensions are
-   * physical texels, matching `RenderTarget.setSize()`.
+   * The active destination fixes the authored unit for the whole manual-size
+   * session. With no render target attached, dimensions are logical CSS pixels
+   * and every later destination uses `width × renderer DPR`. With a render
+   * target attached, dimensions are physical texels and remain physical across
+   * later target swaps or a return to the canvas. Calling `resize()` again
+   * begins a new session using the destination active at that time.
    *
    * Zero, negative, or non-finite dimensions are ignored — a transient
    * unmeasured layout (R3F's first commit reports a 0×0 canvas) must
