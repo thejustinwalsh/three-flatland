@@ -513,9 +513,7 @@ export class Sprite2DMaterial extends EffectMaterial {
     const clipPosition = cameraProjectionMatrix.mul(modelViewMatrix.mul(positionLocal)).toVar('spriteClipPosition')
 
     If(readPixelPerfectFlag(), () => {
-      const pivotClip = cameraProjectionMatrix
-        .mul(modelViewMatrix.mul(spritePixelPivot))
-        .toVar('spritePivotClip')
+      const pivotClip = cameraProjectionMatrix.mul(modelViewMatrix.mul(spritePixelPivot)).toVar('spritePivotClip')
       If(pivotClip.w.greaterThan(0), () => {
         const pivotNdc = pivotClip.xy.div(pivotClip.w)
         const pivotPixels = pivotNdc.mul(0.5).add(0.5).mul(viewport.zw).add(viewport.xy)

@@ -60,11 +60,7 @@ describe('createFlatlandCompute', () => {
       viewport: { dpr: 1 },
     }
 
-    compute(
-      {} as never,
-      portalState as never,
-      parentState as never
-    )
+    compute({} as never, portalState as never, parentState as never)
 
     compute({} as never, portalState as never, parentState as never)
 
