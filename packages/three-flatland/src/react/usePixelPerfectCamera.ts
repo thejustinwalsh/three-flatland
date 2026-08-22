@@ -11,6 +11,17 @@ export interface UsePixelPerfectCameraOptions extends PixelPerfectCameraOptions 
   makeDefault?: boolean
 }
 
+/** Options for binding an existing pixel camera to an R3F root. */
+export interface UsePixelPerfectCameraBindingOptions {
+  /** Install the camera as the R3F root's default camera. Default: `true`. */
+  makeDefault?: boolean
+  /**
+   * Change this value when mutating external camera view settings outside the
+   * hook so R3F's derived viewport is synchronized in the same commit.
+   */
+  projectionKey?: unknown
+}
+
 /**
  * Create and resize a {@link PixelPerfectCamera} from R3F's CSS size and DPR.
  *
@@ -34,6 +45,33 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
     cameraRef.current = new PixelPerfectCamera(options)
   }
   const camera = cameraRef.current
+
+  useLayoutEffect(() => {
+    camera.viewSize = options.viewSize ?? 400
+    camera.viewWidth = options.viewWidth
+    camera.pixelScale = options.pixelScale ?? 'auto'
+    camera.near = options.near ?? 0.1
+    camera.far = options.far ?? 1000
+    camera.updateProjectionMatrix()
+  }, [camera, options.far, options.near, options.pixelScale, options.viewSize, options.viewWidth])
+
+  const projectionKey = `${options.viewSize ?? 400}:${options.viewWidth ?? ''}:${options.pixelScale ?? 'auto'}`
+  usePixelPerfectCameraBinding(camera, { makeDefault: options.makeDefault, projectionKey })
+  return camera
+}
+
+/**
+ * Bind an existing pixel camera—such as `flatland.camera`—to an R3F root.
+ *
+ * The hook owns only the R3F integration: physical surface sizing, default
+ * camera state, viewport metrics, renderer viewport, and letterbox-aware
+ * events. The caller retains ownership of the camera and its view settings.
+ * Passing `null` is supported so callback refs can attach after mount.
+ */
+export function usePixelPerfectCameraBinding(
+  camera: PixelPerfectCamera | null,
+  options: UsePixelPerfectCameraBindingOptions = {}
+): void {
   const measuredCameraRef = useRef<PixelPerfectCamera | null>(null)
   const logicalPixelViewportRef = useRef<Vector4 | null>(null)
   if (logicalPixelViewportRef.current === null) logicalPixelViewportRef.current = new Vector4()
@@ -50,21 +88,18 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
   const get = useThree((state) => state.get)
   const renderer = useThree((state) => state.renderer)
   const makeDefault = options.makeDefault ?? true
+  const projectionKey = options.projectionKey
   const surfaceSizeRef = useRef({ width, height })
   surfaceSizeRef.current = { width, height }
 
   useLayoutEffect(() => {
-    camera.viewSize = options.viewSize ?? 400
-    camera.viewWidth = options.viewWidth
-    camera.pixelScale = options.pixelScale ?? 'auto'
-    camera.near = options.near ?? 0.1
-    camera.far = options.far ?? 1000
+    if (!camera) return
     camera.setViewportSize(width, height, dpr)
     camera.updateProjectionMatrix()
-  }, [camera, dpr, height, options.far, options.near, options.pixelScale, options.viewSize, options.viewWidth, width])
+  }, [camera, dpr, height, projectionKey, width])
 
   useLayoutEffect(() => {
-    if (!makeDefault) return
+    if (!camera || !makeDefault) return
     const previous = get().camera
     set({ camera })
     return () => {
@@ -73,7 +108,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
   }, [camera, get, makeDefault, set])
 
   useLayoutEffect(() => {
-    if (!makeDefault) return
+    if (!camera || !makeDefault) return
     const previousGetCurrentViewport = get().viewport.getCurrentViewport
     const getCurrentViewport: typeof previousGetCurrentViewport = (
       requestedCamera = get().camera,
@@ -114,7 +149,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
   }, [camera, get, makeDefault, set])
 
   useLayoutEffect(() => {
-    if (!makeDefault) return
+    if (!camera || !makeDefault) return
     const worldWidth = camera.right - camera.left
     const worldHeight = camera.top - camera.bottom
     set((state) => ({
@@ -126,10 +161,10 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
         factor: camera.resolvedPixelScale / dpr,
       },
     }))
-  }, [camera, dpr, height, makeDefault, options.pixelScale, options.viewSize, options.viewWidth, set, width])
+  }, [camera, dpr, height, makeDefault, projectionKey, set, width])
 
   useLayoutEffect(() => {
-    if (!makeDefault) return
+    if (!camera || !makeDefault) return
     const previousViewport = renderer.getViewport(new Vector4())
     const previousDepthRange = getRendererViewportDepthRange(renderer, new Vector2())
     viewportDepthRange.copy(previousDepthRange)
@@ -158,38 +193,44 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
         setRendererViewport(renderer, previousViewport, previousDepthRange)
       }
     }
-  }, [makeDefault, renderer, viewportDepthRange])
+  }, [camera, makeDefault, renderer, viewportDepthRange])
 
   useLayoutEffect(() => {
-    if (!makeDefault) return
+    if (!camera || !makeDefault) return
     setRendererViewport(renderer, camera.getLogicalViewport(dpr, logicalPixelViewport), viewportDepthRange)
-  }, [
-    camera,
-    dpr,
-    height,
-    logicalPixelViewport,
-    makeDefault,
-    options.pixelScale,
-    options.viewSize,
-    options.viewWidth,
-    renderer,
-    viewportDepthRange,
-    width,
-  ])
+  }, [camera, dpr, height, logicalPixelViewport, makeDefault, projectionKey, renderer, viewportDepthRange, width])
 
   // R3F/Three reset the renderer viewport to the full canvas synchronously
   // during setSize/setPixelRatio. Rebind immediately before automatic render
   // so no resize frame can escape the integer pixel viewport.
   useFrame(
-    () => {
-      if (!makeDefault) return
+    (state) => {
+      if (!camera || !makeDefault) return
       setRendererViewport(renderer, camera.getLogicalViewport(dpr, logicalPixelViewport), viewportDepthRange)
+      const worldWidth = camera.right - camera.left
+      const worldHeight = camera.top - camera.bottom
+      const factor = camera.resolvedPixelScale / state.viewport.dpr
+      if (
+        state.viewport.width !== worldWidth ||
+        state.viewport.height !== worldHeight ||
+        state.viewport.factor !== factor
+      ) {
+        set((current) => ({
+          viewport: {
+            ...current.viewport,
+            width: worldWidth,
+            height: worldHeight,
+            aspect: worldWidth / worldHeight,
+            factor,
+          },
+        }))
+      }
     },
     { priority: Number.MIN_SAFE_INTEGER }
   )
 
   useLayoutEffect(() => {
-    if (!makeDefault) return
+    if (!camera || !makeDefault) return
 
     const previousCompute = get().events.compute
     const previousFilter = get().events.filter
@@ -221,6 +262,4 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
       setEvents(restore)
     }
   }, [camera, get, makeDefault, setEvents])
-
-  return camera
 }

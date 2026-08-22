@@ -3,7 +3,13 @@ import type { CSSProperties, RefObject } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { NoToneMapping, SRGBColorSpace } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
-import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
+import {
+  Flatland,
+  PixelPerfectCamera,
+  Sprite2D,
+  TextureLoader,
+  usePixelPerfectCameraBinding,
+} from 'three-flatland/react'
 // Pure scene maths, extracted so it can be unit-tested without a GPU or a
 // React renderer. See src/interaction.test.ts — `npm run test`.
 import {
@@ -33,21 +39,17 @@ function Scene() {
     return () => clearTimeout(t)
   }, [])
   const flatlandRef = useRef<Flatland>(null)
-  const set = useThree((s) => s.set)
+  const [flatlandCamera, setFlatlandCamera] = useState<PixelPerfectCamera | null>(null)
+  usePixelPerfectCameraBinding(flatlandCamera)
 
-  // Flatland renders to the screen with its own camera, so hand that camera to
-  // R3F as the default — pointer events then raycast through the same object
-  // Flatland draws with. A callback ref, so it re-runs on StrictMode remount.
-  const attachFlatland = useCallback(
-    (instance: Flatland | null) => {
-      flatlandRef.current = instance
-      if (!instance) return
-      // `manual` is read by R3F but not declared on three's camera type.
-      ;(instance.camera as typeof instance.camera & { manual?: boolean }).manual = true
-      set({ camera: instance.camera })
-    },
-    [set]
-  )
+  // Flatland renders with its own camera. Bind that same camera to R3F so its
+  // viewport metrics and pointer events exclude letterbox/pillarbox bars too.
+  // A callback ref keeps the binding correct through StrictMode remounts.
+  const attachFlatland = useCallback((instance: Flatland | null) => {
+    flatlandRef.current = instance
+    const camera = instance?.camera
+    setFlatlandCamera(camera instanceof PixelPerfectCamera ? camera : null)
+  }, [])
   const spriteRef = useRef<Sprite2D>(null)
   const renderer = useThree((s) => s.renderer as WebGPURenderer)
   const [hovered, setHovered] = useState(false)

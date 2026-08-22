@@ -12,5 +12,5 @@ export { attachEffect, attachLighting } from './attach'
 export { createFlatlandCompute } from './flatlandEvents'
 
 // Camera integration
-export { usePixelPerfectCamera } from './usePixelPerfectCamera'
-export type { UsePixelPerfectCameraOptions } from './usePixelPerfectCamera'
+export { usePixelPerfectCamera, usePixelPerfectCameraBinding } from './usePixelPerfectCamera'
+export type { UsePixelPerfectCameraOptions, UsePixelPerfectCameraBindingOptions } from './usePixelPerfectCamera'
