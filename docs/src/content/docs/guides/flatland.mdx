@@ -160,6 +160,8 @@ const indicator = new Sprite2D({ texture, lit: false }) // always full brightnes
 
 `resolutionScale` belongs to the effect that owns the surface-dependent resources. A value of `0.5` receives half-width and half-height dimensions in `LightEffect.resize()`, reducing area to one quarter while leaving camera framing, canvas resolution, renderer DPR, and logical viewport uniforms unchanged. Change Three.js `renderer.setPixelRatio()` or R3F `<Canvas dpr={...}>` instead when the entire frame should render at a lower resolution.
 
+Flatland owns an attached effect's lifecycle. Replacing the active effect or calling `setLighting(null)` disposes its GPU resources before detaching it. The effect instance can be attached again and will receive a fresh `init → resize → update` sequence, but effect-owned GPU resource handles must not be used while it is detached.
+
 See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types, and custom effects.
 
 ## Render Loop

@@ -930,6 +930,12 @@ export class Flatland extends Group implements WorldProvider {
    * Set the lighting effect for this Flatland instance.
    * The LightEffect produces a ColorTransformFn that is applied to all lit sprites.
    *
+   * Flatland owns the active effect's lifecycle while attached. Replacing it
+   * or passing `null` calls `dispose()` before detachment so GPU resources are
+   * released promptly. The effect instance remains reusable and will receive
+   * a fresh `init → resize → update` sequence when reattached; callers should
+   * not use effect-owned GPU resource handles while the effect is detached.
+   *
    * @param lightEffect - LightEffect instance (or null to disable lighting)
    * @returns this (for chaining)
    *
