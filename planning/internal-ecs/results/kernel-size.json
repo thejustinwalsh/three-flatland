@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "685d8e0f80707ea96889d89eff3fedd928bd78f052dc2a3a4848785a0b112683",
+  "harnessSha256": "605dcc094e02b0a536c364b081d832883d487e4def144bc47d20dd1118260f72",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -12,6 +12,7 @@
     "fixtures/koota-size-entry.ts",
     "fixtures/signature-persistent-size-entry.ts",
     "fixtures/sparse-persistent-size-entry.ts",
+    "provenance.ts",
     "measure-kernels-size.ts"
   ],
   "koota": "0.6.5",

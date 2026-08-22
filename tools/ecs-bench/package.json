@@ -30,6 +30,7 @@
       },
       "baseline:size": {
         "executor": "nx:run-commands",
+        "cache": false,
         "options": {
           "command": "node --experimental-strip-types src/measure-kernels-size.ts",
           "cwd": "{projectRoot}"

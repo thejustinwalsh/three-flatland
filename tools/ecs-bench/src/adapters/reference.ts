@@ -134,7 +134,7 @@ export function createReferenceAdapter(): EcsAdapter {
       let disposed = false
 
       const entityIndex = (entity: Entity): number => entity & indexMask
-      const entityGeneration = (entity: Entity): number => Math.floor(entity / 0x100000)
+      const entityGeneration = (entity: Entity): number => Math.floor(entity / indexStride)
       const packEntity = (index: number): Entity => {
         const entity = (generations[index] ?? 0) * indexStride + index
         if (!Number.isSafeInteger(entity)) throw new RangeError('Entity generation exhausted safe integer handles')

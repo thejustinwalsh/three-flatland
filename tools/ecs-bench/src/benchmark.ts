@@ -10,6 +10,7 @@ import { kootaAdapter } from './adapters/koota.ts'
 import { createAnchoredScanAdapter } from './candidates/anchored-scan.ts'
 import { createSignaturePersistentAdapter } from './candidates/signature-persistent.ts'
 import { createSparsePersistentAdapter } from './candidates/sparse-persistent.ts'
+import { gitMergeBase } from './provenance.ts'
 
 interface TimingResult {
   readonly checksum: number
@@ -309,6 +310,7 @@ const harnessSources = [
   'candidates/shared.ts',
   'candidates/signature-persistent.ts',
   'candidates/sparse-persistent.ts',
+  'provenance.ts',
   'benchmark.ts',
 ] as const
 const harnessHash = createHash('sha256')
@@ -323,7 +325,7 @@ const environment = {
   harnessSha256: harnessHash.digest('hex'),
   harnessSources,
   koota: kootaPackage.version,
-  mergeBase: execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim(),
+  mergeBase: gitMergeBase(),
   node: process.version,
   operatingSystem: `${platform()} ${release()}`,
   packageManager: rootPackage.packageManager,

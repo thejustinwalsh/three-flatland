@@ -1,10 +1,11 @@
-import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { brotliCompressSync, gzipSync } from 'node:zlib'
 import { build } from 'esbuild'
+import { gitMergeBase } from './provenance.ts'
 
 const require = createRequire(import.meta.url)
 
@@ -18,6 +19,7 @@ const harnessSources = [
   'fixtures/koota-size-entry.ts',
   'fixtures/signature-persistent-size-entry.ts',
   'fixtures/sparse-persistent-size-entry.ts',
+  'provenance.ts',
   'measure-kernels-size.ts',
 ] as const
 
@@ -37,19 +39,19 @@ function packageVersion(name: string): string {
 
 const artifacts = [
   {
-    entry: new URL('./fixtures/koota-size-entry.ts', import.meta.url).pathname,
+    entry: fileURLToPath(new URL('./fixtures/koota-size-entry.ts', import.meta.url)),
     name: 'Koota seven-import tree-shaken browser kernel',
   },
   {
-    entry: new URL('./fixtures/sparse-persistent-size-entry.ts', import.meta.url).pathname,
+    entry: fileURLToPath(new URL('./fixtures/sparse-persistent-size-entry.ts', import.meta.url)),
     name: 'Sparse membership with persistent selector views',
   },
   {
-    entry: new URL('./fixtures/signature-persistent-size-entry.ts', import.meta.url).pathname,
+    entry: fileURLToPath(new URL('./fixtures/signature-persistent-size-entry.ts', import.meta.url)),
     name: 'Signature membership with persistent selector views',
   },
   {
-    entry: new URL('./fixtures/anchored-scan-size-entry.ts', import.meta.url).pathname,
+    entry: fileURLToPath(new URL('./fixtures/anchored-scan-size-entry.ts', import.meta.url)),
     name: 'Sparse membership with anchored selector scans',
   },
 ] as const
@@ -85,7 +87,7 @@ const report = {
   harnessSources,
   koota: packageVersion('koota'),
   measurements,
-  mergeBase: execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim(),
+  mergeBase: gitMergeBase(),
   methodology: {
     brotli: 'node:zlib brotliCompressSync defaults',
     bundle: 'esbuild browser ESM bundle with minification and tree shaking',

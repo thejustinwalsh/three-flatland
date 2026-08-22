@@ -13,12 +13,12 @@ It is the best current balance for Flatland's bounded trait surface:
 
 - 68.5% less active heap than Koota at 60,000 entities,
 - 44.6% less active heap than the sparse-persistent candidate,
-- 59.9% lower median for the 60,000-entity lifecycle workload than Koota,
+- 59.3% lower median for the 60,000-entity lifecycle workload than Koota,
 - 99.8% lower median for repeated stable-query retrieval,
-- 57.4% lower median when actually iterating 16.384 million stable-query entities,
-- 62.4% lower median for 12,000 routing changes,
-- 87.8% lower median for 12,000 dynamic structural changes, and
-- 75.0% lower median for exclusive assignment lookup.
+- 57.5% lower median when actually iterating 16.384 million stable-query entities,
+- 61.3% lower median for 12,000 routing changes,
+- 87.3% lower median for 12,000 dynamic structural changes, and
+- 76.3% lower median for exclusive assignment lookup.
 
 The production runtime still has to pass the full `SystemSchedule`, allocation, representative
 consumer bundle, declaration, and live WebGPU gates. This decision chooses the implementation
@@ -102,16 +102,16 @@ Times are milliseconds per sample. Lower is better.
 
 | Workload                              | Koota median / p95 | Signature median / p95 | Median change |
 | ------------------------------------- | -----------------: | ---------------------: | ------------: |
-| Lifecycle, 1,000                      |      1.782 / 2.184 |          0.927 / 1.307 |        -48.0% |
-| Lifecycle, 16,384                     |    32.846 / 35.232 |        13.324 / 13.680 |        -59.4% |
-| Lifecycle, 60,000                     |  124.771 / 131.618 |        50.077 / 53.154 |        -59.9% |
-| Stable view retrieval, 1,000 calls    |      8.659 / 8.954 |          0.016 / 0.024 |        -99.8% |
-| Stable view iteration, 16.384M visits |    15.774 / 16.579 |          6.721 / 6.766 |        -57.4% |
-| Dynamic add/remove, 12,000            |    12.188 / 13.189 |          1.493 / 1.819 |        -87.8% |
-| Three routing writes, 12,000          |      4.221 / 4.563 |          1.586 / 1.654 |        -62.4% |
-| Exclusive assign/read/remove, 12,000  |      3.114 / 4.090 |          0.778 / 0.822 |        -75.0% |
+| Lifecycle, 1,000                      |      1.779 / 2.224 |          0.930 / 1.323 |        -47.7% |
+| Lifecycle, 16,384                     |    32.895 / 34.724 |        13.441 / 13.625 |        -59.1% |
+| Lifecycle, 60,000                     |  123.840 / 128.359 |        50.402 / 52.747 |        -59.3% |
+| Stable view retrieval, 1,000 calls    |      8.678 / 8.943 |          0.015 / 0.024 |        -99.8% |
+| Stable view iteration, 16.384M visits |    15.832 / 16.241 |          6.724 / 6.750 |        -57.5% |
+| Dynamic add/remove, 12,000            |    12.117 / 13.282 |          1.534 / 1.841 |        -87.3% |
+| Three routing writes, 12,000          |      4.189 / 4.609 |          1.620 / 1.704 |        -61.3% |
+| Exclusive assign/read/remove, 12,000  |      3.178 / 4.105 |          0.754 / 0.896 |        -76.3% |
 
-The direct-store loop showed a 2.5% faster signature median at 0.178 ms versus 0.182 ms. After setup,
+The direct-store loop showed a 3.0% faster signature median at 0.177 ms versus 0.183 ms. After setup,
 that loop performs only identical cached index and `number[]` operations—no adapter operation is in
 the timed region—so the disagreement is classified as sub-millisecond process/JIT noise rather
 than a kernel result. The end-to-end schedule gate remains authoritative.
@@ -122,23 +122,24 @@ Keep ordinary `number[]` fields for the production SoA stores.
 
 | Workload                       | `number[]` median / p95 | Fixed `Float64Array` | Stable growable wrapper |
 | ------------------------------ | ----------------------: | -------------------: | ----------------------: |
-| Sequential read/write          |           0.123 / 0.131 |        0.163 / 0.173 |           1.239 / 1.255 |
-| Random read/write              |           0.333 / 0.351 |        0.235 / 0.248 |           0.694 / 0.744 |
-| Growth and tail initialization |           0.242 / 0.334 |        0.260 / 0.342 |           0.323 / 1.084 |
+| Sequential read/write          |           0.109 / 0.212 |        0.342 / 0.388 |           1.403 / 1.596 |
+| Random read/write              |           0.360 / 0.393 |        0.246 / 0.257 |           0.761 / 0.778 |
+| Growth and tail initialization |           0.271 / 0.398 |        0.205 / 0.458 |           0.310 / 1.093 |
 
-The fixed typed array wins the random-access median in this run, while ordinary arrays win the
-sequential and growth medians. More importantly, `number[]` is the only direct indexed container
-whose captured reference sees later growth. A fixed typed array must replace its view, while a
-stable growable wrapper preserves only the wrapper and adds method-call indirection to every hot
-read and write. All 110 measured sample checksums match across strategies.
+The fixed typed array wins the random-access and growth medians in this run, while ordinary arrays
+win the sequential median. More importantly, `number[]` is the only direct indexed container whose
+captured reference sees later growth. A fixed typed array must replace its view, while the stable
+growable wrapper preserves its wrapper identity by replacing the backing buffer and adds
+method-call indirection to every hot read and write. All 110 measured sample checksums match across
+strategies.
 
 ## Candidate disposition
 
 ### Selected: signatures plus persistent views
 
-The signature candidate is 16.3% faster than sparse-persistent at the 60,000-entity lifecycle,
-8.4% faster for routing events, 11.0% faster for structural churn, and uses 44.6% less active heap.
-Sparse-persistent is 9.8% faster for exclusive assignment in this run, but signatures retain the
+The signature candidate is 15.5% faster than sparse-persistent at the 60,000-entity lifecycle,
+6.8% faster for routing events, 8.2% faster for structural churn, and uses 44.6% less active heap.
+Sparse-persistent is 2.7% faster for exclusive assignment in this run, but signatures retain the
 stronger result across the broader renderer-shaped workload. Multiple 32-bit words support dynamic
 effect traits without a fixed 32-trait ceiling.
 
@@ -151,7 +152,7 @@ paths make it the weaker overall kernel.
 ### Rejected: anchored scans
 
 Anchored scans are small and fast under structural churn, but the unchanged 16,384-entity query
-retrieval workload took 164.5 ms versus Koota's 8.7 ms, and full iteration took 170.5 ms versus
+retrieval workload took 165.6 ms versus Koota's 8.7 ms, and full iteration took 172.3 ms versus
 15.8 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
 
 ## Next gate

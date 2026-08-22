@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { arch, cpus, platform, release } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
+import { gitMergeBase } from './provenance.ts'
 
 interface TimingResult {
   readonly checksums: readonly number[]
@@ -24,6 +24,7 @@ interface Policy {
 }
 
 interface StableBufferGrowth {
+  readonly backingBufferReplaced: boolean
   readonly bufferGeneration: number
   readonly capacity: number
   readonly wrapperStable: boolean
@@ -55,6 +56,10 @@ class StableFloat64Buffer {
     return this.generation
   }
 
+  get backingBuffer(): Float64Array {
+    return this.buffer
+  }
+
   get(index: number): number {
     return this.buffer[index]!
   }
@@ -64,14 +69,15 @@ class StableFloat64Buffer {
     this.buffer[index] = value
   }
 
-  ensureCapacity(required: number): void {
-    if (required <= this.buffer.length) return
+  ensureCapacity(required: number): StableFloat64Buffer {
+    if (required <= this.buffer.length) return this
     let capacity = Math.max(1, this.buffer.length)
     while (capacity < required) capacity *= 2
     const next = new Float64Array(capacity)
     next.set(this.buffer)
     this.buffer = next
     this.generation++
+    return this
   }
 }
 
@@ -236,12 +242,17 @@ function randomStableBuffer(values: StableFloat64Buffer, order: Uint32Array, sam
   return checksum
 }
 
+function ensureNumberArrayCapacity(values: number[], required: number): number[] {
+  values.length = required
+  return values
+}
+
 function growNumberArray(values: number[]): number {
-  values.length = config.growthTargetCapacity
-  let checksum = values[0]! + values[config.growthInitialCapacity - 1]!
+  const grown = ensureNumberArrayCapacity(values, config.growthTargetCapacity)
+  let checksum = grown[0]! + grown[config.growthInitialCapacity - 1]!
   for (let index = config.growthInitialCapacity; index < config.growthTargetCapacity; index++) {
-    values[index] = index % 257
-    checksum += values[index]!
+    grown[index] = index % 257
+    checksum += grown[index]!
   }
   return checksum
 }
@@ -351,7 +362,7 @@ const growth = {
 
 const numberReference = fillNumberArray(config.growthInitialCapacity)
 const capturedNumberReference = numberReference
-growNumberArray(numberReference)
+const grownNumberReference = ensureNumberArrayCapacity(numberReference, config.growthTargetCapacity)
 
 const fixedReference = fillFloat64Array(config.growthInitialCapacity)
 const capturedFixedReference = fixedReference
@@ -360,12 +371,14 @@ grownFixedReference.set(fixedReference)
 
 const stableReference = fillStableBuffer(config.growthInitialCapacity)
 const capturedStableReference = stableReference
+const capturedStableBacking = stableReference.backingBuffer
 const initialStableGeneration = stableReference.bufferGeneration
-stableReference.ensureCapacity(config.growthTargetCapacity)
+const grownStableReference = stableReference.ensureCapacity(config.growthTargetCapacity)
 const stableGrowth: StableBufferGrowth = {
+  backingBufferReplaced: capturedStableBacking !== grownStableReference.backingBuffer,
   bufferGeneration: stableReference.bufferGeneration - initialStableGeneration,
   capacity: stableReference.capacity,
-  wrapperStable: capturedStableReference === stableReference,
+  wrapperStable: capturedStableReference === grownStableReference,
 }
 
 const validation = {
@@ -374,7 +387,7 @@ const validation = {
   sequentialChecksums: assertMatchingChecksums('sequential', sequential),
 }
 
-const harnessSources = ['numeric-storage.ts'] as const
+const harnessSources = ['numeric-storage.ts', 'provenance.ts'] as const
 const harnessHash = createHash('sha256')
 for (const source of harnessSources) {
   harnessHash.update(source)
@@ -388,7 +401,7 @@ const report = {
     cpu: cpus()[0]?.model ?? 'unknown',
     harnessSha256: harnessHash.digest('hex'),
     harnessSources,
-    mergeBase: execFileSync('git', ['merge-base', 'HEAD', 'origin/main'], { encoding: 'utf8' }).trim(),
+    mergeBase: gitMergeBase(),
     node: process.version,
     operatingSystem: `${platform()} ${release()}`,
   },
@@ -410,7 +423,7 @@ const report = {
       capacity: 'Implicit dynamic capacity managed by the JavaScript engine.',
       elementRepresentation: 'Engine-selected number representation.',
       referenceStability: {
-        containerSurvivesGrowth: capturedNumberReference === numberReference,
+        containerSurvivesGrowth: capturedNumberReference === grownNumberReference,
         previouslyCapturedContainerSeesGrowth: capturedNumberReference.length === config.growthTargetCapacity,
       },
     },
@@ -428,6 +441,7 @@ const report = {
       capacity: 'Geometric power-of-two growth behind a stable method-based wrapper.',
       elementRepresentation: 'Contiguous 64-bit floating-point values behind one indirection.',
       referenceStability: {
+        backingBufferReplaced: stableGrowth.backingBufferReplaced,
         backingBufferReplacements: stableGrowth.bufferGeneration,
         containerSurvivesGrowth: stableGrowth.wrapperStable,
         resultingCapacity: stableGrowth.capacity,
