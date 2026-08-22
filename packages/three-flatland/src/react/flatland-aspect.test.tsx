@@ -1,6 +1,6 @@
 import { act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { OrthographicCamera, Vector2, Vector4 } from 'three'
+import { Color, OrthographicCamera, Vector2, Vector4 } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
 import { universe } from 'koota'
 import type { WebGPURenderer } from 'three/webgpu'
@@ -35,6 +35,8 @@ async function createTestRoot(width: number, height: number) {
     },
     setPixelRatio() {},
     getPixelRatio: () => 1,
+    getClearAlpha: () => 1,
+    getClearColor: (target: Color) => target.set(0x000000),
     getRenderTarget: () => null,
     setRenderTarget() {},
     setClearColor() {},

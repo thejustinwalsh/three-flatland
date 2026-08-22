@@ -1,4 +1,5 @@
 import {
+  Color,
   HalfFloatType,
   LinearSRGBColorSpace,
   RenderTarget,
@@ -7,6 +8,7 @@ import {
   Vector4,
   type Scene,
   type Camera,
+  type ColorRepresentation,
 } from 'three'
 import type { RenderPipeline, WebGPURenderer } from 'three/webgpu'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
@@ -42,6 +44,8 @@ function createPassNode() {
 
 function createRenderer(initialTarget: RenderTarget | null = null, width = 640, height = 360) {
   let currentTarget = initialTarget
+  const clearColor = new Color('#123456')
+  let clearAlpha = 0.75
   const viewport = Object.assign(new Vector4(0, 0, width, height), { minDepth: 0.2, maxDepth: 0.8 })
   const setRenderTarget = vi.fn((target: RenderTarget | null) => {
     currentTarget = target
@@ -50,13 +54,18 @@ function createRenderer(initialTarget: RenderTarget | null = null, width = 640, 
   const renderer = {
     _canvasTarget: { _viewport: viewport },
     autoClear: true,
+    getClearAlpha: () => clearAlpha,
+    getClearColor: (target: Color) => target.copy(clearColor),
     getPixelRatio: () => 1,
     getRenderTarget: () => currentTarget,
     getViewport: (target: Vector4) => target.copy(viewport),
     getSize: (target: Vector2) => target.set(width, height),
     getDrawingBufferSize: (target: Vector2) => target.set(width, height),
     render: vi.fn((_scene: Scene, _camera: Camera) => undefined),
-    setClearColor: vi.fn(),
+    setClearColor: vi.fn((value: ColorRepresentation, alpha = 1) => {
+      clearColor.set(value)
+      clearAlpha = alpha
+    }),
     setRenderTarget,
     setViewport: (x: number | Vector4, y?: number, width?: number, height?: number, minDepth = 0, maxDepth = 1) => {
       if (x instanceof Vector4) viewport.copy(x)
