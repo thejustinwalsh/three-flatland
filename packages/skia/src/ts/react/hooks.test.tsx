@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Suspense, act } from 'react'
 import { render, screen, cleanup } from '@testing-library/react'
-import { useThree } from '@react-three/fiber'
+import { useThree } from '@react-three/fiber/webgpu'
 
 // Build a "fulfilled thenable" — the protocol React 19's `use()` checks for
 // before suspending. When a thenable carries `status: 'fulfilled'` and a
@@ -25,10 +25,10 @@ function pendingForever<T>(): Promise<T> {
 
 // ── Mocks ───────────────────────────────────────────────────────────────────
 //
-// Mock @react-three/fiber so the test doesn't need a real R3F Canvas mount.
+// Mock the WebGPU R3F entry so the test doesn't need a real Canvas mount.
 // `useThree(selector)` invokes the selector with a stub state that exposes a
 // fake renderer object — useSkiaContext only reads `s.renderer`.
-vi.mock('@react-three/fiber', () => ({
+vi.mock('@react-three/fiber/webgpu', () => ({
   useThree: vi.fn(<T,>(selector: (state: { renderer: object }) => T) => selector({ renderer: { __mock: 'renderer' } })),
 }))
 

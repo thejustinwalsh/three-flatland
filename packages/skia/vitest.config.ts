@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config'
+import { fileURLToPath } from 'node:url'
+
+const sharedSetup = fileURLToPath(new URL('../../vitest.setup.ts', import.meta.url))
 
 /**
  * Run the full test suite across the WASM backends + React hook layer.
@@ -43,7 +46,7 @@ export default defineConfig({
           environment: 'node',
           include: ['src/**/*.test.ts'],
           exclude: ['src/ts/react/**'],
-          setupFiles: ['./test/setup.ts'],
+          setupFiles: [sharedSetup, './test/setup.ts'],
           env: { SKIA_TEST_BACKEND: 'gl' },
         },
       },
@@ -54,7 +57,7 @@ export default defineConfig({
           environment: 'node',
           include: ['src/**/*.test.ts'],
           exclude: ['src/ts/react/**'],
-          setupFiles: ['./test/setup.ts'],
+          setupFiles: [sharedSetup, './test/setup.ts'],
           env: { SKIA_TEST_BACKEND: 'wgpu' },
         },
       },
@@ -64,6 +67,7 @@ export default defineConfig({
           globals: true,
           environment: 'happy-dom',
           include: ['src/ts/react/**/*.test.{ts,tsx}'],
+          setupFiles: [sharedSetup],
         },
       },
     ],

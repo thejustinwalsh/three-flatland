@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { SkiaContextReady } from '../three/SkiaCanvas'
 import { useSkiaCanvasContext } from './SkiaCanvas'
 
-vi.mock('@react-three/fiber', () => ({
+vi.mock('@react-three/fiber/webgpu', () => ({
   extend: vi.fn(),
 }))
 
