@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { RENDERER_FAILURE_COLOR } from '../examples/_shared/rendererFallback'
+import { RENDERER_FAILURE_COLOR } from '../examples/_shared/rendererFailure'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -35,5 +35,53 @@ describe('synced renderer fallbacks', () => {
 
     expect(background, `${path} must declare a solid page background`).toBeDefined()
     expect(contrastRatio(RENDERER_FAILURE_COLOR, background!), path).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(
+    readdirSync(join(ROOT, 'examples', 'react'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(ROOT, 'examples', 'react', entry.name, 'App.tsx'))
+  )('uses the native R3F Canvas failure boundary in %s', (path) => {
+    const source = readFileSync(path, 'utf8')
+
+    expect(source).toContain('fallback=')
+    expect(source).toContain('<ExampleFallback />')
+    expect(source).not.toContain('WebGPUFallback')
+    expect(source).not.toContain('renderStartupError')
+  })
+
+  it('keeps the React fallback on the audited message, color, and narrow-layout styles', () => {
+    const source = readFileSync(join(ROOT, 'examples', '_shared', 'ExampleFallback.tsx'), 'utf8')
+
+    expect(source).toContain("from './rendererFailure'")
+    expect(source).toContain('color: RENDERER_FAILURE_COLOR')
+    expect(source).toContain('{RENDERER_FAILURE_MESSAGE}')
+    expect(source).toContain("boxSizing: 'border-box'")
+    expect(source).toContain("textAlign: 'center'")
+    expect(source).not.toContain("color: '#f4f7fb'")
+  })
+
+  it('keeps the Three.js startup error on the shared accessible presentation', () => {
+    const source = readFileSync(join(ROOT, 'examples', '_shared', 'renderStartupError.ts'), 'utf8')
+
+    expect(source).toContain("from './rendererFailure'")
+    expect(source).toContain("message.setAttribute('role', 'status')")
+    expect(source).toContain('color: RENDERER_FAILURE_COLOR')
+    expect(source).toContain('message.textContent = RENDERER_FAILURE_MESSAGE')
+    expect(source).toContain("boxSizing: 'border-box'")
+    expect(source).toContain("textAlign: 'center'")
+    expect(source).not.toContain("color: '#f4f7fb'")
+  })
+
+  it.each(
+    readdirSync(join(ROOT, 'examples', 'three'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(ROOT, 'examples', 'three', entry.name, 'main.ts'))
+  )('scopes the terminal renderer message to renderer initialization in %s', (path) => {
+    const source = readFileSync(path, 'utf8')
+
+    expect(source).toContain("import { initializeRenderer } from './renderStartupError'")
+    expect(source).toContain('if (!(await initializeRenderer(renderer))) return')
+    expect(source).not.toContain('.catch(renderStartupError)')
   })
 })

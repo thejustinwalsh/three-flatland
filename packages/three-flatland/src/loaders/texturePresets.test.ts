@@ -3,6 +3,13 @@ import { Texture, NearestFilter, NoColorSpace, SRGBColorSpace } from 'three'
 import { applyTextureOptions, TEXTURE_PRESETS } from './texturePresets'
 
 describe('applyTextureOptions', () => {
+  it('rejects unknown presets at runtime', () => {
+    expect(() => applyTextureOptions(new Texture(), 'pixell-art' as never)).toThrow(
+      'unknown texture preset "pixell-art"'
+    )
+    expect(() => applyTextureOptions(new Texture(), 'toString' as never)).toThrow('unknown texture preset "toString"')
+  })
+
   it('only touches colorSpace when the options object provides one', () => {
     // Data/mask textures (noise, height, distortion) are not color images —
     // tagging them sRGB makes WebGPU upload an `-srgb` GPU format and

@@ -1,6 +1,12 @@
 import { int, attribute, vec2 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MASK } from './effectFlagBits'
+import {
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  ROTATED_FRAME_MASK,
+  PIXEL_PERFECT_MASK,
+} from './effectFlagBits'
 
 /**
  * TSL accessors for the per-instance data packed into `SpriteBatch`'s
@@ -19,7 +25,7 @@ import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, ROTATED_FRAME_MA
  *
  *   instanceExtras  (vec4, interleaved offset 12..15)
  *     .x = per-instance shadow radius — readShadowRadius()
- *     .y/.z/.w reserved for future per-instance shadow / system data
+ *     .y/.z/.w = reserved
  *
  * `instanceUV` and `instanceColor` stay raw — materials read them
  * directly via the usual `attribute(...)` calls since they're simple
@@ -110,4 +116,9 @@ export function readCastShadowFlag(): Node<'bool'> {
  */
 export function readRotatedFrameFlag(): Node<'bool'> {
   return readSystemFlags().bitAnd(int(ROTATED_FRAME_MASK)).greaterThan(int(0))
+}
+
+/** Read the projected-translation snapping flag (bit 4). */
+export function readPixelPerfectFlag(): Node<'bool'> {
+  return readSystemFlags().bitAnd(int(PIXEL_PERFECT_MASK)).greaterThan(int(0))
 }

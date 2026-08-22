@@ -8,6 +8,7 @@ import {
   type ColorRepresentation,
   type Texture,
   Vector2,
+  Vector4,
   NoColorSpace,
   SRGBColorSpace,
 } from 'three'
@@ -57,6 +58,9 @@ import { isDevtoolsActive } from './debug-protocol'
 import { PERF_TRACK } from './debug/perf-track'
 import type { DevtoolsProvider } from './debug/DevtoolsProvider'
 import { beginDebugPass, endDebugPass } from './debug/debug-sink'
+import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
+import { getRendererViewportDepthRange, setRendererViewport } from './cameras/rendererViewport'
+import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -109,8 +113,22 @@ export interface FlatlandOptions {
    * rewrites a supplied camera's frustum; its owner remains responsible for it.
    */
   camera?: OrthographicCamera | null
+  /**
+   * Use a managed {@link PixelPerfectCamera} when no custom camera is
+   * supplied. The camera follows the physical drawing buffer or render target
+   * and selects an integer world-to-pixel scale. This camera-only switch does
+   * not change sprite or tile snapping; use {@link FlatlandConfig} or
+   * {@link RenderingConfig} to change the rendering preset. Default: `true`.
+   */
+  pixelPerfect?: boolean
   /** Orthographic view size in pixels (default: 400) */
   viewSize?: number
+  /**
+   * Optional fixed horizontal design extent for the managed pixel camera.
+   * Together with `viewSize`, this enables exact letterbox/pillarbox framing.
+   * Omit it to reveal additional world space and fill the available output.
+   */
+  viewWidth?: number
   /** Clear before render (default: true) */
   autoClear?: boolean
   /** Background color */
@@ -120,12 +138,14 @@ export interface FlatlandOptions {
   /** Enable post-processing pipeline (default: false) */
   postProcessing?: boolean
   /**
-   * Fixed aspect ratio. When omitted or set to `'auto'`, Flatland derives the aspect from
-   * the renderer's viewport (or the render target) when its dimensions
-   * change. Passing a value pins the internal camera aspect while lighting
-   * still follows the surface. A camera supplied through `camera` keeps its
-   * authored frustum. Calling resize() takes full manual size control;
-   * assigning `aspect = 'auto'` restores automatic sizing.
+   * Fixed aspect ratio for the regular managed camera. When omitted or set to
+   * `'auto'`, Flatland derives the aspect from the renderer's viewport (or the
+   * render target) when its dimensions change. A {@link PixelPerfectCamera}
+   * always follows the physical output shape so it can preserve integer
+   * scaling; letterbox at the renderer or layout level to pin that shape. A
+   * camera supplied through `camera` keeps its authored frustum. Calling
+   * resize() takes full manual size control; assigning `aspect = 'auto'`
+   * restores automatic sizing.
    */
   aspect?: number | 'auto'
 }
@@ -192,6 +212,9 @@ export interface FlatlandOptions {
  * ```
  */
 export class Flatland extends Group implements WorldProvider {
+  /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
+  static options: RenderingSetting | undefined = undefined
+
   /** Internal scene containing sprites */
   readonly scene: Scene
 
@@ -228,6 +251,12 @@ export class Flatland extends Group implements WorldProvider {
   /** Orthographic view size */
   private _viewSize: number
 
+  /** Optional fixed horizontal design extent for the pixel camera. */
+  private _viewWidth: number | undefined
+
+  /** Whether Flatland's managed camera uses integer pixel scaling. */
+  private _pixelPerfect: boolean
+
   /** Current aspect ratio */
   private _aspect: number
 
@@ -244,6 +273,16 @@ export class Flatland extends Group implements WorldProvider {
   /** Last valid render-surface size — skips redundant per-frame resize work */
   private _lastSyncedWidth = 0
   private _lastSyncedHeight = 0
+
+  /** Force the next sync without discarding the last known physical surface. */
+  private _surfaceSizeDirty = true
+
+  /** Manual logical canvas size (or render-target texels) selected by resize(). */
+  private _manualSurfaceWidth = 0
+  private _manualSurfaceHeight = 0
+
+  /** Whether resize() authored CSS pixels rather than render-target texels. */
+  private _manualSizeIsLogical = true
 
   /** Whether the active camera is Flatland's managed internal camera. */
   private _ownsCamera: boolean
@@ -284,11 +323,32 @@ export class Flatland extends Group implements WorldProvider {
   /** Whether the render pipeline was auto-initialized (vs. manual setRenderPipeline) */
   private _autoRenderPipeline = false
 
+  /** Original pass sizing method while Flatland supplies exact destination dimensions. */
+  private _managedPassNode: PassNode | null = null
+  private _managedPassOriginalSetSize: PassNode['setSize'] | null = null
+  private _managedPassWrappedSetSize: PassNode['setSize'] | null = null
+
   /** Reusable Vector2 to avoid per-frame allocations */
   private _tempVec2 = new Vector2()
 
   /** Reusable physical drawing-buffer size for surface-dependent GPU resources. */
   private _drawingBufferSize = new Vector2()
+
+  /** Reusable physical canvas viewport inherited from the active renderer owner. */
+  private _activeCanvasViewport = new Vector4()
+
+  /** Saved output viewport while a PixelPerfectCamera owns one render. */
+  private _savedViewport = new Vector4()
+
+  /** Saved WebGPU viewport depth range omitted by Three's Vector4 getter. */
+  private _savedViewportDepthRange = new Vector2(0, 1)
+
+  /** Reusable logical canvas viewport derived from physical camera pixels. */
+  private _drawingBufferViewport = new Vector4()
+
+  /** Pixel-camera sub-rectangle sampled from an auto pass's full-size target. */
+  private _passViewportUvScale = uniform(new Vector2(1, 1))
+  private _passViewportUvOffset = uniform(new Vector2(0, 0))
 
   /**
    * Camera frustum bounds as TSL uniform nodes. Created once per Flatland
@@ -355,9 +415,12 @@ export class Flatland extends Group implements WorldProvider {
     // the renderer (or render target) each render; valid explicit aspect = manual.
     const fixedAspect = options.aspect
     const hasFixedAspect = typeof fixedAspect === 'number' && Number.isFinite(fixedAspect) && fixedAspect > 0
-    this._viewSize = options.viewSize ?? 400
+    this._viewSize = this._isValidViewSize(options.viewSize) ? options.viewSize : 400
+    this._viewWidth = this._isValidViewSize(options.viewWidth) ? options.viewWidth : undefined
     this._aspect = hasFixedAspect ? fixedAspect : 1
     this._autoAspect = !hasFixedAspect
+    const classOptions = (this.constructor as typeof Flatland).options
+    this._pixelPerfect = resolvePixelPerfect(options.pixelPerfect, classOptions)
 
     // Always retain an instance-owned camera so R3F can restore the no-arg
     // constructor default after a conditional custom camera prop is removed.
@@ -426,6 +489,13 @@ export class Flatland extends Group implements WorldProvider {
    * Create internal orthographic camera.
    */
   private _createCamera(): OrthographicCamera {
+    if (this._pixelPerfect) {
+      const camera = new PixelPerfectCamera({ viewSize: this._viewSize, viewWidth: this._viewWidth })
+      camera.setDrawingBufferSize(this._viewSize * this._aspect, this._viewSize)
+      _flatlandInternalCameras.set(camera, this)
+      return camera
+    }
+
     const halfWidth = (this._viewSize * this._aspect) / 2
     const halfHeight = this._viewSize / 2
 
@@ -440,6 +510,17 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _updateCameraFrustum(): void {
     if (!this._ownsCamera) return
+
+    if (this._camera instanceof PixelPerfectCamera) {
+      this._camera.viewSize = this._viewSize
+      this._camera.viewWidth = this._viewWidth
+      const hasSurface = this._isValidSize(this._lastSyncedWidth, this._lastSyncedHeight)
+      this._camera.setDrawingBufferSize(
+        hasSurface ? this._lastSyncedWidth : this._viewSize * this._aspect,
+        hasSurface ? this._lastSyncedHeight : this._viewSize
+      )
+      return
+    }
 
     const halfWidth = (this._viewSize * this._aspect) / 2
     const halfHeight = this._viewSize / 2
@@ -461,6 +542,37 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
+   * Whether Flatland manages a {@link PixelPerfectCamera}. Toggling this while
+   * a custom camera is active records the preferred internal-camera mode; the
+   * custom camera remains untouched until it is removed.
+   */
+  get pixelPerfect(): boolean {
+    return this._pixelPerfect
+  }
+
+  set pixelPerfect(value: boolean) {
+    if (value === this._pixelPerfect) return
+    const previous = this._internalCamera
+    this._pixelPerfect = value
+    const replacement = this._createCamera()
+    replacement.position.copy(previous.position)
+    replacement.quaternion.copy(previous.quaternion)
+    replacement.scale.copy(previous.scale)
+    replacement.up.copy(previous.up)
+    replacement.near = previous.near
+    replacement.far = previous.far
+    replacement.zoom = previous.zoom
+    replacement.layers.mask = previous.layers.mask
+    replacement.name = previous.name
+    replacement.updateProjectionMatrix()
+    this._internalCamera = replacement
+    if (this._ownsCamera) {
+      this._setActiveCamera(this._internalCamera, true)
+      this._updateCameraFrustum()
+    }
+  }
+
+  /**
    * Set a custom camera. Assigning the default camera read from a no-arg
    * Flatland instance restores this instance's own managed camera; this is the
    * property-removal path used by React Three Fiber.
@@ -478,13 +590,20 @@ export class Flatland extends Group implements WorldProvider {
     const isR3FPrototypeCamera =
       thisIsR3FManaged && internalOwner !== undefined && !ownerIsR3FManaged && internalOwner._lastRenderTime < 0
     if (internalOwner === this || isR3FPrototypeCamera) {
-      this._camera = this._internalCamera
-      this._ownsCamera = true
+      this._setActiveCamera(this._internalCamera, true)
       this._updateCameraFrustum()
       return
     }
-    this._camera = value
-    this._ownsCamera = false
+    this._setActiveCamera(value, false)
+  }
+
+  /** Keep the auto post-processing pass in sync when the active camera changes. */
+  private _setActiveCamera(camera: OrthographicCamera, ownsCamera: boolean): void {
+    this._camera = camera
+    this._ownsCamera = ownsCamera
+    if (this._autoRenderPipeline && this._passNode) {
+      this._passNode.camera = camera
+    }
   }
 
   /**
@@ -498,15 +617,29 @@ export class Flatland extends Group implements WorldProvider {
    * Set the view size.
    */
   set viewSize(value: number) {
+    if (!this._isValidViewSize(value)) return
     this._viewSize = value
     this._updateCameraFrustum()
   }
 
+  /** Fixed horizontal design extent, or undefined for fill-at-integer-scale. */
+  get viewWidth(): number | undefined {
+    return this._viewWidth
+  }
+
+  set viewWidth(value: number | undefined) {
+    if (value !== undefined && !this._isValidViewSize(value)) return
+    if (value === this._viewWidth) return
+    this._viewWidth = value
+    this._updateCameraFrustum()
+  }
+
   /**
-   * Get the configured aspect mode. Returns `'auto'` while Flatland's internal
-   * camera follows the render surface; use {@link resolvedAspect} for the
-   * camera's current numeric ratio. A user-supplied camera keeps its authored
-   * frustum regardless of this mode.
+   * Get the configured aspect mode. Returns `'auto'` while Flatland follows
+   * the render surface; use {@link resolvedAspect} for the camera's current
+   * numeric ratio. A {@link PixelPerfectCamera} follows the physical output
+   * shape even when this property retains a numeric regular-camera setting. A
+   * user-supplied camera keeps its authored frustum regardless of this mode.
    */
   get aspect(): number | 'auto' {
     return this._autoAspect ? 'auto' : this._aspect
@@ -518,7 +651,7 @@ export class Flatland extends Group implements WorldProvider {
    * directly from that camera's authored orthographic frustum.
    */
   get resolvedAspect(): number {
-    if (!this._ownsCamera) {
+    if (!this._ownsCamera || this._camera instanceof PixelPerfectCamera) {
       const width = Math.abs(this._camera.right - this._camera.left)
       const height = Math.abs(this._camera.top - this._camera.bottom)
       if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
@@ -529,30 +662,36 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * A number pins the internal camera ratio manually. Assigning `'auto'`
-   * restores automatic internal-camera and effect sizing, including after
-   * `resize()`. User-supplied cameras keep their authored frustum. The explicit
-   * sentinel also lets R3F restore constructor defaults when an `aspect` JSX
-   * prop is removed. Invalid numeric values are ignored.
+   * A number pins the regular managed camera ratio manually. A
+   * {@link PixelPerfectCamera} continues following the physical output shape;
+   * the numeric value is retained in case `pixelPerfect` is later disabled.
+   * Assigning `'auto'` restores automatic internal-camera and effect sizing,
+   * including after `resize()`. User-supplied cameras keep their authored
+   * frustum. The explicit sentinel also lets R3F restore constructor defaults
+   * when an `aspect` JSX prop is removed. Invalid numeric values are ignored.
    */
   set aspect(value: number | 'auto') {
     if (value === 'auto') {
       this._autoAspect = true
       this._autoSurfaceSize = true
+      this._manualSurfaceWidth = 0
+      this._manualSurfaceHeight = 0
+      this._manualSizeIsLogical = true
       // Force one fresh surface sync even when its dimensions happen to match
       // the previous manual size; the camera may still have a pinned ratio.
-      this._lastSyncedWidth = 0
-      this._lastSyncedHeight = 0
+      this._surfaceSizeDirty = true
       return
     }
     if (!Number.isFinite(value) || value <= 0) return
     this._autoAspect = false
     this._autoSurfaceSize = true
+    this._manualSurfaceWidth = 0
+    this._manualSurfaceHeight = 0
+    this._manualSizeIsLogical = true
     // A numeric aspect pins only the camera. If resize() previously selected
     // full manual surface control, resume physical surface tracking for GPU
     // resources and force a fresh sample on the next render.
-    this._lastSyncedWidth = 0
-    this._lastSyncedHeight = 0
+    this._surfaceSizeDirty = true
     this._aspect = value
     this._updateCameraFrustum()
   }
@@ -569,6 +708,16 @@ export class Flatland extends Group implements WorldProvider {
    */
   set renderTarget(value: RenderTarget | null) {
     this._renderTarget = this._prepareRenderTarget(value)
+    if (!this._autoSurfaceSize) {
+      this._surfaceSizeDirty = true
+      if (
+        this._renderTarget &&
+        !this._manualSizeIsLogical &&
+        this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)
+      ) {
+        this._renderTarget.setSize(this._manualSurfaceWidth, this._manualSurfaceHeight)
+      }
+    }
     this._syncRenderPipelineOutputTransform()
   }
 
@@ -754,24 +903,32 @@ export class Flatland extends Group implements WorldProvider {
    * ```
    * Flatland preserves the pipeline's outputColorTransform setting. Set it to
    * false when a manual pipeline writes working-space color to a render target.
+   * With a PixelPerfectCamera, Flatland sizes the supplied scene pass to the
+   * camera's integer viewport so the pipeline cannot introduce a fractional
+   * intermediate resample.
    */
   setRenderPipeline(renderPipeline: RenderPipeline, passNode: PassNode): void {
+    this._restoreManagedPassSize()
     this._renderPipeline = renderPipeline
     this._passNode = passNode
     this._outputNode = renderPipeline.outputNode
     this._renderPipelineEnabled = true
     this._autoRenderPipeline = false
+    this._resetPassViewportSampling()
+    this._installManagedPassSize(passNode)
   }
 
   /**
    * Clear the render pipeline setup.
    */
   clearRenderPipeline(): void {
+    this._restoreManagedPassSize()
     this._renderPipeline = null
     this._passNode = null
     this._outputNode = null
     this._renderPipelineEnabled = false
     this._autoRenderPipeline = false
+    this._resetPassViewportSampling()
   }
 
   /**
@@ -1428,16 +1585,22 @@ export class Flatland extends Group implements WorldProvider {
     // Auto-initialize or rebuild render pipeline if needed
     this._ensureRenderPipeline(renderer)
 
-    // Bind Flatland's destination for both direct and post-processed
-    // rendering. RenderPipeline draws its final full-screen quad into the
-    // renderer's current target, so it does not manage this state itself.
-    const currentRenderTarget = renderer.getRenderTarget()
-    const renderTargetChanged = currentRenderTarget !== this._renderTarget
-    if (renderTargetChanged) {
-      renderer.setRenderTarget(this._renderTarget)
-    }
+    // Bind the centered integer viewport before any direct or post-processed
+    // draw. Canvas viewports are expressed in logical pixels; render-target
+    // viewports already use physical texels. Restore user renderer state after
+    // this Flatland render completes.
+    const restorePixelViewport = this._applyPixelViewport(renderer)
+    let currentRenderTarget: RenderTarget | null | undefined
+    let renderTargetChanged = false
 
     try {
+      // Bind Flatland's destination for both direct and post-processed
+      // rendering. Keep target lookup/binding inside the restoration boundary:
+      // a backend error here must not leak Flatland's pixel viewport.
+      currentRenderTarget = renderer.getRenderTarget()
+      renderTargetChanged = currentRenderTarget !== this._renderTarget
+      if (renderTargetChanged) renderer.setRenderTarget(this._renderTarget)
+
       if (this._renderPipeline && this._renderPipelineEnabled) {
         beginDebugPass('main.post', renderer)
         try {
@@ -1467,9 +1630,10 @@ export class Flatland extends Group implements WorldProvider {
         }
       }
     } finally {
-      if (renderTargetChanged) {
+      if (renderTargetChanged && currentRenderTarget !== undefined) {
         renderer.setRenderTarget(currentRenderTarget)
       }
+      restorePixelViewport?.()
     }
 
     // Devtools: mark frame end after ALL renderer.render() calls have
@@ -1514,6 +1678,7 @@ export class Flatland extends Group implements WorldProvider {
     if (!this._renderPipeline && this._passes.length > 0) {
       const rp = new RenderPipeline(renderer)
       const scenePass = pass(this.scene, this._camera)
+      this._installManagedPassSize(scenePass)
       this._renderPipeline = rp
       this._passNode = scenePass
       this._autoRenderPipeline = true
@@ -1525,27 +1690,132 @@ export class Flatland extends Group implements WorldProvider {
       }
     }
 
+    this._syncPassSamplingViewport(renderer)
+
     this._syncRenderPipelineOutputTransform()
 
     // Run postPassSystem to get sorted passes (returns null if not dirty)
     const sortedPasses = postPassSystem(this.world)
     if (sortedPasses && this._renderPipeline && this._passNode) {
-      if (sortedPasses.length === 0) {
-        // No passes — pass through scene directly
-        this._outputNode = this._passNode
-      } else {
-        // Convert PassNode to TextureNode so passes can .sample() at custom UVs
-        const uvCoord = uvNode()
-        let node: Node<'vec4'> = convertToTexture(this._passNode)
+      // PassNode's target stays full-surface sized, so sample only the active
+      // canvas or pixel-camera viewport. Full-surface paths retain (1,1)/(0,0).
+      const uvCoord = uvNode()
+      let node: Node<'vec4'> = convertToTexture(this._passNode).sample(
+        uvCoord.mul(this._passViewportUvScale).add(this._passViewportUvOffset)
+      )
+      if (sortedPasses.length > 0) {
         for (const passFn of sortedPasses) {
           node = passFn(node, uvCoord)
         }
-        this._outputNode = node
       }
+      this._outputNode = node
 
       this._renderPipeline.outputNode = this._outputNode
       this._renderPipeline.needsUpdate = true
     }
+  }
+
+  /** Keep an auto scene pass and its sampling window on the active output viewport. */
+  private _syncPassSamplingViewport(renderer: WebGPURenderer): void {
+    if (!this._autoRenderPipeline || !this._passNode) {
+      this._resetPassViewportSampling()
+      return
+    }
+
+    if (this._camera instanceof PixelPerfectCamera) {
+      const viewport = this._camera.viewport
+      let passWidth: number
+      let passHeight: number
+      if (this._renderTarget) {
+        passWidth = this._renderTarget.width
+        passHeight = this._renderTarget.height
+      } else {
+        renderer.getDrawingBufferSize(this._drawingBufferSize)
+        passWidth = this._drawingBufferSize.x
+        passHeight = this._drawingBufferSize.y
+      }
+      if (!this._isValidSize(passWidth, passHeight)) return
+      this._passNode.setViewport(viewport)
+      this._passViewportUvScale.value.set(viewport.width / passWidth, viewport.height / passHeight)
+      this._passViewportUvOffset.value.set(viewport.x / passWidth, viewport.y / passHeight)
+      return
+    }
+
+    if (!this._renderTarget) {
+      const viewport = this._getPhysicalCanvasViewport(renderer)
+      renderer.getDrawingBufferSize(this._drawingBufferSize)
+      const passWidth = this._drawingBufferSize.x
+      const passHeight = this._drawingBufferSize.y
+      if (viewport && this._isValidSize(passWidth, passHeight)) {
+        const isFullSurface =
+          viewport.x === 0 && viewport.y === 0 && viewport.width === passWidth && viewport.height === passHeight
+        if (!isFullSurface) {
+          this._passNode.setViewport(viewport)
+          this._passViewportUvScale.value.set(viewport.width / passWidth, viewport.height / passHeight)
+          this._passViewportUvOffset.value.set(viewport.x / passWidth, viewport.y / passHeight)
+          return
+        }
+      }
+    }
+
+    // Three r185 explicitly supports `null` to restore automatic sizing; the
+    // matching @types/three release omitted that documented overload.
+    ;(this._passNode as PassNode & { setViewport(viewport: Vector4 | null): void }).setViewport(null)
+    this._resetPassViewportSampling()
+  }
+
+  /** Restore full-texture sampling when Flatland does not own an auto crop. */
+  private _resetPassViewportSampling(): void {
+    this._passViewportUvScale.value.set(1, 1)
+    this._passViewportUvOffset.value.set(0, 0)
+  }
+
+  /**
+   * PassNode normally allocates from the canvas drawing buffer even while the
+   * renderer targets an offscreen surface. Keep its public `setSize` contract,
+   * but substitute Flatland's destination dimensions. A user-supplied pass is
+   * destination-viewport-sized; an auto pass remains full-surface so Flatland's
+   * generated output can crop it through `_passViewportUv*`.
+   */
+  private _installManagedPassSize(passNode: PassNode): void {
+    this._restoreManagedPassSize()
+    // oxlint-disable-next-line typescript/unbound-method -- restored by identity and invoked with passNode via call().
+    const original = passNode.setSize
+    const wrapped: PassNode['setSize'] = (width, height) => {
+      if (!this._autoRenderPipeline && this._camera instanceof PixelPerfectCamera) {
+        original.call(passNode, this._camera.viewport.width, this._camera.viewport.height)
+        return
+      }
+      if (
+        !this._autoRenderPipeline &&
+        !this._renderTarget &&
+        this._isValidSize(this._lastSyncedWidth, this._lastSyncedHeight)
+      ) {
+        original.call(passNode, this._lastSyncedWidth, this._lastSyncedHeight)
+        return
+      }
+      const target = this._renderTarget
+      original.call(passNode, target?.width ?? width, target?.height ?? height)
+    }
+    this._managedPassNode = passNode
+    this._managedPassOriginalSetSize = original
+    this._managedPassWrappedSetSize = wrapped
+    passNode.setSize = wrapped
+  }
+
+  /** Restore a pass before it becomes user-owned or is disposed. */
+  private _restoreManagedPassSize(): void {
+    if (
+      this._managedPassNode &&
+      this._managedPassOriginalSetSize &&
+      this._managedPassWrappedSetSize &&
+      this._managedPassNode.setSize === this._managedPassWrappedSetSize
+    ) {
+      this._managedPassNode.setSize = this._managedPassOriginalSetSize
+    }
+    this._managedPassNode = null
+    this._managedPassOriginalSetSize = null
+    this._managedPassWrappedSetSize = null
   }
 
   /** Keep the pipeline's final color transform aligned with its destination. */
@@ -1563,6 +1833,33 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
+  /** Apply and later restore the active pixel camera's centered viewport. */
+  private _applyPixelViewport(renderer: WebGPURenderer): (() => void) | null {
+    if (!(this._camera instanceof PixelPerfectCamera)) return null
+
+    const viewport = this._camera.viewport
+    if (this._renderTarget) {
+      const renderTarget = this._renderTarget
+      this._savedViewport.copy(renderTarget.viewport)
+      renderTarget.viewport.copy(viewport)
+      return () => {
+        renderTarget.viewport.copy(this._savedViewport)
+      }
+    }
+
+    renderer.getViewport(this._savedViewport)
+    getRendererViewportDepthRange(renderer, this._savedViewportDepthRange)
+    const pixelRatio = renderer.getPixelRatio()
+    setRendererViewport(
+      renderer,
+      this._camera.getLogicalViewport(pixelRatio, this._drawingBufferViewport),
+      this._savedViewportDepthRange
+    )
+    return () => {
+      setRendererViewport(renderer, this._savedViewport, this._savedViewportDepthRange)
+    }
+  }
+
   /** Apply Flatland's 2D-friendly default without overriding authored output. */
   private _prepareRenderTarget(renderTarget: RenderTarget | null): RenderTarget | null {
     if (renderTarget) {
@@ -1575,8 +1872,14 @@ export class Flatland extends Group implements WorldProvider {
   }
 
   /**
-   * Resize the rendering area, taking manual control of the aspect
-   * ratio (the automatic per-render sync is disabled from here on).
+   * Resize the rendering area, taking manual control of the aspect ratio and
+   * surface size (the automatic per-render sync is disabled from here on).
+   * The active destination fixes the authored unit for the whole manual-size
+   * session. With no render target attached, dimensions are logical CSS pixels
+   * and every later destination uses `width × renderer DPR`. With a render
+   * target attached, dimensions are physical texels and remain physical across
+   * later target swaps or a return to the canvas. Calling `resize()` again
+   * begins a new session using the destination active at that time.
    *
    * Zero, negative, or non-finite dimensions are ignored — a transient
    * unmeasured layout (R3F's first commit reports a 0×0 canvas) must
@@ -1587,6 +1890,7 @@ export class Flatland extends Group implements WorldProvider {
     if (!this._isValidSize(width, height)) return
     this._autoAspect = false
     this._autoSurfaceSize = false
+    this._manualSizeIsLogical = this._renderTarget === null
     this._applyResize(width, height)
   }
 
@@ -1595,21 +1899,27 @@ export class Flatland extends Group implements WorldProvider {
     return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
   }
 
+  /** Guard the authored vertical world span independently from surface size. */
+  private _isValidViewSize(value: number | undefined): value is number {
+    return value !== undefined && Number.isFinite(value) && value > 0
+  }
+
   /**
    * Apply an explicit manual surface size. Dimensions are pre-validated.
    */
   private _applyResize(width: number, height: number): void {
-    this._lastSyncedWidth = width
-    this._lastSyncedHeight = height
+    this._manualSurfaceWidth = width
+    this._manualSurfaceHeight = height
+    // The physical size depends on the next renderer DPR (or target), so force
+    // one synchronization even when the authored dimensions did not change.
+    this._surfaceSizeDirty = true
     this._aspect = width / height
-    this._updateCameraFrustum()
+    if (!(this._camera instanceof PixelPerfectCamera)) this._updateCameraFrustum()
 
     // Resize render target if needed
     if (this._renderTarget) {
       this._renderTarget.setSize(width, height)
     }
-
-    this._queueLightEffectResize(width, height)
   }
 
   /**
@@ -1627,39 +1937,73 @@ export class Flatland extends Group implements WorldProvider {
 
   /**
    * Track the physical render surface every frame: the render target's texel
-   * dimensions when rendering to texture, otherwise the renderer's drawing
-   * buffer size (logical canvas size multiplied by pixel ratio).
+   * dimensions when rendering to texture, the full drawing buffer for a pixel
+   * camera that owns its viewport, or the inherited active canvas viewport for
+   * an ordinary camera.
    * Camera aspect follows while auto mode is active; LightEffect sizing
    * follows unless resize() selected full manual size control because GPU
    * tile buffers remain surface-dependent when only camera aspect is pinned.
    */
   private _syncSurfaceSize(renderer: WebGPURenderer): void {
-    if (!this._autoSurfaceSize) return
-
     let width: number
     let height: number
-    if (this._renderTarget) {
+    if (!this._autoSurfaceSize) {
+      if (!this._isValidSize(this._manualSurfaceWidth, this._manualSurfaceHeight)) return
+      if (!this._manualSizeIsLogical) {
+        width = this._manualSurfaceWidth
+        height = this._manualSurfaceHeight
+      } else {
+        const pixelRatio = renderer.getPixelRatio()
+        if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) return
+        width = Math.floor(this._manualSurfaceWidth * pixelRatio)
+        height = Math.floor(this._manualSurfaceHeight * pixelRatio)
+      }
+      if (this._renderTarget && (this._renderTarget.width !== width || this._renderTarget.height !== height)) {
+        this._renderTarget.setSize(width, height)
+      }
+    } else if (this._renderTarget) {
       width = this._renderTarget.width
       height = this._renderTarget.height
-    } else {
+    } else if (this._camera instanceof PixelPerfectCamera) {
       renderer.getDrawingBufferSize(this._drawingBufferSize)
       width = this._drawingBufferSize.x
       height = this._drawingBufferSize.y
+    } else {
+      const viewport = this._getPhysicalCanvasViewport(renderer)
+      if (!viewport) return
+      width = viewport.width
+      height = viewport.height
     }
 
     // Skip unmeasured/invalid surfaces (0×0 first R3F commit, NaN) and
     // frames where nothing changed — LightEffect.resize can reallocate
     // GPU tile buffers, so it must only fire on real size changes.
     if (!this._isValidSize(width, height)) return
-    if (width === this._lastSyncedWidth && height === this._lastSyncedHeight) return
+    if (!this._surfaceSizeDirty && width === this._lastSyncedWidth && height === this._lastSyncedHeight) return
 
     this._lastSyncedWidth = width
     this._lastSyncedHeight = height
+    this._surfaceSizeDirty = false
     if (this._autoAspect) {
       this._aspect = width / height
-      this._updateCameraFrustum()
     }
+    // PixelPerfectCamera always follows the physical surface even when an
+    // authored numeric aspect is retained for the regular-camera fallback.
+    // A fixed projection ratio cannot fill a differently-shaped framebuffer
+    // without fractional scaling or renderer-level letterboxing.
+    if (this._autoAspect || this._camera instanceof PixelPerfectCamera) this._updateCameraFrustum()
     this._queueLightEffectResize(width, height)
+  }
+
+  /** Read Three's logical canvas viewport in the physical pixels used by GPU resources. */
+  private _getPhysicalCanvasViewport(renderer: WebGPURenderer): Vector4 | null {
+    const pixelRatio = renderer.getPixelRatio()
+    if (!Number.isFinite(pixelRatio) || pixelRatio <= 0) return null
+    renderer.getViewport(this._activeCanvasViewport)
+    this._activeCanvasViewport.multiplyScalar(pixelRatio).floor()
+    return this._isValidSize(this._activeCanvasViewport.width, this._activeCanvasViewport.height)
+      ? this._activeCanvasViewport
+      : null
   }
 
   /**
@@ -1732,6 +2076,7 @@ export class Flatland extends Group implements WorldProvider {
 
     // Dispose render pipeline
     if (this._renderPipeline) {
+      this._restoreManagedPassSize()
       this._renderPipeline.dispose?.()
       this._renderPipeline = null
     }

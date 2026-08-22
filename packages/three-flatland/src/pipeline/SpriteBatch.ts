@@ -237,7 +237,7 @@ export class SpriteBatch extends InstancedMesh {
       interleavedData[base + OFFSET_SYSTEM + 1] = 1
       interleavedData[base + OFFSET_SYSTEM + 2] = 0
       interleavedData[base + OFFSET_SYSTEM + 3] = 0
-      // Extras: shadowRadius=0, reserved×3 = 0
+      // Extras: shadowRadius=0, remaining components reserved
       interleavedData[base + OFFSET_EXTRAS + 0] = 0
       interleavedData[base + OFFSET_EXTRAS + 1] = 0
       interleavedData[base + OFFSET_EXTRAS + 2] = 0

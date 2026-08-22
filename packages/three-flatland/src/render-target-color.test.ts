@@ -4,6 +4,7 @@ import {
   RenderTarget,
   SRGBColorSpace,
   Vector2,
+  Vector4,
   type Scene,
   type Camera,
 } from 'three'
@@ -32,29 +33,50 @@ function createPipeline(render = vi.fn()): RenderPipeline {
   } as unknown as RenderPipeline
 }
 
-function createRenderer(initialTarget: RenderTarget | null = null) {
+function createPassNode() {
+  return {
+    setSize: vi.fn(),
+    setViewport: vi.fn(),
+  } as unknown as PassNode
+}
+
+function createRenderer(initialTarget: RenderTarget | null = null, width = 640, height = 360) {
   let currentTarget = initialTarget
+  const viewport = Object.assign(new Vector4(0, 0, width, height), { minDepth: 0.2, maxDepth: 0.8 })
   const setRenderTarget = vi.fn((target: RenderTarget | null) => {
     currentTarget = target
   })
 
   const renderer = {
+    _canvasTarget: { _viewport: viewport },
     autoClear: true,
     getPixelRatio: () => 1,
     getRenderTarget: () => currentTarget,
-    getSize: (target: Vector2) => target.set(640, 360),
-    getDrawingBufferSize: (target: Vector2) => target.set(640, 360),
+    getViewport: (target: Vector4) => target.copy(viewport),
+    getSize: (target: Vector2) => target.set(width, height),
+    getDrawingBufferSize: (target: Vector2) => target.set(width, height),
     render: vi.fn((_scene: Scene, _camera: Camera) => undefined),
     setClearColor: vi.fn(),
     setRenderTarget,
+    setViewport: (x: number | Vector4, y?: number, width?: number, height?: number, minDepth = 0, maxDepth = 1) => {
+      if (x instanceof Vector4) viewport.copy(x)
+      else viewport.set(x, y!, width!, height!)
+      viewport.minDepth = minDepth
+      viewport.maxDepth = maxDepth
+    },
   } as unknown as WebGPURenderer
 
-  return { renderer, setRenderTarget }
+  return { renderer, setRenderTarget, viewport }
 }
 
 function markPipelineAutoManaged(flatland: Flatland): void {
-  const internal = flatland as unknown as { _autoRenderPipeline: boolean }
+  const internal = flatland as unknown as {
+    _autoRenderPipeline: boolean
+    _passNode: PassNode
+    _installManagedPassSize(passNode: PassNode): void
+  }
   internal._autoRenderPipeline = true
+  internal._installManagedPassSize(internal._passNode)
   flatland.renderTarget = flatland.renderTarget
 }
 
@@ -97,7 +119,7 @@ describe('Flatland render-target color management', () => {
     const pipeline = createPipeline()
     const flatland = new Flatland({ renderTarget: target })
 
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
     markPipelineAutoManaged(flatland)
 
     expect(pipeline.outputColorTransform).toBe(false)
@@ -116,8 +138,13 @@ describe('Flatland render-target color management', () => {
     const pipeline = createPipeline()
     const flatland = new Flatland({ renderTarget: target })
     const { renderer, setRenderTarget } = createRenderer(previousTarget)
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    const passNode = createPassNode()
+    const originalSetSize = passNode.setSize
+    flatland.setRenderPipeline(pipeline, passNode)
     markPipelineAutoManaged(flatland)
+
+    passNode.setSize(640, 360)
+    expect(originalSetSize).toHaveBeenCalledWith(64, 64)
 
     flatland.render(renderer)
 
@@ -135,13 +162,26 @@ describe('Flatland render-target color management', () => {
     )
     const flatland = new Flatland({ renderTarget: target })
     const { renderer, setRenderTarget } = createRenderer(previousTarget)
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
     markPipelineAutoManaged(flatland)
 
     expect(() => flatland.render(renderer)).toThrow('pipeline failed')
     expect(setRenderTarget.mock.calls).toEqual([[target], [previousTarget]])
     expect(beginDebugPass).toHaveBeenCalledWith('main.post', renderer)
     expect(endDebugPass).toHaveBeenCalledWith(renderer)
+  })
+
+  it('restores viewport coordinates and depth range when target lookup throws', () => {
+    const flatland = new Flatland()
+    const { renderer, viewport } = createRenderer()
+    renderer.getRenderTarget = () => {
+      throw new Error('target lookup failed')
+    }
+
+    expect(() => flatland.render(renderer)).toThrow('target lookup failed')
+    expect(viewport.toArray()).toEqual([0, 0, 640, 360])
+    expect(viewport.minDepth).toBe(0.2)
+    expect(viewport.maxDepth).toBe(0.8)
   })
 
   it('restores autoClear and the render target when direct rendering throws', () => {
@@ -166,7 +206,7 @@ describe('Flatland render-target color management', () => {
     const pipeline = createPipeline()
     const flatland = new Flatland()
     const { renderer, setRenderTarget } = createRenderer(previousTarget)
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
 
     flatland.render(renderer)
 
@@ -181,11 +221,27 @@ describe('Flatland render-target color management', () => {
     const flatland = new Flatland()
     const { renderer } = createRenderer()
 
-    flatland.setRenderPipeline(pipeline, {} as PassNode)
+    flatland.setRenderPipeline(pipeline, createPassNode())
     flatland.render(renderer)
     flatland.renderTarget = target
     flatland.renderTarget = null
 
     expect(pipeline.outputColorTransform).toBe(false)
+  })
+
+  it('renders a manual pipeline pass at the exact integer pixel viewport', () => {
+    const pipeline = createPipeline()
+    const flatland = new Flatland({ viewSize: 240 })
+    const { renderer } = createRenderer(null, 641, 481)
+    const passNode = createPassNode()
+    const originalSetSize = passNode.setSize
+
+    flatland.setRenderPipeline(pipeline, passNode)
+    flatland.render(renderer)
+    passNode.setSize(641, 481)
+
+    expect(originalSetSize).toHaveBeenLastCalledWith(640, 480)
+    flatland.clearRenderPipeline()
+    expect(passNode.setSize).toBe(originalSetSize)
   })
 })

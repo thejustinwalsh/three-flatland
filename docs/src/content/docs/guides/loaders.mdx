@@ -9,7 +9,7 @@ import bakedNormalPipeline from '../../../assets/diagrams/baked-normal-pipeline.
 
 **What you'll learn**
 - How to load textures, spritesheets, Tiled `.tmj`, and LDtk `.ldtk` files with the right filtering preset
-- How the `TextureConfig → Loader → Instance` preset hierarchy lets you set defaults once
+- How `FlatlandConfig` flows through `TextureConfig`, loaders, and individual loads
 - How `normals: true` produces a baked normal-map atlas for `NormalMapProvider` lighting
 
 ---
@@ -524,8 +524,8 @@ All loaders use a unified texture configuration system. Presets control filterin
 Texture options follow a hierarchy (highest to lowest priority):
 
 ```
-Instance preset/options  →  Loader.options  →  TextureConfig.options  →  'pixel-art'
-     (highest)                (middle)            (lowest)              (default)
+Instance preset/options → Loader.options → TextureConfig.options → FlatlandConfig → 'pixel-art'
+      (highest)                                                       (system default)
 ```
 
 For `TextureLoader` with R3F's `useLoader`, the instance preset is set via the extension callback:
@@ -537,24 +537,27 @@ const texture = useLoader(TextureLoader, '/sprite.png', (loader) => {
 });
 ```
 
-Each level overrides the ones below it. If nothing is set, `'pixel-art'` is used.
+Each level overrides the ones below it. `TextureConfig` follows the library-wide `FlatlandConfig` until it receives its own override. If nothing is set, `'pixel-art'` is used.
 
 ### Global Configuration
 
-Set a system-wide default for all loaders:
+Set the coordinated library-wide preset, or specialize only texture loading:
 
 ```typescript
-import { TextureConfig } from 'three-flatland';
+import { FlatlandConfig, TextureConfig } from 'three-flatland';
 
-// Change global default
+// Change presentation and texture loading together
+FlatlandConfig.options = 'smooth';
+
+// Or override only texture loading
 TextureConfig.options = 'smooth';
 
 // All loaders now use smooth filtering
 const sheet = await SpriteSheetLoader.load('/sprites/player.json');
 const mapData = await TiledLoader.load('/maps/level.json');
 
-// Reset to system default
-TextureConfig.reset();  // Back to 'pixel-art'
+// Remove the texture-only override and follow FlatlandConfig again
+TextureConfig.reset();
 ```
 
 ### Per-Loader Configuration

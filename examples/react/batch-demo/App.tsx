@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Canvas, useFrame, useLoader, useThree, extend } from '@react-three/fiber/webgpu'
-import { Vector2, Raycaster, Plane, Vector3, type OrthographicCamera } from 'three'
+import { Vector2, Raycaster, Plane, Vector3 } from 'three'
 import {
   Sprite2D,
   Sprite2DMaterial,
@@ -8,12 +8,13 @@ import {
   SortLayers,
   TextureLoader,
   SpriteSheetLoader,
+  usePixelPerfectCamera,
   type SpriteFrame,
   type SpriteSheet,
   type RenderStats,
 } from 'three-flatland/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
 import type { Pane } from 'tweakpane'
 import { GemBackground } from './GemBackground'
@@ -21,39 +22,10 @@ import { GEM } from './gem'
 // Extend R3F with our custom classes
 extend({ SpriteGroup, Sprite2D, Sprite2DMaterial })
 
-// Letterboxed orthographic camera that fits viewWidth × viewHeight in the canvas
-function FitOrthoCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeight: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const aspect = size.width / size.height
-  const viewAspect = viewWidth / viewHeight
-  return (
-    <orthographicCamera
-      ref={(cam: OrthographicCamera | null) => {
-        if (!cam) return
-        const manualCamera = cam as OrthographicCamera & { manual?: boolean }
-        manualCamera.manual = true
-        if (aspect > viewAspect) {
-          // Window wider — fit to height
-          cam.top = viewHeight / 2
-          cam.bottom = -viewHeight / 2
-          cam.left = (-viewHeight * aspect) / 2
-          cam.right = (viewHeight * aspect) / 2
-        } else {
-          // Window taller — fit to width
-          cam.left = -viewWidth / 2
-          cam.right = viewWidth / 2
-          cam.top = viewWidth / aspect / 2
-          cam.bottom = -viewWidth / aspect / 2
-        }
-        cam.updateProjectionMatrix()
-        set({ camera: cam })
-      }}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-    />
-  )
+// Pixel-perfect camera that fits viewWidth × viewHeight at the largest integer scale.
+function PixelCamera({ viewWidth, viewHeight }: { viewWidth: number; viewHeight: number }) {
+  usePixelPerfectCamera({ viewSize: viewHeight, viewWidth })
+  return null
 }
 
 // Configuration
@@ -490,14 +462,14 @@ export default function App() {
         dpr={1}
         style={{ background: '#16191e' }}
         renderer={{ antialias: false, ...exampleRendererColorConfig }}
-        fallback={<WebGPUFallback />}
+        fallback={<ExampleFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
         {/* L1 + L2 — gem-tinted clear color + lit radial gradient. */}
         <GemBackground gem={GEM} />
-        <FitOrthoCamera viewWidth={viewWidth} viewHeight={viewHeight} />
+        <PixelCamera viewWidth={viewWidth} viewHeight={viewHeight} />
         <DevtoolsProvider name="batch-demo" />
         <VillageScene
           entities={entities}

@@ -5,5 +5,13 @@
   "trailingComma": "es5",
   "printWidth": 120,
   "sortPackageJson": false,
-  "ignorePatterns": ["**/*.gen.ts", "**/*.generated.ts", "**/gem.ts", "docs/src/data/example-gems.ts", "**/fixtures/**"]
+  "ignorePatterns": [
+    "**/*.gen.ts",
+    "**/*.generated.ts",
+    "**/gem.ts",
+    "docs/src/data/example-gems.ts",
+    "**/fixtures/**",
+    "**/third_party/**",
+    "**/vendor/**"
+  ]
 }

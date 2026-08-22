@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { Raycaster, Texture } from 'three'
+import { Raycaster, Texture, type InstancedMesh } from 'three'
 import { TileMap2D } from './TileMap2D'
 import type { TileMapData } from './types'
+import { PIXEL_PERFECT_MASK } from '../materials/effectFlagBits'
 
 function makeRaycaster(x: number, y: number, z = 10): Raycaster {
   const r = new Raycaster()
@@ -93,5 +94,22 @@ describe('TileMap2D.raycast', () => {
     const [hit] = makeRaycaster(8, 8).intersectObject(map, true)
     const tile = map.tileFromIntersection(hit!)
     expect(tile).toEqual({ layer: 0, tileX: 0, tileY: 3, gid: 1 })
+  })
+})
+
+describe('TileMap2D pixelPerfect', () => {
+  it('propagates constructor and runtime values to every layer and tile', () => {
+    const map = new TileMap2D({ data: makeMapData(), pixelPerfect: true })
+    const layer = map.getLayers()[0]!
+    const mesh = layer.children[0]! as InstancedMesh
+    const system = mesh.geometry.getAttribute('instanceSystem')
+
+    expect(map.pixelPerfect).toBe(true)
+    expect(layer.pixelPerfect).toBe(true)
+    expect(Number(system.getZ(0)) & PIXEL_PERFECT_MASK).toBe(PIXEL_PERFECT_MASK)
+
+    map.pixelPerfect = false
+    expect(layer.pixelPerfect).toBe(false)
+    expect(Number(system.getZ(0)) & PIXEL_PERFECT_MASK).toBe(0)
   })
 })

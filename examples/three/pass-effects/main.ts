@@ -5,7 +5,7 @@ import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import type { PassEffect } from 'three-flatland'
 import {
@@ -616,7 +616,7 @@ async function main() {
   }
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

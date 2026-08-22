@@ -1,10 +1,10 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color, Raycaster, Vector2, Plane, Vector3 } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, createDevtoolsProvider } from 'three-flatland'
+import { Scene, Color, Raycaster, Vector2, Plane, Vector3 } from 'three'
+import { AnimatedSprite2D, PixelPerfectCamera, SpriteSheetLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
@@ -70,24 +70,16 @@ async function main() {
   // Gem-tinted radial gradient backdrop (the canonical example background).
   ;(scene as unknown as { backgroundNode: unknown }).backgroundNode = gemGradientNode({ gem: GEM })
 
-  const frustumSize = 400
-  const aspect = window.innerWidth / window.innerHeight
-  const camera = new OrthographicCamera(
-    (-frustumSize * aspect) / 2,
-    (frustumSize * aspect) / 2,
-    frustumSize / 2,
-    -frustumSize / 2,
-    0.1,
-    1000
-  )
-  camera.position.z = 100
+  const camera = new PixelPerfectCamera({ viewSize: 400 })
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
   activeRenderer = renderer
-  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+  renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
@@ -105,8 +97,12 @@ async function main() {
   /** Convert a DOM pointer event to NDC and load the raycaster. */
   function castFromEvent(e: PointerEvent) {
     const rect = renderer.domElement.getBoundingClientRect()
-    pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
-    pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+    camera.getNormalizedDeviceCoordinates(
+      ((e.clientX - rect.left) / rect.width) * (renderer.domElement.width / renderer.getPixelRatio()),
+      ((e.clientY - rect.top) / rect.height) * (renderer.domElement.height / renderer.getPixelRatio()),
+      renderer.getPixelRatio(),
+      pointer
+    )
     raycaster.setFromCamera(pointer, camera)
   }
 
@@ -423,13 +419,9 @@ async function main() {
   // ── Resize ────────────────────────────────────────────────────────────
 
   onResize = () => {
-    const a = window.innerWidth / window.innerHeight
-    camera.left = (-frustumSize * a) / 2
-    camera.right = (frustumSize * a) / 2
-    camera.top = frustumSize / 2
-    camera.bottom = -frustumSize / 2
-    camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+    renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   }
   window.addEventListener('resize', onResize)
 
@@ -491,7 +483,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

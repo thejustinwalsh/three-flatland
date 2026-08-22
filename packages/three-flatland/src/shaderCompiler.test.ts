@@ -1,4 +1,13 @@
-import { BufferAttribute, Mesh, PlaneGeometry, RenderTarget, type Material, type Texture } from 'three'
+import {
+  BufferAttribute,
+  InstancedBufferAttribute,
+  InstancedMesh,
+  Mesh,
+  PlaneGeometry,
+  RenderTarget,
+  type Material,
+  type Texture,
+} from 'three'
 import { vec4 } from 'three/tsl'
 import type { NodeMaterial, WebGPURenderer } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -23,8 +32,10 @@ import { Sprite2DMaterial } from './materials/Sprite2DMaterial'
 import { createPassEffect } from './pipeline/PassEffect'
 import { SpriteBatch } from './pipeline/SpriteBatch'
 import { Sprite2D } from './sprites/Sprite2D'
+import type { SpriteFrame } from './sprites/types'
 import { TileLayer } from './tilemap/TileLayer'
 import { Tileset } from './tilemap/Tileset'
+import { registerAtlasMesh } from './loaders/atlasMeshRegistry'
 
 const shaders = new Map<string, ShaderSource>()
 const disposableMaterials = new Set<Material>()
@@ -53,6 +64,87 @@ function capture(label: string, backend: ShaderBackend, material: NodeMaterial, 
   for (const shader of shaderSources(program, label)) {
     shaders.set(`${shader.backend}:${shader.stage}:${shader.output}`, shader)
   }
+  return program
+}
+
+/** Guard the one-matrix-source contract on the production WebGPU backend. */
+function expectSingleInstanceMatrixBinding(backend: ShaderBackend, vertexShader: string): void {
+  if (backend !== 'wgsl') return
+  const matrixArrays = vertexShader.match(/array<\s*mat4x4<f32>/g) ?? []
+  expect(matrixArrays, 'sprite instancing must bind its current matrix buffer exactly once').toHaveLength(1)
+}
+
+/** Guard the large-batch vertex-attribute path against duplicated matrix columns. */
+function expectSingleInstanceMatrixAttributeSet(backend: ShaderBackend, vertexShader: string): void {
+  if (backend !== 'wgsl') return
+  const matrixColumns = vertexShader.match(/nodeAttribute\d+\s*:\s*vec4<f32>/g) ?? []
+  const matrixConstruction = vertexShader.match(
+    /mat4x4<f32>\(\s*nodeAttribute\d+,\s*nodeAttribute\d+,\s*nodeAttribute\d+,\s*nodeAttribute\d+\s*\)/g
+  )
+  expect(matrixColumns, 'large sprite batches must expose one four-column matrix attribute set').toHaveLength(4)
+  expect(matrixConstruction, 'large sprite batches must construct the instance matrix exactly once').toHaveLength(1)
+}
+
+/** Guard opted-out sprites from paying the projected-pivot matrix multiply. */
+function expectPixelPivotTransformGuarded(vertexShader: string): void {
+  const pivotAssignment = vertexShader.indexOf('spritePivotClip =')
+  expect(pivotAssignment, 'projected pivot transform must be emitted').toBeGreaterThanOrEqual(0)
+
+  const flagTests = [...vertexShader.matchAll(/&\s*16(?!\d)/g)]
+  expect(flagTests, 'pixel-perfect flag test must be emitted exactly once').toHaveLength(1)
+  const flagTest = flagTests[0]!.index
+  const branchOpen = vertexShader.indexOf('{', flagTest)
+  expect(branchOpen, 'pixel-perfect branch must have a body').toBeGreaterThan(flagTest)
+
+  let depth = 0
+  let branchClose = -1
+  for (let index = branchOpen; index < vertexShader.length; index++) {
+    const token = vertexShader[index]
+    if (token === '{') depth++
+    if (token !== '}') continue
+    depth--
+    if (depth === 0) {
+      branchClose = index
+      break
+    }
+  }
+
+  expect(branchClose, 'pixel-perfect branch must close').toBeGreaterThan(branchOpen)
+  expect(pivotAssignment, 'pivot transform must be inside the pixel-perfect branch').toBeGreaterThan(branchOpen)
+  expect(pivotAssignment, 'pivot transform must be inside the pixel-perfect branch').toBeLessThan(branchClose)
+}
+
+/** Guard SpriteBatch's custom instance transform from being projected early. */
+function expectInstanceTransformBeforeProjection(vertexShader: string): void {
+  const clipAssignment = vertexShader.indexOf('spriteClipPosition =')
+  expect(clipAssignment, 'sprite clip projection must be emitted').toBeGreaterThanOrEqual(0)
+
+  const finalPositionAssignment = vertexShader.lastIndexOf('positionLocal =')
+  expect(finalPositionAssignment, 'instance-transformed position must be emitted').toBeGreaterThanOrEqual(0)
+  expect(
+    finalPositionAssignment,
+    'instance transform must run before sprite clip projection or batched sprites collapse to the unit quad'
+  ).toBeLessThan(clipAssignment)
+}
+
+function registerCompilerAtlas(texture: Texture): void {
+  const frame: SpriteFrame = {
+    name: 'compiler-diamond',
+    x: 0,
+    y: 0,
+    width: 2,
+    height: 2,
+    sourceWidth: 2,
+    sourceHeight: 2,
+    mesh: {
+      verts: new Float32Array([0, -0.5, 0.5, 0, 0.5, 0, 1, 0.5, 0, 0.5, 0.5, 1, -0.5, 0, 0, 0.5]),
+      indices: Uint16Array.from([0, 1, 2, 0, 2, 3]),
+      vertexCount: 4,
+      vertexOffset: 0,
+      indexOffset: 0,
+    },
+  }
+  registerAtlasMesh(texture, { frames: [frame], complete: true })
 }
 
 function captureNode(label: string, backend: ShaderBackend, node: Node) {
@@ -111,11 +203,38 @@ afterAll(async () => {
   }
 }, 60_000)
 
+describe('shader assertion contracts', () => {
+  it('rejects a projected-pivot multiply hoisted after the pixel-perfect branch', () => {
+    const unsafeShader = `
+      if ((instanceSystem.z & 16) > 0) {
+        positionLocal.xy += vec2(1.0);
+      }
+      spritePivotClip = cameraProjectionMatrix * modelViewMatrix * vec4(spritePixelPivot, 1.0);
+    `
+
+    expect(() => expectPixelPivotTransformGuarded(unsafeShader)).toThrow(
+      'pivot transform must be inside the pixel-perfect branch'
+    )
+  })
+
+  it('rejects clip projection emitted before the final instance transform', () => {
+    const unsafeShader = `
+      spriteClipPosition = cameraProjectionMatrix * positionView;
+      positionLocal = instanceMatrix * positionLocal;
+    `
+
+    expect(() => expectInstanceTransformBeforeProjection(unsafeShader)).toThrow(
+      'instance transform must run before sprite clip projection'
+    )
+  })
+})
+
 describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (backend) => {
   it('compiles standalone sprite materials', () => {
     const sprite = new Sprite2D({ texture: shaderTexture() })
     trackMaterial(sprite.material)
-    capture('sprite-material', backend, sprite.material, sprite)
+    const program = capture('sprite-material', backend, sprite.material, sprite)
+    expectInstanceTransformBeforeProjection(program.vertexShader)
   })
 
   it('compiles opaque premultiplied sprite variants', () => {
@@ -136,7 +255,90 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
     const batch = new SpriteBatch(material, 1)
 
     try {
-      capture('sprite-batch-material', backend, material, batch)
+      const program = capture('sprite-batch-material', backend, material, batch)
+      expect(program.vertexShader).toContain('spritePixelPivot')
+      expect(program.vertexShader).toContain('floor')
+      expectPixelPivotTransformGuarded(program.vertexShader)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
+    } finally {
+      batch.dispose()
+    }
+  })
+
+  it('preserves projection ordering when a batch color transform reads world position', () => {
+    const material = trackMaterial(
+      new Sprite2DMaterial({
+        map: shaderTexture(),
+        colorTransform: ({ color, worldPosition }) =>
+          vec4(color.rgb.mul(worldPosition.x.add(1)), color.a) as Node<'vec4'>,
+      })
+    )
+    const batch = new SpriteBatch(material, 1)
+
+    try {
+      const program = capture('sprite-batch-world-position-color-transform', backend, material, batch)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
+    } finally {
+      batch.dispose()
+    }
+  })
+
+  it('compiles the large-batch matrix attribute path without duplicate columns', () => {
+    const material = trackMaterial(new Sprite2DMaterial({ map: shaderTexture() }))
+    const batch = new SpriteBatch(material, 2048)
+
+    try {
+      const program = capture('sprite-batch-large-matrix-attributes', backend, material, batch)
+      expect(program.vertexShader).toContain('spritePixelPivot')
+      expectInstanceTransformBeforeProjection(program.vertexShader)
+      expectSingleInstanceMatrixAttributeSet(backend, program.vertexShader)
+    } finally {
+      batch.dispose()
+    }
+  })
+
+  it('preserves canonical instance color on custom instanced meshes', () => {
+    const material = trackMaterial(new Sprite2DMaterial({ map: shaderTexture() }))
+    material.positionNode = null
+    const mesh = new InstancedMesh(new PlaneGeometry(1, 1), material, 2)
+    mesh.instanceColor = new InstancedBufferAttribute(new Float32Array([1, 0, 0, 0, 1, 0]), 3)
+    mesh.geometry.setAttribute(
+      'instanceUV',
+      new InstancedBufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 1, 1]), 4)
+    )
+    mesh.geometry.setAttribute(
+      'instanceColor',
+      new InstancedBufferAttribute(new Float32Array([1, 1, 1, 1, 1, 1, 1, 1]), 4)
+    )
+    mesh.geometry.setAttribute(
+      'instanceSystem',
+      new InstancedBufferAttribute(new Float32Array([1, 1, 0, 0, 1, 1, 0, 0]), 4)
+    )
+
+    try {
+      const program = capture('sprite-custom-instanced-color', backend, material, mesh)
+      expect(program.vertexShader).toContain('vInstanceColor')
+    } finally {
+      mesh.geometry.dispose()
+    }
+  })
+
+  it('compiles projected snapping through the tight-mesh batch path', () => {
+    const texture = shaderTexture()
+    registerCompilerAtlas(texture)
+    const material = trackMaterial(new Sprite2DMaterial({ map: texture, transparent: true }))
+    const batch = new SpriteBatch(material, 1)
+
+    try {
+      expect(batch.geometryKind).toBe('tight-mesh')
+      const program = capture('sprite-batch-tight-mesh-pixel-snap', backend, material, batch)
+      expect(program.vertexShader).toContain('spritePixelPivot')
+      expect(program.vertexShader).toContain('floor')
+      expectPixelPivotTransformGuarded(program.vertexShader)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
     } finally {
       batch.dispose()
     }

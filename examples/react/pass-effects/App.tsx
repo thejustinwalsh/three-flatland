@@ -5,8 +5,8 @@ import type { WebGPURenderer } from 'three/webgpu'
 import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland/react'
 import type { PassEffect } from 'three-flatland/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { useGemGradient } from './GemBackground'
 import { GEM } from './gem'
 import {
@@ -306,7 +306,7 @@ export default function App() {
       dpr={1}
       camera={{ zoom: 5, position: [0, 0, 100] }}
       renderer={{ antialias: false, ...exampleRendererColorConfig }}
-      fallback={<WebGPUFallback />}
+      fallback={<ExampleFallback />}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'
       }}

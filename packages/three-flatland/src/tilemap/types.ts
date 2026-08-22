@@ -190,7 +190,7 @@ export interface TileMap2DOptions {
   chunkSize?: number
   /** Enable collision data extraction (default: true) */
   enableCollision?: boolean
-  /** Pixel perfect rendering (default: false) */
+  /** Snap tile pivots to physical pixels (default: true) */
   pixelPerfect?: boolean
   /** Render layer for all tile layers (default: 0) */
   baseLayer?: number

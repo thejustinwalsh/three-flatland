@@ -17,7 +17,7 @@ import type { SlugFontStack } from '../SlugFontStack'
  *
  * @example
  * ```tsx
- * import { extend } from '@react-three/fiber'
+ * import { extend } from '@react-three/fiber/webgpu'
  * import { SlugText } from '@three-flatland/slug/react'
  *
  * extend({ SlugText })

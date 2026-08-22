@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { Sprite2D, LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, EFFECT_BIT_OFFSET } from './Sprite2D'
+import {
+  Sprite2D,
+  LIT_FLAG_MASK,
+  RECEIVE_SHADOWS_MASK,
+  CAST_SHADOW_MASK,
+  PIXEL_PERFECT_MASK,
+  EFFECT_BIT_OFFSET,
+} from './Sprite2D'
 
 describe('Sprite2D castsShadow flag', () => {
   it('defaults to false (opt-in)', () => {
@@ -40,12 +47,13 @@ describe('Sprite2D castsShadow flag', () => {
   })
 
   it('system flag bits occupy their own component so MaterialEffect bits are unaffected', () => {
-    // System flags live in effectBuf0.x; MaterialEffect enable bits live in
-    // effectBuf0.y. The components are disjoint, so EFFECT_BIT_OFFSET stays
-    // at 0 — the first registered effect's enable bit is bit 0 of y.
+    // System flags live in instanceSystem.z; MaterialEffect enable bits live
+    // in instanceSystem.w. The components are disjoint, so EFFECT_BIT_OFFSET
+    // stays at 0 — the first registered effect's enable bit is bit 0 of w.
     expect(LIT_FLAG_MASK).toBe(1)
     expect(RECEIVE_SHADOWS_MASK).toBe(2)
     expect(CAST_SHADOW_MASK).toBe(4)
+    expect(PIXEL_PERFECT_MASK).toBe(16)
     expect(EFFECT_BIT_OFFSET).toBe(0)
   })
 
@@ -58,7 +66,33 @@ describe('Sprite2D castsShadow flag', () => {
     expect(sprite.lit).toBe(false)
     expect(sprite.receiveShadows).toBe(false)
     expect(sprite.castsShadow).toBe(true)
-    // Raw flags: only CAST_SHADOW_MASK
-    expect(sprite._systemFlags).toBe(CAST_SHADOW_MASK)
+    // Pixel snapping remains enabled by the rendering default.
+    expect(sprite._systemFlags).toBe(CAST_SHADOW_MASK | PIXEL_PERFECT_MASK)
+  })
+})
+
+describe('Sprite2D pixelPerfect flag', () => {
+  it('defaults on and updates the shared system-flags word', () => {
+    const sprite = new Sprite2D()
+
+    expect(sprite.pixelPerfect).toBe(true)
+    expect(sprite._systemFlags & PIXEL_PERFECT_MASK).toBe(PIXEL_PERFECT_MASK)
+
+    sprite.pixelPerfect = false
+    expect(sprite.pixelPerfect).toBe(false)
+    expect(sprite._systemFlags & PIXEL_PERFECT_MASK).toBe(0)
+    expect(sprite.lit).toBe(true)
+    expect(sprite.receiveShadows).toBe(true)
+
+    sprite.pixelPerfect = true
+    expect(sprite._systemFlags & PIXEL_PERFECT_MASK).toBe(PIXEL_PERFECT_MASK)
+  })
+
+  it('honors the constructor option and writes standalone GPU attributes', () => {
+    const sprite = new Sprite2D({ pixelPerfect: true })
+    const system = sprite.geometry.getAttribute('instanceSystem')
+
+    expect(sprite.pixelPerfect).toBe(true)
+    expect(Number(system.getZ(0)) & PIXEL_PERFECT_MASK).toBe(PIXEL_PERFECT_MASK)
   })
 })

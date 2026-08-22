@@ -18,7 +18,7 @@ import '@vscode/codicons/dist/codicon.css'
 import { App } from './App'
 
 void import('@three-flatland/image')
-void import('@react-three/fiber')
+void import('@react-three/fiber/webgpu')
 void import('three')
 
 // Tag the main stylesheet link as 'vscode-codicon-stylesheet' so VscodeIcon

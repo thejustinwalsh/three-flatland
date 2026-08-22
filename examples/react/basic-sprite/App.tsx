@@ -1,43 +1,19 @@
-import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import { useRef, useState, useCallback } from 'react'
-import { Color, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
-import { Sprite2D, TextureLoader } from 'three-flatland/react'
+import { Color } from 'three'
+import { Sprite2D, TextureLoader, usePixelPerfectCamera } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
 // Register Sprite2D with R3F (tree-shakeable)
 extend({ Sprite2D })
 
-/**
- * Declarative orthographic camera matching three.js frustumSize math.
- * Ref callback fires synchronously during reconciliation; re-fires on
- * resize because the parent re-renders with a new size.
- */
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const aspect = size.width / size.height
-  return (
-    <orthographicCamera
-      ref={(cam: ThreeOrthographicCamera | null) => {
-        if (!cam) return
-        cam.left = (-viewSize * aspect) / 2
-        cam.right = (viewSize * aspect) / 2
-        cam.top = viewSize / 2
-        cam.bottom = -viewSize / 2
-        const manualCamera = cam as ThreeOrthographicCamera & { manual?: boolean }
-        manualCamera.manual = true
-        cam.updateProjectionMatrix()
-        set({ camera: cam })
-      }}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-    />
-  )
+function PixelCamera() {
+  usePixelPerfectCamera({ viewSize: 400 })
+  return null
 }
 
 // Lerp helper
@@ -159,12 +135,12 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false, ...exampleRendererColorConfig }}
-      fallback={<WebGPUFallback />}
+      fallback={<ExampleFallback />}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'
       }}
     >
-      <OrthoCamera viewSize={400} />
+      <PixelCamera />
       <DevtoolsProvider name="basic-sprite" />
       <Scene />
     </Canvas>

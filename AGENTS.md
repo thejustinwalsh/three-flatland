@@ -23,7 +23,8 @@
 
 ## Architecture
 
-- WebGPU + TSL (Three Shader Language) exclusively — no WebGL, no GLSL
+- Author TSL (Three Shader Language) and construct `WebGPURenderer` exclusively — never instantiate legacy
+  `WebGLRenderer` or hand-write GLSL. Three's internal WebGL 2 node backend remains a supported compatibility path.
 - R3F examples import from `@react-three/fiber/webgpu`, not `@react-three/fiber`
 - Three.js users: `import from 'three-flatland'` — R3F users: `import from 'three-flatland/react'` (all packages follow this `/react` subpath pattern, incl. `@three-flatland/devtools/react`)
 - Shared versions in `pnpm-workspace.yaml` catalog; `pnpm.overrides` maps `@three-flatland/*` to `workspace:*`

@@ -1,5 +1,6 @@
 import type { Texture, Wrapping } from 'three'
 import { NearestFilter, LinearFilter, ClampToEdgeWrapping, SRGBColorSpace } from 'three'
+import { FlatlandConfig } from '../config/FlatlandConfig'
 
 /** Named texture presets */
 export type TexturePreset = 'pixel-art' | 'smooth' | 'none'
@@ -36,11 +37,11 @@ export const TEXTURE_PRESETS: Record<TexturePreset, TextureOptions> = {
 }
 
 /**
- * Global texture configuration.
+ * Texture-specific configuration beneath `FlatlandConfig`.
  *
- * Sets system-wide defaults for texture loading. Individual loaders
- * can override via their static `options` property, and per-load
- * overrides are supported via options parameters.
+ * Leave this unset to inherit the library-wide preset. Individual loaders can
+ * override via their static `options` property, and per-load overrides are
+ * supported via options parameters.
  *
  * @example
  * ```typescript
@@ -57,11 +58,11 @@ export const TEXTURE_PRESETS: Record<TexturePreset, TextureOptions> = {
  * ```
  */
 export class TextureConfig {
-  private static _options: TexturePreset | TextureOptions = 'pixel-art'
+  private static _options: TexturePreset | TextureOptions | undefined
 
   /** Get the global texture options */
   static get options(): TexturePreset | TextureOptions {
-    return this._options
+    return this._options ?? FlatlandConfig.resolved.texture
   }
 
   /** Set the global texture options */
@@ -69,9 +70,9 @@ export class TextureConfig {
     this._options = value
   }
 
-  /** Reset to system default ('pixel-art') */
+  /** Remove the texture-specific override and follow FlatlandConfig again. */
   static reset(): void {
-    this._options = 'pixel-art'
+    this._options = undefined
   }
 }
 
@@ -79,7 +80,16 @@ export class TextureConfig {
  * Apply texture preset or custom options to a texture.
  */
 export function applyTextureOptions(texture: Texture, preset: TexturePreset | TextureOptions): void {
-  const opts = typeof preset === 'string' ? TEXTURE_PRESETS[preset] : preset
+  let opts: TextureOptions
+  if (typeof preset === 'string') {
+    if (!Object.hasOwn(TEXTURE_PRESETS, preset)) {
+      throw new TypeError(`three-flatland: unknown texture preset "${preset}"`)
+    }
+    const namedPreset = TEXTURE_PRESETS[preset]
+    opts = namedPreset
+  } else {
+    opts = preset
+  }
 
   if (opts.minFilter !== undefined) texture.minFilter = opts.minFilter
   if (opts.magFilter !== undefined) texture.magFilter = opts.magFilter
@@ -90,7 +100,7 @@ export function applyTextureOptions(texture: Texture, preset: TexturePreset | Te
 }
 
 /**
- * Resolve options from hierarchy: instance > loader > global > 'pixel-art'
+ * Resolve options from hierarchy: load > loader class > TextureConfig > FlatlandConfig > system preset.
  */
 export function resolveTextureOptions(
   instanceOptions?: TexturePreset | TextureOptions,

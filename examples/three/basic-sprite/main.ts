@@ -1,10 +1,10 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Color } from 'three'
-import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
+import { Scene, Color, Vector2 } from 'three'
+import { PixelPerfectCamera, Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // HMR cleanup — stop the old animate loop + dispose the old renderer
@@ -22,25 +22,17 @@ async function main() {
   const scene = new Scene()
   ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
-  // Orthographic camera for 2D rendering
   const frustumSize = 400
-  const aspect = window.innerWidth / window.innerHeight
-  const camera = new OrthographicCamera(
-    (-frustumSize * aspect) / 2,
-    (frustumSize * aspect) / 2,
-    frustumSize / 2,
-    -frustumSize / 2,
-    0.1,
-    1000
-  )
-  camera.position.z = 100
+  const camera = new PixelPerfectCamera({ viewSize: frustumSize })
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
   activeRenderer = renderer
-  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+  renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
@@ -96,6 +88,7 @@ async function main() {
 
   const normalTint = new Color(1, 1, 1)
   const hoverTint = new Color(params.hoverTint)
+  const pointer = new Vector2()
 
   colorFolder.on('change', () => {
     hoverTint.set(params.hoverTint)
@@ -103,11 +96,15 @@ async function main() {
 
   function isMouseOverSprite(mouseX: number, mouseY: number): boolean {
     const rect = renderer.domElement.getBoundingClientRect()
-    const x = ((mouseX - rect.left) / rect.width) * 2 - 1
-    const y = -((mouseY - rect.top) / rect.height) * 2 + 1
-    const currentAspect = window.innerWidth / window.innerHeight
-    const worldX = (x * frustumSize * currentAspect) / 2
-    const worldY = (y * frustumSize) / 2
+    camera.getNormalizedDeviceCoordinates(
+      ((mouseX - rect.left) / rect.width) * (renderer.domElement.width / renderer.getPixelRatio()),
+      ((mouseY - rect.top) / rect.height) * (renderer.domElement.height / renderer.getPixelRatio()),
+      renderer.getPixelRatio(),
+      pointer
+    )
+    if (Math.abs(pointer.x) > 1 || Math.abs(pointer.y) > 1) return false
+    const worldX = camera.left + ((pointer.x + 1) / 2) * (camera.right - camera.left)
+    const worldY = camera.bottom + ((pointer.y + 1) / 2) * (camera.top - camera.bottom)
     const halfSize = currentScale / 2
     return (
       worldX >= sprite.position.x - halfSize &&
@@ -138,13 +135,9 @@ async function main() {
   })
 
   window.addEventListener('resize', () => {
-    const aspect = window.innerWidth / window.innerHeight
-    camera.left = (-frustumSize * aspect) / 2
-    camera.right = (frustumSize * aspect) / 2
-    camera.top = frustumSize / 2
-    camera.bottom = -frustumSize / 2
-    camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+    renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   })
 
   const currentTint = new Color(1, 1, 1)
@@ -180,7 +173,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

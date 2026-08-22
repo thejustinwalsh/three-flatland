@@ -21,7 +21,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 const HOVER_TINT_DROP = 0.9 // hovering must pull red:green to under 90% of idle
 
-test('replaces the loading overlay when no renderer backend initializes', async ({ page }) => {
+test('uses R3F Canvas native fallback after every renderer backend fails', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined })
     HTMLCanvasElement.prototype.getContext = () => null
@@ -29,17 +29,12 @@ test('replaces the loading overlay when no renderer backend initializes', async 
 
   await page.goto('/')
 
-  const loader = page.locator('#loader')
-  await expect(loader).toContainText('This app could not initialize WebGPU or WebGL 2 rendering.')
-  await expect(loader).toHaveAttribute('role', 'status')
-  await expect(loader).not.toHaveAttribute('aria-label')
-  await expect(loader).toHaveCSS('color', 'rgb(154, 164, 178)')
-
-  const hiddenFallback = page.locator('#root [aria-hidden="true"]').filter({
-    hasText: 'This app could not initialize WebGPU or WebGL 2 rendering.',
-  })
-  await expect(hiddenFallback).toHaveCount(1)
-  await expect(hiddenFallback).not.toHaveAttribute('role')
+  const fallback = page.locator('.renderer-unavailable')
+  await expect(fallback).toContainText('This app could not initialize rendering.')
+  await expect(fallback).toHaveAttribute('role', 'status')
+  await expect(fallback).not.toHaveAttribute('aria-hidden')
+  expect(await fallback.evaluate((element) => element.parentElement?.tagName)).toBe('DIV')
+  await expect(page.locator('#loader')).toHaveCount(0)
   await expect(page.locator('canvas')).toHaveCount(0)
 })
 
@@ -58,6 +53,11 @@ test('renders the sprite and responds to the pointer', async ({ page }) => {
   await expect(canvas).toBeVisible()
 
   await settle(page)
+  const healthyFallback = page.locator('.renderer-unavailable')
+  await expect(healthyFallback).toHaveAttribute('aria-hidden', 'true')
+  await expect(healthyFallback).not.toHaveAttribute('role')
+  expect(await healthyFallback.evaluate((element) => element.parentElement?.tagName)).toBe('CANVAS')
+  await expect(page.locator('#loader')).toHaveCount(0)
   const idle = await sampleSprite(page)
   expect(idle.stdDev, 'the frame is a flat fill — nothing was drawn').toBeGreaterThan(8)
 

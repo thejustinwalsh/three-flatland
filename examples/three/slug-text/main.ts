@@ -6,7 +6,7 @@ import type { SlugFont, StyleSpan } from '@three-flatland/slug'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // --- Lorem ipsum generator ---
@@ -905,7 +905,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

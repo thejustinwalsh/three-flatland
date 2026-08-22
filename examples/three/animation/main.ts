@@ -1,10 +1,16 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, NearestFilter } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, createDevtoolsProvider } from 'three-flatland'
+import { Scene, NearestFilter } from 'three'
+import {
+  AnimatedSprite2D,
+  PixelPerfectCamera,
+  SpriteSheetLoader,
+  SortLayers,
+  createDevtoolsProvider,
+} from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
@@ -17,25 +23,16 @@ async function main() {
   const scene = new Scene()
   ;(scene as any).backgroundNode = gemGradientNode({ gem: GEM })
 
-  // Orthographic camera for 2D rendering
-  const frustumSize = 200
-  const aspect = window.innerWidth / window.innerHeight
-  const camera = new OrthographicCamera(
-    (-frustumSize * aspect) / 2,
-    (frustumSize * aspect) / 2,
-    frustumSize / 2,
-    -frustumSize / 2,
-    0.1,
-    1000
-  )
-  camera.position.z = 100
+  const camera = new PixelPerfectCamera({ viewSize: 200 })
 
   // WebGPU Renderer (required for TSL materials)
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
   activeRenderer = renderer
-  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+  renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
@@ -160,13 +157,9 @@ async function main() {
 
   // Handle resize
   window.addEventListener('resize', () => {
-    const aspect = window.innerWidth / window.innerHeight
-    camera.left = (-frustumSize * aspect) / 2
-    camera.right = (frustumSize * aspect) / 2
-    camera.top = frustumSize / 2
-    camera.bottom = -frustumSize / 2
-    camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+    renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   })
 
   // Animation loop
@@ -191,7 +184,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

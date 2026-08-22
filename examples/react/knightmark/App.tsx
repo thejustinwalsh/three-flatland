@@ -8,6 +8,7 @@ import {
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
+  usePixelPerfectCamera,
   SortLayers,
   type AnimationSetDefinition,
   type SpriteSheet,
@@ -15,8 +16,8 @@ import {
   type TilesetData,
   type TileLayerData,
 } from 'three-flatland/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during
@@ -25,28 +26,9 @@ import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-f
 
 extend({ SpriteGroup, TileMap2D })
 
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const aspect = size.width / size.height
-  return (
-    <orthographicCamera
-      ref={(cam: OrthographicCamera | null) => {
-        if (!cam) return
-        const manualCamera = cam as OrthographicCamera & { manual?: boolean }
-        manualCamera.manual = true
-        cam.left = (-viewSize * aspect) / 2
-        cam.right = (viewSize * aspect) / 2
-        cam.top = viewSize / 2
-        cam.bottom = -viewSize / 2
-        cam.updateProjectionMatrix()
-        set({ camera: cam })
-      }}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-    />
-  )
+function PixelCamera({ viewSize }: { viewSize: number }) {
+  usePixelPerfectCamera({ viewSize })
+  return null
 }
 
 // ============================================
@@ -285,7 +267,7 @@ function KnightmarkScene({
   knightScale,
   knightStatsRef,
 }: KnightmarkSceneProps) {
-  const { size } = useThree()
+  const { camera, size } = useThree()
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
@@ -300,13 +282,11 @@ function KnightmarkScene({
   const simRef = useRef({ speedMin, speedMax, hitRadius, knightScale })
   simRef.current = { speedMin, speedMax, hitRadius, knightScale }
 
-  // Track world bounds for spawn/cleanup logic (camera frustum is set by <OrthoCamera>)
+  // Track the pixel camera's expanded world bounds for spawn/cleanup logic.
   useEffect(() => {
-    const aspect = size.width / size.height
-    const halfW = (VIEW_SIZE * aspect) / 2
-    const halfH = VIEW_SIZE / 2
-    boundsRef.current = { left: -halfW, right: halfW, top: halfH, bottom: -halfH }
-  }, [size])
+    const ortho = camera as OrthographicCamera
+    boundsRef.current = { left: ortho.left, right: ortho.right, top: ortho.top, bottom: ortho.bottom }
+  }, [camera, size])
 
   // Build floor tilemap data
   const { mapData, mapWorldW, mapWorldH } = useMemo(() => {
@@ -593,12 +573,12 @@ export default function App() {
       <Canvas
         dpr={1}
         renderer={{ antialias: false, ...exampleRendererColorConfig }}
-        fallback={<WebGPUFallback />}
+        fallback={<ExampleFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
-        <OrthoCamera viewSize={VIEW_SIZE} />
+        <PixelCamera viewSize={VIEW_SIZE} />
         <DevtoolsProvider name="knightmark" />
         {/* No L1/L2/L3 — knightmark's sprites fill the viewport, so a
            backdrop wouldn't be visible anyway. Body bg (#16191e) shows

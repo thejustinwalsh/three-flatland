@@ -1,27 +1,23 @@
-import { Suspense, useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
-import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
-import { AnimatedSprite2D, SpriteSheetLoader, SortLayers, type AnimationSetDefinition } from 'three-flatland/react'
+import { Suspense, useState, useRef, useCallback, useEffect } from 'react'
+import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
+import {
+  AnimatedSprite2D,
+  SpriteSheetLoader,
+  SortLayers,
+  usePixelPerfectCamera,
+  type AnimationSetDefinition,
+} from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
 // Register AnimatedSprite2D with R3F (tree-shakeable)
 extend({ AnimatedSprite2D })
 
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const camera = useThree((s) => s.camera) as ThreeOrthographicCamera
-  const size = useThree((s) => s.size)
-  useLayoutEffect(() => {
-    const aspect = size.width / size.height
-    camera.left = (-viewSize * aspect) / 2
-    camera.right = (viewSize * aspect) / 2
-    camera.top = viewSize / 2
-    camera.bottom = -viewSize / 2
-    camera.updateProjectionMatrix()
-  }, [camera, size, viewSize])
+function Camera() {
+  usePixelPerfectCamera({ viewSize: 200 })
   return null
 }
 
@@ -218,7 +214,7 @@ export default function App() {
       <Canvas
         orthographic
         dpr={1}
-        fallback={<WebGPUFallback />}
+        fallback={<ExampleFallback />}
         camera={{
           position: [0, 0, 100],
           near: 0.1,
@@ -233,7 +229,7 @@ export default function App() {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
-        <OrthoCamera viewSize={200} />
+        <Camera />
         <DevtoolsProvider name="animation" />
         <Scene />
       </Canvas>

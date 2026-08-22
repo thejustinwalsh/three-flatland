@@ -152,6 +152,21 @@ describe('Sprite2D', () => {
     expect(target.visible).toBe(true)
   })
 
+  it('copy preserves the authored pixel-snapping mode', () => {
+    const source = new Sprite2D({ texture, pixelPerfect: false })
+    const target = new Sprite2D({ texture, pixelPerfect: true })
+
+    target.copy(source)
+
+    expect(target.pixelPerfect).toBe(false)
+  })
+
+  it('clone preserves an explicit pixel-snapping opt-out', () => {
+    const source = new Sprite2D({ texture, pixelPerfect: false })
+
+    expect(source.clone().pixelPerfect).toBe(false)
+  })
+
   it('copy preserves matrixWorld ownership from the target enrollment state', () => {
     const group = new SpriteGroup()
     const enrolledSource = new Sprite2D({ texture })

@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, Vector2, Raycaster, Plane, Vector3 } from 'three'
+import { Scene, Vector2, Raycaster, Plane, Vector3 } from 'three'
 import {
   Sprite2D,
   Sprite2DMaterial,
@@ -7,12 +7,13 @@ import {
   SortLayers,
   TextureLoader,
   SpriteSheetLoader,
+  PixelPerfectCamera,
   createDevtoolsProvider,
 } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 // Configuration
@@ -75,16 +76,14 @@ async function main() {
   const viewWidth = TILE_SIZE * (GRID_WIDTH + 2)
   const viewHeight = TILE_SIZE * (GRID_HEIGHT + 4)
 
-  // Orthographic camera
-  const camera = new OrthographicCamera(-viewWidth / 2, viewWidth / 2, viewHeight / 2, -viewHeight / 2, 0.1, 1000)
-  camera.position.z = 100
+  const camera = new PixelPerfectCamera({ viewSize: viewHeight, viewWidth })
 
   // WebGPU Renderer
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
   activeRenderer = renderer
-  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
@@ -194,8 +193,7 @@ async function main() {
   const worldPos = new Vector3()
 
   function screenToWorld(clientX: number, clientY: number): Vector3 {
-    mouse.x = (clientX / window.innerWidth) * 2 - 1
-    mouse.y = -(clientY / window.innerHeight) * 2 + 1
+    camera.getNormalizedDeviceCoordinates(clientX, clientY, renderer.getPixelRatio(), mouse)
     raycaster.setFromCamera(mouse, camera)
     raycaster.ray.intersectPlane(groundPlane, worldPos)
     return worldPos
@@ -329,24 +327,9 @@ async function main() {
 
   // Handle resize
   function handleResize() {
-    const aspect = window.innerWidth / window.innerHeight
-    const viewAspect = viewWidth / viewHeight
-
-    if (aspect > viewAspect) {
-      // Window is wider - fit to height
-      camera.top = viewHeight / 2
-      camera.bottom = -viewHeight / 2
-      camera.left = (-viewHeight * aspect) / 2
-      camera.right = (viewHeight * aspect) / 2
-    } else {
-      // Window is taller - fit to width
-      camera.left = -viewWidth / 2
-      camera.right = viewWidth / 2
-      camera.top = viewWidth / aspect / 2
-      camera.bottom = -viewWidth / aspect / 2
-    }
-    camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
+    camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+    renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   }
 
   window.addEventListener('resize', handleResize)
@@ -371,7 +354,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

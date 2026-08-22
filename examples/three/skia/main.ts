@@ -39,7 +39,7 @@ import {
 } from '@three-flatland/skia/three'
 import { createPane } from '@three-flatland/devtools'
 import { createDevtoolsProvider } from 'three-flatland'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 function setStatus(msg: string, ok: boolean) {
@@ -619,12 +619,11 @@ if (import.meta.hot) {
   })
 }
 
-main().catch((err) => {
+void main().catch((err: unknown) => {
   console.error(err)
   if (isSkiaWasmLoadError(err)) {
     console.error(`[skia] Skia WASM failed to load. ${SKIA_WASM_BUILD_HINT}`)
     setStatus('Skia WASM not built — run: pnpm --filter @three-flatland/skia build', false)
     return
   }
-  setStatus(`Error: ${err.message}`, false)
 })

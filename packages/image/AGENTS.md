@@ -162,9 +162,8 @@ pnpm exec vitest run packages/image/src/codecs/ktx2.test.ts
 # Node entry (inline wasm, no Worker)
 pnpm exec vitest run packages/image/src/encode.node.test.ts
 
-# Perf gate — 5s budget for 2048² ETC1S+mips encode
-# Flaky near threshold; re-run once if it fails by < 5%
-pnpm exec vitest run packages/image/src/basisu-bench.test.ts
+# Isolated local perf gate — 5s budget for 2048² ETC1S+mips encode
+FL_IMAGE_ABSOLUTE_PERF_GATE=1 pnpm exec vitest run packages/image/src/basisu-bench.test.ts
 
 # Equivalence test vs three.js KTX2Loader
 pnpm exec vitest run packages/image/src/loaders/Ktx2Loader.equivalence.test.ts

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactElement } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame } from '@react-three/fiber/webgpu'
 import { createDevtoolsProvider, isDevtoolsActive, type DevtoolsProviderHandle } from 'three-flatland'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).

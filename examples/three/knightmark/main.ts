@@ -1,8 +1,8 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera, NearestFilter } from 'three'
+import { Scene, NearestFilter } from 'three'
 import { gemClearColor } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   AnimatedSprite2D,
@@ -11,6 +11,7 @@ import {
   SpriteSheetLoader,
   TextureLoader,
   TileMap2D,
+  PixelPerfectCamera,
   SortLayers,
   type AnimationSetDefinition,
   type SpriteSheet,
@@ -206,8 +207,8 @@ async function main() {
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
   activeRenderer = renderer
-  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.setPixelRatio(1) // Pixel-perfect for pixel art
+  renderer.setSize(window.innerWidth, window.innerHeight)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
   if (!(await initializeRenderer(renderer))) return
@@ -219,12 +220,9 @@ async function main() {
   const scene = new Scene()
   scene.background = gemClearColor(GEM)
 
-  // Orthographic camera
-  const aspect = window.innerWidth / window.innerHeight
-  const halfW = (VIEW_SIZE * aspect) / 2
-  const halfH = VIEW_SIZE / 2
-  const camera = new OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.1, 1000)
-  camera.position.z = 100
+  const camera = new PixelPerfectCamera({ viewSize: VIEW_SIZE })
+  camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+  renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
 
   // SpriteGroup for batching — this scene stresses 40k+ sprites, so pin
   // fixed 16384-slot batches (ladder off) to minimize per-batch overhead.
@@ -319,10 +317,10 @@ async function main() {
   scene.add(tilemap)
 
   // --- Bounce bounds = camera view edges ---
-  let boundsLeft = -halfW
-  let boundsRight = halfW
-  let boundsTop = halfH
-  let boundsBottom = -halfH
+  let boundsLeft = camera.left
+  let boundsRight = camera.right
+  let boundsTop = camera.top
+  let boundsBottom = camera.bottom
 
   // --- Knights ---
   const knights: Knight[] = []
@@ -407,19 +405,13 @@ async function main() {
 
   // --- Resize ---
   function handleResize() {
-    const newAspect = window.innerWidth / window.innerHeight
-    const newHalfW = (VIEW_SIZE * newAspect) / 2
-    const newHalfH = VIEW_SIZE / 2
-    camera.left = -newHalfW
-    camera.right = newHalfW
-    camera.top = newHalfH
-    camera.bottom = -newHalfH
-    camera.updateProjectionMatrix()
     renderer.setSize(window.innerWidth, window.innerHeight)
-    boundsLeft = -newHalfW
-    boundsRight = newHalfW
-    boundsTop = newHalfH
-    boundsBottom = -newHalfH
+    camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+    renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
+    boundsLeft = camera.left
+    boundsRight = camera.right
+    boundsTop = camera.top
+    boundsBottom = camera.bottom
   }
   window.addEventListener('resize', handleResize)
 
@@ -537,7 +529,7 @@ async function main() {
   }
   animate()
 }
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

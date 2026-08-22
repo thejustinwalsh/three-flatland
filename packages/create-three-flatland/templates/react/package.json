@@ -25,7 +25,7 @@
     "three-flatland": "^0.1.0-alpha.10"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "1.61.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@types/three": "^0.185.4",

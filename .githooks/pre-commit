@@ -54,7 +54,7 @@ if match '^packages/three-flatland/src/index\.ts$|^packages/three-flatland/src/[
 fi
 
 # 5. Example helper, metadata, or generated copy changed → re-sync all examples.
-if match '^examples/_shared/(gems\.config\.ts|rendererFallback\.ts|WebGPUFallback\.tsx)$|^examples/(three|react)/[^/]+/package\.json$|^examples/three/[^/]+/(GemBackground\.ts|rendererFallback\.ts)$|^examples/react/[^/]+/(GemBackground\.tsx|rendererFallback\.ts|WebGPUFallback\.tsx)$|^docs/src/content/docs/examples/[^/]+\.mdx$'; then
+if match '^examples/_shared/(gems\.config\.ts|rendererColorManagement\.ts|rendererFailure\.ts|renderStartupError\.ts|ExampleFallback\.tsx)$|^examples/(three|react)/[^/]+/package\.json$|^examples/three/[^/]+/(GemBackground\.ts|rendererColorManagement\.ts|rendererFailure\.ts|renderStartupError\.ts)$|^examples/react/[^/]+/(GemBackground\.tsx|rendererColorManagement\.ts|rendererFailure\.ts|ExampleFallback\.tsx)$|^docs/src/content/docs/examples/[^/]+\.mdx$'; then
   echo "pre-commit: sync:examples"
   pnpm sync:examples
   git add examples docs/src/data/example-gems.ts

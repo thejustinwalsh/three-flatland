@@ -234,7 +234,7 @@ describe('auto batching preserves the source hierarchy', () => {
     spriteGroup.dispose()
   })
 
-  it('refreshes nested parent transforms before the same render pass', () => {
+  it('refreshes nested parent transforms independently of pixel snapping', () => {
     const scene = new Scene()
     const spriteGroup = new SpriteGroup()
     const parent = new Group()
@@ -251,6 +251,18 @@ describe('auto batching preserves the source hierarchy', () => {
 
     expect(instanceSlot(first)[12]).toBe(75)
     expect(instanceSlot(first)[13]).toBe(25)
+
+    first.pixelPerfect = false
+    parent.position.set(10, 20, 0)
+    scene.updateMatrixWorld(true)
+    expect(instanceSlot(first)[12]).toBe(10)
+    expect(instanceSlot(first)[13]).toBe(20)
+
+    first.pixelPerfect = true
+    const extras = first._batchMesh!.geometry.getAttribute('instanceExtras')
+    expect([extras.getY(first._batchSlot), extras.getZ(first._batchSlot), extras.getW(first._batchSlot)]).toEqual([
+      0, 0, 0,
+    ])
     spriteGroup.dispose()
   })
 

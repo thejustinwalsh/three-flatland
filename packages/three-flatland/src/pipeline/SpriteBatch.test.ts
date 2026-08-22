@@ -123,6 +123,19 @@ describe('SpriteBatch', () => {
     expect(array[slot * 16 + 9]).toBe(1) // y normal
   })
 
+  it('does not duplicate moving matrix translations into the core attribute', () => {
+    const batch = new SpriteBatch(material)
+    const slot = batch.allocateSlot()
+    const matrix = new Matrix4().makeTranslation(12.25, -7.5, 3)
+
+    batch.writeMatrix(slot, matrix)
+
+    const extras = batch.geometry.getAttribute('instanceExtras')
+    expect([extras.getY(slot), extras.getZ(slot), extras.getW(slot)]).toEqual([0, 0, 0])
+    expect(Reflect.get(batch, '_matrixTracker').isDirty).toBe(true)
+    expect(Reflect.get(batch, '_interleavedTracker').isDirty).toBe(false)
+  })
+
   it('should reset all slots', () => {
     const batch = new SpriteBatch(material)
 

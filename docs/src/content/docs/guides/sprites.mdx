@@ -95,6 +95,16 @@ const sprite = new Sprite2D({
 });
 ```
 
+### Pixel snapping
+
+`pixelPerfect` defaults to `true` through the library-wide `pixel-art` preset. It snaps the sprite's final projected pivot to a physical-pixel boundary without changing its authored position, parent transforms, scale, or rotation. Set it to `false` for deliberate subpixel motion.
+
+```typescript
+sprite.pixelPerfect = false
+```
+
+Pair snapping with `PixelPerfectCamera` for an integer world-to-framebuffer scale. See [Pixel-Perfect Rendering](../pixel-perfect-rendering/) for Three.js, React, HiDPI, and configuration examples.
+
 ## SpriteGroup
 
 For batched rendering with many sprites, use `SpriteGroup`:

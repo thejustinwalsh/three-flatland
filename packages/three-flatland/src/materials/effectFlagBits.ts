@@ -43,6 +43,10 @@ export const CAST_SHADOW_MASK = 1 << CAST_SHADOW_BIT
 export const ROTATED_FRAME_BIT = 3
 export const ROTATED_FRAME_MASK = 1 << ROTATED_FRAME_BIT
 
+/** Bit 4: snap the sprite's projected translation to physical pixels. */
+export const PIXEL_PERFECT_BIT = 4
+export const PIXEL_PERFECT_MASK = 1 << PIXEL_PERFECT_BIT
+
 // ─── MaterialEffect enable bits — live in instanceSystem.w ───────────
 
 /**

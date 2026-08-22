@@ -3,7 +3,7 @@ title: Flatland
 description: Self-contained 2D rendering pipeline with camera, post-processing, and global uniforms.
 ---
 
-import { Tabs, TabItem } from 'starlight-theme/components';
+import { Tabs, TabItem } from 'starlight-theme/components'
 
 `Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an orthographic camera, global uniforms, post-processing pipeline, and render target support into a single object.
 
@@ -11,13 +11,13 @@ If you're new and not sure whether you need `Flatland` or `SpriteGroup` — star
 
 ## When to Use Flatland vs SpriteGroup
 
-| | Flatland | SpriteGroup |
-|---|---------|-------------|
-| **Use case** | Self-contained 2D pipeline | Embed sprites into your own scene |
-| **Camera** | Internal orthographic camera | You provide the camera |
-| **Post-processing** | Built-in pass effect pipeline | Not included |
-| **Global uniforms** | Automatic time, viewport, tint | Not included |
-| **Render call** | `flatland.render(...)` | `renderer.render(...)` |
+|                     | Flatland                                   | SpriteGroup                       |
+| ------------------- | ------------------------------------------ | --------------------------------- |
+| **Use case**        | Self-contained 2D pipeline                 | Embed sprites into your own scene |
+| **Camera**          | Internal pixel-perfect orthographic camera | You provide the camera            |
+| **Post-processing** | Built-in pass effect pipeline              | Not included                      |
+| **Global uniforms** | Automatic time, viewport, tint             | Not included                      |
+| **Render call**     | `flatland.render(...)`                     | `renderer.render(...)`            |
 
 Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` when you need to mix sprites into an existing 3D scene with your own camera and render loop.
 
@@ -50,6 +50,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
     }
     animate()
     ```
+
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
@@ -85,6 +86,7 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
       )
     }
     ```
+
   </TabItem>
 </Tabs>
 
@@ -96,18 +98,21 @@ In React Three Fiber, register `flatland.render()` in the **render phase** (`{ p
 
 ```typescript
 const flatland = new Flatland({
-  viewSize: 400,         // Orthographic view height in world units
-  clearColor: 0x1a1a2e,  // Background color
-  clearAlpha: 1,          // Background alpha (< 1 for transparent)
-  autoClear: true,        // Clear before each render
-  postProcessing: false,  // Enable post-processing pipeline
-  aspect: undefined,      // Auto-sync from the render surface; set a number to pin it
-  camera: null,           // Custom OrthographicCamera (null = internal)
-  renderTarget: null,     // RenderTarget (null = render to viewport)
+  viewSize: 400, // Orthographic view height in world units
+  pixelPerfect: true, // Managed PixelPerfectCamera (system default)
+  clearColor: 0x1a1a2e, // Background color
+  clearAlpha: 1, // Background alpha (< 1 for transparent)
+  autoClear: true, // Clear before each render
+  postProcessing: false, // Enable post-processing pipeline
+  aspect: undefined, // Regular camera only: auto-sync, or set a number to pin it
+  camera: null, // Custom OrthographicCamera (null = internal)
+  renderTarget: null, // RenderTarget (null = render to viewport)
 })
 ```
 
-See the [FlatlandOptions API reference](/three-flatland/api/interfaces/flatlandoptions/) for full type details.
+See the [FlatlandOptions API reference](/three-flatland/api/three-flatland/src/interfaces/flatlandoptions/) for full type details.
+
+Flatland's managed camera follows the library-wide `pixel-art` preset by default. See [Pixel-Perfect Rendering](../pixel-perfect-rendering/) for the camera, object snapping, HiDPI behavior, and the `FlatlandConfig` hierarchy. Pass `pixelPerfect: false` for a regular orthographic camera.
 
 ## Adding Objects
 
@@ -151,11 +156,11 @@ All sprites receive lighting by default. Set `lit: false` to opt out:
 const indicator = new Sprite2D({ texture, lit: false }) // always full brightness
 ```
 
-| Method / Property | Description |
-|--------|-------------|
-| `setLighting(effect)` | Set the active LightEffect (or `null` to disable) |
-| `lighting` | Current LightEffect (read-only) |
-| `lights` | All tracked Light2D instances (read-only) |
+| Method / Property        | Description                                                           |
+| ------------------------ | --------------------------------------------------------------------- |
+| `setLighting(effect)`    | Set the active LightEffect (or `null` to disable)                     |
+| `lighting`               | Current LightEffect (read-only)                                       |
+| `lights`                 | All tracked Light2D instances (read-only)                             |
 | `effect.resolutionScale` | Processing resolution relative to the physical surface (default: `1`) |
 
 `resolutionScale` belongs to the effect that owns the surface-dependent resources. A value of `0.5` receives half-width and half-height dimensions in `LightEffect.resize()`, reducing area to one quarter while leaving camera framing, canvas resolution, renderer DPR, and logical viewport uniforms unchanged. Change Three.js `renderer.setPixelRatio()` or R3F `<Canvas dpr={...}>` instead when the entire frame should render at a lower resolution.
@@ -166,12 +171,12 @@ See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types,
 
 ## Render Loop
 
-import Diagram from '../../../components/Diagram.astro';
-import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw';
+import Diagram from '../../../components/Diagram.astro'
+import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw'
 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
-Each frame, call `render()`. `Flatland` reads the renderer drawing buffer or active render target size and updates its camera aspect when the surface dimensions change:
+Each frame, call `render()`. `Flatland` reads the renderer drawing buffer or active render target size and updates its camera when the surface dimensions change:
 
 ```typescript
 function animate() {
@@ -180,7 +185,9 @@ function animate() {
 }
 ```
 
-`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches before drawing. Surface-dependent GPU resources use physical drawing-buffer pixels so canvas DPR and render-target texels stay in the same coordinate space; `globals.viewportSize` remains the renderer's logical size and is paired with `globals.pixelRatio`. To keep a fixed camera aspect, pass `aspect` or assign `flatland.aspect`. Calling `resize(width, height)` opts into manual surface sizing and keeps the previous explicit-resize behavior, including resizing the current render target with `setSize()`. Automatic sizing only observes user-owned render targets; it never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. The explicit sentinel works for conditional R3F props such as `aspect={locked ? 1 : 'auto'}`. Read `flatland.resolvedAspect` when you need the current numeric ratio.
+`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches before drawing. Surface-dependent GPU resources use physical drawing-buffer pixels so canvas DPR and render-target texels stay in the same coordinate space; `globals.viewportSize` remains the renderer's logical size and is paired with `globals.pixelRatio`. The default `PixelPerfectCamera` selects and centers an integer-sized viewport inside the physical surface, so `resolvedAspect` can differ from the full surface when letterboxing is active. With `pixelPerfect: false`, pass `aspect` or assign `flatland.aspect` to pin the regular internal camera.
+
+Calling `resize(width, height)` starts a manual sizing session, and the active destination at that moment fixes the unit for the session. With no render target attached, pass logical CSS pixels; the renderer's current DPR is applied on every render. A target attached later is therefore sized to `width × DPR` by `height × DPR`. With a render target attached, pass physical texels, matching `RenderTarget.setSize()`; those dimensions remain physical across later target swaps or a return to the canvas. Automatic sizing only observes user-owned render targets and never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` ends the manual sizing session and resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. Read `flatland.resolvedAspect` when you need the current numeric ratio.
 
 When you supply a camera through `camera`, Flatland preserves its authored frustum. The aspect controls above apply to the internal camera; `resolvedAspect` reports the supplied camera's actual frustum ratio.
 
@@ -192,15 +199,15 @@ When you supply a camera through `camera`, Flatland preserves its authored frust
 
 Every Flatland instance exposes a `globals` object with shared uniforms. These update once per frame and are available to all sprite materials via TSL nodes.
 
-| Uniform | Description |
-|---------|-------------|
-| `time` | Elapsed seconds (`undefined` = auto) |
-| `globalTint` | Color tint for all sprites |
-| `viewportSize` | Logical viewport size in pixels |
-| `pixelRatio` | Device pixel ratio |
-| `wind` | Wind direction and strength |
-| `fogColor` | Fog color |
-| `fogRange` | Fog near/far range |
+| Uniform        | Description                          |
+| -------------- | ------------------------------------ |
+| `time`         | Elapsed seconds (`undefined` = auto) |
+| `globalTint`   | Color tint for all sprites           |
+| `viewportSize` | Logical viewport size in pixels      |
+| `pixelRatio`   | Device pixel ratio                   |
+| `wind`         | Wind direction and strength          |
+| `fogColor`     | Fog color                            |
+| `fogRange`     | Fog near/far range                   |
 
 ### Auto vs Manual Time
 
@@ -226,7 +233,7 @@ const material = new Sprite2DMaterial({
     // Use the global tint node in a custom effect
     const tinted = ctx.color.rgb.mul(flatland.globals.globalTintNode)
     return tinted.toVec4(ctx.color.a)
-  }
+  },
 })
 ```
 
@@ -257,7 +264,10 @@ import { posterize } from '@three-flatland/nodes'
 const PosterizePass = createPassEffect({
   name: 'posterize',
   schema: { bands: 6 },
-  pass: ({ uniforms }) => (input, uv) => posterize(input, uniforms.bands),
+  pass:
+    ({ uniforms }) =>
+    (input, uv) =>
+      posterize(input, uniforms.bands),
 })
 
 const flatland = new Flatland({ viewSize: 400 })
@@ -274,12 +284,12 @@ The render pipeline auto-initializes on the first `addPass()` call. Passes chain
 Adding the first pass switches Flatland onto the render-pipeline path: the scene renders to an offscreen target, then each pass runs as a full-screen draw. One or two passes are cheap; a long chain costs a full-screen sample per pass per frame, so fuse effects into a single pass where you can.
 :::
 
-| Method | Description |
-|--------|-------------|
-| `addPass(pass, order?)` | Add a pass effect |
-| `removePass(pass)` | Remove a specific pass |
-| `clearPasses()` | Remove all passes |
-| `passes` | Read-only array of current passes |
+| Method                  | Description                       |
+| ----------------------- | --------------------------------- |
+| `addPass(pass, order?)` | Add a pass effect                 |
+| `removePass(pass)`      | Remove a specific pass            |
+| `clearPasses()`         | Remove all passes                 |
+| `passes`                | Read-only array of current passes |
 
 See the [Pass Effects guide](../pass-effects/) for creating custom effects and the full node library.
 
@@ -338,4 +348,5 @@ This destroys the ECS world, sprite batches, render pipeline, and all pass effec
 - [2D Lighting](../lighting/) — Light2D sources and LightEffect presets
 - [Pass Effects](../pass-effects/) — Full-screen post-processing effects
 - [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
+- [Pixel-Perfect Rendering](../pixel-perfect-rendering/) — Camera scaling, projected-pivot snapping, and presets
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage

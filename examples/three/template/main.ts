@@ -2,7 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
-import { initializeRenderer } from './rendererFallback'
+import { initializeRenderer } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
@@ -84,7 +84,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch((error: unknown) => console.error('[three-flatland] Example startup failed', error))
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

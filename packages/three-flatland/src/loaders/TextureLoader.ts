@@ -15,8 +15,9 @@ export interface TextureLoaderOptions {
  * Extends Three.js's Loader class for compatibility with R3F's useLoader.
  * Automatically applies texture presets based on the hierarchy:
  * 1. TextureLoader.options (static loader default)
- * 2. TextureConfig.options (global default)
- * 3. 'pixel-art' (system default)
+ * 2. TextureConfig.options (texture-specific default)
+ * 3. FlatlandConfig.options (library-wide default)
+ * 4. 'pixel-art' (system default)
  *
  * @example
  * ```typescript
@@ -165,8 +166,9 @@ export class TextureLoader extends Loader<Texture> {
  * Hierarchy (highest to lowest priority):
  * 1. instanceOptions (per-call override)
  * 2. loaderOptions (loader-level default)
- * 3. TextureConfig.options (global default)
- * 4. 'pixel-art' (system default)
+ * 3. TextureConfig.options (texture-specific default)
+ * 4. FlatlandConfig.options (library-wide default)
+ * 5. 'pixel-art' (system default)
  *
  * @example
  * ```typescript

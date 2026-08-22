@@ -15,6 +15,9 @@ export * from './materials'
 // Loaders
 export * from './loaders'
 
+// Coordinated rendering defaults
+export * from './config'
+
 // Pipeline
 export * from './pipeline'
 
@@ -32,6 +35,9 @@ export * from './events'
 
 // Lights
 export * from './lights'
+
+// Cameras
+export * from './cameras'
 
 // Flatland
 export * from './Flatland'

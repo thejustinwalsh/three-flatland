@@ -3,8 +3,8 @@ import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
 import { DataTexture, RGBAFormat, NearestFilter, SRGBColorSpace, type OrthographicCamera } from 'three'
 import { TileMap2D, type TileMapData, type TilesetData, type TileLayerData } from 'three-flatland/react'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput, usePaneButton } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -385,7 +385,7 @@ function TilemapScene({ mapData, chunkSize, showGround, showWalls, showDecor, on
     tilemapRef.current?.update(delta * 1000)
   })
 
-  return <tileMap2D ref={tilemapRef} data={mapData} chunkSize={chunkSize} position={[0, 0, 0]} />
+  return <tileMap2D ref={tilemapRef} data={mapData} chunkSize={chunkSize} pixelPerfect={false} position={[0, 0, 0]} />
 }
 
 function OrthoCamera({ viewSize }: { viewSize: number }) {
@@ -694,7 +694,7 @@ export default function App() {
     <Canvas
       dpr={1}
       renderer={{ antialias: false, ...exampleRendererColorConfig }}
-      fallback={<WebGPUFallback />}
+      fallback={<ExampleFallback />}
       style={{ touchAction: 'none' }}
       onCreated={({ renderer }) => {
         renderer.domElement.style.imageRendering = 'pixelated'

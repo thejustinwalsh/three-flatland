@@ -12,8 +12,8 @@
  *   examples/three/template/GemBackground.ts → examples/three/<slug>/GemBackground.ts
  *   examples/react/template/GemBackground.tsx → examples/react/<slug>/GemBackground.tsx
  *   examples/_shared/rendererColorManagement.ts → every example directory
- *   examples/_shared/rendererFallback.ts → every example directory
- *   examples/_shared/WebGPUFallback.tsx → every React example directory
+ *   examples/_shared/renderStartupError.ts → every plain Three example directory
+ *   examples/_shared/ExampleFallback.tsx → every React example directory
  *
  * What gets generated:
  *   examples/three/<slug>/gem.ts   — `export const GEM = '<gem>' as const`
@@ -51,13 +51,14 @@ const SYNCED_FILES: Record<Variant, readonly SyncedFile[]> = {
   three: [
     { source: 'examples/three/template/GemBackground.ts', target: 'GemBackground.ts' },
     { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
-    { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts' },
+    { source: 'examples/_shared/rendererFailure.ts', target: 'rendererFailure.ts' },
+    { source: 'examples/_shared/renderStartupError.ts', target: 'renderStartupError.ts' },
   ],
   react: [
     { source: 'examples/react/template/GemBackground.tsx', target: 'GemBackground.tsx' },
     { source: 'examples/_shared/rendererColorManagement.ts', target: 'rendererColorManagement.ts' },
-    { source: 'examples/_shared/rendererFallback.ts', target: 'rendererFallback.ts' },
-    { source: 'examples/_shared/WebGPUFallback.tsx', target: 'WebGPUFallback.tsx' },
+    { source: 'examples/_shared/rendererFailure.ts', target: 'rendererFailure.ts' },
+    { source: 'examples/_shared/ExampleFallback.tsx', target: 'ExampleFallback.tsx' },
   ],
 }
 

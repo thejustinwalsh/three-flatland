@@ -16,9 +16,10 @@
 - **Sprite batching via ECS.** A `koota`-backed batch system keeps archetypes optimal; per-sprite uniforms pack into shared GPU buffers.
 - **Spritesheet animation with frame-precise timing.** `AnimationController` handles play/pause/onComplete; declare named animations against a sheet.
 - **Tilemap loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/).** Animated tiles supported.
-- **Render to texture for 2D-on-3D.** The `Flatland` class composes a 2D scene with an orthographic camera and optional `RenderTarget`; sample the result on any 3D material (`mesh.material.map = flatland.texture`).
+- **Pixel-perfect by default.** `FlatlandConfig` coordinates texture loading, integer camera scale, and projected-pivot snapping; override the whole pipeline or one subsystem.
+- **Render to texture for 2D-on-3D.** The `Flatland` class composes a 2D scene with a pixel-perfect orthographic camera and optional `RenderTarget`; sample the result on any 3D material (`mesh.material.map = flatland.texture`).
 - **React Three Fiber integration** via `three-flatland/react`. Re-exports the core surface plus JSX type augmentation; `attachEffect` covers the add/remove lifecycle.
-- **Tree-shakeable subpath exports.** `three-flatland/sprites`, `/animation`, `/loaders`, `/pipeline`, `/tilemap`, `/materials`. Import only what you use.
+- **Tree-shakeable subpath exports.** `three-flatland/sprites`, `/animation`, `/loaders`, `/cameras`, `/config`, `/pipeline`, `/tilemap`, `/materials`. Import only what you use.
 
 ## Installation
 
@@ -39,15 +40,16 @@ npm install @three-flatland/nodes
 
 ```typescript
 import { WebGPURenderer } from 'three/webgpu'
-import { Scene, OrthographicCamera } from 'three'
-import { Sprite2D, SpriteGroup, TextureLoader } from 'three-flatland'
+import { Scene } from 'three'
+import { PixelPerfectCamera, Sprite2D, SpriteGroup, TextureLoader } from 'three-flatland'
 
 const scene = new Scene()
-const camera = new OrthographicCamera(-400, 400, 300, -300, 0.1, 1000)
-camera.position.z = 100
+const camera = new PixelPerfectCamera({ viewSize: 600 })
 
 const renderer = new WebGPURenderer()
 renderer.setSize(800, 600)
+camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
 document.body.appendChild(renderer.domElement)
 await renderer.init()
 
@@ -72,9 +74,14 @@ animate()
 ```tsx
 import { Canvas, extend, useLoader } from '@react-three/fiber/webgpu'
 import { Suspense } from 'react'
-import { Sprite2D, SpriteGroup, TextureLoader } from 'three-flatland/react'
+import { Sprite2D, SpriteGroup, TextureLoader, usePixelPerfectCamera } from 'three-flatland/react'
 
 extend({ Sprite2D, SpriteGroup })
+
+function Camera() {
+  usePixelPerfectCamera({ viewSize: 600 })
+  return null
+}
 
 function Sprite() {
   const texture = useLoader(TextureLoader, '/sprite.png')
@@ -87,7 +94,8 @@ function Sprite() {
 
 export default function App() {
   return (
-    <Canvas orthographic camera={{ zoom: 1, position: [0, 0, 100] }}>
+    <Canvas orthographic>
+      <Camera />
       <Suspense>
         <Sprite />
       </Suspense>
@@ -189,7 +197,7 @@ Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland]
 ## When not to reach for three-flatland
 
 - **3D scenes.** Use Three.js directly. three-flatland adds nothing for non-2D work and the batching system assumes orthographic-style 2D composition.
-- **WebGL-1-only targets.** TSL targets WebGPU and WebGL 2; legacy WebGL 1 is out of scope.
+- **WebGL-1-only targets.** `WebGPURenderer` can use Three.js's WebGL 2 node backend when WebGPU is unavailable; legacy WebGL 1 is out of scope.
 - **DOM-overlay UI.** For HTML UI layered over a canvas, use the DOM. three-flatland is a renderer, not a UI toolkit.
 
 ## Roadmap

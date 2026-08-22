@@ -1,18 +1,18 @@
-import { Suspense, useState, useRef, useCallback, useMemo, useLayoutEffect, useEffect } from 'react'
+import { Suspense, useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
-import type { OrthographicCamera as ThreeOrthographicCamera } from 'three'
 import {
   AnimatedSprite2D,
   Sprite2D,
   SpriteSheetLoader,
   SortLayers,
+  usePixelPerfectCamera,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
 import { usePane, DevtoolsProvider } from '@three-flatland/devtools/react'
 import { Color, Vector3 } from 'three'
 import type { ThreeEvent } from '@react-three/fiber/webgpu'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
+import { ExampleFallback } from './ExampleFallback'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
 
@@ -24,17 +24,8 @@ extend({ AnimatedSprite2D, Sprite2D })
 // canonical 2D framing used across the examples (mirrors animation/).
 // ---------------------------------------------------------------------------
 
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const camera = useThree((s) => s.camera) as ThreeOrthographicCamera
-  const size = useThree((s) => s.size)
-  useLayoutEffect(() => {
-    const aspect = size.width / size.height
-    camera.left = (-viewSize * aspect) / 2
-    camera.right = (viewSize * aspect) / 2
-    camera.top = viewSize / 2
-    camera.bottom = -viewSize / 2
-    camera.updateProjectionMatrix()
-  }, [camera, size, viewSize])
+function Camera() {
+  usePixelPerfectCamera({ viewSize: 400 })
   return null
 }
 
@@ -545,7 +536,7 @@ function Scene({ onCounts }: { onCounts: (counts: Record<RarityName, number>) =>
   return (
     <>
       <GemBackground gem={GEM} />
-      <OrthoCamera viewSize={400} />
+      <Camera />
       {/* The pane (above) must stay mounted while assets load, so the
           suspending loaders live below an inner Suspense. */}
       <Suspense fallback={null}>
@@ -591,7 +582,7 @@ export default function App() {
         dpr={1}
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
         renderer={{ antialias: false, ...exampleRendererColorConfig }}
-        fallback={<WebGPUFallback />}
+        fallback={<ExampleFallback />}
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}
