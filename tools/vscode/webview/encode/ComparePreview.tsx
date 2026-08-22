@@ -78,10 +78,7 @@ function useEncodedTexture(
 
   useEffect(() => {
     if (!encodedBytes || !encodedFormat) {
-      setTex((prev) => {
-        prev?.dispose()
-        return null
-      })
+      setTex(null)
       return
     }
     const reqId = ++reqIdRef.current
@@ -106,10 +103,7 @@ function useEncodedTexture(
           return
         }
         setGpuStats(extractGpuStats(next, sourceWidth, sourceHeight))
-        setTex((prev) => {
-          prev?.dispose()
-          return next
-        })
+        setTex(next)
       } catch (err) {
         console.error('encoded texture decode failed', err)
       }
@@ -120,12 +114,11 @@ function useEncodedTexture(
     }
   }, [encodedBytes, encodedFormat, setGpuStats, sourceWidth, sourceHeight])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(
     () => () => {
       tex?.dispose()
     },
-    []
+    [tex]
   )
 
   return tex
