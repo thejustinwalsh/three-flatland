@@ -33,8 +33,12 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
     cameraRef.current = new PixelPerfectCamera(options)
   }
   const camera = cameraRef.current
-  const logicalPixelViewport = useRef(new Vector4())
-  const viewportDepthRange = useRef(new Vector2(0, 1))
+  const logicalPixelViewportRef = useRef<Vector4 | null>(null)
+  if (logicalPixelViewportRef.current === null) logicalPixelViewportRef.current = new Vector4()
+  const logicalPixelViewport = logicalPixelViewportRef.current
+  const viewportDepthRangeRef = useRef<Vector2 | null>(null)
+  if (viewportDepthRangeRef.current === null) viewportDepthRangeRef.current = new Vector2(0, 1)
+  const viewportDepthRange = viewportDepthRangeRef.current
 
   const width = useThree((state) => state.size.width)
   const height = useThree((state) => state.size.height)
@@ -124,7 +128,7 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
     if (!makeDefault) return
     const previousViewport = renderer.getViewport(new Vector4())
     const previousDepthRange = getRendererViewportDepthRange(renderer, new Vector2())
-    viewportDepthRange.current.copy(previousDepthRange)
+    viewportDepthRange.copy(previousDepthRange)
     const initialSize = { ...surfaceSizeRef.current }
     const wasFullViewport =
       previousViewport.x === 0 &&
@@ -150,28 +154,35 @@ export function usePixelPerfectCamera(options: UsePixelPerfectCameraOptions = {}
         setRendererViewport(renderer, previousViewport, previousDepthRange)
       }
     }
-  }, [makeDefault, renderer])
+  }, [makeDefault, renderer, viewportDepthRange])
 
   useLayoutEffect(() => {
     if (!makeDefault) return
-    setRendererViewport(
-      renderer,
-      camera.getLogicalViewport(dpr, logicalPixelViewport.current),
-      viewportDepthRange.current
-    )
-  }, [camera, dpr, height, makeDefault, options.pixelScale, options.viewSize, options.viewWidth, renderer, width])
+    setRendererViewport(renderer, camera.getLogicalViewport(dpr, logicalPixelViewport), viewportDepthRange)
+  }, [
+    camera,
+    dpr,
+    height,
+    logicalPixelViewport,
+    makeDefault,
+    options.pixelScale,
+    options.viewSize,
+    options.viewWidth,
+    renderer,
+    viewportDepthRange,
+    width,
+  ])
 
   // R3F/Three reset the renderer viewport to the full canvas synchronously
   // during setSize/setPixelRatio. Rebind immediately before automatic render
   // so no resize frame can escape the integer pixel viewport.
-  useFrame(() => {
-    if (!makeDefault) return
-    setRendererViewport(
-      renderer,
-      camera.getLogicalViewport(dpr, logicalPixelViewport.current),
-      viewportDepthRange.current
-    )
-  }, Number.NEGATIVE_INFINITY)
+  useFrame(
+    () => {
+      if (!makeDefault) return
+      setRendererViewport(renderer, camera.getLogicalViewport(dpr, logicalPixelViewport), viewportDepthRange)
+    },
+    { priority: Number.NEGATIVE_INFINITY }
+  )
 
   useLayoutEffect(() => {
     if (!makeDefault) return
