@@ -1,7 +1,7 @@
-import { Suspense, useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { Suspense, useRef, useEffect, useMemo, useState } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
-import { Vector2, type OrthographicCamera as ThreeOrthographicCamera } from 'three'
+import { Vector2 } from 'three'
 import {
   Flatland,
   Light2D,
@@ -16,7 +16,6 @@ import {
   attachEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
@@ -134,41 +133,6 @@ const slimeAnimations: AnimationSetDefinition = {
       loop: true,
     },
   },
-}
-
-// ============================================
-// ORTHO CAMERA
-// ============================================
-
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const camRef = useRef<ThreeOrthographicCamera | null>(null)
-  const aspect = size.width / size.height
-  // Re-derive the frustum whenever the fit view size or aspect changes —
-  // a ref callback fires only on mount, so resize/zoom updates would be
-  // missed without this effect.
-  useLayoutEffect(() => {
-    const cam = camRef.current
-    if (!cam) return
-    cam.left = (-viewSize * aspect) / 2
-    cam.right = (viewSize * aspect) / 2
-    cam.top = viewSize / 2
-    cam.bottom = -viewSize / 2
-    cam.updateProjectionMatrix()
-    set({ camera: cam })
-  }, [viewSize, aspect, set])
-  return (
-    <orthographicCamera
-      ref={(cam) => {
-        camRef.current = cam
-        if (cam) (cam as ThreeOrthographicCamera & { manual?: boolean }).manual = true
-      }}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-    />
-  )
 }
 
 // ============================================
@@ -296,11 +260,6 @@ function FlatlandScene(props: SceneProps) {
     () => fitViewSize(size.width, size.height, mapHalfW * 2, mapHalfH * 2),
     [size.width, size.height, mapHalfW, mapHalfH]
   )
-  // Click-to-walk reads this inside a listener that doesn't re-bind on
-  // every resize — keep a live ref so world mapping uses the current view.
-  const viewSizeRef = useRef(viewSize)
-  viewSizeRef.current = viewSize
-
   const fixedLightPositions = useMemo(
     () => extractObjectsByType(mapData, 'light').map((obj) => mapToWorld(obj, mapData, TILE_SCALE)),
     [mapData]
@@ -492,10 +451,10 @@ function FlatlandScene(props: SceneProps) {
       const rect = canvas.getBoundingClientRect()
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
       const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
-      const aspect = rect.width / rect.height
-      const vs = viewSizeRef.current
-      const worldX = (ndcX * (vs * aspect)) / 2
-      const worldY = (ndcY * vs) / 2
+      const camera = flatlandRef.current?.camera
+      if (!camera) return
+      const worldX = camera.left + ((ndcX + 1) / 2) * (camera.right - camera.left)
+      const worldY = camera.bottom + ((ndcY + 1) / 2) * (camera.top - camera.bottom)
 
       // Diablo-style click-to-walk. If the click landed near a torch
       // switch, queue that switch's index so the hero toggles it on
@@ -806,7 +765,6 @@ function FlatlandScene(props: SceneProps) {
 
   return (
     <>
-      <OrthoCamera viewSize={viewSize} />
       <flatland ref={flatlandRef} viewSize={viewSize} clearColor={0x06060c}>
         {props.lightingEnabled && (
           <defaultLightEffect
@@ -1016,7 +974,25 @@ export default function App() {
   const rimEnabled = rimIntensity > 0
 
   return (
-    <Canvas dpr={1} renderer={{ antialias: false, ...exampleRendererColorConfig }} fallback={<WebGPUFallback />}>
+    <Canvas
+      dpr={1}
+      renderer={{ antialias: false, ...exampleRendererColorConfig }}
+      fallback={
+        <div
+          role="status"
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '2rem',
+            color: '#f4f7fb',
+          }}
+        >
+          This example could not initialize rendering.
+        </div>
+      }
+    >
       <color attach="background" args={['#06060c']} />
       <Suspense fallback={null}>
         <FlatlandScene

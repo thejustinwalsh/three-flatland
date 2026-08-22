@@ -1,5 +1,5 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { initializeRenderer } from './rendererFallback'
+import { renderStartupError } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   Scene,
@@ -473,7 +473,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  if (!(await initializeRenderer(renderer))) return
+  await renderer.init()
 
   // Create procedural tileset
   const tilesetTexture = createProceduralTileset(TILE_SIZE, TILESET_COLUMNS, TILESET_ROWS)
@@ -510,7 +510,9 @@ async function main() {
   function buildTilemap(): TileMap2D {
     const dungeonLayers = generateDungeon(mapSize, mapSize, gen.density)
     const mapData = createTileMapData(mapSize, mapSize, TILE_SIZE, tilesetData, dungeonLayers)
-    const tm = new TileMap2D({ data: mapData, chunkSize: gen.chunkSize })
+    // This explorer deliberately supports continuous zoom and pan, so it opts
+    // out of projected-pivot snapping while retaining pixel-art textures.
+    const tm = new TileMap2D({ data: mapData, chunkSize: gen.chunkSize, pixelPerfect: false })
 
     // Apply current layer visibility
     const groundLayer = tm.getLayerAt(0)
@@ -823,7 +825,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch(renderStartupError)
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { RENDERER_FAILURE_COLOR } from '../examples/_shared/rendererFallback'
+import { RENDERER_FAILURE_COLOR } from '../examples/_shared/renderStartupError'
 
 const ROOT = resolve(import.meta.dirname, '..')
 
@@ -35,5 +35,17 @@ describe('synced renderer fallbacks', () => {
 
     expect(background, `${path} must declare a solid page background`).toBeDefined()
     expect(contrastRatio(RENDERER_FAILURE_COLOR, background!), path).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it.each(
+    readdirSync(join(ROOT, 'examples', 'react'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(ROOT, 'examples', 'react', entry.name, 'App.tsx'))
+  )('uses the native R3F Canvas failure boundary in %s', (path) => {
+    const source = readFileSync(path, 'utf8')
+
+    expect(source).toContain('fallback=')
+    expect(source).toContain('This example could not initialize rendering.')
+    expect(source).not.toContain('WebGPUFallback')
   })
 })

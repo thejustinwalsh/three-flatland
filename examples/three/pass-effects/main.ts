@@ -5,7 +5,7 @@ import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import { Flatland, Sprite2D, TextureLoader, createPassEffect } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { renderStartupError } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import type { PassEffect } from 'three-flatland'
 import {
@@ -312,7 +312,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  if (!(await initializeRenderer(renderer))) return
+  await renderer.init()
 
   // Load texture and create sprite scene
   const texture = await TextureLoader.load('./icon.svg')
@@ -616,7 +616,7 @@ async function main() {
   }
 }
 
-void main()
+void main().catch(renderStartupError)
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

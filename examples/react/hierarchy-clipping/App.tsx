@@ -1,9 +1,8 @@
 import { Activity, useEffect, useRef, useState } from 'react'
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame } from '@react-three/fiber/webgpu'
 import { DevtoolsProvider, usePane } from '@three-flatland/devtools/react'
-import { DataTexture, NearestFilter, RGBAFormat, type Group, type OrthographicCamera } from 'three'
-import { Sprite2D, SpriteGroup } from 'three-flatland/react'
-import { WebGPUFallback } from './WebGPUFallback'
+import { DataTexture, NearestFilter, RGBAFormat, type Group } from 'three'
+import { Sprite2D, SpriteGroup, usePixelPerfectCamera } from 'three-flatland/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground } from './GemBackground'
 import { GEM } from './gem'
@@ -21,16 +20,7 @@ const motionPreference = matchMedia('(prefers-reduced-motion: reduce)')
 
 /** Keep the orthographic example camera fitted to the current canvas aspect. */
 function Camera() {
-  const camera = useThree((state) => state.camera) as OrthographicCamera
-  const size = useThree((state) => state.size)
-  useEffect(() => {
-    const aspect = size.width / size.height
-    camera.left = -160 * aspect
-    camera.right = 160 * aspect
-    camera.top = 160
-    camera.bottom = -160
-    camera.updateProjectionMatrix()
-  }, [camera, size])
+  usePixelPerfectCamera({ viewSize: 320, viewWidth: 480 })
   return null
 }
 
@@ -115,7 +105,21 @@ export default function App() {
       renderer={{ ...exampleRendererColorConfig }}
       frameloop="always"
       camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-      fallback={<WebGPUFallback />}
+      fallback={
+        <div
+          role="status"
+          style={{
+            width: '100%',
+            height: '100%',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '2rem',
+            color: '#f4f7fb',
+          }}
+        >
+          This example could not initialize rendering.
+        </div>
+      }
     >
       <DevtoolsProvider name="react-hierarchy-clipping" />
       <GemBackground gem={GEM} />

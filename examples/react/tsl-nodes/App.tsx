@@ -1,18 +1,18 @@
 import { Suspense, useState, useMemo, useRef, useEffect } from 'react'
-import { Canvas, extend, useFrame, useThree, useLoader } from '@react-three/fiber/webgpu'
+import { Canvas, extend, useFrame, useLoader } from '@react-three/fiber/webgpu'
 import { texture as sampleTexture, uv, attribute, vec2, vec4, float } from 'three/tsl'
-import { CanvasTexture, NearestFilter, RepeatWrapping, type OrthographicCamera } from 'three'
+import { CanvasTexture, NearestFilter, RepeatWrapping } from 'three'
 import {
   AnimatedSprite2D,
   Sprite2DMaterial,
   SpriteSheetLoader,
   applyTextureOptions,
   createMaterialEffect,
+  usePixelPerfectCamera,
   type SpriteSheet,
   type MaterialEffect,
   type AnimationSetDefinition,
 } from 'three-flatland/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
 import { tintAdditive, hueShift, saturate, outline8, pixelate, dissolvePixelated, tint } from '@three-flatland/nodes'
 import { DevtoolsProvider, usePane, usePaneFolder } from '@three-flatland/devtools/react'
@@ -21,28 +21,9 @@ import { GEM } from './gem'
 
 extend({ AnimatedSprite2D })
 
-function OrthoCamera({ viewSize }: { viewSize: number }) {
-  const set = useThree((s) => s.set)
-  const size = useThree((s) => s.size)
-  const aspect = size.width / size.height
-  return (
-    <orthographicCamera
-      ref={(cam: OrthographicCamera | null) => {
-        if (!cam) return
-        const manualCamera = cam as OrthographicCamera & { manual?: boolean }
-        manualCamera.manual = true
-        cam.left = (-viewSize * aspect) / 2
-        cam.right = (viewSize * aspect) / 2
-        cam.top = viewSize / 2
-        cam.bottom = -viewSize / 2
-        cam.updateProjectionMatrix()
-        set({ camera: cam })
-      }}
-      position={[0, 0, 100]}
-      near={0.1}
-      far={1000}
-    />
-  )
+function PixelCamera({ viewSize }: { viewSize: number }) {
+  usePixelPerfectCamera({ viewSize })
+  return null
 }
 
 // ========================================
@@ -456,12 +437,26 @@ export default function App() {
       <Canvas
         dpr={1}
         renderer={{ antialias: false, ...exampleRendererColorConfig }}
-        fallback={<WebGPUFallback />}
+        fallback={
+          <div
+            role="status"
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'grid',
+              placeItems: 'center',
+              padding: '2rem',
+              color: '#f4f7fb',
+            }}
+          >
+            This example could not initialize rendering.
+          </div>
+        }
         onCreated={({ renderer }) => {
           renderer.domElement.style.imageRendering = 'pixelated'
         }}
       >
-        <OrthoCamera viewSize={200} />
+        <PixelCamera viewSize={200} />
         <DevtoolsProvider name="tsl-nodes" />
         <Scene />
       </Canvas>

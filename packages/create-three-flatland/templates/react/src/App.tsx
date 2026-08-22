@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
 import { NoToneMapping, SRGBColorSpace } from 'three'
@@ -10,30 +10,6 @@ import { approach, SPRITE_SCALE, targetScale, tintFor } from './interaction'
 
 // R3F requires registration before Flatland classes appear as JSX elements.
 extend({ Flatland, Sprite2D })
-
-function RendererFallback() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(false)
-  useLayoutEffect(() => {
-    const visible = ref.current?.parentElement?.tagName !== 'CANVAS'
-    if (visible) {
-      const loader = document.querySelector<HTMLElement>('#loader')
-      if (loader) {
-        loader.removeAttribute('aria-label')
-        loader.setAttribute('role', 'status')
-        loader.style.color = '#9aa4b2'
-        loader.textContent = 'This app could not initialize WebGPU or WebGL 2 rendering.'
-        return
-      }
-    }
-    setIsVisible(visible)
-  }, [])
-  return (
-    <div ref={ref} role={isVisible ? 'status' : undefined} aria-hidden={isVisible ? undefined : true}>
-      This app could not initialize WebGPU or WebGL 2 rendering.
-    </div>
-  )
-}
 
 function Scene() {
   const texture = useLoader(TextureLoader, `${import.meta.env.BASE_URL}sprite.svg`)
@@ -114,7 +90,11 @@ export default function App() {
       <Canvas
         orthographic
         renderer={{ antialias: false, outputColorSpace: SRGBColorSpace, toneMapping: NoToneMapping }}
-        fallback={<RendererFallback />}
+        fallback={
+          <div className="renderer-unavailable" role="status">
+            This app could not initialize rendering.
+          </div>
+        }
       >
         <Suspense fallback={null}>
           <Scene />

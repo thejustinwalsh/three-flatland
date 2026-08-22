@@ -10,7 +10,6 @@ import {
   usePaneInput,
   usePaneRadioGrid,
 } from '@three-flatland/devtools/react'
-import { WebGPUFallback } from './WebGPUFallback'
 import { exampleRendererColorConfig } from './rendererColorManagement'
 import { GemBackground, gemGradientCanvas2D } from './GemBackground'
 import { GEM } from './gem'
@@ -1023,7 +1022,21 @@ export default function App() {
       <Canvas
         orthographic
         camera={{ position: [0, 0, 100], near: 0.1, far: 1000 }}
-        fallback={<WebGPUFallback />}
+        fallback={
+          <div
+            role="status"
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'grid',
+              placeItems: 'center',
+              padding: '2rem',
+              color: '#f4f7fb',
+            }}
+          >
+            This example could not initialize rendering.
+          </div>
+        }
         // Slug provides its own analytic anti-aliasing via per-fragment
         // coverage — MSAA adds 4× sample cost + a canvas-area resolve pass
         // for zero visual gain. Keep it off.

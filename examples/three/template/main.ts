@@ -2,7 +2,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { Scene, OrthographicCamera, Color } from 'three'
 import { Sprite2D, TextureLoader, createDevtoolsProvider } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
-import { initializeRenderer } from './rendererFallback'
+import { renderStartupError } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
@@ -35,7 +35,7 @@ async function main() {
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
 
-  if (!(await initializeRenderer(renderer))) return
+  await renderer.init()
 
   const texture = await TextureLoader.load('./icon.svg')
 
@@ -84,7 +84,7 @@ async function main() {
   animate()
 }
 
-void main()
+void main().catch(renderStartupError)
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {

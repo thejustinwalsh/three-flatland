@@ -1,6 +1,6 @@
 import { WebGPURenderer } from 'three/webgpu'
 import { Vector2 } from 'three'
-import { initializeRenderer } from './rendererFallback'
+import { renderStartupError } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 import {
   Flatland,
@@ -178,7 +178,7 @@ async function main() {
   renderer.setPixelRatio(1)
   renderer.domElement.style.imageRendering = 'pixelated'
   document.body.appendChild(renderer.domElement)
-  if (!(await initializeRenderer(renderer))) return
+  await renderer.init()
 
   // ─── Flatland ───────────────────────────────────────────────────
   const flatland = new Flatland({
@@ -613,10 +613,9 @@ async function main() {
     const rect = renderer.domElement.getBoundingClientRect()
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
     const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
-    const aspect = rect.width / rect.height
-    const vs = flatland.viewSize
-    const worldX = (ndcX * vs * aspect) / 2
-    const worldY = (ndcY * vs) / 2
+    const camera = flatland.camera
+    const worldX = camera.left + ((ndcX + 1) / 2) * (camera.right - camera.left)
+    const worldY = camera.bottom + ((ndcY + 1) / 2) * (camera.top - camera.bottom)
 
     let snapX = worldX
     let snapY = worldY
@@ -999,4 +998,4 @@ async function main() {
   }
 }
 
-void main()
+void main().catch(renderStartupError)

@@ -96,6 +96,21 @@
       #loader[data-loaded='true'] {
         opacity: 0;
       }
+      /* R3F renders Canvas fallback content as visible DOM only when renderer
+         setup rejects. Keep it above the loading overlay without any backend
+         probing or parent-element detection in application code. */
+      .renderer-unavailable {
+        position: fixed;
+        inset: 0;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        box-sizing: border-box;
+        color: #9aa4b2;
+        text-align: center;
+        background: #16191e;
+      }
     </style>
   </head>
   <body>

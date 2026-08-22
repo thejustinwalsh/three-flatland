@@ -12,7 +12,7 @@ import {
   createDevtoolsProvider,
 } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
-import { RENDERER_FAILURE_COLOR } from '../../examples/_shared/rendererFallback'
+import { RENDERER_FAILURE_COLOR } from '../../examples/_shared/renderStartupError'
 
 /* HMR-tracked teardown state. Without this, every dev save accumulates
  * a fresh renderer + animate() loop while the previous one keeps

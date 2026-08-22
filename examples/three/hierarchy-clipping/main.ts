@@ -1,10 +1,10 @@
 import { WebGPURenderer } from 'three/webgpu'
-import { DataTexture, Group, NearestFilter, OrthographicCamera, RGBAFormat, Scene } from 'three'
+import { DataTexture, Group, NearestFilter, RGBAFormat, Scene } from 'three'
 import { createPane } from '@three-flatland/devtools'
-import { Sprite2D, SpriteGroup, createDevtoolsProvider } from 'three-flatland'
+import { PixelPerfectCamera, Sprite2D, SpriteGroup, createDevtoolsProvider } from 'three-flatland'
 import { gemGradientNode } from './GemBackground'
 import { GEM } from './gem'
-import { initializeRenderer } from './rendererFallback'
+import { renderStartupError } from './renderStartupError'
 import { configureExampleRendererColor } from './rendererColorManagement'
 
 const palette = [0x55, 0xd6, 0xbe, 0xff, 0xb4, 0x8e, 0xff, 0xff, 0xff, 0xc8, 0x57, 0xff, 0xff, 0x73, 0xa8, 0xff]
@@ -15,8 +15,7 @@ texture.needsUpdate = true
 const scene = new Scene()
 const sceneWithBackground = scene as unknown as { backgroundNode: unknown }
 sceneWithBackground.backgroundNode = gemGradientNode({ gem: GEM })
-const camera = new OrthographicCamera(-240, 240, 160, -160, 0.1, 1000)
-camera.position.z = 100
+const camera = new PixelPerfectCamera({ viewSize: 320, viewWidth: 480 })
 
 const viewport = new SpriteGroup({ clipRect: [-120, -80, 240, 160] })
 viewport.rotation.z = -0.08
@@ -55,8 +54,10 @@ async function main() {
   configureExampleRendererColor(renderer)
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.setSize(innerWidth, innerHeight)
+  camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+  renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   document.body.appendChild(renderer.domElement)
-  if (!(await initializeRenderer(renderer))) return
+  await renderer.init()
 
   const paneBundle = createPane({ driver: 'manual' })
   const devtools = createDevtoolsProvider({ name: 'three-hierarchy-clipping' })
@@ -89,11 +90,9 @@ async function main() {
 
   /** Keep the orthographic camera and renderer fitted to the viewport. */
   function resize() {
-    const aspect = innerWidth / innerHeight
-    camera.left = -160 * aspect
-    camera.right = 160 * aspect
-    camera.updateProjectionMatrix()
     renderer.setSize(innerWidth, innerHeight)
+    camera.setDrawingBufferSize(renderer.domElement.width, renderer.domElement.height)
+    renderer.setViewport(camera.getLogicalViewport(renderer.getPixelRatio()))
   }
   addEventListener('resize', resize)
 
@@ -111,4 +110,4 @@ async function main() {
   }
 }
 
-void main()
+void main().catch(renderStartupError)
