@@ -323,6 +323,7 @@ export class TileLayer extends Group {
     this.chunkSize = chunkSize
     this._effects = [...effects]
     registerTileLayerOperations(this, {
+      clearEffectValues: () => this.#clearEffectValues(),
       commitEffectValues: () => this.#commitEffectValues(),
       copyMaterialState: (source) => this.#copyMaterialState(source),
       dispose: (disposeMaterial, notifyOwner) => this.#dispose(disposeMaterial, notifyOwner),
@@ -471,6 +472,7 @@ export class TileLayer extends Group {
 
   /** Prepare every row before publishing any live effect value. */
   #prepareEffectValues(effect: MaterialEffect, fieldName: string): void {
+    this.#clearEffectValues()
     this._assertMutable('effect value update')
     if (!this._effects.includes(effect)) {
       throw new Error('TileLayer effect value update requires an attached effect')
@@ -531,6 +533,19 @@ export class TileLayer extends Group {
         | undefined
       if (attribute) attribute.needsUpdate = true
     }
+  }
+
+  /** Release every object reference retained by the reusable projection scratch. */
+  #clearEffectValues(): void {
+    this._effectSyncCount = 0
+    this._effectSyncSize = 0
+    this._effectSyncBufferName = ''
+    this._effectSyncBuffers.length = 0
+    this._effectSyncOffsets.length = 0
+    this._effectSync0.length = 0
+    this._effectSync1.length = 0
+    this._effectSync2.length = 0
+    this._effectSync3.length = 0
   }
 
   #copyPublicMaterialState(target: Sprite2DMaterial, source: Sprite2DMaterial): void {
@@ -1169,6 +1184,7 @@ export class TileLayer extends Group {
     this.tileIndexMap.clear()
     this.animatedTilePositions.clear()
     this.animationTimers.clear()
+    this.#clearEffectValues()
     this._totalInstanceCount = 0
     if (didError) throw firstError
   }

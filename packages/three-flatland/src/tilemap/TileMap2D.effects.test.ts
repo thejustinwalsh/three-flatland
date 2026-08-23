@@ -296,6 +296,28 @@ describe('TileMap2D retained material effects', () => {
     map.dispose()
   })
 
+  it('releases two-phase effect buffer scratch after updates, rebuilds, and disposal', () => {
+    const map = new TileMap2D({ data: makeMapData() })
+    const effect = new DynamicTileEffect()
+    map.addEffect(effect)
+    const layer = map.getLayerAt(0)!
+    const oldBuffer = (firstChunk(map).geometry.getAttribute('effectBuf0') as InstancedBufferAttribute)
+      .array as Float32Array
+
+    effect.amount = 7
+    expect(Reflect.get(layer, '_effectSyncBuffers')).toEqual([])
+    map.chunkSize = 1
+    expect(Reflect.get(layer, '_effectSyncBuffers')).not.toContain(oldBuffer)
+    effect.direction = [8, 9, 10]
+    expect(Reflect.get(layer, '_effectSyncBuffers')).toEqual([])
+
+    layer.dispose()
+    expect(Reflect.get(layer, '_effectSyncBuffers')).toEqual([])
+    expect(Reflect.get(layer, '_effectSyncOffsets')).toEqual([])
+    expect(Reflect.get(layer, '_effectSync0')).toEqual([])
+    map.dispose()
+  })
+
   it('uses baseline values for malformed or non-finite tile overrides without invoking accessors', () => {
     const data = makeMapData()
     data.tileLayers[0]!.data = new Uint32Array([1, 0, 0, 0])
