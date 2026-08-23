@@ -1,0 +1,213 @@
+---
+title: Migrate away from ECS internals
+description: Update an existing three-flatland project for the private ECS runtime and stricter lifecycle contracts.
+---
+
+import { Tabs, TabItem } from 'starlight-theme/components'
+
+The ECS that coordinates batching, effects, lighting, and tilemaps is now private to `three-flatland`. Upgrade existing projects by removing engine-ECS coupling, then update values and ownership at the public object boundary.
+
+## Remove the Koota peer dependency
+
+`three-flatland` no longer requires Koota. Remove `koota` from your application when it was installed only to satisfy the former peer dependency. Keep it when your game has its own Koota world or systems.
+
+```diff title="package.json"
+  "dependencies": {
+-   "koota": "^0.6.5",
+    "three": "^0.185.1"
+  }
+```
+
+Application state can still use any ECS. Store a `Sprite2D` reference or an application-owned ID in that world instead of storing a three-flatland entity handle.
+
+## Replace engine-ECS coupling
+
+Search the application for these removed seams:
+
+- `Flatland.world` and `SpriteGroup.world`
+- `Sprite2D.entity`
+- effect-class `._trait` and effect-instance `._entity`
+- `buildBatchQueryView(...)`
+- `new BatchQueryView(world, ...)`
+- `SpriteBatch.allocateSlot(...)`, `freeSlot(...)`, `swapSlots(...)`, and `resetSlots(...)`
+- React Three Fiber `<tileLayer>` elements
+
+These APIs have no public replacement. Their entity IDs, traits, schedules, and physical batch rows are implementation details, so a codemod cannot infer the application behavior that depended on them.
+
+This part is intentionally less automatic: if an application reached into the old world, decide which application-owned state should carry that behavior now. `TileLayer` is owned and constructed by `TileMap2D`; remove direct `<tileLayer>` JSX and configure the containing tilemap instead.
+
+Move rendering changes to the owning object:
+
+```ts
+sprite.position.set(x, y, 0)
+sprite.tint = [1, 0.4, 0.2]
+sprite.sortLayer = SortLayers.ENTITIES
+sprite.addEffect(glow)
+
+group.add(sprite)
+group.remove(sprite)
+```
+
+Use application-owned state for gameplay queries and identity. Use `group.stats` for sprite and batch counts. When tooling needs a read-only view of generated batches, read `group.batches` directly:
+
+```ts
+import { IsLitBatch } from 'three-flatland'
+
+const litBatches = group.batches.where(IsLitBatch)
+```
+
+Do not retain a `SpriteBatch` and modify its physical slots. Add, remove, and update the source sprites instead.
+
+The [codemod index](https://github.com/thejustinwalsh/three-flatland/blob/main/packages/three-flatland/codemods/README.md) lists migrations that have deterministic replacements. The private-ECS seam removal is intentionally a manual review.
+
+## Assign complete effect tuples
+
+Effect vector getters return read-only tuple snapshots. Assign the complete tuple to publish through the effect's live backing storage. Material effects update their attached sprite or tile projection, while light and pass effects update their live ECS/uniform state.
+
+```ts
+const Offset = createMaterialEffect({
+  name: 'offset',
+  schema: { amount: [0, 0] as const },
+  node: ({ inputColor }) => inputColor,
+})
+
+const offset = new Offset()
+
+// This publishes both components.
+offset.amount = [4, 8]
+```
+
+Replace component mutation such as `offset.amount[0] = 4`. Mutating a returned snapshot does not update the attached effect.
+
+## Fix values rejected by strict validation
+
+Invalid configuration now throws before partial runtime state is published. Update values at their source instead of catching and continuing with a partially configured object.
+
+Use a built-in sort layer or a finite signed 32-bit integer:
+
+```ts
+sprite.sortLayer = SortLayers.FOREGROUND
+sprite.sortLayer = 12
+```
+
+Values such as `NaN`, `Infinity`, fractions, and integers outside `-2_147_483_648` through `2_147_483_647` are rejected.
+
+When `maxBatchSize` is set, it must be a positive safe integer no greater than `1_048_576`:
+
+```ts
+const group = new SpriteGroup({ maxBatchSize: 16_384 })
+```
+
+Omit `maxBatchSize` to use the default `1_024` → `4_096` → `16_384` batch tiers.
+
+Effect schema fields must be own data properties. Numeric defaults must be finite, and vector defaults must contain two to four finite numbers. Rename fields that collide with effect properties or methods, and avoid flattened-name collisions such as a tuple field named `color` beside a field named `color_0`.
+
+```ts
+const Pulse = createMaterialEffect({
+  name: 'pulse',
+  schema: {
+    strength: 0.5,
+    origin: [0, 0] as const,
+  },
+  node: ({ inputColor }) => inputColor,
+})
+```
+
+Compute dynamic defaults before creating the effect class. Getters and setters on the schema object are not supported.
+
+## Give each effect instance one owner
+
+A `MaterialEffect` instance belongs to one sprite or one tilemap at a time. Each owner can attach only one instance of a given material-effect class.
+
+```ts
+const glowA = new Glow()
+const glowB = new Glow()
+
+spriteA.addEffect(glowA)
+spriteB.addEffect(glowB)
+```
+
+To move an instance, detach it from the first owner before attaching it to the next:
+
+```ts
+spriteA.removeEffect(glowA)
+spriteB.addEffect(glowA)
+```
+
+The same instance rule applies to `LightEffect` and `PassEffect`: a light or pass cannot be attached to two `Flatland` instances concurrently. Call `setLighting(null)` or `removePass(effect)` on the current owner before reattaching it. Create separate instances when both scenes need the effect at the same time.
+
+## Treat disposed tile objects as terminal
+
+`TileMap2D.dispose()` and `TileLayer.dispose()` are terminal. Do not mutate, update, or reattach a disposed object. Construct a new `TileMap2D` when the map must return after disposal.
+
+Changing `TileMap2D.data` or `chunkSize` rebuilds the tile projection and can replace its `TileLayer` and `Sprite2DMaterial` instances. Adding or removing an effect preserves each `TileLayer` but replaces its material and chunk projection. Standard three.js material state is copied to replacement materials, but material identity is not preserved.
+
+Reacquire layers and materials after each rebuild:
+
+```ts
+tilemap.data = nextMapData
+
+const walls = tilemap.getLayer('Walls')
+const wallsMaterial = tilemap.getLayerMaterial('Walls')
+
+if (walls) walls.visible = true
+if (wallsMaterial) wallsMaterial.opacity = 0.8
+```
+
+Reacquire both layers and materials after changing `data` or `chunkSize`. After calling `addEffect` or `removeEffect`, the layer remains valid but its previously captured material does not; reacquire the material.
+
+## Pass capacity hints through the constructor
+
+:::tip[Performance note]
+`expectedSprites` reserves hot CPU-side enrollment storage. It is a non-negative safe-integer hint, not a capacity limit; enrollment grows when the scene exceeds it. Use a measured high-water estimate to move controlled growth out of gameplay without pre-creating GPU batches.
+:::
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```ts
+    const group = new SpriteGroup({ expectedSprites: 16_384 })
+    const flatland = new Flatland({ expectedSprites: 16_384 })
+    ```
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { useMemo } from 'react'
+    import { extend } from '@react-three/fiber/webgpu'
+    import { Flatland, type FlatlandOptions } from 'three-flatland/react'
+
+    extend({ Flatland })
+
+    function World({ expectedSprites }: { expectedSprites: number }) {
+      const args = useMemo(
+        () => [{ expectedSprites }] satisfies [FlatlandOptions],
+        [expectedSprites],
+      )
+
+      return <flatland args={args}>{/* scene */}</flatland>
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+In React Three Fiber, keep the `args` tuple stable while the hint is unchanged. Changing the constructor arguments reconstructs the object. `expectedSprites` is intentionally not a mutable JSX property.
+
+See [Batch rendering](../batch-rendering/#capacity-hints) for the runtime growth and reuse behavior.
+
+## Verify the migrated application
+
+Run the application through its dynamic paths after the typecheck passes:
+
+1. Add enough sprites to cross the expected capacity and a batch boundary.
+2. Remove and re-add sprites, then remount the scene.
+3. Switch material, light, and pass effects repeatedly.
+4. Replace tile data and chunk size, then read layers and materials again.
+5. Dispose the scene and confirm no callback tries to reuse a terminal object.
+
+The migration is complete when application code owns gameplay identity, all rendering changes go through public objects, and no removed ECS or slot symbol remains in source.
+
+## Related
+
+- [`SpriteGroup` API reference](/three-flatland/api/three-flatland/src/classes/spritegroup/)
+- [`TileMap2D` API reference](/three-flatland/api/three-flatland/src/classes/tilemap2d/)
+- [Batch demo](../../examples/batch-demo/) — dynamic enrollment, removal, and batch counts
+- [Tilemap example](../../examples/tilemap/) — data and chunk-size projection rebuilds
