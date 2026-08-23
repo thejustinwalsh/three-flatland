@@ -116,7 +116,7 @@ const pnpmLock = readFileSync(pnpmLockPath, 'utf8')
 const threeDependency = dependencyCatalogResolution(workspaceManifest, pnpmLock, 'three')
 const reactThreeFiberDependency = dependencyCatalogResolution(workspaceManifest, pnpmLock, '@react-three/fiber')
 const CAPTURE_TIMEOUT_MS = 180_000
-const BROWSER_CLOSE_TIMEOUT_MS = 15_000
+const BROWSER_CLOSE_TIMEOUT_MS = 120_000
 
 function usage(message?: string, exitCode = 1): never {
   if (message) console.error(message)

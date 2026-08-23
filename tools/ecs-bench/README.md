@@ -237,6 +237,9 @@ are filtered by their start time so warmup entries delivered late by
 `PerformanceObserver` cannot enter the measured window. Reports include Chromium's
 `Performance.JSHeapUsedSize` after warmup and after sampling without forced garbage collection.
 Those two boundaries are diagnostic telemetry, not retained-heap or peak-heap evidence.
+Capture-frame waits have a three-minute deadline, and browser teardown has a bounded two-minute
+deadline. This prevents a blocked WebGPU process from stranding the run indefinitely while giving a
+high-memory renderer enough time to release its resources.
 Each report also records the Three.js and react-three-fiber catalog specifiers, their exact resolved
 versions from `pnpm-lock.yaml`, and the lockfile SHA-256.
 
