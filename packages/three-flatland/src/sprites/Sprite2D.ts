@@ -36,6 +36,7 @@ import {
   ensureMaterialDisposeHook,
   getWorldDefaultMaterial,
   getWorldEffectVariant,
+  releaseMaterialIfUnused,
   type RegistryData,
 } from '../ecs/batchUtils'
 import { entitySlot, resolveStore } from '../ecs/snapshot'
@@ -2765,6 +2766,7 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     return this._materialRef
   },
   set(this: Sprite2D, value: Sprite2DMaterial): void {
+    const previousMaterial = this._materialRef
     this._materialRef = value
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
@@ -2773,17 +2775,20 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     const entity = this._entity
     if (world && entity && world.isAlive(entity) && world.has(entity, SpriteMaterialRef)) {
       const registryEntity = world.view(BatchRegistries)[0]
-      const registry = registryEntity
+      const batchRegistry = registryEntity
         ? (world.read(registryEntity, BatchRegistry) as RegistryData | undefined)
         : undefined
-      if (registry) {
-        registry.materialRefs.set(value.batchId, {
+      if (batchRegistry) {
+        batchRegistry.materialRefs.set(value.batchId, {
           material: value,
           version: value._effectSchemaVersion,
         })
-        ensureMaterialDisposeHook(world, registry, value)
+        ensureMaterialDisposeHook(world, batchRegistry, value)
       }
       world.patch(entity, SpriteMaterialRef, { materialId: value.batchId })
+      if (batchRegistry && previousMaterial && previousMaterial !== value) {
+        releaseMaterialIfUnused(world, batchRegistry, previousMaterial)
+      }
     }
     // Mesh invokes this setter during super(), before Sprite2D has geometry or
     // instance buffers. Every later public assignment must rebuild the source

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -127,6 +127,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
 
     for (let index = 0; index < 4; index++) {
       const uniqueMaterial = new Sprite2DMaterial({ map: texture })
+      const removeHook = vi.spyOn(uniqueMaterial, 'removeEventListener')
       const transient = makeSprite(texture, uniqueMaterial)
       group.add(transient)
       runSystems(group)
@@ -136,10 +137,37 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
       runSystems(group)
       runSystems(group)
       expect(registry.materialRefs.has(uniqueMaterial.batchId)).toBe(false)
+      expect(removeHook).toHaveBeenCalledWith('dispose', expect.any(Function))
     }
 
     expect(registry.materialRefs.get(material.batchId)?.material).toBe(material)
     expect(shared.entity).not.toBeNull()
+  })
+
+  it('releases a superseded material that never reaches a batch', () => {
+    const first = new Sprite2DMaterial({ map: texture })
+    const skipped = new Sprite2DMaterial({ map: texture })
+    const final = new Sprite2DMaterial({ map: texture })
+    const skippedHook = vi.spyOn(skipped, 'removeEventListener')
+    const sprite = makeSprite(texture, first)
+    group.add(sprite)
+    runSystems(group)
+    const registry = getRegistry(group)
+
+    sprite.material = skipped
+    sprite.material = final
+
+    expect(registry.materialRefs.has(skipped.batchId)).toBe(false)
+    expect(skippedHook).toHaveBeenCalledWith('dispose', expect.any(Function))
+
+    runSystems(group)
+    expect(registry.materialRefs.has(first.batchId)).toBe(false)
+    expect(registry.materialRefs.get(final.batchId)?.material).toBe(final)
+
+    group.remove(sprite)
+    runSystems(group)
+    runSystems(group)
+    expect(registry.materialRefs.has(final.batchId)).toBe(false)
   })
 })
 

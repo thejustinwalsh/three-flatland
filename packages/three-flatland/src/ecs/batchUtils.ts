@@ -359,15 +359,7 @@ export function recycleBatchIfEmpty(world: World, registry: RegistryData, batchE
     const key = computeRunKey(run.sortLayer, run.materialId, run.layersMask)
     registry.runs.delete(key)
     sortedRemove(registry.sortedRunKeys, key)
-
-    let materialStillBatched = false
-    for (const otherRun of registry.runs.values()) {
-      if (otherRun.materialId === run.materialId) {
-        materialStillBatched = true
-        break
-      }
-    }
-    if (!materialStillBatched) registry.materialRefs.delete(run.materialId)
+    releaseMaterialIfUnused(world, registry, run.materialId)
   }
 
   // Free the batchIdx
@@ -430,7 +422,7 @@ interface DisposeHookedMaterial extends Sprite2DMaterial {
  * mount/unmount cycles would retain every dead world through its
  * listener closures.
  */
-const worldDisposeHooks = new WeakMap<World, Array<{ material: Sprite2DMaterial; listener: () => void }>>()
+const worldDisposeHooks = new WeakMap<World, Map<Sprite2DMaterial, () => void>>()
 
 /**
  * Detach every material dispose hook a world installed (world/group
@@ -439,7 +431,7 @@ const worldDisposeHooks = new WeakMap<World, Array<{ material: Sprite2DMaterial;
 export function removeMaterialDisposeHooks(world: World): void {
   const hooks = worldDisposeHooks.get(world)
   if (!hooks) return
-  for (const { material, listener } of hooks) {
+  for (const [material, listener] of hooks) {
     material.removeEventListener('dispose', listener)
     const hooked = (material as DisposeHookedMaterial)[HOOKED_WORLDS]
     hooked?.delete(world)
@@ -503,20 +495,62 @@ export function getWorldEffectVariant(
  * default-material sprites resurrect.
  */
 export function ensureMaterialDisposeHook(world: World, registry: RegistryData, material: Sprite2DMaterial): void {
-  const hooked = (material as DisposeHookedMaterial)[HOOKED_WORLDS] ?? new WeakSet<World>()
-  ;(material as DisposeHookedMaterial)[HOOKED_WORLDS] = hooked
-  if (hooked.has(world)) return
-  hooked.add(world)
+  let hooks = worldDisposeHooks.get(world)
+  if (!hooks) {
+    hooks = new Map()
+    worldDisposeHooks.set(world, hooks)
+  }
+  if (hooks.has(material)) return
+
   const listener = (): void => {
     handleMaterialDispose(world, registry, material)
   }
   material.addEventListener('dispose', listener)
-  let hooks = worldDisposeHooks.get(world)
-  if (!hooks) {
-    hooks = []
-    worldDisposeHooks.set(world, hooks)
+  hooks.set(material, listener)
+  const hooked = (material as DisposeHookedMaterial)[HOOKED_WORLDS] ?? new WeakSet<World>()
+  ;(material as DisposeHookedMaterial)[HOOKED_WORLDS] = hooked
+  hooked.add(world)
+}
+
+function removeMaterialDisposeHook(world: World, material: Sprite2DMaterial): void {
+  const hooks = worldDisposeHooks.get(world)
+  const listener = hooks?.get(material)
+  if (!hooks || !listener) return
+  material.removeEventListener('dispose', listener)
+  hooks.delete(material)
+  ;(material as DisposeHookedMaterial)[HOOKED_WORLDS]?.delete(world)
+  if (hooks.size === 0) worldDisposeHooks.delete(world)
+}
+
+function isWorldCachedMaterial(registry: RegistryData, material: Sprite2DMaterial): boolean {
+  const texture = material.getTexture()
+  if (!texture) return false
+  if (registry.defaultMaterials.get(texture) === material) return true
+  const variants = registry.effectVariants.get(texture)
+  if (!variants) return false
+  for (const candidate of variants.values()) {
+    if (candidate === material) return true
   }
-  hooks.push({ material, listener })
+  return false
+}
+
+/** Release an unreferenced material record and its custom-material world hook. */
+export function releaseMaterialIfUnused(
+  world: World,
+  registry: RegistryData,
+  materialOrId: Sprite2DMaterial | number
+): void {
+  const materialId = typeof materialOrId === 'number' ? materialOrId : materialOrId.batchId
+  for (const run of registry.runs.values()) {
+    if (run.materialId === materialId) return
+  }
+  for (const sprite of registry.spriteArr) {
+    if (sprite?.material.batchId === materialId) return
+  }
+
+  const material = typeof materialOrId === 'number' ? registry.materialRefs.get(materialId)?.material : materialOrId
+  registry.materialRefs.delete(materialId)
+  if (material && !isWorldCachedMaterial(registry, material)) removeMaterialDisposeHook(world, material)
 }
 
 /**
