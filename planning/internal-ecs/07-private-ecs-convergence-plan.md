@@ -56,11 +56,13 @@ Resource-set cleanup is no longer part of that ambiguity: canonical sprite/tile/
 
 ## Ranked migrations
 
-### P0 — finish the private boundary
+### P0 — private boundary cleanup complete; definitive attribution pending
 
-Remove the remaining `koota` peer dependency and `tsdown` external entry only after the deterministic renderer A/B gate is accepted. Production source already has no Koota import, and the new static contract keeps it that way. The cleanup must include a packed-consumer install/typecheck, emitted JavaScript and declaration scans, documentation install commands, and proof that minis using Koota independently are unchanged.
+`three-flatland` no longer declares Koota as a peer dependency or `tsdown` external. Install documentation and starter manifests no longer add it, and the packed-publication gate scans production source, emitted JavaScript, declarations, source maps, and the published manifest. Workspace minis and the ECS comparison harness keep their explicit Koota dependencies because they use it independently.
 
-Exit condition: `three-flatland` installs and runs without Koota; no public declaration reaches `ecs/runtime`; representative bundles attribute the expected byte reduction.
+Commit `5f128a15` replaced the additive Koota estimate with a true-consumer A/B harness: identical fixtures are bundled against the current source and the pinned pre-migration source. The latest smoke capture passes attribution but does not prove a general byte saving. Basic Three.js, basic React, and pass/lighting were larger by 4,725/397, 6,152/825, and 10,668/1,918 minified/gzip bytes respectively. Knightmark was smaller by 18,673 minified and 5,658 gzip bytes, which is below the 22 kB/6 kB acceptance floor. The isolated Koota bundle remains a dependency-attribution diagnostic, not a consumer-saving claim.
+
+The dependency, publication, and declaration exit conditions are complete. A definitive clean capture against frozen source remains pending; if it repeats the mixed smoke result, the evidence gate and release claim must record that result rather than infer savings from the isolated Koota kernel.
 
 ### P0 — consolidate render/pass graph ownership
 
@@ -123,7 +125,7 @@ Every migration extends the smallest relevant enforcement layer:
 
 Keep the follow-ups independent:
 
-1. Koota package/declaration cleanup.
+1. Koota package/declaration cleanup: complete; definitive true-consumer attribution pending.
 2. Render/pass graph consolidation.
 3. Frozen capacity plan.
 4. Animated-sprite playback SoA.
