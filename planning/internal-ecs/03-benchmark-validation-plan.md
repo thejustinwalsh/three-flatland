@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: initial kernel baseline captured; expanded kernel, production, consumer, and live gates pending
+Status: kernel and private-runtime evidence captured; consumer schedule and live renderer gates pending
 
 Date: 2026-08-22
 
@@ -28,8 +28,8 @@ The merge-base size baseline is:
 | Gzip                            |          10,584 B |
 | Brotli                          |           9,362 B |
 
-These numbers were recaptured after rebasing onto implementation merge base `4824c475` with
-esbuild 0.28.1. Raw results are in
+These numbers remained unchanged when the kernel and production artifacts were recaptured from
+merge base `93c7d9cc` with esbuild 0.28.1. Raw results are in
 [`results/kernel-size.json`](./results/kernel-size.json).
 
 ## Kernel microbenchmarks
@@ -50,6 +50,7 @@ At 1,000, 16,384, and 60,000 entities:
 ### Direct SoA access
 
 - read and write UV/color/flip/layer/z-index fields by eid,
+- emit tracked routing notifications with direct store writes plus `touch`, never generic `patch`,
 - repeat with all fields hot,
 - repeat with randomized eids,
 - verify zero allocations after warm-up.
@@ -109,6 +110,11 @@ Cases:
 8. Multiple SpriteGroups/worlds to catch global-state coupling.
 
 Record total schedule time and per-system timing already exposed by `SystemSchedule` instrumentation.
+For transform and sort passes, also record batch-buffer transitions and prove the migrated path walks
+one batch's physical slots before advancing to the next. Interleaved material enrollment must not
+reintroduce world-order buffer hopping. Churn fixtures must leave holes, recycle entity indices,
+reuse physical slots, and sort-swap occupied rows; every surviving packed handle, direct sprite
+reference, `BatchSlot`, and GPU row must still identify the same owner.
 
 ### Live WebGPU probes
 
@@ -144,6 +150,7 @@ Measure after warm-up:
 Required behavior:
 
 - zero new entity/query result arrays per steady-state frame,
+- zero runtime-created patch/enumeration arrays in direct-store-plus-`touch` frame paths,
 - event queues and scratch sets are reused,
 - destroyed entities release object-backed values,
 - repeated world create/dispose returns to a stable retained-heap band,

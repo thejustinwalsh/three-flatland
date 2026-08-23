@@ -62,6 +62,8 @@ Exit gate: selected design and evidence are reviewable before migration begins.
 ## Phase 2: private runtime with no production consumer
 
 - Implement entity allocation/liveness, trait schema inference, stores, selectors, event queues, and disposal.
+- Activate each world-owned event selector when the SpriteGroup initializes its system schedule,
+  before any observed entity is enrolled.
 - Add runtime and type tests.
 - Add production bundle budget for the isolated kernel.
 - Verify no entrypoint exports the runtime.
@@ -74,11 +76,21 @@ Exit gate: kernel tests, type tests, size gate, and reference scenarios pass.
 - Migrate entity fields on `Flatland`, `SpriteGroup`, `Sprite2D`, material effects, light effects, and pass effects.
 - Replace entity fluent methods with explicit world operations.
 - Preserve direct store references and `_idx` behavior.
+- Replace every numeric read in a frame/system path with one captured `world.store(Trait)` and direct
+  indexed fields. A static audited gate rejects numeric `world.read` in hot paths; object reads must
+  carry an explicit allocation-free allowlist marker.
+- Replace every numeric `world.patch` in a frame/system path with direct captured-store writes and
+  `world.touch` when tracking is required. Keep validated generic patching on cold control paths only,
+  with an audited static gate enforcing the distinction.
 - Replace tests that depend on `universe.reset()` with world-local cleanup.
+- Omit the accidental public `world`, entity, effect `_trait`, and batch-query constructor ECS types
+  from reachable declarations. Do not expose the private runtime as their replacement.
 
 During this phase a private adapter module is the rollback boundary. Production files import runtime types/functions from one local location; reverting that adapter and call-site commit restores Koota without undoing the test harness.
 
-Exit gate: full core package behavior passes with ordinary queries still semantically equivalent.
+Exit gate: full core package behavior passes with ordinary queries still semantically equivalent;
+hot paths contain no numeric snapshot reads; packed public declarations expose neither Koota nor
+the private runtime.
 
 ## Phase 4: compiled selectors and event queues
 
@@ -94,12 +106,20 @@ Exit gate: lifecycle, routing, sort, transform, effect, lighting, and post-pass 
 ## Phase 5: remove the relation engine
 
 - Add `batchEntity` to `BatchSlot`.
+- Add batch-owned packed-handle and direct sprite-reference arrays with `0`/`null` hole sentinels;
+  maintain them atomically on allocate, swap, free, and recycle.
+- Make transform sync iterate batches and their physical slots directly; remove its world-wide
+  batched-entity traversal and cross-buffer hopping.
+- Make batch sorting consume the batch-owned slot map instead of scanning and rebucketing every
+  batched entity from the world.
 - Update assignment, reassignment, removal, recycle, and sort repair paths.
 - Remove `InBatch` and every `targetFor`/relation-pair operation.
-- Add stale/recycled batch handle tests.
+- Add hole traversal/reuse, atomic swap/free, stale generation, recycled entity/batch handle, and
+  failed-assignment rollback tests.
 - Verify the public batch-query facade remains unchanged.
 
-Exit gate: relation-free runtime, no duplicate assignment source of truth, all batch lifecycle tests pass.
+Exit gate: relation-free runtime, coherent entity-to-batch and slot-to-entity ownership, batch-local
+physical-slot traversal, no world-wide rebucketing, and all batch lifecycle tests pass.
 
 ## Phase 6: dependency and documentation cleanup
 
@@ -162,9 +182,14 @@ Internal planning and code comments should document:
 
 ## Release classification
 
-The user-facing API does not intentionally break. Removing a required peer dependency is a compatibility improvement. The hand-written changeset must classify the actual compatibility impact—likely patch or minor unless the declaration scan finds a public type break. The Conventional Commit describes commit intent; it does not replace or determine the changeset.
+The rendered API does not intentionally break, and removing a required peer dependency is a
+compatibility improvement. The emitted TypeScript surface does change: accidental ECS members are
+removed rather than exposing the private runtime. The migration therefore receives a breaking
+hand-written changeset. The Conventional Commit describes commit intent; it does not replace or
+determine the changeset.
 
-If emitted public types currently expose Koota `World`, `Entity`, or `Trait`, that is an accidental public type dependency. The declaration scan must identify it before implementation. If removing it changes a documented public type, classify the release according to the actual public compatibility impact rather than assuming it is non-breaking.
+The declaration audit confirmed 24 built declaration leaves currently reference Koota. The migration
+must remove those reachable references and prove the private runtime is not substituted into them.
 
 ## Explicit out of scope
 

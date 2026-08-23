@@ -65,7 +65,9 @@ Required inference:
 - `world.store(SpriteUV)` returns the inferred field-array shape,
 - `world.patch(entity, SpriteUV, patch)` accepts only schema fields and values.
 
-Nested numeric arrays are not supported by the runtime. Material, light, and pass effects already flatten vector fields to numeric keys before creating their traits. Object-backed factory values remain ordinary typed objects.
+Nested numeric arrays are not supported by the runtime. Material, light, and pass effects already flatten vector fields to numeric keys before creating their traits. Object-backed factory values remain
+plain typed records; patches target existing writable data properties so validation can finish
+before a non-throwing commit.
 
 ## World API
 
@@ -73,6 +75,9 @@ Proposed internal surface:
 
 ```ts
 const world = createWorld()
+
+world.activate(AddedRenderable)
+world.activate(ChangedRouting)
 
 const entity = world.spawn(SpriteUV({ x: 0.25 }), SpriteColor, IsRenderable)
 
@@ -82,6 +87,9 @@ world.has(entity, SpriteUV)
 world.read(entity, SpriteUV)
 world.patch(entity, SpriteUV, { x: 0.5 })
 world.patch(entity, BatchSlot, { slot }, false)
+const uv = world.store(SpriteUV)
+uv.x[world.index(entity)] = 0.75
+world.touch(entity, SpriteUV)
 world.destroy(entity)
 world.dispose()
 ```
@@ -90,8 +98,17 @@ Rationale:
 
 - Entity methods are removed. This avoids built-in prototype mutation and makes world ownership explicit.
 - `read` and `patch` distinguish access intent more clearly than overloaded `get` and `set`.
-- The final boolean preserves the existing “do not emit changed” fast path without a new allocation-bearing options object.
+- Numeric `read` is a cold, allocating snapshot API. Frame systems capture `store(Trait)` once and
+  index its stable field arrays directly. Object-trait `read` returns the stored object reference.
+- Generic `patch` is a cold, fully validated API and may allocate while enumerating untrusted input.
+  Frame systems write captured numeric stores directly, then call allocation-free `touch` only when
+  a Changed consumer must be notified.
+- The final boolean preserves the existing “do not emit changed” behavior for cold patches without
+  an additional options object.
 - `dispose` describes releasing a world more precisely than `destroy`, which is reserved for entities.
+- `activate` makes event ownership explicit per world. It is idempotent and must run before the
+  mutations a consumer needs to observe; draining an inactive selector throws rather than silently
+  pretending historical events were captured.
 
 Names can be revised during review. Semantics and generated code matter more than matching this spelling exactly.
 
@@ -128,6 +145,19 @@ The benchmark prototype must also measure raw non-generational indices. Generati
 - Destroy increments the generation before reuse.
 - World disposal clears owned stores/selectors and releases object references.
 - No entity object allocation.
+
+### Declaration boundary
+
+The existing emitted Koota types on `Flatland.world`, `SpriteGroup.world`, sprite entity fields,
+effect `_trait` fields, and the batch-query constructor are accidental internals, not a supported
+application ECS API. The migration will omit those members from reachable public declarations while
+retaining the runtime implementation for Flatland itself. `BatchQueryView` remains the supported
+opaque batch inspection surface; no public world, trait, or entity facade will replace Koota.
+
+Because removing emitted members is a TypeScript compatibility change even when documentation
+already described them as internal, the migration changeset must classify it as breaking. A packed
+consumer gate must traverse every export-map declaration and reject reachable `koota` or
+`/ecs/runtime` imports.
 
 ## Storage forms
 
@@ -213,6 +243,9 @@ Semantics:
 
 - Every event selector is an independent consumer.
 - The world registers which selectors observe each trait.
+- Every world explicitly activates only the event selectors it consumes. Inactive selectors have
+  no world-local queue and receive no historical events, preventing an unused standalone fallback
+  world from retaining an unbounded event backlog.
 - Add/remove/trackable patch operations push the entity into only the relevant selector queues.
 - A queue is a reusable dense/sparse set, so repeated changes before drain produce one entity.
 - `drain()` returns the reusable queue view and marks it consumed without allocating.
@@ -222,6 +255,8 @@ Semantics:
   remove the observed trait and drain that work before destroying the entity.
 - Queued generations remain distinct if an index is destroyed and recycled before a drain.
 - An untracked patch (`false`) emits no changed event.
+- A tracked patch emits a changed event even when every written value equals its stored value; the
+  event reports an intentional write, and the hot path does not pay for equality checks.
 - A multi-trait changed selector uses OR semantics across `any`: changing any observed routing trait
   enqueues the entity. The dense/sparse queue deduplicates it once even if several observed traits
   change before the drain.
@@ -281,13 +316,32 @@ with:
 
 ```ts
 const BatchSlot = trait({
-  batchEntity: -1,
+  batchEntity: 0,
   batchIdx: -1,
   slot: -1,
 })
 ```
 
 The value is updated atomically on assignment, reassignment, removal, and sort swaps. The `IsBatched` tag remains initially because it communicates query intent and avoids interpreting sentinel values in selectors. A later simplification may remove it only if tests and bundle/performance results prove that is a net improvement within this same change.
+
+Each `SpriteBatch` also owns full packed-handle and direct sprite-reference arrays parallel to its
+GPU attribute rows. Handle `0` and reference `null` mark free holes. Assignment and reassignment
+publish both reverse entries only after `BatchSlot` and the GPU row are ready; slot swaps move the
+GPU row, packed handle, direct reference, and both sprites' `BatchSlot` values atomically. Free and
+recycle clear both reverse entries before the slot can be reused. Keeping the generation-bearing
+handle prevents a recycled entity index from silently inheriting an old slot, while the parallel
+sprite reference removes a second entity-indexed pointer chase from transform sync.
+
+Numeric schema widening intentionally stores `BatchSlot.batchEntity` as a `number`. One private
+conversion helper owns the boundary back to branded `Entity`: it rejects `0`, validates liveness in
+the receiving world, and only then casts the full packed value. Systems do not cast raw slot fields
+individually.
+
+Frame systems process one batch at a time in ascending physical slot order, skipping only explicit
+holes, instead of walking a world-wide selector and jumping among batch buffers. The entity-indexed
+SoA remains authoritative for sprite state; the batch reverse map is authoritative for physical
+batch traversal. Tests cover hole reuse, swap repair, free/recycle clearing, stale generations, and
+failure atomicity.
 
 No generalized relation API is included.
 
@@ -305,22 +359,29 @@ It is not required to justify removing Koota because the relation engine and gen
 
 ## Error and debug behavior
 
-Development builds should detect:
+The private runtime detects:
 
 - stale entity handles,
-- wrong-world ownership at the internal object boundary where the owner is available,
-- reading or patching a missing trait,
+- patching a missing trait,
 - duplicate trait addition where replacement was not requested,
-- selector mutation of its required structure during iteration,
-- object-backed values retained after entity/world disposal.
+- invalid schemas and initializers, and
+- use after world disposal.
 
-Production builds should retain only checks needed to prevent memory corruption or user-visible incorrect rendering. Since the runtime is internal, callers can be corrected rather than supporting permissive ambiguous behavior.
+Numeric and object reads intentionally return `undefined` for a missing trait. Wrong-world ownership
+is asserted at the Sprite/Flatland owner boundary where the owning world is known; numeric handles
+alone are deliberately world-relative and cannot encode that owner. Selector arrays are raw borrowed
+readonly views for the zero-allocation hot path. Structural mutation while iterating one is an
+internal schedule precondition rather than a runtime-tracked iterator state. Disposal tests prove
+that captured numeric arrays, selector views, event drains, and world-owned object slots are released.
+After disposal, world-state access and mutation throw; `isAlive()` and `has()` safely return false,
+while `index()` and `generation()` remain pure packed-handle helpers.
 
 ## Public compatibility
 
 Unchanged:
 
-- `Flatland`, `SpriteGroup`, `Sprite2D`, effect, light, pass, and React APIs.
+- Documented rendering behavior and constructors for `Flatland`, `SpriteGroup`, `Sprite2D`, effects,
+  lights, passes, and React wrappers.
 - Batch query facade behavior.
 - World ownership rules.
 - Sprite batching and lifecycle timing.
@@ -329,5 +390,7 @@ Changed for users:
 
 - Koota is no longer a peer dependency or installation prerequisite.
 - Bundles no longer include Koota through `three-flatland`.
+- Accidental ECS members and Koota types disappear from emitted declarations rather than exposing
+  the private replacement runtime.
 
 The internal runtime itself is not documented as user API.
