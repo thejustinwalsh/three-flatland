@@ -17,8 +17,8 @@ published package entrypoints.
   behind a stable growable wrapper, including reference-stability and growth behavior.
 - The browser harness runs deterministic Knightmark or lighting fixtures against one or two
   production preview servers. It validates the applied seed, fixed timestep, Knightmark collision
-  mode, requested entity counts, and exact committed batch counts before recording frame intervals,
-  missed-vsync rates, sample-window long tasks, Chromium heap boundaries, browser diagnostics, and
+  mode, requested entity counts, and exact committed batch counts before recording RAF callback intervals,
+  late-callback rates, sample-window long tasks, Chromium heap boundaries, browser diagnostics, and
   opt-in ECS timing markers.
 
 The candidates are evidence prototypes. The selected production runtime is implemented separately

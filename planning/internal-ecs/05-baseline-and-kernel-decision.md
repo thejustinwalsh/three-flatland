@@ -1,6 +1,6 @@
 # Baseline and kernel decision
 
-Status: core migration validated; deterministic renderer A/B gates remain pending
+Status: core migration validated; Node renderer harness implemented, definitive renderer A/B gates remain pending
 
 Date: 2026-08-22
 
@@ -21,8 +21,8 @@ It is the best current balance for Flatland's bounded trait surface:
 - 81.5% lower median for 12,000 dynamic structural changes, and
 - 60.5% lower median for full-handle numeric batch assignment.
 
-The production runtime passes the `SystemSchedule`, allocation, representative consumer bundle,
-declaration, and package test gates. Deterministic Knightmark and lighting runs still have to prove
+The production runtime passes the `SystemSchedule`, allocation, isolated-kernel-size, declaration,
+and package test gates. Deterministic Knightmark and lighting runs still have to prove
 the end-to-end result in live WebGPU. This decision does not waive that shipping threshold.
 
 ## Reproducible environment
@@ -179,7 +179,13 @@ retrieval workload took 350.2 ms versus Koota's 8.8 ms, and full iteration took 
 
 ## Next gate
 
-Run the deterministic Knightmark and lighting A/B matrix against identical production fixtures.
-Record the 60 Hz crossover, the 40,000-sprite result, per-system production-profile diagnostics,
-and paired traces for any regression. Remove Koota only after the renderer result confirms the
-batch-local physical-slot traversal performs as intended.
+Capture and review the production-source Node schedule matrix at 16,384 sprites, including the
+GC-controlled create/destroy observations; add the optional 60,000-sprite peak where the host has
+enough memory. The harness is implemented as `@three-flatland/ecs-bench:benchmark:renderer`, but only
+its smoke validation has run, so no performance conclusion is recorded here yet.
+
+Then run the deterministic Knightmark and lighting A/B matrix against identical production fixtures.
+Record the 60 Hz RAF-cadence crossover against an explicit 16.667 ms callback budget, the 40,000-sprite
+result, per-system production-profile diagnostics, and paired traces for any regression. Remove Koota
+only after the renderer result confirms the batch-local packed-member traversal and physical-row
+sorting perform as intended.

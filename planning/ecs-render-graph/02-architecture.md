@@ -1,11 +1,10 @@
 # ECS Render Graph - Architecture
 
-> **Status:** Active ECS-foundation doc (not superseded). See
-> [`00-research.md`](00-research.md) for the 2026-05-24 reconciliation note —
-> naming (`Renderer2D` → `SpriteGroup`), world-ownership moving to the
-> per-`(renderer, scene)` Registry (epic #85/#75), and the `Changed()` dirty-tracking
-> decision feeding #112. The "Global World (lazy singleton)" in the hierarchy below was
-> **not** adopted — each `SpriteGroup` owns its world today.
+> **Status:** Historical and superseded. This document records the rejected Koota/`Renderer2D`
+> design and is retained only for decision history. The current private-runtime architecture is
+> specified in [`../internal-ecs/02-proposed-runtime.md`](../internal-ecs/02-proposed-runtime.md)
+> and implemented under `packages/three-flatland/src/ecs/`, `pipeline/SpriteGroup.ts`, and
+> `pipeline/SpriteBatch.ts`. Do not use the names, paths, or ownership rules below as current API.
 
 ## Layer Diagram
 
@@ -71,50 +70,50 @@ All traits are defined in `packages/core/src/ecs/traits.ts`.
 
 ### GPU Instance Data (SoA)
 
-| Trait | Fields | Maps to GPU Attribute |
-|-------|--------|-----------------------|
-| `SpriteUV` | `{ x, y, w, h }` | `instanceUV` (vec4) |
+| Trait         | Fields           | Maps to GPU Attribute  |
+| ------------- | ---------------- | ---------------------- |
+| `SpriteUV`    | `{ x, y, w, h }` | `instanceUV` (vec4)    |
 | `SpriteColor` | `{ r, g, b, a }` | `instanceColor` (vec4) |
-| `SpriteFlip` | `{ x, y }` | `instanceFlip` (vec2) |
+| `SpriteFlip`  | `{ x, y }`       | `instanceFlip` (vec2)  |
 
 ### Sort / Batch Metadata (SoA)
 
-| Trait | Fields | Purpose |
-|-------|--------|---------|
-| `SpriteLayer` | `{ layer, zIndex }` | Primary + secondary sort keys |
-| `SpriteMaterialRef` | `{ materialId }` | Groups sprites into batches by material |
+| Trait               | Fields              | Purpose                                 |
+| ------------------- | ------------------- | --------------------------------------- |
+| `SpriteLayer`       | `{ layer, zIndex }` | Primary + secondary sort keys           |
+| `SpriteMaterialRef` | `{ materialId }`    | Groups sprites into batches by material |
 
 ### Tags
 
-| Trait | Purpose |
-|-------|---------|
+| Trait          | Purpose                                          |
+| -------------- | ------------------------------------------------ |
 | `IsRenderable` | Entity has all required components for rendering |
-| `IsBatched` | Entity is currently assigned to a SpriteBatch |
-| `IsStandalone` | Entity renders standalone (not in a batch) |
+| `IsBatched`    | Entity is currently assigned to a SpriteBatch    |
+| `IsStandalone` | Entity renders standalone (not in a batch)       |
 
 ### References (AoS)
 
-| Trait | Fields | Purpose |
-|-------|--------|---------|
+| Trait      | Fields                         | Purpose                             |
+| ---------- | ------------------------------ | ----------------------------------- |
 | `ThreeRef` | `{ object: Object3D \| null }` | Back-reference to the Sprite2D mesh |
 
 ### Batch Entity Traits
 
-| Trait | Fields | Purpose |
-|-------|--------|---------|
-| `BatchMesh` | `{ mesh: SpriteBatch \| null }` | AoS reference to SpriteBatch (GPU buffers + slot management) |
-| `BatchMeta` | `{ materialId, layer, renderOrder }` | SoA sort/grouping metadata for queries |
+| Trait       | Fields                               | Purpose                                                      |
+| ----------- | ------------------------------------ | ------------------------------------------------------------ |
+| `BatchMesh` | `{ mesh: SpriteBatch \| null }`      | AoS reference to SpriteBatch (GPU buffers + slot management) |
+| `BatchMeta` | `{ materialId, layer, renderOrder }` | SoA sort/grouping metadata for queries                       |
 
 ### Relations
 
-| Relation | Config | Purpose |
-|----------|--------|---------|
+| Relation  | Config                                | Purpose                                                               |
+| --------- | ------------------------------------- | --------------------------------------------------------------------- |
 | `InBatch` | `exclusive: true, store: { slot: 0 }` | Links sprite entity to its batch entity; stores GPU buffer slot index |
 
 ### World-Level Singleton
 
-| Trait | Purpose |
-|-------|---------|
+| Trait           | Purpose                                                                              |
+| --------------- | ------------------------------------------------------------------------------------ |
 | `BatchRegistry` | Holds runs map, sorted run keys, batch pool, active batches, render order dirty flag |
 
 ## Batch Runs & Incremental Sort
@@ -122,6 +121,7 @@ All traits are defined in `packages/core/src/ecs/traits.ts`.
 A "run" groups batches by `(layer, materialId)` — the two sort dimensions that determine batch boundaries. Run keys are computed as `(layer << 16) | materialId` and stored in a sorted array for O(log R) binary search on insert.
 
 **Add (O(log R) where R = number of unique (layer, material) combos):**
+
 1. Compute run key from SpriteLayer + SpriteMaterialRef
 2. Binary search `sortedRunKeys` for the run
 3. If run doesn't exist: create it, insert key in sorted position
@@ -129,12 +129,14 @@ A "run" groups batches by `(layer, materialId)` — the two sort dimensions that
 5. Allocate slot via `SpriteBatch.allocateSlot()`, set `InBatch(batchEntity, { slot })` relation
 
 **Remove (O(1) amortized):**
+
 1. Read InBatch relation → batch entity + slot
 2. Free slot via `SpriteBatch.freeSlot()` (sets alpha=0, pushes to free list)
 3. Remove InBatch relation
 4. If batch empty: recycle to pool, remove from run
 
 **Sort key change (O(1) same-run, O(log R) cross-run):**
+
 1. Compute new run key
 2. If same run: no batch movement needed (zIndex changes don't affect batch boundaries)
 3. If different run: remove from old batch, insert into correct batch
@@ -248,18 +250,17 @@ Actions:
   3. Collect dirty meshes, mark attribute.needsUpdate
 ```
 
-### bufferSyncEffectSystem
+### Direct effect projection
 
-Handles effect trait changes. Packs effect data into the batch's packed vec4 effect buffers.
+Effect instances project directly into the batch's packed vec4 effect buffers. There is no
+world-scoped effect-trait registry or per-frame discovery scan.
 
 ```
-Triggers: Changed(effectTrait) AND IsBatched
+Triggers: assignment/reassignment, then direct writes from an enrolled effect setter
 Actions:
-  1. For each registered effect trait with changes:
-     a. Resolve batch + slot via InBatch
-     b. Pack trait fields into the effect's assigned buffer/component slots
-     c. Call mesh.writeEffectSlot(slot, bufferIndex, component, value)
-  2. Mark dirty effect buffer attributes
+  1. Resolve the material's packed field slots.
+  2. Project each active effect instance into its assigned buffer/components.
+  3. Write defaults for inactive material effects and mark dirty ranges.
 ```
 
 ### transformSyncSystem
@@ -335,13 +336,13 @@ class Renderer2D extends Group implements WorldProvider {
   }
 
   private _runSystems(): void {
-    batchAssignSystem(this._world, this._effectTraits)
-    batchReassignSystem(this._world, this._effectTraits)
+    batchAssignSystem(this._world)
+    batchReassignSystem(this._world)
     batchRemoveSystem(this._world)
     bufferSyncColorSystem(this._world)
     bufferSyncUVSystem(this._world)
     bufferSyncFlipSystem(this._world)
-    bufferSyncEffectSystem(this._world, this._effectTraits)
+    // Assignment/reassignment project effect instances directly into slots.
     transformSyncSystem(this._world)
     sceneGraphSyncSystem(this._world, this, this._parentAdd, this._parentRemove)
   }

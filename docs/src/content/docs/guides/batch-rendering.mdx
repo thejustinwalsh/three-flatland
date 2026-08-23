@@ -91,6 +91,9 @@ const spriteGroup = new SpriteGroup({
 scene.add(spriteGroup)
 ```
 
+`maxBatchSize` must be a positive integer no greater than 1,048,576. The default tier ladder is tuned for normal
+sprite workloads; use a fixed size only when a measured scene benefits from a specific batch capacity.
+
 ## Scene-graph hierarchy
 
 Batched sprites keep the transforms and visibility of their authored parents. Put an ordinary three.js `Group` under a `SpriteGroup` when you want to move, rotate, scale, or hide a whole subtree without giving up batching:

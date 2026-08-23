@@ -108,8 +108,8 @@ Exit gate: lifecycle, routing, sort, transform, effect, lighting, and post-pass 
 - Add `batchEntity` to `BatchSlot`.
 - Add batch-owned packed-handle and direct sprite-reference arrays with `0`/`null` hole sentinels;
   maintain them atomically on allocate, swap, free, and recycle.
-- Make transform sync iterate batches and their physical slots directly; remove its world-wide
-  batched-entity traversal and cross-buffer hopping.
+- Make transform sync iterate each batch's packed active-member table, following its physical-slot
+  indirection only for the final GPU write; remove world-wide traversal and cross-buffer hopping.
 - Make batch sorting consume the batch-owned slot map instead of scanning and rebucketing every
   batched entity from the world.
 - Update assignment, reassignment, removal, recycle, and sort repair paths.
@@ -118,8 +118,9 @@ Exit gate: lifecycle, routing, sort, transform, effect, lighting, and post-pass 
   failed-assignment rollback tests.
 - Verify the public batch-query facade remains unchanged.
 
-Exit gate: relation-free runtime, coherent entity-to-batch and slot-to-entity ownership, batch-local
-physical-slot traversal, no world-wide rebucketing, and all batch lifecycle tests pass.
+Exit gate: relation-free runtime, coherent entity-to-batch/member-to-slot/slot-to-entity ownership,
+batch-local packed transform traversal plus physical-row sort traversal, no world-wide rebucketing,
+and all batch lifecycle tests pass.
 
 ## Phase 6: dependency and documentation cleanup
 
