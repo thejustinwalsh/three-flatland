@@ -69,6 +69,7 @@ interface Observation {
 }
 
 const sourcePath = new URL(import.meta.url)
+const CAPTURE_TIMEOUT_MS = 180_000
 
 function usage(message?: string, exitCode = 1): never {
   if (message) console.error(message)
@@ -233,12 +234,12 @@ async function capture(options: Options, target: Target, count: number): Promise
     }
     if (
       options.example === 'lighting' &&
-      (readiness.requestedLights !== options.lights || readiness.actualLights !== options.lights)
+      (readiness.requestedLights !== options.lights || readiness.actualLights !== Math.min(options.lights, count))
     ) {
       throw new Error(`Lighting fixture mismatch at ${page.url()}: ${JSON.stringify(readiness)}`)
     }
 
-    return await page.evaluate(
+    const browserCapture = page.evaluate(
       async ({ warmupFrames, sampleFrames, readiness }) => {
         await new Promise<void>((resolveFrames) => {
           let remaining = warmupFrames
@@ -279,6 +280,20 @@ async function capture(options: Options, target: Target, count: number): Promise
       },
       { warmupFrames: options.warmupFrames, sampleFrames: options.sampleFrames, readiness }
     )
+    let captureTimeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        browserCapture,
+        new Promise<never>((_resolve, reject) => {
+          captureTimeout = setTimeout(
+            () => reject(new Error(`Timed out after ${CAPTURE_TIMEOUT_MS} ms while sampling ${page.url()}`)),
+            CAPTURE_TIMEOUT_MS
+          )
+        }),
+      ])
+    } finally {
+      clearTimeout(captureTimeout)
+    }
   } finally {
     await browser.close()
   }
@@ -330,44 +345,18 @@ function gitRevision(): string {
   }
 }
 
-async function main(): Promise<void> {
-  const options = parseOptions(process.argv.slice(2))
-  const browserVersion = await chromium.launch({ channel: 'chrome', headless: !options.headed }).then(async (browser) => {
-    try {
-      return browser.version()
-    } finally {
-      await browser.close()
-    }
-  })
-  const controls = new Map<string, number>()
-  for (const target of options.targets) {
-    const result = await capture(options, target, options.control)
-    controls.set(target.label, summarize(result.intervals).median)
-    console.log(`${target.label} control: ${controls.get(target.label)!.toFixed(3)} ms`)
-  }
-
-  const observations: Observation[] = []
-  for (const count of options.counts) {
-    for (let sample = 0; sample < options.samples; sample++) {
-      const orderedTargets = targetOrder(options.targets, sample)
-      for (let order = 0; order < orderedTargets.length; order++) {
-        const target = orderedTargets[order]!
-        const url = fixtureUrl(options, target, count)
-        const result = await capture(options, target, count)
-        const record = observation(result, target, count, sample, order, url, controls.get(target.label)!)
-        observations.push(record)
-        console.log(
-          `${target.label} ${count} sample ${sample + 1}: ${record.fps.median.toFixed(2)} fps, ` +
-            `${(record.missedVsyncRate * 100).toFixed(1)}% missed`
-        )
-      }
-    }
-  }
-
+function writeReport(
+  options: Options,
+  browserVersion: string,
+  controls: Map<string, number>,
+  observations: Observation[],
+  complete: boolean
+): void {
   const harnessSha256 = createHash('sha256').update(readFileSync(sourcePath)).digest('hex')
   const report = {
     schemaVersion: 1,
     capturedAt: new Date().toISOString(),
+    complete,
     harnessSha256,
     sourceRevision: gitRevision(),
     environment: {
@@ -402,10 +391,50 @@ async function main(): Promise<void> {
     const path = resolve(options.output)
     mkdirSync(dirname(path), { recursive: true })
     writeFileSync(path, output)
-    console.log(`Wrote ${path}`)
-  } else {
+    if (complete) console.log(`Wrote ${path}`)
+  } else if (complete) {
     console.log(output)
   }
+}
+
+async function main(): Promise<void> {
+  const options = parseOptions(process.argv.slice(2))
+  const browserVersion = await chromium
+    .launch({ channel: 'chrome', headless: !options.headed })
+    .then(async (browser) => {
+      try {
+        return browser.version()
+      } finally {
+        await browser.close()
+      }
+    })
+  const controls = new Map<string, number>()
+  for (const target of options.targets) {
+    const result = await capture(options, target, options.control)
+    controls.set(target.label, summarize(result.intervals).median)
+    console.log(`${target.label} control: ${controls.get(target.label)!.toFixed(3)} ms`)
+  }
+
+  const observations: Observation[] = []
+  for (const count of options.counts) {
+    for (let sample = 0; sample < options.samples; sample++) {
+      const orderedTargets = targetOrder(options.targets, sample)
+      for (let order = 0; order < orderedTargets.length; order++) {
+        const target = orderedTargets[order]!
+        const url = fixtureUrl(options, target, count)
+        const result = await capture(options, target, count)
+        const record = observation(result, target, count, sample, order, url, controls.get(target.label)!)
+        observations.push(record)
+        writeReport(options, browserVersion, controls, observations, false)
+        console.log(
+          `${target.label} ${count} sample ${sample + 1}: ${record.fps.median.toFixed(2)} fps, ` +
+            `${(record.missedVsyncRate * 100).toFixed(1)}% missed`
+        )
+      }
+    }
+  }
+
+  writeReport(options, browserVersion, controls, observations, true)
 }
 
 await main()
