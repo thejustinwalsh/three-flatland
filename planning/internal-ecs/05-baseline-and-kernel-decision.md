@@ -1,6 +1,6 @@
 # Baseline and kernel decision
 
-Status: core migration validated; Node renderer harness implemented, definitive renderer A/B gates remain pending
+Status: core migration and production Node renderer matrix validated; live browser A/B gates remain pending
 
 Date: 2026-08-22
 
@@ -22,7 +22,7 @@ It is the best current balance for Flatland's bounded trait surface:
 - 60.6% lower median for full-handle numeric batch assignment.
 
 The production runtime passes the `SystemSchedule`, allocation, isolated-kernel-size, declaration,
-and package test gates. Deterministic Knightmark and lighting runs still have to prove
+package test, and production-source Node renderer gates. Deterministic Knightmark and lighting runs still have to prove
 the end-to-end result in live WebGPU. This decision does not waive that shipping threshold.
 
 ## Reproducible environment
@@ -55,6 +55,7 @@ Raw evidence:
 - [`results/kernel-baseline.json`](./results/kernel-baseline.json)
 - [`results/kernel-size.json`](./results/kernel-size.json)
 - [`results/numeric-storage.json`](./results/numeric-storage.json)
+- [`results/renderer-production.json`](./results/renderer-production.json)
 
 ## Behavioral baseline
 
@@ -139,6 +140,40 @@ batch-local traversal gates remain authoritative. The assignment row uses a full
 numeric field with `0` as the unassigned sentinel, matching the planned `BatchSlot.batchEntity`
 storage rather than a general relation or `Map` shim.
 
+## Production renderer schedule
+
+The production `SpriteGroup`/`SystemSchedule` harness ran all eight accepted cases at both 16,384 and
+60,000 sprites on the same Apple M4 host. Each case used five warm-ups, ten measured frames, three
+GC-controlled create/destroy cycles, and the ordinary production batch-size ladder. These timings
+include per-system User Timing instrumentation, so they are diagnostic schedule measurements rather
+than the ordinary uninstrumented browser merge gate.
+
+| Case                   | 16,384 median / p95 | Batches | 60,000 median / p95 | Batches |
+| ---------------------- | ------------------: | ------: | ------------------: | ------: |
+| Static                 |       4.998 / 5.584 |     1→1 |     22.073 / 22.265 |     4→4 |
+| Moving, alpha/depth    |       6.129 / 6.644 |     1→1 |     24.948 / 26.036 |     4→4 |
+| Transparent CPU sort   |     10.619 / 18.244 |     1→1 |     44.116 / 47.388 |     4→4 |
+| 12,000 routing changes |     42.866 / 44.278 |     1→4 |     61.650 / 63.696 |     4→7 |
+| 10% add/remove churn   |     17.361 / 25.966 |     1→1 |     49.421 / 53.463 |     4→4 |
+| Dynamic-effect churn   |       5.814 / 9.130 |     1→1 |     22.135 / 22.327 |     4→4 |
+| Mixed scene            |       7.822 / 8.358 |     2→2 |     34.691 / 35.711 |     4→4 |
+| Multiple worlds        |       8.498 / 8.986 |     2→2 |     35.862 / 36.832 |     4→4 |
+
+Every initial batch count matched the production ladder: one batch for a single 16,384-sprite run
+and four for a single 60,000-sprite run, with the expected sums for mixed and multi-world cases.
+Across all 160 measured frames, the packed member count exactly matched the number of occupied
+physical rows. The separate unreported topology frame confirmed that transform, sort, and dirty-range
+flush traversal never returned to an earlier batch after advancing to another. Routing intentionally
+moves individual owners between batches and is not subject to that traversal-order invariant.
+
+Transform sync dominates settled workloads; batch reassignment dominates the 12,000-routing-change
+case. With ten measured frames, nearest-rank p95 is the observed maximum. The 16,384 transparent-sort,
+add/remove, and dynamic-effect rows retain their upper-tail samples rather than filtering them.
+Per-cycle retained deltas spanned -1,063,240 to +1,173,256 bytes; the 60,000-sprite subset spanned
+-615,472 to +640,800 bytes. Final cross-cycle deltas spanned -354,032 to +375,656 bytes. Positive and
+negative values remain bounded without a consistent upward post-destroy trend; with three cycles this
+is stabilization evidence, not proof of leak absence. This is JavaScript heap, not browser GPU memory.
+
 ## Numeric storage decision
 
 Keep ordinary `number[]` fields for the production SoA stores.
@@ -182,12 +217,7 @@ retrieval workload took 349.3 ms versus Koota's 9.0 ms, and full iteration took 
 
 ## Next gate
 
-Capture and review the production-source Node schedule matrix at 16,384 sprites, including the
-GC-controlled create/destroy observations; add the optional 60,000-sprite peak where the host has
-enough memory. The harness is implemented as `@three-flatland/ecs-bench:benchmark:renderer`, but only
-its smoke validation has run, so no performance conclusion is recorded here yet.
-
-Then run the deterministic Knightmark and lighting A/B matrix against identical production fixtures.
+Run the deterministic Knightmark and lighting A/B matrix against identical production fixtures.
 Record the 60 Hz RAF-cadence crossover against an explicit 16.667 ms callback budget, the 40,000-sprite
 result, per-system production-profile diagnostics, and paired traces for any regression. Remove Koota
 only after the renderer result confirms the batch-local packed-member traversal and physical-row

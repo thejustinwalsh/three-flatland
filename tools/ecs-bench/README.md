@@ -90,9 +90,12 @@ every heap boundary, forces collection before create, after setup, and after dis
 active, create peak, and the post-disposal retained delta after yielding one event-loop turn. The
 default evidence run repeats the complete create/dispose cycle three times and records every
 active/retained boundary so heap stabilization is inspectable; `--memory-cycles=N` overrides it. A missing GC hook is recorded as
-`unavailable`, never silently treated as a measurement. `status.definitiveCapture` stays `pending`
-until the complete result is reviewed and deliberately copied into `planning/internal-ecs/results/`.
-The 60,000-sprite peak likewise stays `pending` unless `--include-60000` ran.
+`unavailable`, never silently treated as a measurement. The generator deliberately leaves
+`status.definitiveCapture` as `pending` and a non-quick observation as `measured-unreviewed`; it
+cannot approve its own output. Review and acceptance are recorded in
+`planning/internal-ecs/05-baseline-and-kernel-decision.md` when the complete raw result is copied into
+`planning/internal-ecs/results/`. The 60,000-sprite observation is emitted only when
+`--include-60000` ran.
 
 The transition probe wraps existing batch-buffer methods and the private ownership adapter only for
 one separate topology-validation frame per case. That frame is not included in timing or memory

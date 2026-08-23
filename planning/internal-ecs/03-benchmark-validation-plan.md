@@ -100,9 +100,11 @@ Use the established 16,384-sprite schedule workload and add a 60,000-sprite scal
 
 The source-level harness is implemented in `tools/ecs-bench/src/renderer-evidence.ts` and is wired as
 `@three-flatland/ecs-bench:benchmark:renderer`. `--quick` runs a smoke-sized version of all cases for
-tool validation. The default 16,384-sprite capture and optional `--include-60000` capture have not yet
-been accepted as definitive evidence; the report encodes that distinction as explicit pending versus
-measured status rather than letting a quick run look complete.
+tool validation. The production capture in `results/renderer-production.json` covers all eight cases
+at both 16,384 and 60,000 sprites, including three GC-controlled lifecycle cycles per case. Its raw
+report preserves the harness-emitted `measured-unreviewed` state; the reviewed decision and exact
+claims live in `05-baseline-and-kernel-decision.md`, so a quick run cannot be mistaken for accepted
+evidence.
 
 Canonical non-quick cases use the production `SpriteGroup` tier ladder with no fixed-capacity
 override. A 16,384-sprite one-material bulk enrollment must initially commit one batch; 60,000 must
