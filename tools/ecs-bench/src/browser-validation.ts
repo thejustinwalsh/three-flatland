@@ -92,6 +92,21 @@ export async function withCleanupPreservingFirstError<T>(
   return result as T
 }
 
+/** Rejects an otherwise unbounded browser operation after a fixed deadline. */
+export async function withDeadline<T>(operation: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(`Timed out after ${timeoutMs} ms while ${label}`)), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export function browserCaptureFailure(
   error: unknown,
   diagnostics: readonly BrowserDiagnostic[],

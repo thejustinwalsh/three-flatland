@@ -154,13 +154,13 @@ Run the harness from the clean head worktree. Target revisions must be the full 
 derived above:
 
 ```sh
-pnpm --dir "$HEAD_WORKTREE" nx run @three-flatland/ecs-bench:benchmark:browser --args="\
+pnpm --dir "$HEAD_WORKTREE" --filter @three-flatland/ecs-bench benchmark:browser \
   --target=base=http://127.0.0.1:4173@${BASE_REVISION} \
   --target=head=http://127.0.0.1:4174@${HEAD_REVISION} \
   --example=knightmark --variant=three \
   --counts=1000,5000,10000,15000,20000,25000,30000,35000,40000,50000,60000 \
   --collisions=0 --profile=0 \
-  --output=${EVIDENCE_OUTPUT_DIR}/knightmark.json"
+  --output=${EVIDENCE_OUTPUT_DIR}/knightmark.json
 ```
 
 After the coarse sweep, rerun with 1,000-sprite increments spanning the first passing-to-failing

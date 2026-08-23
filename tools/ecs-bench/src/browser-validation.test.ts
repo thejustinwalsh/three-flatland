@@ -21,6 +21,7 @@ import {
   validateSimulationFrames,
   withBrowserFailureRecord,
   withCleanupPreservingFirstError,
+  withDeadline,
   type BrowserReadiness,
 } from './browser-validation'
 
@@ -311,6 +312,13 @@ describe('browser benchmark validation', () => {
         }
       )
     ).rejects.toThrow('browser.close: disconnected')
+  })
+
+  it('bounds browser operations that stop responding', async () => {
+    const never = new Promise<never>(() => {})
+    await expect(withDeadline(never, 1, 'closing a blocked browser')).rejects.toThrow(
+      'Timed out after 1 ms while closing a blocked browser'
+    )
   })
 
   it('requires each target to carry a full 40-character Git revision', () => {

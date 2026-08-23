@@ -24,6 +24,7 @@ import {
   validateSimulationFrames,
   withBrowserFailureRecord,
   withCleanupPreservingFirstError,
+  withDeadline,
   type BrowserCaptureFailure,
   type BrowserDiagnostic,
   type BrowserReadiness,
@@ -115,16 +116,17 @@ const pnpmLock = readFileSync(pnpmLockPath, 'utf8')
 const threeDependency = dependencyCatalogResolution(workspaceManifest, pnpmLock, 'three')
 const reactThreeFiberDependency = dependencyCatalogResolution(workspaceManifest, pnpmLock, '@react-three/fiber')
 const CAPTURE_TIMEOUT_MS = 180_000
+const BROWSER_CLOSE_TIMEOUT_MS = 15_000
 
 function usage(message?: string, exitCode = 1): never {
   if (message) console.error(message)
   console.error(`
 Usage:
-  pnpm nx run @three-flatland/ecs-bench:benchmark:browser --args='\
+  pnpm --filter @three-flatland/ecs-bench benchmark:browser \
     --target=base=http://127.0.0.1:4173@<40-character-sha> \
     --target=head=http://127.0.0.1:4174@<40-character-sha> \
     --example=knightmark --variant=three --counts=1000,40000 \
-    --profile=0 --output=results/knightmark.json'
+    --profile=0 --output=results/knightmark.json
 
 The target URL must serve a production Vite preview of the selected example.
 Each observation launches a fresh Chromium process. Two targets run in the
@@ -247,20 +249,7 @@ function fixtureUrl(options: Options, target: Target, count: number): string {
 }
 
 async function withCaptureTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
-  let captureTimeout: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_resolve, reject) => {
-        captureTimeout = setTimeout(
-          () => reject(new Error(`Timed out after ${CAPTURE_TIMEOUT_MS} ms while ${label}`)),
-          CAPTURE_TIMEOUT_MS
-        )
-      }),
-    ])
-  } finally {
-    clearTimeout(captureTimeout)
-  }
+  return withDeadline(promise, CAPTURE_TIMEOUT_MS, label)
 }
 
 async function readHeapUsedBytes(session: CDPSession): Promise<number> {
@@ -465,7 +454,7 @@ async function capture(options: Options, target: Target, count: number): Promise
       }
     },
     async () => {
-      await browser.close()
+      await withDeadline(browser.close(), BROWSER_CLOSE_TIMEOUT_MS, 'closing a capture browser')
     }
   )
 }
@@ -609,7 +598,7 @@ async function main(): Promise<void> {
       try {
         return browser.version()
       } finally {
-        await browser.close()
+        await withDeadline(browser.close(), BROWSER_CLOSE_TIMEOUT_MS, 'closing the version-probe browser')
       }
     })
   const controls = new Map<string, number>()
