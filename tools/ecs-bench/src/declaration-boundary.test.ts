@@ -52,6 +52,24 @@ describe('public declaration boundary verifier', () => {
     expect(output).toMatch(/reachable public declaration files exclude ecs\/runtime/)
   })
 
+  it('matches forbidden API names as identifiers without rejecting prefixed private members', () => {
+    const privateRoot = fixtureSource('export declare class PublicBatch { private _reserveSlot; }\n')
+    expect(() =>
+      execFileSync(process.execPath, [verifier, privateRoot, 'reserveSlot'], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    ).not.toThrow()
+
+    const publicRoot = fixtureSource('export declare class PublicBatch { reserveSlot(): number; }\n')
+    expect(() =>
+      execFileSync(process.execPath, [verifier, publicRoot, 'reserveSlot'], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    ).toThrow(/contains "reserveSlot"/)
+  })
+
   it.each(['./runtime', './runtime/index', './runtime/index.js', '../ecs/runtime'])(
     'rejects a reachable private runtime through %s',
     (relativeRuntimeImport) => {

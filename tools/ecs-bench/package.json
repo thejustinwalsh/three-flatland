@@ -61,6 +61,19 @@
           "command": "node --import tsx src/browser-benchmark.ts",
           "cwd": "{projectRoot}"
         }
+      },
+      "benchmark:renderer": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
+        ],
+        "options": {
+          "command": "node --disable-warning=DEP0205 --import tsx --expose-gc src/renderer-evidence.ts",
+          "cwd": "{projectRoot}"
+        }
       }
     }
   },
@@ -68,6 +81,7 @@
     "baseline:size": "node --experimental-strip-types src/measure-kernels-size.ts",
     "benchmark": "node --disable-warning=DEP0205 --import tsx --expose-gc src/benchmark.ts",
     "benchmark:browser": "node --import tsx src/browser-benchmark.ts",
+    "benchmark:renderer": "node --disable-warning=DEP0205 --import tsx --expose-gc src/renderer-evidence.ts",
     "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",
     "lint": "oxlint --type-aware .",
     "test": "vitest run",
