@@ -8,6 +8,7 @@ import { SpriteGroup } from '../../../packages/three-flatland/src/pipeline/Sprit
 import { Sprite2D } from '../../../packages/three-flatland/src/sprites/Sprite2D.ts'
 import type { Sprite2DOptions } from '../../../packages/three-flatland/src/sprites/types.ts'
 import type { World } from '../../../packages/three-flatland/src/ecs/runtime/index.ts'
+import { timingSummary } from './benchmark-statistics.ts'
 
 type TextureType = NonNullable<Sprite2DOptions['texture']>
 const { Texture } = createRequire(resolve(import.meta.dirname, '../../../packages/three-flatland/package.json'))(
@@ -40,6 +41,11 @@ interface Observation {
   }
 }
 
+interface BenchmarkCase {
+  expectedSprites: number | undefined
+  name: 'unhinted' | 'under' | 'exact' | 'over'
+}
+
 function optionNumber(name: string, fallback: number): number {
   const position = process.argv.indexOf(name)
   const value = position === -1 ? fallback : Number(process.argv[position + 1])
@@ -54,13 +60,13 @@ const options: Options = {
   warmups: optionNumber('--warmups', quick ? 1 : 5),
 }
 
-function percentile(values: readonly number[], fraction: number): number {
-  const sorted = [...values].sort((a, b) => a - b)
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]!
-}
+const gc = (globalThis as { gc?: () => void }).gc
+if (!quick && gc === undefined) throw new Error('Definitive expectedSprites evidence requires Node --expose-gc')
 
-function summary(values: readonly number[]): { median: number; p95: number } {
-  return { median: percentile(values, 0.5), p95: percentile(values, 0.95) }
+function collectGarbage(): void {
+  if (gc === undefined) return
+  gc()
+  gc()
 }
 
 function makeGroup(expectedSprites: number | undefined): SpriteGroup {
@@ -72,6 +78,9 @@ function measure(expectedSprites: number | undefined): Observation {
   const material = new Sprite2DMaterial({ map: texture })
   const sprites = Array.from({ length: options.count }, () => new Sprite2D({ material }))
 
+  // Workload setup is deliberately outside the timed constructor → enroll →
+  // first-update interval. Collect only while every workload input is rooted.
+  collectGarbage()
   const start = performance.now()
   const group = makeGroup(expectedSprites)
   const constructionEnd = performance.now()
@@ -118,6 +127,7 @@ function measure(expectedSprites: number | undefined): Observation {
   group.dispose()
   material.dispose()
   texture.dispose()
+  collectGarbage()
   return observation
 }
 
@@ -167,25 +177,32 @@ function validateLifecycle(): {
   }
 }
 
-for (let index = 0; index < options.warmups; index++) {
-  measure(index % 2 === 0 ? options.count : undefined)
-  measure(index % 2 === 0 ? undefined : options.count)
+const cases: readonly BenchmarkCase[] = [
+  { expectedSprites: undefined, name: 'unhinted' },
+  { expectedSprites: Math.floor(options.count / 2), name: 'under' },
+  { expectedSprites: options.count, name: 'exact' },
+  { expectedSprites: Math.min(options.count * 2, Number.MAX_SAFE_INTEGER), name: 'over' },
+]
+
+function rotatedCases(round: number): readonly BenchmarkCase[] {
+  const offset = round % cases.length
+  return [...cases.slice(offset), ...cases.slice(0, offset)]
 }
 
-const hinted: Observation[] = []
-const unhinted: Observation[] = []
-for (let index = 0; index < options.samples; index++) {
-  if (index % 2 === 0) {
-    hinted.push(measure(options.count))
-    unhinted.push(measure(undefined))
-  } else {
-    unhinted.push(measure(undefined))
-    hinted.push(measure(options.count))
+for (let round = 0; round < options.warmups; round++) {
+  for (const benchmarkCase of rotatedCases(round)) measure(benchmarkCase.expectedSprites)
+}
+
+const samples = new Map<BenchmarkCase['name'], Observation[]>(cases.map(({ name }) => [name, []]))
+for (let round = 0; round < options.samples; round++) {
+  for (const benchmarkCase of rotatedCases(round)) {
+    samples.get(benchmarkCase.name)!.push(measure(benchmarkCase.expectedSprites))
   }
 }
 
 const harnessSources = [
   'expected-sprites.ts',
+  'benchmark-statistics.ts',
   '../../../packages/three-flatland/src/internal/capacity.ts',
   '../../../packages/three-flatland/src/internal/reserved-world.ts',
   '../../../packages/three-flatland/src/ecs/runtime/entity.ts',
@@ -206,20 +223,18 @@ for (const source of harnessSources) {
 
 function observations(samples: readonly Observation[]) {
   return {
-    capacities: samples.map((sample) => sample.capacities),
-    checksums: samples.map((sample) => sample.checksum),
+    raw: samples,
     phasesMs: {
-      construction: summary(samples.map((sample) => sample.phasesMs.construction)),
-      enrollment: summary(samples.map((sample) => sample.phasesMs.enrollment)),
-      firstUpdate: summary(samples.map((sample) => sample.phasesMs.firstUpdate)),
-      total: summary(samples.map((sample) => sample.phasesMs.total)),
+      construction: timingSummary(samples.map((sample) => sample.phasesMs.construction)),
+      enrollment: timingSummary(samples.map((sample) => sample.phasesMs.enrollment)),
+      firstUpdate: timingSummary(samples.map((sample) => sample.phasesMs.firstUpdate)),
+      total: timingSummary(samples.map((sample) => sample.phasesMs.total)),
     },
-    topologies: samples.map((sample) => sample.topology),
   }
 }
 
 const report = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   provenance: {
     harnessSha256: harnessHash.digest('hex'),
     harnessSources,
@@ -229,6 +244,14 @@ const report = {
     timestamp: new Date().toISOString(),
   },
   options,
+  cases: Object.fromEntries(
+    cases.map(({ expectedSprites, name }) => [name, { expectedSprites: expectedSprites ?? null }])
+  ),
+  gc: {
+    collectionsPerBoundary: gc === undefined ? 0 : 2,
+    exposed: gc !== undefined,
+    timed: false,
+  },
   representation: {
     dense: 'Dense iteration arrays are not synthetically reserved; JavaScript has no portable reserve primitive.',
     gpu: 'No GPU batch is pre-created by expectedSprites; first update creates the measured topology.',
@@ -236,8 +259,7 @@ const report = {
       'Only active index-addressed arrays retain explicitly initialized default/absence slots through the hint.',
   },
   validation: validateLifecycle(),
-  hinted: observations(hinted),
-  unhinted: observations(unhinted),
+  observations: Object.fromEntries(cases.map(({ name }) => [name, observations(samples.get(name)!)])),
 }
 
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)

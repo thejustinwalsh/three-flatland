@@ -70,13 +70,13 @@ The transaction must prebuild user node functions before publication, reject cro
 
 Exit condition: one authoritative graph, atomic add/remove/reorder/enable/lighting swap tests, nested-world lifecycle tests, zero allocation on clean frames, and identical TSL compiler output for the Three and React fixtures.
 
-### P0 — introduce a frozen capacity plan
+### P0 — frozen capacity plan: implementation complete
 
-Add `expectedSprites` as the ordinary constructor-only planning hint and retain `maxBatchSize` as an advanced ceiling with its existing property contract. React Three Fiber consumers pass a stable or memoized options object through `args`; changing the hint means intentionally reconstructing the group, not applying a mutable JSX property. Reserve the active CPU index-addressed world and registry structures during construction, but do not pre-create sprites, GPU batches or buffers, cold trait columns, or synthetic dense selector/event rows.
+`expectedSprites` is now the ordinary constructor-only planning hint, while `maxBatchSize` remains an advanced ceiling with its existing property contract. React Three Fiber consumers pass a stable or memoized options object through `args`; changing the hint intentionally reconstructs the group instead of applying a mutable JSX property. Construction reserves active CPU index-addressed world and registry structures without pre-creating sprites, GPU batches or buffers, cold trait columns, or synthetic dense selector/event rows.
 
-The migration must explicitly replace today's behavior where the `SpriteGroup.maxBatchSize` setter changes only future batches (`packages/three-flatland/src/pipeline/SpriteGroup.ts:101-153`). Because that setter is public and R3F-compatible, this is a breaking change and needs paired Three/R3F fixtures plus release documentation.
+The capacity hint does not redefine `maxBatchSize`. That property keeps its existing Three.js and React Three Fiber behavior; any future change to how live batches respond to it is separate breaking work with its own paired fixtures and release documentation.
 
-Exit condition: constructor and R3F `args` type coverage, direct JSX-property rejection, bounded growth tests, dispose/reuse coverage, and renderer evidence for under-estimate, exact-estimate, and over-estimate cases.
+Completed gates include constructor and R3F `args` type coverage, direct JSX-property rejection, bounded growth tests, dispose/reuse coverage, and a deterministic renderer harness for under-estimate, exact-estimate, and over-estimate cases. Definitive timing capture remains a release-evidence operation against a frozen source tree rather than an implementation blocker.
 
 ### P1 — schedule dense animated-sprite playback
 
