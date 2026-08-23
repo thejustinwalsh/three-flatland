@@ -283,13 +283,18 @@ The deterministic harness in `tools/ecs-bench/src/consumer-bundle-evidence.ts` b
 - Knightmark/batch stress,
 - a pass/lighting example that creates dynamic traits.
 
-For each fixture, the current source graph is paired with the identical graph plus the exact seven
-Koota exports used by the recorded 0.6.5 baseline. This isolates Koota's contribution without
-changing Three.js, React, the fixture, the private runtime, or esbuild settings. The harness also
-rebuilds the isolated Koota entry and requires the exact recorded 34,910 B minified / 10,584 B gzip /
-9,362 B Brotli result before accepting the paired measurements.
+For each fixture, the harness bundles identical consumer source against the current package source
+and the direct parent of the commit that migrated production batching from Koota
+(`58bf83781dfc4c854f6c2dca09e57024a012815a`). Both sides use the current locked Three.js, React,
+React Three Fiber, workspace dependencies, esbuild, compression, and minifier settings. The
+historical graph must include Koota and omit the private runtime; the current graph must prove the
+reverse. This measures the net package-source change instead of adding Koota to the current runtime.
 
-Required result versus Koota baseline:
+The harness also rebuilds the isolated seven-export Koota entry and requires the exact recorded
+34,910 B minified / 10,584 B gzip / 9,362 B Brotli result. That number is a diagnostic for dependency
+attribution only and is never added to either representative consumer graph.
+
+Required clean result versus the pinned pre-migration source:
 
 - Koota absent from the published `three-flatland` production dependency graph and emitted
   artifacts,
@@ -301,10 +306,13 @@ The PR report includes metafile attribution so a hash or unrelated dependency ch
 mistaken for the ECS saving. Workspace minis and other packages that intentionally use Koota are
 reported separately; they do not fail this package-scoped removal gate.
 
-Every run writes minified bundles, raw esbuild metafiles, exact minified/gzip/Brotli attribution, the
-full Git revision, resolved tool versions, and source/fixture/harness/lockfile hashes outside the
-source tree. A definitive run requires a clean tree and a current `three-flatland` package build;
-`--allow-dirty` produces only a `smoke-dirty` report. The deterministic test suite exercises all four
+Every run writes minified bundles, raw esbuild metafiles, exact minified/gzip/Brotli attribution,
+both full Git revisions, resolved tool versions, and source/fixture/harness/baseline/lockfile hashes
+outside the source tree. A definitive run requires a clean tree and a current `three-flatland`
+package build; `--allow-dirty` always produces only a `smoke-dirty` report, even if the tree happens
+to be clean. Smoke runs report negative or below-floor net differences without treating them as
+release evidence. A definitive below-floor run writes its inspectable artifacts and then fails. The
+deterministic test suite exercises all four
 fixtures and the provenance/output safeguards. The source-freeze capture remains pending and must be
 recorded as `measured-unreviewed` before review accepts it as release evidence.
 
@@ -357,7 +365,8 @@ Run strict consumer declaration checks after the package build to prove Koota ty
 - Any user-visible rendering, picking, event, visibility, or lifecycle regression.
 - Any Koota runtime/type reference in published `three-flatland` output.
 - Kernel above the bundle caps.
-- Representative gzip saving below 6 kB.
+- Any representative consumer below 22 kB minified or 6 kB gzip net saving versus the pinned
+  pre-migration package source.
 - Steady-state schedule median more than 3% slower in any principal workload under the paired-run
   policy below.
 - Schedule p95 more than 5% slower under the paired-run policy below.

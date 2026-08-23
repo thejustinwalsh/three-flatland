@@ -49,10 +49,13 @@ type checks, and later bundle budgets are deterministic gates.
 ## Representative consumer bundle attribution
 
 The consumer bundle gate builds four production-shaped entry points: basic Three.js, basic React
-Three Fiber, Knightmark-style batching, and pass/lighting with dynamic effect traits. Each current
-bundle has a paired attribution baseline made from the identical consumer graph plus the exact seven
-Koota exports used by the recorded 0.6.5 baseline. This keeps Three.js, React, fixture code, the
-private runtime, and minifier settings identical across each pair.
+Three Fiber, Knightmark-style batching, and pass/lighting with dynamic effect traits. Each fixture is
+bundled unchanged against current `three-flatland` source and against the direct parent of the commit
+that migrated production batching from Koota
+(`58bf83781dfc4c854f6c2dca09e57024a012815a`). Both sides use the current locked Three.js, React,
+React Three Fiber, workspace dependencies, esbuild, compression, and minifier settings. The paired
+result is therefore the net package-source change seen by the same consumer, not an estimate formed
+by adding Koota to the current runtime.
 
 Build the published package first, then capture from a clean source tree:
 
@@ -65,15 +68,21 @@ node --import tsx tools/ecs-bench/src/measure-consumer-bundles.ts \
 Omit `--output` to use the operating system's temporary directory. The harness refuses an output
 path inside the repository and refuses a non-empty output directory. Every capture emits the
 minified bundles, raw esbuild metafiles, and a JSON report containing exact minified, gzip, and
-Brotli sizes; source, fixture, harness, and lockfile hashes; exact tool versions; and the full Git
-revision.
+Brotli sizes; source, fixture, harness, baseline, and lockfile hashes; exact tool versions; and both
+full Git revisions.
 
-A passing capture proves that Koota is absent from the current consumer graphs, production source,
-and built `three-flatland` output; the private runtime is retained in exactly one output per fixture;
-the isolated Koota bundle still matches the recorded 34,910 B minified / 10,584 B gzip / 9,362 B
-Brotli baseline; and every paired consumer saves at least 22 kB minified and 6 kB gzip. Use
-`--allow-dirty` only while changing the harness. Dirty captures are labeled `smoke-dirty` and are not
-release evidence.
+A passing definitive capture proves that the historical graph retains Koota and omits the private
+runtime; the current graph has the reverse attribution; the private runtime is retained in exactly
+one output per fixture; and every paired consumer saves at least 22 kB minified and 6 kB gzip. The
+isolated seven-export Koota bundle must still match the recorded 34,910 B minified / 10,584 B gzip /
+9,362 B Brotli number, but that value is a diagnostic only. It is never added to a consumer graph and
+is not a net-saving claim.
+
+Use `--allow-dirty` only while changing the harness. Supplying it always labels the capture
+`smoke-dirty`, even when the working tree happens to be clean, so an explicit smoke run cannot become
+release evidence accidentally. Smoke captures report the measured net difference even when it is
+negative. A definitive capture that misses the floor writes its inspectable artifacts and then
+fails the command. The source-freeze capture is still pending.
 
 ## Node renderer schedule evidence
 

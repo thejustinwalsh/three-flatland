@@ -4,8 +4,10 @@ import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   MINIMUM_REPRESENTATIVE_SAVING,
+  PRE_MIGRATION_REVISION,
   RECORDED_KOOTA_BASELINE,
   assertCaptureClean,
+  assertMinimumNetSaving,
   captureConsumerBundleEvidence,
   consumerFixtures,
   resolveEvidenceOutputDirectory,
@@ -32,20 +34,31 @@ afterAll(() => {
 })
 
 describe('representative consumer bundle evidence', () => {
-  it('matches the recorded exact Koota baseline', () => {
-    expect(report.isolatedKootaBaseline).toEqual(RECORDED_KOOTA_BASELINE)
-    expect(report.gate.recordedKootaBaselineMatched).toBe(true)
+  it('keeps the isolated Koota number as a labeled diagnostic', () => {
+    expect(report.isolatedKootaDiagnostic).toMatchObject(RECORDED_KOOTA_BASELINE)
+    expect(report.isolatedKootaDiagnostic.kootaInputs.length).toBeGreaterThan(0)
+    expect(report.isolatedKootaDiagnostic.kootaBytesInOutput).toBeGreaterThan(0)
+    expect(report.isolatedKootaDiagnostic.runtimeInputs).toEqual([])
+    expect(report.gate.recordedKootaDiagnosticMatched).toBe(true)
   })
 
-  it('covers every required consumer shape and enforces the saving floor', () => {
+  it('covers every required consumer shape and reports the net-saving floor honestly', () => {
     expect(report.captures.map(({ fixture }) => fixture.id)).toEqual(consumerFixtures.map(({ id }) => id))
 
     for (const capture of report.captures) {
-      expect(capture.saving.minifiedBytes).toBeGreaterThanOrEqual(MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes)
-      expect(capture.saving.gzipBytes).toBeGreaterThanOrEqual(MINIMUM_REPRESENTATIVE_SAVING.gzipBytes)
       expect(capture.baseline.kootaInputs.length).toBeGreaterThan(0)
       expect(capture.baseline.kootaBytesInOutput).toBeGreaterThan(0)
+      expect(capture.baseline.runtimeInputs).toEqual([])
     }
+    expect(report.gate.baselineIncludesKoota).toBe(true)
+    expect(report.gate.baselineOmitsPrivateRuntime).toBe(true)
+    expect(report.gate.minimumNetSavingPassed).toBe(
+      report.captures.every(
+        ({ netDifference }) =>
+          netDifference.minifiedBytes >= MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes &&
+          netDifference.gzipBytes >= MINIMUM_REPRESENTATIVE_SAVING.gzipBytes
+      )
+    )
   })
 
   it('keeps Koota absent and emits one private-runtime output per current consumer', () => {
@@ -69,7 +82,7 @@ describe('representative consumer bundle evidence', () => {
 
   it('writes inspectable bundles, raw metafiles, and provenance', () => {
     for (const fixture of consumerFixtures) {
-      for (const variant of ['current', 'koota-baseline']) {
+      for (const variant of ['current', 'pre-migration']) {
         const bundle = resolve(captureDirectory, `${fixture.id}.${variant}.mjs`)
         const metafile = resolve(captureDirectory, `${fixture.id}.${variant}.metafile.json`)
         expect(existsSync(bundle)).toBe(true)
@@ -79,6 +92,7 @@ describe('representative consumer bundle evidence', () => {
           outputs?: unknown
         }
         expect(parsed.inputs).toBeTypeOf('object')
+        expect(Object.keys(parsed.inputs as object)).toContain(fixture.source)
         expect(parsed.outputs).toBeTypeOf('object')
       }
     }
@@ -92,12 +106,15 @@ describe('representative consumer bundle evidence', () => {
     expect(existsSync(resolve(captureDirectory, 'shared-graph/pass-lighting.js'))).toBe(true)
     expect(JSON.parse(readFileSync(resolve(captureDirectory, 'report.json'), 'utf8'))).toEqual(report)
     expect(report.provenance.revision).toMatch(/^[0-9a-f]{40}$/)
+    expect(report.provenance.baseline.revision).toBe(PRE_MIGRATION_REVISION)
+    expect(report.provenance.baseline.sourceFileCount).toBeGreaterThan(0)
+    expect(report.provenance.baseline.sourceSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(report.provenance.lockfileSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(report.provenance.productionSourceSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(report.provenance.harnessSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(report.provenance.fixtureSources).toHaveLength(consumerFixtures.length)
     expect(Object.values(report.provenance.toolVersions).every((version) => version.length > 0)).toBe(true)
-    expect(report.status).toBe(report.provenance.dirty ? 'smoke-dirty' : 'measured-unreviewed')
+    expect(report.status).toBe('smoke-dirty')
   })
 })
 
@@ -106,6 +123,12 @@ describe('capture safeguards', () => {
     expect(() => assertCaptureClean(true, false)).toThrow(/dirty source tree/)
     expect(() => assertCaptureClean(true, true)).not.toThrow()
     expect(() => assertCaptureClean(false, false)).not.toThrow()
+  })
+
+  it('enforces the net-saving floor only for definitive captures', () => {
+    expect(() => assertMinimumNetSaving('smoke-dirty', false)).not.toThrow()
+    expect(() => assertMinimumNetSaving('measured-unreviewed', true)).not.toThrow()
+    expect(() => assertMinimumNetSaving('measured-unreviewed', false)).toThrow(/net-saving floor/)
   })
 
   it('keeps evidence outside the source tree', () => {

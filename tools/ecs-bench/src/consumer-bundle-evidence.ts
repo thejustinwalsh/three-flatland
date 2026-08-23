@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
@@ -12,6 +12,9 @@ export const RECORDED_KOOTA_BASELINE = {
   gzipBytes: 10_584,
   minifiedBytes: 34_910,
 } as const
+
+/** Direct parent of the commit that migrated production batching from Koota. */
+export const PRE_MIGRATION_REVISION = '58bf83781dfc4c854f6c2dca09e57024a012815a' as const
 
 export const MINIMUM_REPRESENTATIVE_SAVING = {
   gzipBytes: 6_000,
@@ -78,7 +81,8 @@ export interface RepresentativeConsumerResult {
   readonly baseline: BundleSize & BundleAttribution
   readonly current: BundleSize & BundleAttribution
   readonly fixture: ConsumerFixture
-  readonly saving: BundleSize
+  /** Baseline minus current; positive values are net savings and negative values are growth. */
+  readonly netDifference: BundleSize
 }
 
 export interface ConsumerBundleEvidenceReport {
@@ -88,17 +92,25 @@ export interface ConsumerBundleEvidenceReport {
     readonly gzip: string
   }
   readonly gate: {
+    readonly baselineIncludesKoota: boolean
+    readonly baselineOmitsPrivateRuntime: boolean
     readonly kootaAbsentFromCurrentConsumerGraphs: boolean
     readonly minimumGzipSavingBytes: number
     readonly minimumMinifiedSavingBytes: number
+    readonly minimumNetSavingPassed: boolean
     readonly noDuplicateRuntimeChunk: boolean
     readonly publishedOutputKootaReferences: readonly string[]
-    readonly recordedKootaBaselineMatched: boolean
+    readonly recordedKootaDiagnosticMatched: boolean
     readonly sourceKootaImports: readonly string[]
   }
-  readonly isolatedKootaBaseline: BundleSize
+  readonly isolatedKootaDiagnostic: BundleSize & BundleAttribution
   readonly methodology: string
   readonly provenance: {
+    readonly baseline: {
+      readonly revision: string
+      readonly sourceFileCount: number
+      readonly sourceSha256: string
+    }
     readonly dirty: boolean
     readonly fixtureSources: readonly { readonly path: string; readonly sha256: string }[]
     readonly harnessSha256: string
@@ -116,7 +128,7 @@ export interface ConsumerBundleEvidenceReport {
       readonly three: string
     }
   }
-  readonly schemaVersion: 1
+  readonly schemaVersion: 2
   readonly sharedGraph: BundleAttribution
   readonly status: 'measured-unreviewed' | 'smoke-dirty'
   readonly target: 'es2022'
@@ -159,6 +171,59 @@ function git(root: string, args: readonly string[]): string {
   }).trim()
 }
 
+function gitBuffer(root: string, args: readonly string[]): Buffer {
+  return execFileSync('git', args, {
+    cwd: root,
+    maxBuffer: 32 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+}
+
+interface MaterializedBaseline {
+  readonly root: string
+  readonly sourceFileCount: number
+  readonly sourceSha256: string
+}
+
+function materializeBaseline(root: string): MaterializedBaseline {
+  const resolved = git(root, ['rev-parse', `${PRE_MIGRATION_REVISION}^{commit}`])
+  if (resolved !== PRE_MIGRATION_REVISION) {
+    throw new Error(`Pinned pre-migration revision resolved to ${resolved}`)
+  }
+  git(root, ['merge-base', '--is-ancestor', PRE_MIGRATION_REVISION, 'HEAD'])
+
+  const sources = git(root, [
+    'ls-tree',
+    '-r',
+    '--name-only',
+    PRE_MIGRATION_REVISION,
+    '--',
+    'packages/three-flatland/src',
+  ])
+    .split('\n')
+    .filter((path) => path.length > 0)
+    .sort()
+  if (sources.length === 0) throw new Error('Pinned pre-migration revision has no three-flatland source files')
+
+  const baselineRoot = join(tmpdir(), 'three-flatland-consumer-baselines')
+  mkdirSync(baselineRoot, { recursive: true })
+  const materializedRoot = resolve(baselineRoot, `${PRE_MIGRATION_REVISION}-${process.pid}-${Date.now().toString(36)}`)
+  const sourceHash = createHash('sha256')
+  for (const source of sources) {
+    const contents = gitBuffer(root, ['show', `${PRE_MIGRATION_REVISION}:${source}`])
+    sourceHash.update(source)
+    sourceHash.update(contents)
+    const destination = resolve(materializedRoot, source)
+    mkdirSync(dirname(destination), { recursive: true })
+    writeFileSync(destination, contents)
+  }
+  return {
+    root: materializedRoot,
+    sourceFileCount: sources.length,
+    sourceSha256: sourceHash.digest('hex'),
+  }
+}
+
 function gitTrackedProductionSources(root: string): string[] {
   return git(root, ['ls-files', 'packages/three-flatland/src'])
     .split('\n')
@@ -187,37 +252,46 @@ function packageVersion(name: string, anchor: string): string {
   }
 }
 
-function sourceAliasPlugin(root: string): Plugin {
+function sourceAliasPlugin(root: string, flatlandSourceRoot: string): Plugin {
   const sourceEntries = new Map([
     ['@three-flatland/bake', resolve(root, 'packages/bake/src/index.ts')],
-    ['three-flatland', resolve(root, 'packages/three-flatland/src/index.ts')],
-    ['three-flatland/react', resolve(root, 'packages/three-flatland/src/react.ts')],
+    ['@three-flatland/atlas', resolve(root, 'packages/atlas/src/index.ts')],
+    ['@three-flatland/normals', resolve(root, 'packages/normals/src/index.ts')],
+    ['three-flatland', resolve(flatlandSourceRoot, 'index.ts')],
+    ['three-flatland/react', resolve(flatlandSourceRoot, 'react.ts')],
   ])
   return {
     name: 'three-flatland-source-entry',
     setup(pluginBuild) {
-      pluginBuild.onResolve({ filter: /^(?:@three-flatland\/bake|three-flatland(?:\/react)?)$/ }, ({ path }) => {
-        const source = sourceEntries.get(path)
-        if (!source) return null
-        return { path: source }
-      })
+      pluginBuild.onResolve(
+        {
+          filter: /^(?:@three-flatland\/(?:atlas|bake|normals)|three-flatland(?:\/react)?)$/,
+        },
+        ({ path }) => {
+          const source = sourceEntries.get(path)
+          if (!source) return null
+          return { path: source }
+        }
+      )
     },
   }
 }
 
 function consumerDependencyPlugin(root: string): Plugin {
-  const resolveDirectory = resolve(root, 'packages/three-flatland')
+  const consumerResolveDirectory = resolve(root, 'packages/three-flatland')
+  const harnessResolveDirectory = resolve(root, 'tools/ecs-bench')
   return {
     name: 'three-flatland-consumer-dependencies',
     setup(pluginBuild) {
       pluginBuild.onResolve(
-        { filter: /^(?:three(?:\/.*)?|react(?:\/.*)?|@react-three\/fiber(?:\/.*)?)$/ },
+        { filter: /^(?:koota(?:\/.*)?|three(?:\/.*)?|react(?:\/.*)?|@react-three\/fiber(?:\/.*)?)$/ },
         ({ path, pluginData }) => {
           if ((pluginData as { consumerResolved?: boolean } | undefined)?.consumerResolved) return null
           return pluginBuild.resolve(path, {
             kind: 'import-statement',
             pluginData: { consumerResolved: true },
-            resolveDir: resolveDirectory,
+            resolveDir:
+              path === 'koota' || path.startsWith('koota/') ? harnessResolveDirectory : consumerResolveDirectory,
           })
         }
       )
@@ -285,9 +359,12 @@ function bundleSize(code: Uint8Array): BundleSize {
   }
 }
 
-async function buildConsumer(root: string, fixture: ConsumerFixture, includeKoota: boolean): Promise<BundleCapture> {
-  const exports = [`export * from './${fixture.source}'`]
-  if (includeKoota) exports.push("export * from './tools/ecs-bench/src/fixtures/koota-size-entry.ts'")
+async function buildConsumer(
+  root: string,
+  flatlandSourceRoot: string,
+  fixture: ConsumerFixture,
+  variant: 'current' | 'pre-migration'
+): Promise<BundleCapture> {
   const result = await build({
     absWorkingDir: root,
     bundle: true,
@@ -302,13 +379,13 @@ async function buildConsumer(root: string, fixture: ConsumerFixture, includeKoot
     minify: true,
     outfile: `${fixture.id}.mjs`,
     platform: 'browser',
-    plugins: [sourceAliasPlugin(root), consumerDependencyPlugin(root), consumerFixturePlugin()],
+    plugins: [sourceAliasPlugin(root, flatlandSourceRoot), consumerDependencyPlugin(root), consumerFixturePlugin()],
     sourcemap: false,
     stdin: {
-      contents: `${exports.join('\n')}\n`,
+      contents: `export * from './${fixture.source}'\n`,
       loader: 'ts',
       resolveDir: root,
-      sourcefile: `${fixture.id}-${includeKoota ? 'koota-baseline' : 'current'}.ts`,
+      sourcefile: `${fixture.id}-${variant}.ts`,
     },
     target: 'es2022',
     treeShaking: true,
@@ -340,7 +417,7 @@ async function buildIsolatedKootaBaseline(root: string): Promise<BundleCapture> 
   return { attribution: attribution(result.metafile), code, metafile: result.metafile, size: bundleSize(code) }
 }
 
-async function buildSharedConsumerGraph(root: string): Promise<SharedGraphCapture> {
+async function buildSharedConsumerGraph(root: string, flatlandSourceRoot: string): Promise<SharedGraphCapture> {
   const result = await build({
     absWorkingDir: root,
     bundle: true,
@@ -358,7 +435,7 @@ async function buildSharedConsumerGraph(root: string): Promise<SharedGraphCaptur
     minify: true,
     outdir: 'shared-graph',
     platform: 'browser',
-    plugins: [sourceAliasPlugin(root), consumerDependencyPlugin(root), consumerFixturePlugin()],
+    plugins: [sourceAliasPlugin(root, flatlandSourceRoot), consumerDependencyPlugin(root), consumerFixturePlugin()],
     sourcemap: false,
     splitting: true,
     target: 'es2022',
@@ -423,15 +500,15 @@ function publicResult(
     baseline: { ...baseline.size, ...baseline.attribution },
     current: { ...current.size, ...current.attribution },
     fixture,
-    saving: subtract(baseline.size, current.size),
+    netDifference: subtract(baseline.size, current.size),
   }
 }
 
 function assertGate(report: ConsumerBundleEvidenceReport, currentCaptures: readonly BundleCapture[]): void {
-  if (!report.gate.recordedKootaBaselineMatched) {
+  if (!report.gate.recordedKootaDiagnosticMatched) {
     throw new Error(
       `Isolated Koota baseline changed: expected ${JSON.stringify(RECORDED_KOOTA_BASELINE)}, ` +
-        `received ${JSON.stringify(report.isolatedKootaBaseline)}`
+        `received ${JSON.stringify(report.isolatedKootaDiagnostic)}`
     )
   }
   if (report.gate.sourceKootaImports.length > 0) {
@@ -455,26 +532,29 @@ function assertGate(report: ConsumerBundleEvidenceReport, currentCaptures: reado
     if (capture.current.kootaInputs.length > 0) {
       throw new Error(`${capture.fixture.label} still includes Koota: ${capture.current.kootaInputs.join(', ')}`)
     }
+    if (capture.baseline.kootaInputs.length === 0 || capture.baseline.kootaBytesInOutput === 0) {
+      throw new Error(`${capture.fixture.label} pre-migration baseline did not retain Koota`)
+    }
+    if (capture.baseline.runtimeInputs.length > 0) {
+      throw new Error(`${capture.fixture.label} pre-migration baseline unexpectedly includes the private runtime`)
+    }
     if (capture.current.duplicateRuntimeInputs.length > 0 || capture.current.runtimeOutputs.length !== 1) {
       throw new Error(`${capture.fixture.label} emitted the private runtime into more than one output chunk`)
-    }
-    if (capture.saving.minifiedBytes < MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes) {
-      throw new Error(
-        `${capture.fixture.label} saves ${capture.saving.minifiedBytes} minified bytes; ` +
-          `${MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes} required`
-      )
-    }
-    if (capture.saving.gzipBytes < MINIMUM_REPRESENTATIVE_SAVING.gzipBytes) {
-      throw new Error(
-        `${capture.fixture.label} saves ${capture.saving.gzipBytes} gzip bytes; ` +
-          `${MINIMUM_REPRESENTATIVE_SAVING.gzipBytes} required`
-      )
     }
   }
   for (const capture of currentCaptures) {
     if (/\bkoota(?:\/react)?\b/i.test(Buffer.from(capture.code).toString('utf8'))) {
       throw new Error('A current representative bundle contains a Koota runtime reference')
     }
+  }
+}
+
+export function assertMinimumNetSaving(status: ConsumerBundleEvidenceReport['status'], passed: boolean): void {
+  if (status !== 'smoke-dirty' && !passed) {
+    throw new Error(
+      `Pinned pre-migration comparison does not meet the ${MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes} ` +
+        `minified / ${MINIMUM_REPRESENTATIVE_SAVING.gzipBytes} gzip byte net-saving floor`
+    )
   }
 }
 
@@ -519,9 +599,9 @@ function writeArtifacts(
       resolve(directory, `${fixture.id}.current.metafile.json`),
       `${JSON.stringify(current.metafile, null, 2)}\n`
     )
-    writeFileSync(resolve(directory, `${fixture.id}.koota-baseline.mjs`), baseline.code)
+    writeFileSync(resolve(directory, `${fixture.id}.pre-migration.mjs`), baseline.code)
     writeFileSync(
-      resolve(directory, `${fixture.id}.koota-baseline.metafile.json`),
+      resolve(directory, `${fixture.id}.pre-migration.metafile.json`),
       `${JSON.stringify(baseline.metafile, null, 2)}\n`
     )
   }
@@ -550,18 +630,26 @@ export async function captureConsumerBundleEvidence(
   const revision = git(root, ['rev-parse', 'HEAD'])
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error(`Expected a full Git revision, received '${revision}'`)
   const dirty = git(root, ['status', '--short', '--untracked-files=all']).length > 0
-  assertCaptureClean(dirty, options.allowDirty === true)
+  const smokeOnly = options.allowDirty === true
+  assertCaptureClean(dirty, smokeOnly)
 
   const productionSources = gitTrackedProductionSources(root)
   const sourceImports = productionKootaImports(root, productionSources)
   const publishedReferences = scanPublishedOutputForKoota(root, options.requirePublishedOutput ?? true)
   const isolatedKoota = await buildIsolatedKootaBaseline(root)
-  const sharedGraph = await buildSharedConsumerGraph(root)
+  const currentSourceRoot = resolve(root, 'packages/three-flatland/src')
+  const sharedGraph = await buildSharedConsumerGraph(root, currentSourceRoot)
+  const materializedBaseline = materializeBaseline(root)
   const captures: { fixture: ConsumerFixture; current: BundleCapture; baseline: BundleCapture }[] = []
-  for (const fixture of consumerFixtures) {
-    const current = await buildConsumer(root, fixture, false)
-    const baseline = await buildConsumer(root, fixture, true)
-    captures.push({ baseline, current, fixture })
+  try {
+    const baselineSourceRoot = resolve(materializedBaseline.root, 'packages/three-flatland/src')
+    for (const fixture of consumerFixtures) {
+      const current = await buildConsumer(root, currentSourceRoot, fixture, 'current')
+      const baseline = await buildConsumer(root, baselineSourceRoot, fixture, 'pre-migration')
+      captures.push({ baseline, current, fixture })
+    }
+  } finally {
+    rmSync(materializedBaseline.root, { force: true, recursive: true })
   }
 
   const publicCaptures = captures.map(({ fixture, current, baseline }) => publicResult(fixture, current, baseline))
@@ -576,24 +664,40 @@ export async function captureConsumerBundleEvidence(
       gzip: 'node:zlib gzipSync defaults',
     },
     gate: {
+      baselineIncludesKoota: publicCaptures.every(
+        ({ baseline }) => baseline.kootaInputs.length > 0 && baseline.kootaBytesInOutput > 0
+      ),
+      baselineOmitsPrivateRuntime: publicCaptures.every(({ baseline }) => baseline.runtimeInputs.length === 0),
       kootaAbsentFromCurrentConsumerGraphs:
         publicCaptures.every(({ current }) => current.kootaInputs.length === 0) &&
         sharedGraph.attribution.kootaInputs.length === 0,
       minimumGzipSavingBytes: MINIMUM_REPRESENTATIVE_SAVING.gzipBytes,
       minimumMinifiedSavingBytes: MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes,
+      minimumNetSavingPassed: publicCaptures.every(
+        ({ netDifference }) =>
+          netDifference.minifiedBytes >= MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes &&
+          netDifference.gzipBytes >= MINIMUM_REPRESENTATIVE_SAVING.gzipBytes
+      ),
       noDuplicateRuntimeChunk:
         publicCaptures.every(({ current }) => current.duplicateRuntimeInputs.length === 0) &&
         sharedGraph.attribution.duplicateRuntimeInputs.length === 0,
       publishedOutputKootaReferences: publishedReferences,
-      recordedKootaBaselineMatched: JSON.stringify(isolatedKoota.size) === JSON.stringify(RECORDED_KOOTA_BASELINE),
+      recordedKootaDiagnosticMatched: JSON.stringify(isolatedKoota.size) === JSON.stringify(RECORDED_KOOTA_BASELINE),
       sourceKootaImports: sourceImports,
     },
-    isolatedKootaBaseline: isolatedKoota.size,
+    isolatedKootaDiagnostic: { ...isolatedKoota.size, ...isolatedKoota.attribution },
     methodology:
-      'Each current consumer is bundled from three-flatland source. Its paired baseline uses the identical graph plus ' +
-      'the exact seven exported Koota symbols from the recorded baseline entry. The pair isolates Koota attribution ' +
-      'without changing Three.js, React, fixture code, minifier settings, or the private runtime.',
+      `Each fixture is bundled unchanged against current three-flatland source and the pinned pre-migration source ` +
+      `${PRE_MIGRATION_REVISION}. Both sides use the current locked Three.js, React, R3F, workspace dependencies, ` +
+      'esbuild, compression, and minifier settings. The baseline must retain Koota and omit the private runtime; the ' +
+      'current graph must retain the private runtime and omit Koota. The isolated seven-export Koota size is diagnostic ' +
+      'only and is not added to either consumer graph.',
     provenance: {
+      baseline: {
+        revision: PRE_MIGRATION_REVISION,
+        sourceFileCount: materializedBaseline.sourceFileCount,
+        sourceSha256: materializedBaseline.sourceSha256,
+      },
       dirty,
       fixtureSources,
       harnessSha256: hashFiles(root, harnessSources),
@@ -611,9 +715,9 @@ export async function captureConsumerBundleEvidence(
         three: packageVersion('three', resolve(root, 'packages/three-flatland/package.json')),
       },
     },
-    schemaVersion: 1,
+    schemaVersion: 2,
     sharedGraph: sharedGraph.attribution,
-    status: dirty ? 'smoke-dirty' : 'measured-unreviewed',
+    status: smokeOnly ? 'smoke-dirty' : 'measured-unreviewed',
     target: 'es2022',
   }
 
@@ -624,5 +728,6 @@ export async function captureConsumerBundleEvidence(
   const outputDirectory = resolveEvidenceOutputDirectory(options, root, revision)
   if (options.writeArtifacts !== false)
     writeArtifacts(root, outputDirectory, report, captures, isolatedKoota, sharedGraph)
+  assertMinimumNetSaving(report.status, report.gate.minimumNetSavingPassed)
   return { outputDirectory, report }
 }

@@ -5,7 +5,9 @@ export function createKnightmarkConsumer(count: number): SpriteGroup {
   const texture = new Texture()
   texture.image = { width: 64, height: 64 }
   const material = new Sprite2DMaterial({ map: texture, alphaTest: 0.5 })
-  const group = new SpriteGroup({ expectedSprites: count })
+  // Keep this fixture compatible with the pinned pre-migration package.
+  // Capacity hints are measured separately and must not change the A/B API.
+  const group = new SpriteGroup()
 
   for (let index = 0; index < count; index++) {
     const sprite = new AnimatedSprite2D({ material })
