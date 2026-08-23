@@ -227,6 +227,7 @@ describe('Flatland entity-store behavior contract', () => {
       world.drain(ChangedInventory)
       expect(() => world.touch(original, Inventory)).toThrow(/Stale entity handle/)
       expect(world.read(recycled, Inventory)).toEqual({ items: [], owner: 'recycled' })
+      expect(world.drain(ChangedInventory)).toEqual([])
 
       const missing = world.spawn()
       world.drain(ChangedInventory)
