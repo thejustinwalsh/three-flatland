@@ -144,6 +144,30 @@ export default function App() {
 }
 ```
 
+## Capacity hints
+
+When a scene's approximate sprite population is known, pass `expectedSprites` to the `SpriteGroup` or `Flatland` constructor:
+
+```ts
+const group = new SpriteGroup({ expectedSprites: 16_384 })
+const flatland = new Flatland({ expectedSprites: 16_384 })
+```
+
+The value reserves hot CPU-side enrollment storage. It is advisory rather than a cap: enrollment continues automatically past the hint. `clear()` keeps the reservation for reuse, while `dispose()` releases it.
+
+React Three Fiber receives constructor-only options through stable `args`:
+
+```tsx
+import { useMemo } from 'react'
+import type { SpriteGroupOptions } from 'three-flatland/react'
+
+const groupArgs = useMemo(() => [{ expectedSprites: 16_384 }] satisfies [SpriteGroupOptions], [])
+
+return <spriteGroup args={groupArgs}>{/* sprites */}</spriteGroup>
+```
+
+`expectedSprites` is not a mutable JSX property. Change the memoized constructor args when the expected population changes so React Three Fiber reconstructs the object.
+
 ## Subpath Exports
 
 Import only what you need:
