@@ -9,6 +9,7 @@ import {
   Vector3,
 } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { MaterialEffect } from '../materials/MaterialEffect'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import {
   _registerMeshBatchSource,
@@ -74,7 +75,11 @@ export class TileLayer extends Group {
   readonly chunkSize: number
 
   /** The Sprite2DMaterial used for rendering (apply effects here) */
-  readonly material: Sprite2DMaterial
+  private _material: Sprite2DMaterial
+
+  get material(): Sprite2DMaterial {
+    return this._material
+  }
 
   /** Tileset reference */
   private tileset: Tileset
@@ -115,6 +120,10 @@ export class TileLayer extends Group {
 
   /** Animation state (keyed by base GID) */
   private animationTimers: Map<number, { elapsed: number; frameIndex: number }> = new Map()
+
+  /** Reused animation-update scratch; cleared and filled without per-frame allocation. */
+  private readonly _changedAnimationGids = new Set<number>()
+  private readonly _dirtyAnimationChunks = new Set<string>()
 
   /** System flags bitmask (lit/receiveShadows/castsShadow) — same semantics as Sprite2D._systemFlags */
   private _systemFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
@@ -247,7 +256,14 @@ export class TileLayer extends Group {
     }
   }
 
-  constructor(data: TileLayerData, tileset: Tileset, tileWidth: number, tileHeight: number, chunkSize: number = 256) {
+  constructor(
+    data: TileLayerData,
+    tileset: Tileset,
+    tileWidth: number,
+    tileHeight: number,
+    chunkSize: number = 256,
+    effects: readonly MaterialEffect[] = []
+  ) {
     super()
 
     const classOptions = (this.constructor as typeof TileLayer).options
@@ -269,17 +285,21 @@ export class TileLayer extends Group {
     // Detect whether the texture uses flipY (loaded images = true, DataTextures = false)
     this.texFlipY = tileset.texture?.flipY ?? false
 
-    this.material = new Sprite2DMaterial({
+    this._material = new Sprite2DMaterial({
       map: tileset.texture ?? undefined,
       transparent: true,
     })
-    this.material.depthWrite = true
-    this.material.alphaTest = 0.5
+    this._material.depthWrite = true
+    this._material.alphaTest = 0.5
     // Tag the material so devtools / scene walkers can distinguish
     // tile-layer materials from regular sprite materials at a glance.
     // `type` stays `'Sprite2DMaterial'` (they share a class); `name`
     // carries the layer-specific hint.
-    this.material.name = `tilemap:${data.name}`
+    this._material.name = `tilemap:${data.name}`
+    for (const effect of effects) {
+      const EffectClass = effect.constructor as typeof MaterialEffect
+      this._material.registerEffect(EffectClass, effect._constants)
+    }
 
     // Register chunk meshes with the devtools sink so the batch
     // inspector sees tile-chunk draws alongside ECS sprite batches.
@@ -291,6 +311,48 @@ export class TileLayer extends Group {
 
     // Build chunked instanced meshes from tile data
     this.buildInstances()
+  }
+
+  /** Build a replacement material without publishing it to the layer. @internal */
+  _prepareEffectMaterial(effects: readonly MaterialEffect[]): Sprite2DMaterial {
+    const previous = this._material
+    const current = new Sprite2DMaterial({
+      map: this.tileset.texture ?? undefined,
+      transparent: previous.transparent,
+      alphaTest: previous.alphaTest,
+      premultipliedAlpha: previous.premultipliedAlpha,
+      colorTransform: previous.colorTransform ?? undefined,
+      globalUniforms: previous.globalUniforms ?? undefined,
+    })
+    current.depthWrite = previous.depthWrite
+    current.requiredChannels = previous.requiredChannels
+    current.name = previous.name
+    try {
+      for (const effect of effects) {
+        const EffectClass = effect.constructor as typeof MaterialEffect
+        current.registerEffect(EffectClass, effect._constants)
+      }
+    } catch (error) {
+      current.dispose()
+      throw error
+    }
+
+    return current
+  }
+
+  /** Publish a prepared material and rebuild its chunk projection. @internal */
+  _replaceMaterial(current: Sprite2DMaterial): Sprite2DMaterial {
+    const previous = this._material
+    this._material = current
+    try {
+      this.buildInstances()
+    } catch (error) {
+      this._material = previous
+      current.dispose()
+      this.buildInstances()
+      throw error
+    }
+    return previous
   }
 
   /**
@@ -424,12 +486,17 @@ export class TileLayer extends Group {
         effectBufs.set(name, buf)
       }
 
+      let effectEnableFlags = 0
+      for (const effectClass of this.material.getEffects()) {
+        const bitIndex = this.material._effectBitIndex.get(effectClass.effectName)
+        if (bitIndex !== undefined) effectEnableFlags |= 1 << bitIndex
+      }
+
       // Populate per-instance system data in the interleaved buffer:
       //   instanceSystem.x = flipX (1 by default, written below per-tile)
       //   instanceSystem.y = flipY (1 by default)
       //   instanceSystem.z = system flags (lit/receive/cast)
-      //   instanceSystem.w = MaterialEffect enable bits (0 — tiles
-      //                      don't currently use MaterialEffect uniforms)
+      //   instanceSystem.w = attached MaterialEffect enable bits
       //   instanceExtras.x = per-tile shadow radius (all tiles in a
       //                      layer share tile dimensions → same radius)
       //   instanceExtras.yzw = reserved
@@ -446,6 +513,7 @@ export class TileLayer extends Group {
         instanceData[base + 8] = 1 // flipX
         instanceData[base + 9] = 1 // flipY
         instanceData[base + 10] = flags
+        instanceData[base + 11] = effectEnableFlags
         instanceData[base + 12] = tileRadius
       }
 
@@ -459,15 +527,15 @@ export class TileLayer extends Group {
       // `TileDefinition.properties[fieldName]` straight into the packed
       // effect buffers. Named properties whose key matches a registered
       // effect's schema field are written per-tile; anything else is
-      // ignored. Tiles without matching properties fall back to the
-      // effect's schema defaults (zero-init in the buffers since they
-      // were just allocated).
+      // ignored. Tiles without matching properties use the effect's
+      // declared schema defaults.
       type FieldWriter = {
         effectName: string
         fieldName: string
         bufferName: string
         componentIndex: number
         size: number
+        defaultValue: readonly number[]
       }
       const fieldWriters: FieldWriter[] = []
       for (const effectClass of this.material.getEffects()) {
@@ -480,6 +548,7 @@ export class TileLayer extends Group {
             bufferName: loc.bufferName,
             componentIndex: loc.componentIndex,
             size: loc.size,
+            defaultValue: field.default,
           })
         }
       }
@@ -507,13 +576,15 @@ export class TileLayer extends Group {
         // the `normalKind` field on any registered effect that declares it.
         const tileDef = this.tileset.getTile(tile.gid)
         const props = tileDef?.properties
-        if (props && fieldWriters.length > 0) {
-          for (const writer of fieldWriters) {
+        for (const writer of fieldWriters) {
+          const buf = effectBufs.get(writer.bufferName)
+          if (!buf) continue
+          const base = i * 4 + writer.componentIndex
+          for (let c = 0; c < writer.size; c++) buf[base + c] = writer.defaultValue[c] ?? 0
+
+          if (props) {
             const value = props[writer.fieldName]
             if (value === undefined) continue
-            const buf = effectBufs.get(writer.bufferName)
-            if (!buf) continue
-            const base = i * 4 + writer.componentIndex
             if (writer.size === 1 && typeof value === 'number') {
               buf[base] = value
             } else if (Array.isArray(value)) {
@@ -585,7 +656,10 @@ export class TileLayer extends Group {
     if (this.animatedTilePositions.size === 0) return
 
     // Update animation timers
-    const changedGids = new Set<number>()
+    const changedGids = this._changedAnimationGids
+    changedGids.clear()
+    const dirtyChunks = this._dirtyAnimationChunks
+    dirtyChunks.clear()
 
     for (const [gid, timer] of this.animationTimers) {
       const animation = this.tileset.getAnimation(gid)
@@ -602,9 +676,6 @@ export class TileLayer extends Group {
     }
 
     if (changedGids.size === 0) return
-
-    // Track which chunks need UV update
-    const dirtyChunks = new Set<string>()
 
     for (const [, data] of this.animatedTilePositions) {
       if (!changedGids.has(data.baseGid)) continue
@@ -743,8 +814,7 @@ export class TileLayer extends Group {
       chunk.mesh.geometry.dispose()
     }
     this.chunks.clear()
-    // Material is NOT disposed here — materials are shared resources.
-    // Users/frameworks manage material lifecycle separately.
+    this._material.dispose()
     this.tileIndexMap.clear()
     this.animatedTilePositions.clear()
     this.animationTimers.clear()

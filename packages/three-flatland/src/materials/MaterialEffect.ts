@@ -10,6 +10,7 @@ import type { EntityHandle, TraitHandle, WorldHandle } from '../internal/ecs-han
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
+import type { TileMap2D } from '../tilemap/TileMap2D'
 import type { ChannelName, ChannelNodeMap } from './channels'
 import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
@@ -297,6 +298,9 @@ export abstract class MaterialEffect {
   /** @internal The sprite this effect is attached to. */
   _sprite: Sprite2D | null = null
 
+  /** @internal The tilemap this effect configures when used as a layer provider. */
+  _tileMap: TileMap2D | null = null
+
   /** @internal The ECS entity for the parent sprite. */
   _entity: EntityHandle | null = null
 
@@ -386,6 +390,11 @@ export abstract class MaterialEffect {
     if (world) this._cacheStore(world)
   }
 
+  /** @internal Attach as retained tilemap material configuration. */
+  _attachTileMap(tileMap: TileMap2D): void {
+    this._tileMap = tileMap
+  }
+
   /**
    * Detach this effect from its sprite.
    * @internal Called by Sprite2D.removeEffect()
@@ -395,6 +404,11 @@ export abstract class MaterialEffect {
     this._entity = null
     this._numericStore = null
     this._storeWorld = null
+  }
+
+  /** @internal Detach retained tilemap material configuration. */
+  _detachTileMap(): void {
+    this._tileMap = null
   }
 
   /** @internal Bind the stable SoA arrays after a pre-attached effect is enrolled. */

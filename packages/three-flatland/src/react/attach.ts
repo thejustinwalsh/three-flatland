@@ -43,5 +43,7 @@ export function attachEffect<T extends MaterialEffect>(parent: Sprite2D | TileMa
  */
 export function attachLighting<T extends LightEffect>(parent: Flatland, self: T): () => void {
   parent.setLighting(self)
-  return () => parent.setLighting(null)
+  return () => {
+    if (parent.lighting === self) parent.setLighting(null)
+  }
 }

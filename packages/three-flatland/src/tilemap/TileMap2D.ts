@@ -86,6 +86,14 @@ export class TileMap2D extends Group {
   /** Tile layers */
   private tileLayers: TileLayer[] = []
 
+  /** Material effects retained across data/chunk rebuilds and R3F lifecycles. */
+  private readonly _effects: MaterialEffect[] = []
+
+  /** Flatland observers reconcile lighting/global state when layer materials change. */
+  private readonly _materialListeners = new Set<
+    (previous: readonly Sprite2DMaterial[], current: readonly Sprite2DMaterial[]) => void
+  >()
+
   /** Object layers (for reference) */
   private objectLayers: ObjectLayerData[] = []
 
@@ -129,14 +137,15 @@ export class TileMap2D extends Group {
   set data(value: TileMapData | null) {
     if (this._data === value) return
 
-    // Dispose existing data
-    this.disposeInternal()
+    const previousMaterials = this._layerMaterials()
+    this.disposeInternal(false)
 
     this._data = value
 
     if (value) {
       this.buildMap(value)
     }
+    this._notifyMaterialReplacement(previousMaterials)
   }
 
   /**
@@ -153,8 +162,10 @@ export class TileMap2D extends Group {
     this._chunkSize = value
     // Rebuild if data exists
     if (this._data) {
-      this.disposeInternal()
+      const previousMaterials = this._layerMaterials()
+      this.disposeInternal(false, false)
       this.buildMap(this._data)
+      this._notifyMaterialReplacement(previousMaterials)
     }
   }
 
@@ -232,7 +243,14 @@ export class TileMap2D extends Group {
       const tileset = this.getTilesetForLayer(layerData)
 
       if (tileset) {
-        const layer = new TileLayer(layerData, tileset, this._tileWidth, this._tileHeight, this._chunkSize)
+        const layer = new TileLayer(
+          layerData,
+          tileset,
+          this._tileWidth,
+          this._tileHeight,
+          this._chunkSize,
+          this._effects
+        )
         layer.pixelPerfect = this._pixelPerfect
 
         // Position layer in Z for proper ordering
@@ -446,17 +464,91 @@ export class TileMap2D extends Group {
    * ```
    */
   addEffect(effect: MaterialEffect): this {
-    const EffectClass = effect.constructor as typeof MaterialEffect
-    for (const layer of this.tileLayers) {
-      if (!layer.material.hasEffect(EffectClass)) {
-        layer.material.registerEffect(EffectClass, effect._constants)
-      }
+    if (this._effects.includes(effect)) return this
+    if (effect._sprite) {
+      throw new Error(
+        `TileMap2D.addEffect: effect '${effect.name}' is already attached to a sprite; remove it before reattaching`
+      )
     }
+    if (effect._tileMap && effect._tileMap !== this) {
+      throw new Error(
+        `TileMap2D.addEffect: effect '${effect.name}' is already attached to another tilemap; remove it before reattaching`
+      )
+    }
+    const EffectClass = effect.constructor as typeof MaterialEffect
+    if (this._effects.some((attached) => attached.constructor === EffectClass)) {
+      throw new Error(
+        `TileMap2D.addEffect: only one '${EffectClass.effectName}' instance may be attached to a tilemap at a time`
+      )
+    }
+    for (const layer of this.tileLayers) {
+      layer.material._assertEffectRegistrations([{ effectClass: EffectClass, constants: effect._constants }])
+    }
+
+    const nextEffects = [...this._effects, effect]
+    this._reconcileEffects(nextEffects)
+    effect._attachTileMap(this)
+    this._effects.push(effect)
     return this
   }
 
-  removeEffect(_effect: MaterialEffect): this {
+  removeEffect(effect: MaterialEffect): this {
+    const index = this._effects.indexOf(effect)
+    if (index === -1) return this
+    const nextEffects = this._effects.filter((attached) => attached !== effect)
+    this._reconcileEffects(nextEffects)
+    this._effects.splice(index, 1)
+    effect._detachTileMap()
     return this
+  }
+
+  /** Observe one atomic old/new layer-material replacement. @internal */
+  _subscribeLayerMaterials(
+    listener: (previous: readonly Sprite2DMaterial[], current: readonly Sprite2DMaterial[]) => void
+  ): () => void {
+    this._materialListeners.add(listener)
+    return () => this._materialListeners.delete(listener)
+  }
+
+  private _layerMaterials(): Sprite2DMaterial[] {
+    return this.tileLayers.map((layer) => layer.material)
+  }
+
+  private _notifyMaterialReplacement(previous: readonly Sprite2DMaterial[]): void {
+    if (this._materialListeners.size === 0) return
+    const current = this._layerMaterials()
+    for (const listener of this._materialListeners) listener(previous, current)
+  }
+
+  private _reconcileEffects(effects: readonly MaterialEffect[]): void {
+    if (this.tileLayers.length === 0) return
+    const prepared: Sprite2DMaterial[] = []
+    try {
+      for (const layer of this.tileLayers) prepared.push(layer._prepareEffectMaterial(effects))
+    } catch (error) {
+      for (const material of prepared) material.dispose()
+      throw error
+    }
+
+    const previous: Sprite2DMaterial[] = []
+    try {
+      for (let index = 0; index < this.tileLayers.length; index++) {
+        previous.push(this.tileLayers[index]!._replaceMaterial(prepared[index]!))
+      }
+    } catch (error) {
+      // A chunk allocation/build failure is rare, but a retained owner must
+      // still observe either the complete old projection or the complete new
+      // one. Restore every committed layer before publishing a replacement.
+      for (let index = previous.length - 1; index >= 0; index--) {
+        const abandoned = this.tileLayers[index]!._replaceMaterial(previous[index]!)
+        abandoned.dispose()
+      }
+      for (let index = previous.length + 1; index < prepared.length; index++) prepared[index]!.dispose()
+      throw error
+    }
+
+    for (const material of previous) material.dispose()
+    for (const listener of this._materialListeners) listener(previous, prepared)
   }
 
   /**
@@ -694,18 +786,20 @@ export class TileMap2D extends Group {
   /**
    * Dispose internal resources (without clearing external references).
    */
-  private disposeInternal(): void {
+  private disposeInternal(notify = true, disposeTilesets = true): void {
+    const previousMaterials = notify ? this._layerMaterials() : []
     for (const layer of this.tileLayers) {
       this.remove(layer)
       layer.dispose()
     }
-    for (const tileset of this.tilesets) {
-      tileset.dispose()
+    if (disposeTilesets) {
+      for (const tileset of this.tilesets) tileset.dispose()
     }
     this.tileLayers = []
     this.tilesets = []
     this.objectLayers = []
     this.collisionShapes = []
+    if (notify) this._notifyMaterialReplacement(previousMaterials)
   }
 
   /**
@@ -713,6 +807,9 @@ export class TileMap2D extends Group {
    */
   dispose(): void {
     this.disposeInternal()
+    for (const effect of this._effects) effect._detachTileMap()
+    this._effects.length = 0
+    this._materialListeners.clear()
     this._data = null
   }
 }

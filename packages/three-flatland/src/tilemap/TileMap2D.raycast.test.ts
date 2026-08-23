@@ -53,6 +53,19 @@ function makeMapData(): TileMapData {
   }
 }
 
+function makeAnimatedMapData(): TileMapData {
+  const data = makeMapData()
+  data.tilesets[0]!.tiles.set(0, {
+    id: 0,
+    uv: { x: 0, y: 0, width: 0.25, height: 0.25 },
+    animation: [
+      { tileId: 0, duration: 1 },
+      { tileId: 1, duration: 1 },
+    ],
+  })
+  return data
+}
+
 describe('TileMap2D.raycast', () => {
   function makeMap(): TileMap2D {
     const map = new TileMap2D()
@@ -111,5 +124,28 @@ describe('TileMap2D pixelPerfect', () => {
     map.pixelPerfect = false
     expect(layer.pixelPerfect).toBe(false)
     expect(Number(system.getZ(0)) & PIXEL_PERFECT_MASK).toBe(0)
+  })
+})
+
+describe('TileLayer animation updates', () => {
+  it('reuses layer-owned scratch sets while advancing animated tiles', () => {
+    const map = new TileMap2D({ data: makeAnimatedMapData() })
+    const layer = map.getLayers()[0]! as unknown as {
+      update(deltaMs: number): void
+      _changedAnimationGids: Set<number>
+      _dirtyAnimationChunks: Set<string>
+    }
+    const changedAnimationGids = layer._changedAnimationGids
+    const dirtyAnimationChunks = layer._dirtyAnimationChunks
+
+    layer.update(1)
+    layer.update(1)
+
+    expect(layer._changedAnimationGids).toBe(changedAnimationGids)
+    expect(layer._dirtyAnimationChunks).toBe(dirtyAnimationChunks)
+    expect(changedAnimationGids.size).toBeGreaterThan(0)
+    expect(dirtyAnimationChunks.size).toBeGreaterThan(0)
+
+    map.dispose()
   })
 })

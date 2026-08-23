@@ -193,6 +193,21 @@ export class Sprite2D extends Mesh {
    */
   declare _materialRef: Sprite2DMaterial
 
+  /** Flatland observers share one material ownership path with tilemap rebuilds. */
+  private readonly _materialChangeListeners = new Set<(previous: Sprite2DMaterial, current: Sprite2DMaterial) => void>()
+
+  /** Observe live material replacement while this sprite is owned by a Flatland. @internal */
+  _subscribeMaterialChanges(listener: (previous: Sprite2DMaterial, current: Sprite2DMaterial) => void): () => void {
+    this._materialChangeListeners.add(listener)
+    return () => this._materialChangeListeners.delete(listener)
+  }
+
+  /** Publish a completed material replacement to active owners. @internal */
+  _notifyMaterialChange(previous: Sprite2DMaterial, current: Sprite2DMaterial): void {
+    if (previous === current) return
+    for (const listener of this._materialChangeListeners) listener(previous, current)
+  }
+
   /**
    * Internal-only material write that preserves bootstrap/registry-default
    * bookkeeping — used by the `texture` setter's same-status default swap
@@ -203,8 +218,19 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _setMaterialInternal(value: Sprite2DMaterial): void {
+    const previous = this._materialRef
+    const previousBlockedMaterial = this._batchEnrollmentBlockedMaterial
     this._materialRef = value
     this._batchEnrollmentBlockedMaterial = null
+    if (previous) {
+      try {
+        this._notifyMaterialChange(previous, value)
+      } catch (error) {
+        this._materialRef = previous
+        this._batchEnrollmentBlockedMaterial = previousBlockedMaterial
+        throw error
+      }
+    }
   }
 
   /**
@@ -1804,6 +1830,11 @@ export class Sprite2D extends Mesh {
   addEffect(effect: MaterialEffect): this {
     // Same instance already attached — no-op (R3F stable children)
     if (this._effects.includes(effect)) return this
+    if (effect._tileMap) {
+      throw new Error(
+        `Sprite2D.addEffect: effect '${effect.name}' is already attached to a tilemap; remove it before reattaching`
+      )
+    }
     if (effect._sprite && effect._sprite !== this) {
       throw new Error(
         `Sprite2D.addEffect: effect '${effect.name}' is already attached to a different sprite; remove it before reattaching`
@@ -2889,6 +2920,19 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     if (registry) {
       registry.standalone.add(this)
       registry._autoEvalDirty = true
+    }
+    if (interceptionArmed && previousMaterial) {
+      try {
+        this._notifyMaterialChange(previousMaterial, value)
+      } catch (error) {
+        try {
+          this.material = previousMaterial
+        } catch {
+          // Preserve the first ownership failure; the previous material was
+          // already valid for this sprite before the attempted replacement.
+        }
+        throw error
+      }
     }
   },
   configurable: true,

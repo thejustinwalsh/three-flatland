@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Texture } from 'three'
+import { vec4 } from 'three/tsl'
+import { Flatland } from '../Flatland'
+import { createLightEffect } from '../lights/LightEffect'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { Sprite2D, LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, PIXEL_PERFECT_MASK } from '../sprites/Sprite2D'
 
 // Default low bits set by the coordinated pixel-art preset.
 const DEFAULT_FLAGS = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK | PIXEL_PERFECT_MASK
-import { attachEffect } from './attach'
+import { attachEffect, attachLighting } from './attach'
 
 const Dissolve = createMaterialEffect({
   name: 'dissolve_attach_test',
@@ -18,6 +21,18 @@ const Flash = createMaterialEffect({
   name: 'flash_attach_test',
   schema: { intensity: 0 },
   node: ({ inputColor }) => inputColor,
+})
+
+const FirstLighting = createLightEffect({
+  name: 'first_attach_lighting',
+  schema: { ambient: 1 },
+  light: () => (context) => vec4(context.color.rgb, context.color.a),
+})
+
+const SecondLighting = createLightEffect({
+  name: 'second_attach_lighting',
+  schema: { ambient: 1 },
+  light: () => (context) => vec4(context.color.rgb, context.color.a),
 })
 
 describe('attachEffect', () => {
@@ -104,5 +119,22 @@ describe('attachEffect', () => {
     attachEffect(sprite, d2)
     expect(sprite._effects).toHaveLength(1)
     expect(sprite._effects[0]).toBe(d2)
+  })
+})
+
+describe('attachLighting', () => {
+  it('does not clear a newer replacement when stale R3F cleanup runs', () => {
+    const flatland = new Flatland()
+    const first = new FirstLighting()
+    const second = new SecondLighting()
+    const cleanupFirst = attachLighting(flatland, first)
+    const cleanupSecond = attachLighting(flatland, second)
+
+    cleanupFirst()
+    expect(flatland.lighting).toBe(second)
+
+    cleanupSecond()
+    expect(flatland.lighting).toBeNull()
+    flatland.dispose()
   })
 })

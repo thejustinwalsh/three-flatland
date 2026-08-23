@@ -93,6 +93,13 @@ interface LightingContextData {
 // default camera and permanently disabling automatic frustum updates.
 const _flatlandInternalCameras = new WeakMap<OrthographicCamera, Flatland>()
 
+/** Canonical owners make Three-style live reparenting retire the previous Flatland first. */
+const _flatlandSpriteOwners = new WeakMap<Sprite2D, Flatland>()
+const _flatlandTileMapOwners = new WeakMap<TileMap2D, Flatland>()
+
+/** One mutable material cannot safely point at two Flatland global-uniform sets. */
+const _flatlandMaterialOwners = new WeakMap<Sprite2DMaterial, Flatland>()
+
 /** Pass builders are user code and may try to attach the same instance elsewhere. */
 const _preparingPassEffects = new WeakSet<PassEffect>()
 
@@ -424,6 +431,15 @@ export class Flatland extends Group implements WorldProvider {
 
   /** All sprite materials tracked for colorTransform assignment */
   private _spriteMaterials = new Set<Sprite2DMaterial>()
+
+  /** Reference counts keep shared sprite/tile materials live until their last owner leaves. */
+  private _spriteMaterialRefCounts = new Map<Sprite2DMaterial, number>()
+
+  /** Live owner subscriptions make material replacement use the same tracking path as add/remove. */
+  private _spriteMaterialSubscriptions = new Map<Sprite2D, () => void>()
+  private _spriteOwnedMaterials = new Map<Sprite2D, Sprite2DMaterial>()
+  private _tileMapMaterialSubscriptions = new Map<TileMap2D, () => void>()
+  private _tileMapOwnedMaterials = new Map<TileMap2D, readonly Sprite2DMaterial[]>()
 
   /** Whether lighting systems are registered on the schedule */
   private _lightingSystemsRegistered = false
@@ -797,6 +813,122 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
+  private _retainSpriteMaterial(material: Sprite2DMaterial): void {
+    const count = this._spriteMaterialRefCounts.get(material) ?? 0
+    if (count > 0) {
+      this._spriteMaterialRefCounts.set(material, count + 1)
+      return
+    }
+
+    const owner = _flatlandMaterialOwners.get(material)
+    if (owner && owner !== this) {
+      throw new Error(
+        'Flatland.add: a Sprite2DMaterial cannot be shared by multiple Flatland instances; remove its existing owners first'
+      )
+    }
+
+    material.globalUniforms = this.globals
+    const lctx = this._getLightingContext()
+    if (lctx?.wrappedLightFn) {
+      material.requiredChannels = lctx.requiredChannels
+      material.colorTransform = lctx.wrappedLightFn
+    }
+
+    _flatlandMaterialOwners.set(material, this)
+    this._spriteMaterialRefCounts.set(material, 1)
+    this._spriteMaterials.add(material)
+    lctx?.materials.add(material)
+  }
+
+  private _releaseSpriteMaterial(material: Sprite2DMaterial): void {
+    const count = this._spriteMaterialRefCounts.get(material)
+    if (count === undefined) return
+    if (count > 1) {
+      this._spriteMaterialRefCounts.set(material, count - 1)
+      return
+    }
+    this._spriteMaterialRefCounts.delete(material)
+    if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
+    this._spriteMaterials.delete(material)
+    this._getLightingContext()?.materials.delete(material)
+  }
+
+  private _trackSprite(sprite: Sprite2D): void {
+    const tracked = this._spriteOwnedMaterials.get(sprite)
+    if (tracked !== sprite.material) {
+      this._retainSpriteMaterial(sprite.material)
+      this._spriteOwnedMaterials.set(sprite, sprite.material)
+      if (tracked) this._releaseSpriteMaterial(tracked)
+    }
+    if (!this._spriteMaterialSubscriptions.has(sprite)) {
+      const unsubscribe = sprite._subscribeMaterialChanges((_previous, current) => {
+        const owned = this._spriteOwnedMaterials.get(sprite)
+        if (!owned || owned === current) return
+        this._retainSpriteMaterial(current)
+        this._spriteOwnedMaterials.set(sprite, current)
+        this._releaseSpriteMaterial(owned)
+      })
+      this._spriteMaterialSubscriptions.set(sprite, unsubscribe)
+    }
+    _flatlandSpriteOwners.set(sprite, this)
+  }
+
+  private _untrackSprite(sprite: Sprite2D): void {
+    this._spriteMaterialSubscriptions.get(sprite)?.()
+    this._spriteMaterialSubscriptions.delete(sprite)
+    const material = this._spriteOwnedMaterials.get(sprite)
+    this._spriteOwnedMaterials.delete(sprite)
+    if (material) this._releaseSpriteMaterial(material)
+    if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
+  }
+
+  private _trackTileMap(tileMap: TileMap2D): void {
+    const previous = this._tileMapOwnedMaterials.get(tileMap) ?? []
+    const materials = tileMap.getLayers().map((layer) => layer.material)
+    const retained: Sprite2DMaterial[] = []
+    try {
+      for (const material of materials) {
+        this._retainSpriteMaterial(material)
+        retained.push(material)
+      }
+    } catch (error) {
+      for (const material of retained) this._releaseSpriteMaterial(material)
+      throw error
+    }
+    this._tileMapOwnedMaterials.set(tileMap, materials)
+    for (const material of previous) this._releaseSpriteMaterial(material)
+
+    if (!this._tileMapMaterialSubscriptions.has(tileMap)) {
+      const unsubscribe = tileMap._subscribeLayerMaterials((_retired, current) => {
+        const owned = this._tileMapOwnedMaterials.get(tileMap)
+        if (!owned) return
+        const retained: Sprite2DMaterial[] = []
+        try {
+          for (const material of current) {
+            this._retainSpriteMaterial(material)
+            retained.push(material)
+          }
+        } catch (error) {
+          for (const material of retained) this._releaseSpriteMaterial(material)
+          throw error
+        }
+        this._tileMapOwnedMaterials.set(tileMap, current)
+        for (const material of owned) this._releaseSpriteMaterial(material)
+      })
+      this._tileMapMaterialSubscriptions.set(tileMap, unsubscribe)
+    }
+    _flatlandTileMapOwners.set(tileMap, this)
+  }
+
+  private _untrackTileMap(tileMap: TileMap2D): void {
+    this._tileMapMaterialSubscriptions.get(tileMap)?.()
+    this._tileMapMaterialSubscriptions.delete(tileMap)
+    const materials = this._tileMapOwnedMaterials.get(tileMap)
+    this._tileMapOwnedMaterials.delete(tileMap)
+    if (materials) for (const material of materials) this._releaseSpriteMaterial(material)
+    if (_flatlandTileMapOwners.get(tileMap) === this) _flatlandTileMapOwners.delete(tileMap)
+  }
+
   /**
    * Add objects to Flatland.
    * Sprites are routed to the internal SpriteGroup for batching.
@@ -808,23 +940,16 @@ export class Flatland extends Group implements WorldProvider {
   add(...objects: Object3D[]): this {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
-        // Wire global uniforms to the material (shared by reference)
-        if (!child.material.globalUniforms) {
-          child.material.globalUniforms = this.globals
-        }
-        // Track all sprite materials
-        this._spriteMaterials.add(child.material)
-        // Apply wrapped lighting transform + channels from LightingContext
-        const lctx = this._getLightingContext()
-        if (lctx?.wrappedLightFn) {
-          child.material.requiredChannels = lctx.requiredChannels
-          child.material.colorTransform = lctx.wrappedLightFn
-        }
-        // Update LightingContext materials set
-        if (lctx) {
-          lctx.materials.add(child.material)
-        }
+        const previousOwner = _flatlandSpriteOwners.get(child)
+        if (previousOwner && previousOwner !== this) previousOwner.remove(child)
         this.spriteGroup.add(child)
+        try {
+          this._trackSprite(child)
+        } catch (error) {
+          this.spriteGroup.remove(child)
+          this._untrackSprite(child)
+          throw error
+        }
         // Defer validation to `render()` — by the time that runs, R3F has
         // mounted any MaterialEffect children (NormalMapProvider, etc.)
         // and imperative callers have finished their `addEffect` chain, so
@@ -833,20 +958,16 @@ export class Flatland extends Group implements WorldProvider {
         // belongs to the user.
         this._pendingChannelValidation.add(child)
       } else if (child instanceof TileMap2D) {
-        // Track tilemap layer materials for lighting
-        const lctx = this._getLightingContext()
-        for (const layer of child.getLayers()) {
-          const mat = layer.material
-          this._spriteMaterials.add(mat)
-          if (lctx?.wrappedLightFn) {
-            mat.requiredChannels = lctx.requiredChannels
-            mat.colorTransform = lctx.wrappedLightFn
-          }
-          if (lctx) {
-            lctx.materials.add(mat)
-          }
-        }
+        const previousOwner = _flatlandTileMapOwners.get(child)
+        if (previousOwner && previousOwner !== this) previousOwner.remove(child)
         this.scene.add(child)
+        try {
+          this._trackTileMap(child)
+        } catch (error) {
+          this.scene.remove(child)
+          this._untrackTileMap(child)
+          throw error
+        }
       } else if (child instanceof Light2D) {
         // Track lights separately for the lighting system
         if (!this._lights.includes(child)) {
@@ -873,22 +994,12 @@ export class Flatland extends Group implements WorldProvider {
   remove(...objects: Object3D[]): this {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
-        this._spriteMaterials.delete(child.material)
-        // Update LightingContext materials set
-        const lctx = this._getLightingContext()
-        if (lctx) {
-          lctx.materials.delete(child.material)
-        }
+        this._pendingChannelValidation.delete(child)
         this.spriteGroup.remove(child)
+        this._untrackSprite(child)
       } else if (child instanceof TileMap2D) {
-        const lctx = this._getLightingContext()
-        for (const layer of child.getLayers()) {
-          this._spriteMaterials.delete(layer.material)
-          if (lctx) {
-            lctx.materials.delete(layer.material)
-          }
-        }
         this.scene.remove(child)
+        this._untrackTileMap(child)
       } else if (child instanceof Light2D) {
         const idx = this._lights.indexOf(child)
         if (idx !== -1) this._lights.splice(idx, 1)
@@ -910,19 +1021,61 @@ export class Flatland extends Group implements WorldProvider {
    * Overrides Group.clear() to clear the internal scene.
    */
   clear(): this {
-    this.spriteGroup.clear()
-
-    // Clear any other objects from the scene (except spriteGroup)
-    const toRemove: Object3D[] = []
-    this.scene.traverse((obj) => {
-      if (obj !== this.scene && obj !== this.spriteGroup && obj.parent === this.scene) {
-        toRemove.push(obj)
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
       }
-    })
-    for (const obj of toRemove) {
-      this.scene.remove(obj)
     }
 
+    const registryEntity = this._runtimeWorld.view(BatchRegistries)[0]
+    const registry =
+      registryEntity !== undefined
+        ? (this._runtimeWorld.read(registryEntity, BatchRegistry) as RegistryData | undefined)
+        : undefined
+    const sprites = registry
+      ? [...new Set(registry.spriteArr.filter((sprite): sprite is Sprite2D => sprite !== null))]
+      : []
+    const sceneChildren = this.scene.children.filter((child) => child !== this.spriteGroup)
+
+    for (const sprite of sprites) runCleanup(() => this.remove(sprite))
+    for (const child of sceneChildren) runCleanup(() => this.remove(child))
+    runCleanup(() => this.spriteGroup.clear())
+
+    // Canonical removal above should empty every registry. These terminal
+    // clears keep the contract first-error-safe if user hooks interrupted one.
+    for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const unsubscribe of this._tileMapMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const sprite of this._spriteOwnedMaterials.keys()) {
+      if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
+    }
+    for (const tileMap of this._tileMapOwnedMaterials.keys()) {
+      if (_flatlandTileMapOwners.get(tileMap) === this) _flatlandTileMapOwners.delete(tileMap)
+    }
+    for (const material of this._spriteMaterialRefCounts.keys()) {
+      if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
+    }
+    this._spriteMaterialSubscriptions.clear()
+    this._spriteOwnedMaterials.clear()
+    this._tileMapMaterialSubscriptions.clear()
+    this._tileMapOwnedMaterials.clear()
+    this._spriteMaterialRefCounts.clear()
+    this._spriteMaterials.clear()
+    this._pendingChannelValidation.clear()
+    this._lights.length = 0
+    const lctx = this._getLightingContext()
+    if (lctx) {
+      lctx.materials.clear()
+      lctx.lights = this._lights
+    }
+
+    if (didError) throw firstError
     return this
   }
 
@@ -2356,7 +2509,24 @@ export class Flatland extends Group implements WorldProvider {
       runCleanup(() => this._runtimeWorld.destroy(shadowEntity))
     }
     this._lights.length = 0
+    for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const unsubscribe of this._tileMapMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const sprite of this._spriteOwnedMaterials.keys()) {
+      if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
+    }
+    for (const tileMap of this._tileMapOwnedMaterials.keys()) {
+      if (_flatlandTileMapOwners.get(tileMap) === this) _flatlandTileMapOwners.delete(tileMap)
+    }
+    for (const material of this._spriteMaterialRefCounts.keys()) {
+      if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
+    }
+    this._spriteMaterialSubscriptions.clear()
+    this._spriteOwnedMaterials.clear()
+    this._tileMapMaterialSubscriptions.clear()
+    this._tileMapOwnedMaterials.clear()
+    this._spriteMaterialRefCounts.clear()
     this._spriteMaterials.clear()
+    this._pendingChannelValidation.clear()
     this._lightingSystemsRegistered = false
 
     runCleanup(() => this.spriteGroup.dispose())
