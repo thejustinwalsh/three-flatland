@@ -74,6 +74,19 @@
           "command": "node --disable-warning=DEP0205 --import tsx --expose-gc src/renderer-evidence.ts",
           "cwd": "{projectRoot}"
         }
+      },
+      "benchmark:expected-sprites": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
+        ],
+        "options": {
+          "command": "node --disable-warning=DEP0205 --import tsx src/expected-sprites.ts",
+          "cwd": "{projectRoot}"
+        }
       }
     }
   },
@@ -82,6 +95,7 @@
     "benchmark": "node --disable-warning=DEP0205 --import tsx --expose-gc src/benchmark.ts",
     "benchmark:browser": "node --import tsx src/browser-benchmark.ts",
     "benchmark:renderer": "node --disable-warning=DEP0205 --import tsx --expose-gc src/renderer-evidence.ts",
+    "benchmark:expected-sprites": "node --disable-warning=DEP0205 --import tsx src/expected-sprites.ts",
     "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",
     "lint": "oxlint --type-aware .",
     "test": "vitest run",

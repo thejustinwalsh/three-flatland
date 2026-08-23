@@ -5,6 +5,7 @@ import type { WorldHandle } from '../internal/ecs-handles'
 import type { Registry } from '../orchestration/registry'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { ClipRect, SpriteGroupOptions, RenderStats } from './types'
+import type { SpriteBatch } from './SpriteBatch'
 import { assignWorld, type WorldProvider } from '../ecs/world'
 import { BatchRegistry, BatchMesh } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
@@ -16,6 +17,7 @@ import {
   getWorldDefaultMaterial,
   getWorldEffectVariant,
   removeMaterialDisposeHooks,
+  resetBatchSlots,
 } from '../ecs/batchUtils'
 import { buildBatchQueryView, type BatchQueryView } from './batchQuery'
 import { _registerBatchSource, _unregisterBatchSource, type BatchSourceFn } from '../debug/debug-sink'
@@ -33,6 +35,14 @@ import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransf
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
 import { releaseLightEffectRuntimeContext } from '../ecs/systems/lightEffectSystem'
 import { validateMaxBatchSize } from '../internal/max-batch-size'
+import {
+  clampEntityReservation,
+  emitCapacityGrowth,
+  primeDenseArray,
+  reserveIndexedArray,
+  validateExpectedSprites,
+  type CapacityGrowthReason,
+} from '../internal/capacity'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -76,6 +86,10 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * Lazily created on first access.
    */
   private _world: World | null = null
+
+  private readonly _expectedEntityCapacity: number
+  private readonly _expectedBatchCapacity: number
+  private _registryData: RegistryData | null = null
 
   /**
    * Entity holding the BatchRegistry singleton trait.
@@ -201,6 +215,11 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
 
   constructor(options: SpriteGroupOptions = {}) {
     const maxBatchSize = validateMaxBatchSize(options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!)
+    const expectedSprites = validateExpectedSprites(options.expectedSprites)
+    const reservedSprites = clampEntityReservation(expectedSprites)
+    const expectedBatchCapacity = reservedSprites === 0 ? 0 : Math.ceil(reservedSprites / maxBatchSize)
+    const expectedEntityCapacity =
+      reservedSprites === 0 ? 0 : clampEntityReservation(reservedSprites + expectedBatchCapacity + 1)
     super()
 
     this.name = 'SpriteGroup'
@@ -210,11 +229,15 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     // tier ladder scales allocation with usage (1024 → 4096 → 16384).
     this._maxBatchSize = maxBatchSize
     this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
+    this._expectedBatchCapacity = expectedBatchCapacity
+    this._expectedEntityCapacity = expectedEntityCapacity
+    primeDenseArray(this._pendingDestroy, expectedEntityCapacity, 0 as Entity)
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
     this.autoInvalidateTransforms = options.autoInvalidateTransforms ?? true
     this.clipRect = options.clipRect ?? null
+    if (expectedSprites > 0) void this.world
   }
 
   /** Build parent-local clipping planes from the public rectangle property. */
@@ -270,7 +293,11 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    */
   get world(): WorldHandle {
     if (!this._world) {
-      this._world = createWorld()
+      this._world = createWorld({
+        capacityOwner: this,
+        expectedEntities: this._expectedEntityCapacity,
+        onCapacityChange: (capacity, reason) => this._reserveRegistryEntityCapacity(capacity, reason),
+      })
       this._batchAssignSystem = createBatchAssignSystem(this._world)
       this._batchReassignSystem = createBatchReassignSystem(this._world)
       this._batchRemoveSystem = createBatchRemoveSystem(this._world)
@@ -348,48 +375,84 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
         if (registry) flushUnusedMaterials(w, registry)
       })
 
-      // Register with the devtools batch-source sink so the batches
-      // feature can snapshot our active batches each frame. No-op in
-      // prod (tree-shaken via the devtools build gate). The getter closure
-      // stays allocation-free past construction.
+      const activeBatches: Entity[] = []
+      const batchPool: Entity[] = []
+      const batchSlots: Array<SpriteBatch | null> = []
+      const batchSlotFreeList: number[] = []
+      const spriteArr: Array<Sprite2D | null> = []
+      primeDenseArray(activeBatches, this._expectedBatchCapacity, 0 as Entity)
+      primeDenseArray(batchPool, this._expectedBatchCapacity, 0 as Entity)
+      reserveIndexedArray(batchSlots, this._expectedBatchCapacity, null)
+      for (let index = this._expectedBatchCapacity - 1; index >= 0; index--) batchSlotFreeList.push(index)
+      reserveIndexedArray(spriteArr, this._world.capacity, null)
+
+      // Spawn the batch registry singleton with all system context.
+      const registryData: RegistryData = {
+        world: this._world,
+        runs: new Map(),
+        sortedRunKeys: [],
+        batchPool,
+        activeBatches,
+        renderOrderDirty: false,
+        maxBatchSize: this._maxBatchSize,
+        tierLadder: this._tierLadder,
+        materialRefs: new Map(),
+        materialReleaseCandidates: new Set(),
+        defaultMaterials: new WeakMap(),
+        effectVariants: new WeakMap(),
+        batchSlots,
+        batchSlotFreeList,
+        expectedBatchCapacity: this._expectedBatchCapacity,
+        capacityOwner: this,
+        spriteArr,
+        // Share the SpriteGroup's own pending-destroy array so schedule
+        // closures and registry consumers operate on the same queue.
+        pendingDestroy: this._pendingDestroy,
+        parentGroup: this,
+        parentAdd: this._parentAdd,
+        parentRemove: this._parentRemove,
+        autoInvalidateTransforms: this.autoInvalidateTransforms,
+        transformsDirty: true,
+        schedule,
+        scheduleRuns: 0,
+        occludersDirty: true,
+      }
+      this._registryEntity = this._world.spawn(BatchRegistry(registryData))
+      this._registryData = registryData
+      this._reserveRegistryEntityCapacity(this._world.capacity, this._expectedEntityCapacity > 0 ? 'hint' : 'growth')
+      if (this._expectedEntityCapacity > 0) {
+        emitCapacityGrowth(this, {
+          subsystem: 'registry.sprite-index',
+          previous: 0,
+          next: this._expectedEntityCapacity,
+          reason: 'hint',
+        })
+      }
+      if (this._expectedBatchCapacity > 0) {
+        emitCapacityGrowth(this, {
+          subsystem: 'registry.batch-index',
+          previous: 0,
+          next: this._expectedBatchCapacity,
+          reason: 'hint',
+        })
+      }
+
+      // Publish to the devtools sink only after the registry transaction is
+      // complete so a failed eager reservation cannot strand a source.
       if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
         this._batchSource = () => this._getRegistry()
         _registerBatchSource(this._batchSource)
       }
-
-      // Spawn the batch registry singleton with all system context
-      this._registryEntity = this._world.spawn(
-        BatchRegistry({
-          world: this._world,
-          runs: new Map(),
-          sortedRunKeys: [],
-          batchPool: [],
-          activeBatches: [],
-          renderOrderDirty: false,
-          maxBatchSize: this._maxBatchSize,
-          tierLadder: this._tierLadder,
-          materialRefs: new Map(),
-          materialReleaseCandidates: new Set(),
-          defaultMaterials: new WeakMap(),
-          effectVariants: new WeakMap(),
-          batchSlots: [],
-          batchSlotFreeList: [],
-          spriteArr: [],
-          // Share the SpriteGroup's own pending-destroy array so schedule
-          // closures and registry consumers operate on the same queue.
-          pendingDestroy: this._pendingDestroy,
-          parentGroup: this,
-          parentAdd: this._parentAdd,
-          parentRemove: this._parentRemove,
-          autoInvalidateTransforms: this.autoInvalidateTransforms,
-          transformsDirty: true,
-          schedule,
-          scheduleRuns: 0,
-          occludersDirty: true,
-        })
-      )
     }
     return this._world
+  }
+
+  private _reserveRegistryEntityCapacity(capacity: number, reason: CapacityGrowthReason): void {
+    const registry = this._registryData
+    if (!registry || capacity <= registry.spriteArr.length) return
+    const previous = registry.spriteArr.length
+    reserveIndexedArray(registry.spriteArr, capacity, null)
+    emitCapacityGrowth(this, { subsystem: 'registry.sprite-index', previous, next: capacity, reason })
   }
 
   /** Resolve the private runtime world behind the public opaque handle. */
@@ -971,9 +1034,8 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       registry.materialRefs.clear()
       registry.materialReleaseCandidates.clear()
       registry.renderOrderDirty = false
-      registry.batchSlots.length = 0
-      registry.batchSlotFreeList.length = 0
-      registry.spriteArr.length = 0
+      resetBatchSlots(registry)
+      registry.spriteArr.fill(null)
 
       // Flush deferred destroys so zombies don't outlive the group
       for (const entity of registry.pendingDestroy) {
@@ -1038,6 +1100,15 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     }
 
     runCleanup(() => this.clear())
+    const registry = this._registryData
+    if (registry) {
+      // clear() preserves reservations for reuse; terminal disposal releases
+      // every retained backing store and object slot.
+      registry.spriteArr.length = 0
+      registry.batchSlots.length = 0
+      registry.batchSlotFreeList.length = 0
+      registry.pendingDestroy.length = 0
+    }
     if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && this._batchSource !== null) {
       runCleanup(() => _unregisterBatchSource(this._batchSource!))
       this._batchSource = null
@@ -1050,6 +1121,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     }
     this._world = null
     this._registryEntity = null
+    this._registryData = null
     this._batchAssignSystem = null
     this._batchReassignSystem = null
     this._batchRemoveSystem = null

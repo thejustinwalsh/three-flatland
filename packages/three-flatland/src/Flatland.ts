@@ -64,6 +64,7 @@ import { beginDebugPass, endDebugPass } from './debug/debug-sink'
 import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
 import { getRendererViewportDepthRange, setRendererViewport } from './cameras/rendererViewport'
 import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
+import { validateExpectedSprites } from './internal/capacity'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -107,6 +108,13 @@ const _preparingPassEffects = new WeakSet<PassEffect>()
  * Options for creating a Flatland instance.
  */
 export interface FlatlandOptions {
+  /**
+   * Advisory sprite count used to reserve the internal SpriteGroup's hot
+   * CPU-side storage. It never limits enrollment or pre-creates GPU batches.
+   * React Three Fiber users pass it through `args` and reconstruct Flatland
+   * to change it; it is intentionally not a mutable JSX property.
+   */
+  expectedSprites?: number
   /**
    * Human-readable name shown in the devtools consumer UI. Useful to
    * distinguish multiple Flatland instances (e.g. `name: 'main-game'`
@@ -445,6 +453,7 @@ export class Flatland extends Group implements WorldProvider {
   private _lightingSystemsRegistered = false
 
   constructor(options: FlatlandOptions = {}) {
+    const expectedSprites = validateExpectedSprites(options.expectedSprites)
     super()
 
     this.name = 'Flatland'
@@ -458,7 +467,7 @@ export class Flatland extends Group implements WorldProvider {
     this.scene.matrixWorldAutoUpdate = false
 
     // Create sprite group
-    this.spriteGroup = new SpriteGroup()
+    this.spriteGroup = new SpriteGroup({ expectedSprites })
     this.scene.add(this.spriteGroup)
 
     // Store view size and aspect. Omitted/invalid aspect = auto-derive from

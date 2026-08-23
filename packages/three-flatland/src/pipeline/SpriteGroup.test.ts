@@ -11,8 +11,10 @@ import { registryFor } from '../ecs/testUtils.type-test'
 import { select, type World } from '../ecs/runtime'
 import { MAX_BATCH_SIZE } from '../internal/max-batch-size'
 import { createSceneGraphSyncSystem } from '../ecs/systems/sceneGraphSyncSystem'
+import { observeCapacityGrowth, type CapacityGrowthEvent } from '../internal/capacity'
 
 const INVALID_BATCH_SIZES = [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, MAX_BATCH_SIZE + 1]
+const INVALID_EXPECTED_SPRITES = [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1]
 const BatchMeshes = select(BatchMesh)
 
 // Create the effect class once so every test exercises the same declared trait.
@@ -63,6 +65,56 @@ describe('SpriteGroup', () => {
     expect(() => new SpriteGroup({ maxBatchSize })).toThrow(
       `maxBatchSize must be a positive safe integer no greater than ${MAX_BATCH_SIZE}`
     )
+  })
+
+  it.each(INVALID_EXPECTED_SPRITES)('rejects invalid expectedSprites %s', (expectedSprites) => {
+    expect(() => new SpriteGroup({ expectedSprites })).toThrow('expectedSprites must be a non-negative safe integer')
+  })
+
+  it('accepts zero as an explicit lazy-allocation hint', () => {
+    renderer = new SpriteGroup({ expectedSprites: 0 })
+    expect(renderer.isEmpty).toBe(true)
+  })
+
+  it('reserves enrollment storage without capping growth and preserves it across clear', () => {
+    renderer = new SpriteGroup({ expectedSprites: 4, maxBatchSize: 4 })
+    const events: CapacityGrowthEvent[] = []
+    const stop = observeCapacityGrowth(renderer, (event) => events.push(event))
+    const world = renderer.world as World
+    const registry = registryFor(world)
+    const initializedEvents = events.length
+
+    const firstSprites = Array.from({ length: 4 }, () => new Sprite2D({ material }))
+    for (const sprite of firstSprites) renderer!.add(sprite)
+    renderer.update()
+
+    expect(events.filter((event) => event.reason === 'growth')).toHaveLength(0)
+    expect(registry.spriteArr.length).toBe(world.capacity)
+    expect(registry.batchSlots).toHaveLength(1)
+    expect(renderer.batchCount).toBe(1)
+
+    const overflow = new Sprite2D({ material })
+    renderer.add(overflow)
+    renderer.update()
+
+    const growth = events.slice(initializedEvents).filter((event) => event.reason === 'growth')
+    expect(growth.length).toBeGreaterThan(0)
+    expect(growth.every((event) => event.next <= Math.max(16, event.previous * 2))).toBe(true)
+    expect(renderer.spriteCount).toBe(5)
+    expect(registry.batchSlots.length).toBeGreaterThanOrEqual(2)
+
+    renderer.clear()
+    const capacityAfterClear = world.capacity
+    const batchCapacityAfterClear = registry.batchSlots.length
+    const growthAfterClear = events.filter((event) => event.reason === 'growth').length
+    expect(registry.spriteArr).toHaveLength(capacityAfterClear)
+    expect(registry.spriteArr.every((sprite) => sprite === null)).toBe(true)
+
+    for (let index = 0; index < 4; index++) renderer.add(new Sprite2D({ material }))
+    renderer.update()
+    expect(events.filter((event) => event.reason === 'growth')).toHaveLength(growthAfterClear)
+    expect(registry.batchSlots).toHaveLength(batchCapacityAfterClear)
+    stop()
   })
 
   it.each(INVALID_BATCH_SIZES)('atomically rejects React-style maxBatchSize property assignment %s', (maxBatchSize) => {

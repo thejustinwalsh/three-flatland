@@ -32,28 +32,64 @@ export function packEntity(index: number, generation: number): Entity {
 }
 
 export interface EntityPoolLimits {
+  readonly expectedCapacity?: number
   readonly maxGeneration?: number
   readonly maxIndex?: number
+  readonly onCapacityChange?: (previous: number, next: number, reason: 'growth' | 'hint') => void
 }
 
 /** World-local allocator. Exported only from this private source module for boundary tests. */
 export class EntityPool {
-  readonly alive = new SparseSet()
+  readonly alive: SparseSet
   private readonly freeIndices: number[] = []
   private readonly generations: number[] = []
   private readonly maxGeneration: number
   private readonly maxIndex: number
+  private readonly onCapacityChange: EntityPoolLimits['onCapacityChange']
+  private reservedCapacity = 0
   private nextIndex = 0
 
-  constructor({ maxGeneration = MAX_ENTITY_GENERATION, maxIndex = ENTITY_INDEX_MASK }: EntityPoolLimits = {}) {
+  constructor({
+    expectedCapacity = 0,
+    maxGeneration = MAX_ENTITY_GENERATION,
+    maxIndex = ENTITY_INDEX_MASK,
+    onCapacityChange,
+  }: EntityPoolLimits = {}) {
     if (!Number.isSafeInteger(maxIndex) || maxIndex < 0 || maxIndex > ENTITY_INDEX_MASK) {
       throw new RangeError('three-flatland: Entity-pool maxIndex is outside the 20-bit handle range')
     }
     if (!Number.isSafeInteger(maxGeneration) || maxGeneration < 1 || maxGeneration > MAX_ENTITY_GENERATION) {
       throw new RangeError('three-flatland: Entity-pool maxGeneration is outside the safe handle range')
     }
+    if (!Number.isSafeInteger(expectedCapacity) || expectedCapacity < 0 || expectedCapacity > maxIndex + 1) {
+      throw new RangeError('three-flatland: Entity-pool expectedCapacity is outside its index range')
+    }
     this.maxGeneration = maxGeneration
     this.maxIndex = maxIndex
+    this.onCapacityChange = onCapacityChange
+    this.alive = new SparseSet()
+    if (expectedCapacity > 0) this.reserve(expectedCapacity, 'hint')
+  }
+
+  get capacity(): number {
+    return this.reservedCapacity
+  }
+
+  private reserve(required: number, reason: 'growth' | 'hint'): void {
+    if (required <= this.reservedCapacity) return
+    const maximum = this.maxIndex + 1
+    let next =
+      reason === 'hint' ? required : this.reservedCapacity === 0 ? Math.min(maximum, 16) : this.reservedCapacity
+    while (next < required) next = Math.min(maximum, Math.max(required, next * 2))
+
+    const previous = this.reservedCapacity
+    this.alive.reserve(next)
+    for (let index = this.generations.length; index < next; index++) this.generations.push(1)
+    const freeLength = this.freeIndices.length
+    for (let index = previous; index < next; index++) this.freeIndices.push(0)
+    this.freeIndices.length = freeLength
+    this.reservedCapacity = next
+    this.onCapacityChange?.(previous, next, reason)
   }
 
   assertCanAllocate(): void {
@@ -64,6 +100,9 @@ export class EntityPool {
 
   allocate(): Entity {
     this.assertCanAllocate()
+    if (this.freeIndices.length === 0 && this.nextIndex >= this.reservedCapacity) {
+      this.reserve(this.nextIndex + 1, 'growth')
+    }
     const index = this.freeIndices.length > 0 ? this.freeIndices.pop()! : this.nextIndex++
     const generation = this.generations[index] ?? 1
     this.generations[index] = generation
@@ -95,5 +134,6 @@ export class EntityPool {
     this.alive.release()
     this.freeIndices.length = 0
     this.generations.length = 0
+    this.reservedCapacity = 0
   }
 }

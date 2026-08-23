@@ -71,6 +71,13 @@ export type ClipRect = readonly [x: number, y: number, width: number, height: nu
  */
 export interface SpriteGroupOptions {
   /**
+   * Advisory sprite count used to reserve hot CPU-side storage during
+   * construction. It does not cap enrollment or pre-create GPU batches.
+   * React Three Fiber users pass this through `args` and reconstruct the
+   * group to change it; it is intentionally not a mutable JSX property.
+   */
+  expectedSprites?: number
+  /**
    * Maximum sprites per batch. Must be a positive safe integer no greater
    * than the world's 20-bit entity capacity (1,048,576). Omit to use
    * 1024 → 4096 → 16384 capacity tiers; set a value to pin every batch.

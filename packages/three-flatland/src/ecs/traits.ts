@@ -198,6 +198,10 @@ export const BatchRegistry = trait(() => ({
   batchSlots: [] as (SpriteBatch | null)[],
   /** Free indices in batchSlots for reuse. */
   batchSlotFreeList: [] as number[],
+  /** Constructor-time batch-index reservation; advisory and never a cap. */
+  expectedBatchCapacity: 0,
+  /** Owner for private development/test capacity telemetry. */
+  capacityOwner: null as object | null,
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: [] as (Sprite2D | null)[],

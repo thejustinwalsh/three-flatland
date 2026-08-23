@@ -4,6 +4,12 @@ import type { WorldHandle } from '../../internal/ecs-handles'
 import type { EventKind, EventSelector, Selector } from './selector'
 import { SparseSet } from './sparse-set'
 import {
+  emitCapacityGrowth,
+  primeDenseArray,
+  reserveIndexedArray,
+  type CapacityGrowthReason,
+} from '../../internal/capacity'
+import {
   inputTrait,
   isInitializer,
   numericDataSnapshot,
@@ -26,11 +32,13 @@ interface TraitState {
 interface SelectorState {
   readonly members: SparseSet
   readonly view: Entity[]
+  viewCapacity: number
 }
 
 interface EventState {
   readonly queue: HandleQueue
   readonly drained: Entity[]
+  drainedCapacity: number
 }
 
 interface PreparedInput {
@@ -46,16 +54,28 @@ interface ValidatedNumericFields {
 
 class HandleQueue {
   readonly dense: Entity[] = []
-  private readonly positions: Array<number | undefined> = []
+  private readonly positions: number[] = []
+  private denseCapacity = 0
+
+  constructor(capacity = 0) {
+    this.reserve(capacity)
+  }
+
+  reserve(capacity: number): void {
+    reserveIndexedArray(this.positions, capacity, -1)
+    if (capacity <= this.denseCapacity) return
+    primeDenseArray(this.dense, capacity, 0 as Entity)
+    this.denseCapacity = capacity
+  }
 
   add(entity: Entity): boolean {
     const index = entityIndex(entity)
     const position = this.positions[index]
-    if (position !== undefined && this.dense[position] === entity) return false
+    if (position !== undefined && position >= 0 && this.dense[position] === entity) return false
 
     // Different generations for one index may coexist until this consumer
     // drains. That collision is rare, so keep the common path sparse by index.
-    if (position !== undefined && this.dense.includes(entity)) return false
+    if (position !== undefined && position >= 0 && this.dense.includes(entity)) return false
     this.positions[index] = this.dense.length
     this.dense.push(entity)
     return true
@@ -64,7 +84,7 @@ class HandleQueue {
   clear(): void {
     for (let position = this.dense.length - 1; position >= 0; position--) {
       const index = entityIndex(this.dense[position]!)
-      if (this.positions[index] === position) this.positions[index] = undefined
+      if (this.positions[index] === position) this.positions[index] = -1
     }
     this.dense.length = 0
   }
@@ -72,10 +92,21 @@ class HandleQueue {
   release(): void {
     this.dense.length = 0
     this.positions.length = 0
+    this.denseCapacity = 0
   }
 }
 
+export interface WorldOptions {
+  /** Advisory entity reservation. The world's intrinsic 20-bit limit is unchanged. */
+  readonly expectedEntities?: number
+  /** Owner used only by the private dev/test capacity observer. */
+  readonly capacityOwner?: object
+  /** Structural callback used by SpriteGroup to keep registry arrays aligned. */
+  readonly onCapacityChange?: (capacity: number, reason: CapacityGrowthReason) => void
+}
+
 export interface World extends WorldHandle {
+  readonly capacity: number
   readonly disposed: boolean
 
   spawn(...inputs: readonly TraitInput[]): Entity
@@ -114,8 +145,10 @@ export interface World extends WorldHandle {
   dispose(): void
 }
 
-export function createWorld(): World {
-  const entities = new EntityPool()
+export function createWorld({ expectedEntities = 0, capacityOwner, onCapacityChange }: WorldOptions = {}): World {
+  if (!Number.isSafeInteger(expectedEntities) || expectedEntities < 0 || expectedEntities > 2 ** 20) {
+    throw new RangeError('three-flatland: expectedEntities is outside the 20-bit world capacity')
+  }
   const signatures: number[][] = []
   const activeSignatureWords: number[] = []
   const traitStates: Array<TraitState | undefined> = []
@@ -130,6 +163,42 @@ export function createWorld(): World {
   let spawnMark = 0
   let disposed = false
   let inputPreparationDepth = 0
+  let entityCapacity = 0
+
+  function reserveWorldCapacity(previous: number, next: number, reason: CapacityGrowthReason): void {
+    entityCapacity = next
+    for (const word of activeSignatureWords) reserveIndexedArray(signatures[word]!, next, 0)
+    for (const state of activeTraitStates) {
+      if (state.numeric !== undefined) {
+        const numericTrait = state.trait as NumericTrait<NumericSchema>
+        for (const field of numericTrait.fields) {
+          reserveIndexedArray(state.numeric[field]!, next, numericTrait.defaults[field]!)
+        }
+      }
+      if (state.objects !== undefined) reserveIndexedArray(state.objects, next, undefined)
+    }
+    for (const state of activeSelectorStates) {
+      state.members.reserve(next)
+      if (next > state.viewCapacity) {
+        primeDenseArray(state.view, next, 0 as Entity)
+        state.viewCapacity = next
+      }
+    }
+    for (const state of activeEventStates) {
+      state.queue.reserve(next)
+      if (next > state.drainedCapacity) {
+        primeDenseArray(state.drained, next, 0 as Entity)
+        state.drainedCapacity = next
+      }
+    }
+    emitCapacityGrowth(capacityOwner, { subsystem: 'ecs.entity-index', previous, next, reason })
+    onCapacityChange?.(next, reason)
+  }
+
+  const entities = new EntityPool({
+    expectedCapacity: expectedEntities,
+    onCapacityChange: reserveWorldCapacity,
+  })
 
   function assertUsable(): void {
     if (disposed) throw new Error('three-flatland: World has been disposed')
@@ -172,8 +241,15 @@ export function createWorld(): World {
     let values = signatures[word]
     if (values === undefined) {
       values = []
+      reserveIndexedArray(values, entityCapacity, 0)
       signatures[word] = values
       activeSignatureWords.push(word)
+      emitCapacityGrowth(capacityOwner, {
+        subsystem: `ecs.signature.${word}`,
+        previous: 0,
+        next: entityCapacity,
+        reason: 'hint',
+      })
     }
     const current = values[index] ?? 0
     values[index] = present ? current | bit : current & ~bit
@@ -195,20 +271,33 @@ export function createWorld(): World {
     let numeric: Record<string, number[]> | undefined
     if (trait.kind === 'numeric') {
       numeric = {}
-      for (const field of (trait as NumericTrait<NumericSchema>).fields) {
+      const numericTrait = trait as NumericTrait<NumericSchema>
+      for (const field of numericTrait.fields) {
+        const values: number[] = []
+        reserveIndexedArray(values, entityCapacity, numericTrait.defaults[field]!)
         Object.defineProperty(numeric, field, {
           enumerable: true,
-          value: [],
+          value: values,
         })
       }
     }
+    const objects: Array<object | undefined> | undefined = trait.kind === 'object' ? [] : undefined
+    if (objects !== undefined) reserveIndexedArray(objects, entityCapacity, undefined)
     state = {
       trait,
       numeric,
-      objects: trait.kind === 'object' ? [] : undefined,
+      objects,
     }
     traitStates[trait.id] = state
     activeTraitStates.push(state)
+    if (entityCapacity > 0 && trait.kind !== 'tag') {
+      emitCapacityGrowth(capacityOwner, {
+        subsystem: `ecs.trait.${trait.kind}.${trait.id}`,
+        previous: 0,
+        next: entityCapacity,
+        reason: 'hint',
+      })
+    }
     return state
   }
 
@@ -309,9 +398,19 @@ export function createWorld(): World {
   function ensureSelectorState(selector: Selector): SelectorState {
     let state = selectorStates[selector.id]
     if (state !== undefined) return state
-    state = { members: new SparseSet(), view: [] }
+    const view: Entity[] = []
+    primeDenseArray(view, entityCapacity, 0 as Entity)
+    state = { members: new SparseSet(entityCapacity), view, viewCapacity: entityCapacity }
     selectorStates[selector.id] = state
     activeSelectorStates.push(state)
+    if (entityCapacity > 0) {
+      emitCapacityGrowth(capacityOwner, {
+        subsystem: `ecs.selector.${selector.id}`,
+        previous: 0,
+        next: entityCapacity,
+        reason: 'hint',
+      })
+    }
     for (const trait of selector.required) {
       ;(selectorSubscriptions[trait.id] ??= []).push(selector)
     }
@@ -350,12 +449,23 @@ export function createWorld(): World {
   function ensureEventState(selector: EventSelector): EventState {
     let state = eventStates[selector.id]
     if (state !== undefined) return state
+    const drained: Entity[] = []
+    primeDenseArray(drained, entityCapacity, 0 as Entity)
     state = {
-      drained: [],
-      queue: new HandleQueue(),
+      drained,
+      drainedCapacity: entityCapacity,
+      queue: new HandleQueue(entityCapacity),
     }
     eventStates[selector.id] = state
     activeEventStates.push(state)
+    if (entityCapacity > 0) {
+      emitCapacityGrowth(capacityOwner, {
+        subsystem: `ecs.event.${selector.id}`,
+        previous: 0,
+        next: entityCapacity,
+        reason: 'hint',
+      })
+    }
     for (const trait of selector.observed) {
       ;(eventSubscriptions[trait.id] ??= []).push(selector)
     }
@@ -603,10 +713,14 @@ export function createWorld(): World {
     eventStates.length = 0
     selectorSubscriptions.length = 0
     eventSubscriptions.length = 0
+    entityCapacity = 0
     disposed = true
   }
 
   return {
+    get capacity(): number {
+      return entities.capacity
+    },
     get disposed(): boolean {
       return disposed
     },
