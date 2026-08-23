@@ -288,7 +288,7 @@ export const LightEffectTrait = trait(() => ({
  * these fields.
  *
  * Fast-path contract: every field here is either a nullable object
- * reference or a small scalar. Consumers read via `entity.get(ShadowPipeline)`
+ * reference or a small scalar. Consumers read via `world.read(entity, ShadowPipeline)`
  * (O(1) object-store lookup) and mutate in place. No per-frame
  * allocation.
  */

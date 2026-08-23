@@ -28,6 +28,8 @@ performance confirmation before dependency cleanup:
 4. [Benchmark and validation plan](./03-benchmark-validation-plan.md) — baselines, workloads, acceptance thresholds, and CI gates.
 5. [Migration and rollout plan](./04-migration-rollout-plan.md) — atomic implementation phases, rollback boundary, documentation, and review sequence.
 6. [Baseline and kernel decision](./05-baseline-and-kernel-decision.md) — raw-evidence links, Koota behavior findings, isolated size results, and the selected production direction.
+7. [Private ECS architecture standard](./06-private-ecs-architecture-standard.md) — the durable public/private boundary, ownership laws, hot-path rules, lifecycle contract, capacity policy, and telemetry policy.
+8. [Private ECS convergence plan](./07-private-ecs-convergence-plan.md) — subsystem audit, ranked migrations, source references, and the gates required for each follow-up.
 
 ## Proposed decision in one page
 
