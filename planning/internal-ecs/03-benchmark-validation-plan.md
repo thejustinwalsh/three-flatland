@@ -294,27 +294,37 @@ The harness also rebuilds the isolated seven-export Koota entry and requires the
 34,910 B minified / 10,584 B gzip / 9,362 B Brotli result. That number is a diagnostic for dependency
 attribution only and is never added to either representative consumer graph.
 
-Required clean result versus the pinned pre-migration source:
+Required structural result:
 
 - Koota absent from the published `three-flatland` production dependency graph and emitted
   artifacts,
-- at least 22 kB minified reduction,
-- at least 6 kB gzip reduction,
+- the combined shipped private runtime and optional capacity module remains within 12,000 B
+  minified / 4,000 B gzip / 3,800 B Brotli,
 - no compensating duplicate runtime chunk.
 
-The PR report includes metafile attribution so a hash or unrelated dependency change cannot be
-mistaken for the ECS saving. Workspace minis and other packages that intentionally use Koota are
-reported separately; they do not fail this package-scoped removal gate.
+The pinned pre-migration A/B remains an exact report-only comparison and is classified as
+`all-smaller`, `all-larger`, `unchanged`, or `mixed`. It spans unrelated reachable package changes,
+so it is not an ECS savings gate. Metafile attribution keeps dependency removal distinct from that
+whole-consumer result. Workspace minis and other packages that intentionally use Koota are reported
+separately; they do not fail this package-scoped removal gate.
+
+After source freeze, each current fixture is gated against a reviewed versioned artifact at
+`planning/internal-ecs/results/consumer-bundle-budget.json`. The artifact keys absolute
+minified/gzip/Brotli maxima by fixture ID and source hash and records revision, production source,
+lockfile, and tool provenance. Any one-byte increase fails. Reductions pass without silently
+lowering the checked-in maximum; changing the accepted budget requires a new clean capture and
+review. Missing or extra fixtures and fixture/hash mismatch fail.
 
 Every run writes minified bundles, raw esbuild metafiles, exact minified/gzip/Brotli attribution,
 both full Git revisions, resolved tool versions, and source/fixture/harness/baseline/lockfile hashes
 outside the source tree. A definitive run requires a clean tree and a current `three-flatland`
 package build; `--allow-dirty` always produces only a `smoke-dirty` report, even if the tree happens
-to be clean. Smoke runs report negative or below-floor net differences without treating them as
-release evidence. A definitive below-floor run writes its inspectable artifacts and then fails. The
-deterministic test suite exercises all four
-fixtures and the provenance/output safeguards. The source-freeze capture remains pending and must be
-recorded as `measured-unreviewed` before review accepts it as release evidence.
+to be clean. Every run writes a candidate accepted-current budget outside the repository. Dirty
+candidates are ineligible. With no accepted artifact, the first definitive run preserves all
+artifacts and then fails `pending`; review copies the inspected clean candidate into the versioned
+path, commits that reviewed artifact, and a second clean run verifies it. The deterministic test
+suite exercises all four fixtures and the attribution, provenance, exact-budget, and output
+safeguards. The source-freeze capture and initial accepted-current budget remain pending.
 
 ## Behavioral reference tests
 
@@ -365,8 +375,8 @@ Run strict consumer declaration checks after the package build to prove Koota ty
 - Any user-visible rendering, picking, event, visibility, or lifecycle regression.
 - Any Koota runtime/type reference in published `three-flatland` output.
 - Kernel above the bundle caps.
-- Any representative consumer below 22 kB minified or 6 kB gzip net saving versus the pinned
-  pre-migration package source.
+- Any accepted-current representative consumer exceeding its fixture-specific minified, gzip, or
+  Brotli maximum by one byte or more, any fixture/hash mismatch, or malformed accepted provenance.
 - Steady-state schedule median more than 3% slower in any principal workload under the paired-run
   policy below.
 - Schedule p95 more than 5% slower under the paired-run policy below.

@@ -103,7 +103,7 @@ Against the currently installed Koota 0.6.5:
 
 The seven imports are `createWorld`, `trait`, `relation`, `createAdded`, `createChanged`, `createRemoved`, and `getStore`. Type-only imports are excluded from the bundle measurement.
 
-The proposed shipped-runtime gate is at most **12 kB minified / 4 kB gzip**, with an actual representative-example reduction of at least **22 kB minified / 6 kB gzip**. A smaller result is expected; these are rejection thresholds, not targets to fill.
+The combined shipped private runtime and optional capacity module is gated at **12 kB minified / 4 kB gzip / 3.8 kB Brotli**. Representative consumers use reviewed fixture-specific absolute budgets after source freeze. The pinned pre-migration comparison remains exact but report-only because it spans every reachable package-source change, not only the ECS replacement.
 
 ## Approval boundary
 

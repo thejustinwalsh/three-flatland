@@ -3,11 +3,9 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
-  MINIMUM_REPRESENTATIVE_SAVING,
   PRE_MIGRATION_REVISION,
   RECORDED_KOOTA_BASELINE,
   assertCaptureClean,
-  assertMinimumNetSaving,
   captureConsumerBundleEvidence,
   consumerFixtures,
   resolveEvidenceOutputDirectory,
@@ -42,7 +40,7 @@ describe('representative consumer bundle evidence', () => {
     expect(report.gate.recordedKootaDiagnosticMatched).toBe(true)
   })
 
-  it('covers every required consumer shape and reports the net-saving floor honestly', () => {
+  it('covers every required consumer shape and classifies the exact historical comparison', () => {
     expect(report.captures.map(({ fixture }) => fixture.id)).toEqual(consumerFixtures.map(({ id }) => id))
 
     for (const capture of report.captures) {
@@ -52,13 +50,11 @@ describe('representative consumer bundle evidence', () => {
     }
     expect(report.gate.baselineIncludesKoota).toBe(true)
     expect(report.gate.baselineOmitsPrivateRuntime).toBe(true)
-    expect(report.gate.minimumNetSavingPassed).toBe(
-      report.captures.every(
-        ({ netDifference }) =>
-          netDifference.minifiedBytes >= MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes &&
-          netDifference.gzipBytes >= MINIMUM_REPRESENTATIVE_SAVING.gzipBytes
-      )
-    )
+    expect(report.historicalComparison).toEqual({
+      classification: 'mixed',
+      revision: PRE_MIGRATION_REVISION,
+    })
+    expect(report.methodology).toMatch(/historical comparison.*report-only/i)
   })
 
   it('keeps Koota absent and emits one private-runtime output per current consumer', () => {
@@ -104,6 +100,22 @@ describe('representative consumer bundle evidence', () => {
     expect(existsSync(resolve(captureDirectory, 'shared-graph/basic-react.js'))).toBe(true)
     expect(existsSync(resolve(captureDirectory, 'shared-graph/knightmark.js'))).toBe(true)
     expect(existsSync(resolve(captureDirectory, 'shared-graph/pass-lighting.js'))).toBe(true)
+    const budgetCandidate = JSON.parse(
+      readFileSync(resolve(captureDirectory, 'accepted-current-budget.candidate.json'), 'utf8')
+    ) as {
+      fixtures: Record<string, { maximum: { minifiedBytes: number }; sourceSha256: string }>
+      provenance: { captureStatus: string; sourceTreeDirty: boolean }
+      schemaVersion: number
+    }
+    expect(budgetCandidate.schemaVersion).toBe(1)
+    expect(budgetCandidate.provenance.sourceTreeDirty).toBe(true)
+    expect(budgetCandidate.provenance.captureStatus).toBe('smoke-dirty')
+    expect(Object.keys(budgetCandidate.fixtures).sort()).toEqual(consumerFixtures.map(({ id }) => id).sort())
+    for (const capture of report.captures) {
+      const candidate = budgetCandidate.fixtures[capture.fixture.id]
+      expect(candidate?.maximum.minifiedBytes).toBe(capture.current.minifiedBytes)
+      expect(candidate?.sourceSha256).toMatch(/^[0-9a-f]{64}$/)
+    }
     expect(JSON.parse(readFileSync(resolve(captureDirectory, 'report.json'), 'utf8'))).toEqual(report)
     expect(report.provenance.revision).toMatch(/^[0-9a-f]{40}$/)
     expect(report.provenance.baseline.revision).toBe(PRE_MIGRATION_REVISION)
@@ -115,6 +127,8 @@ describe('representative consumer bundle evidence', () => {
     expect(report.provenance.fixtureSources).toHaveLength(consumerFixtures.length)
     expect(Object.values(report.provenance.toolVersions).every((version) => version.length > 0)).toBe(true)
     expect(report.status).toBe('smoke-dirty')
+    expect(report.acceptedCurrentBudget.status).toBe('pending')
+    expect(report.schemaVersion).toBe(3)
   })
 })
 
@@ -123,12 +137,6 @@ describe('capture safeguards', () => {
     expect(() => assertCaptureClean(true, false)).toThrow(/dirty source tree/)
     expect(() => assertCaptureClean(true, true)).not.toThrow()
     expect(() => assertCaptureClean(false, false)).not.toThrow()
-  })
-
-  it('enforces the net-saving floor only for definitive captures', () => {
-    expect(() => assertMinimumNetSaving('smoke-dirty', false)).not.toThrow()
-    expect(() => assertMinimumNetSaving('measured-unreviewed', true)).not.toThrow()
-    expect(() => assertMinimumNetSaving('measured-unreviewed', false)).toThrow(/net-saving floor/)
   })
 
   it('keeps evidence outside the source tree', () => {

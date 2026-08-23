@@ -6,6 +6,18 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { brotliCompressSync, gzipSync } from 'node:zlib'
 import { build, type Metafile, type OutputFile, type Plugin } from 'esbuild'
+import {
+  ACCEPTED_CONSUMER_BUDGET_PATH,
+  assertAcceptedConsumerBudget,
+  classifyHistoricalComparison,
+  createConsumerBudgetCandidate,
+  evaluateAcceptedConsumerBudget,
+  readAcceptedConsumerBudget,
+  type AcceptedConsumerBudget,
+  type AcceptedConsumerBudgetEvaluation,
+  type BundleSize,
+  type ConsumerBudgetProvenance,
+} from './consumer-bundle-policy.ts'
 
 export const RECORDED_KOOTA_BASELINE = {
   brotliBytes: 9_362,
@@ -15,11 +27,6 @@ export const RECORDED_KOOTA_BASELINE = {
 
 /** Direct parent of the commit that migrated production batching from Koota. */
 export const PRE_MIGRATION_REVISION = '58bf83781dfc4c854f6c2dca09e57024a012815a' as const
-
-export const MINIMUM_REPRESENTATIVE_SAVING = {
-  gzipBytes: 6_000,
-  minifiedBytes: 22_000,
-} as const
 
 export const consumerFixtures = [
   {
@@ -45,12 +52,6 @@ export const consumerFixtures = [
 ] as const
 
 type ConsumerFixture = (typeof consumerFixtures)[number]
-
-interface BundleSize {
-  readonly brotliBytes: number
-  readonly gzipBytes: number
-  readonly minifiedBytes: number
-}
 
 export interface BundleAttribution {
   readonly duplicateRuntimeInputs: readonly {
@@ -81,11 +82,14 @@ export interface RepresentativeConsumerResult {
   readonly baseline: BundleSize & BundleAttribution
   readonly current: BundleSize & BundleAttribution
   readonly fixture: ConsumerFixture
-  /** Baseline minus current; positive values are net savings and negative values are growth. */
-  readonly netDifference: BundleSize
+  /** Pinned historical baseline minus current; informational rather than an ECS savings gate. */
+  readonly historicalDifference: BundleSize
 }
 
 export interface ConsumerBundleEvidenceReport {
+  readonly acceptedCurrentBudget: AcceptedConsumerBudgetEvaluation & {
+    readonly path: typeof ACCEPTED_CONSUMER_BUDGET_PATH
+  }
   readonly captures: readonly RepresentativeConsumerResult[]
   readonly compression: {
     readonly brotli: string
@@ -95,15 +99,16 @@ export interface ConsumerBundleEvidenceReport {
     readonly baselineIncludesKoota: boolean
     readonly baselineOmitsPrivateRuntime: boolean
     readonly kootaAbsentFromCurrentConsumerGraphs: boolean
-    readonly minimumGzipSavingBytes: number
-    readonly minimumMinifiedSavingBytes: number
-    readonly minimumNetSavingPassed: boolean
     readonly noDuplicateRuntimeChunk: boolean
     readonly publishedOutputKootaReferences: readonly string[]
     readonly recordedKootaDiagnosticMatched: boolean
     readonly sourceKootaImports: readonly string[]
   }
   readonly isolatedKootaDiagnostic: BundleSize & BundleAttribution
+  readonly historicalComparison: {
+    readonly classification: ReturnType<typeof classifyHistoricalComparison>
+    readonly revision: typeof PRE_MIGRATION_REVISION
+  }
   readonly methodology: string
   readonly provenance: {
     readonly baseline: {
@@ -128,7 +133,7 @@ export interface ConsumerBundleEvidenceReport {
       readonly three: string
     }
   }
-  readonly schemaVersion: 2
+  readonly schemaVersion: 3
   readonly sharedGraph: BundleAttribution
   readonly status: 'measured-unreviewed' | 'smoke-dirty'
   readonly target: 'es2022'
@@ -144,6 +149,8 @@ export interface CaptureConsumerBundleOptions {
 
 const harnessSources = [
   'tools/ecs-bench/src/consumer-bundle-evidence.ts',
+  'tools/ecs-bench/src/consumer-bundle-policy.ts',
+  'tools/ecs-bench/src/consumer-bundle-policy.test.ts',
   'tools/ecs-bench/src/measure-consumer-bundles.ts',
   'tools/ecs-bench/src/consumer-bundle-evidence.test.ts',
   'tools/ecs-bench/src/fixtures/koota-size-entry.ts',
@@ -500,7 +507,7 @@ function publicResult(
     baseline: { ...baseline.size, ...baseline.attribution },
     current: { ...current.size, ...current.attribution },
     fixture,
-    netDifference: subtract(baseline.size, current.size),
+    historicalDifference: subtract(baseline.size, current.size),
   }
 }
 
@@ -549,15 +556,6 @@ function assertGate(report: ConsumerBundleEvidenceReport, currentCaptures: reado
   }
 }
 
-export function assertMinimumNetSaving(status: ConsumerBundleEvidenceReport['status'], passed: boolean): void {
-  if (status !== 'smoke-dirty' && !passed) {
-    throw new Error(
-      `Pinned pre-migration comparison does not meet the ${MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes} ` +
-        `minified / ${MINIMUM_REPRESENTATIVE_SAVING.gzipBytes} gzip byte net-saving floor`
-    )
-  }
-}
-
 export function resolveEvidenceOutputDirectory(
   options: CaptureConsumerBundleOptions,
   root: string,
@@ -585,6 +583,7 @@ function writeArtifacts(
   root: string,
   directory: string,
   report: ConsumerBundleEvidenceReport,
+  budgetCandidate: AcceptedConsumerBudget,
   captures: readonly { fixture: ConsumerFixture; current: BundleCapture; baseline: BundleCapture }[],
   isolatedKoota: BundleCapture,
   sharedGraph: SharedGraphCapture
@@ -611,6 +610,10 @@ function writeArtifacts(
     `${JSON.stringify(isolatedKoota.metafile, null, 2)}\n`
   )
   writeFileSync(resolve(directory, 'report.json'), `${JSON.stringify(report, null, 2)}\n`)
+  writeFileSync(
+    resolve(directory, 'accepted-current-budget.candidate.json'),
+    `${JSON.stringify(budgetCandidate, null, 2)}\n`
+  )
   writeFileSync(resolve(directory, 'shared-graph.metafile.json'), `${JSON.stringify(sharedGraph.metafile, null, 2)}\n`)
   for (const output of sharedGraph.outputFiles) {
     const outputRelative = relative(resolve(root, 'shared-graph'), output.path)
@@ -631,6 +634,7 @@ export async function captureConsumerBundleEvidence(
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error(`Expected a full Git revision, received '${revision}'`)
   const dirty = git(root, ['status', '--short', '--untracked-files=all']).length > 0
   const smokeOnly = options.allowDirty === true
+  const captureStatus: ConsumerBudgetProvenance['captureStatus'] = smokeOnly ? 'smoke-dirty' : 'measured-unreviewed'
   assertCaptureClean(dirty, smokeOnly)
 
   const productionSources = gitTrackedProductionSources(root)
@@ -657,7 +661,39 @@ export async function captureConsumerBundleEvidence(
     path: source,
     sha256: sha256(readFileSync(resolve(root, source))),
   }))
+  const toolVersions = {
+    esbuild: packageVersion('esbuild', resolve(root, 'tools/ecs-bench/package.json')),
+    koota: packageVersion('koota', resolve(root, 'tools/ecs-bench/package.json')),
+    node: process.version,
+    pnpm: execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim(),
+    react: packageVersion('react', resolve(root, 'packages/three-flatland/package.json')),
+    reactThreeFiber: packageVersion('@react-three/fiber', resolve(root, 'packages/three-flatland/package.json')),
+    three: packageVersion('three', resolve(root, 'packages/three-flatland/package.json')),
+  }
+  const budgetProvenance = {
+    captureStatus,
+    lockfileSha256: sha256(readFileSync(resolve(root, 'pnpm-lock.yaml'))),
+    productionSourceSha256: hashFiles(root, productionSources),
+    revision,
+    sourceTreeDirty: dirty,
+    toolVersions,
+  }
+  const budgetObservations = publicCaptures.map(({ current, fixture }) => ({
+    fixture,
+    size: {
+      brotliBytes: current.brotliBytes,
+      gzipBytes: current.gzipBytes,
+      minifiedBytes: current.minifiedBytes,
+    },
+    sourceSha256: fixtureSources.find(({ path }) => path === fixture.source)?.sha256 ?? '',
+  }))
+  const budgetCandidate = createConsumerBudgetCandidate(budgetObservations, budgetProvenance)
+  const budgetEvaluation = evaluateAcceptedConsumerBudget(readAcceptedConsumerBudget(root), budgetObservations)
   const report: ConsumerBundleEvidenceReport = {
+    acceptedCurrentBudget: {
+      ...budgetEvaluation,
+      path: ACCEPTED_CONSUMER_BUDGET_PATH,
+    },
     captures: publicCaptures,
     compression: {
       brotli: 'node:zlib brotliCompressSync defaults',
@@ -671,13 +707,6 @@ export async function captureConsumerBundleEvidence(
       kootaAbsentFromCurrentConsumerGraphs:
         publicCaptures.every(({ current }) => current.kootaInputs.length === 0) &&
         sharedGraph.attribution.kootaInputs.length === 0,
-      minimumGzipSavingBytes: MINIMUM_REPRESENTATIVE_SAVING.gzipBytes,
-      minimumMinifiedSavingBytes: MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes,
-      minimumNetSavingPassed: publicCaptures.every(
-        ({ netDifference }) =>
-          netDifference.minifiedBytes >= MINIMUM_REPRESENTATIVE_SAVING.minifiedBytes &&
-          netDifference.gzipBytes >= MINIMUM_REPRESENTATIVE_SAVING.gzipBytes
-      ),
       noDuplicateRuntimeChunk:
         publicCaptures.every(({ current }) => current.duplicateRuntimeInputs.length === 0) &&
         sharedGraph.attribution.duplicateRuntimeInputs.length === 0,
@@ -685,13 +714,18 @@ export async function captureConsumerBundleEvidence(
       recordedKootaDiagnosticMatched: JSON.stringify(isolatedKoota.size) === JSON.stringify(RECORDED_KOOTA_BASELINE),
       sourceKootaImports: sourceImports,
     },
+    historicalComparison: {
+      classification: classifyHistoricalComparison(publicCaptures),
+      revision: PRE_MIGRATION_REVISION,
+    },
     isolatedKootaDiagnostic: { ...isolatedKoota.size, ...isolatedKoota.attribution },
     methodology:
       `Each fixture is bundled unchanged against current three-flatland source and the pinned pre-migration source ` +
       `${PRE_MIGRATION_REVISION}. Both sides use the current locked Three.js, React, R3F, workspace dependencies, ` +
       'esbuild, compression, and minifier settings. The baseline must retain Koota and omit the private runtime; the ' +
       'current graph must retain the private runtime and omit Koota. The isolated seven-export Koota size is diagnostic ' +
-      'only and is not added to either consumer graph.',
+      'only and is not added to either consumer graph. The historical comparison spans all reachable source changes and ' +
+      'is report-only. Current consumer sizes are gated independently against a reviewed, versioned absolute budget.',
     provenance: {
       baseline: {
         revision: PRE_MIGRATION_REVISION,
@@ -702,22 +736,14 @@ export async function captureConsumerBundleEvidence(
       fixtureSources,
       harnessSha256: hashFiles(root, harnessSources),
       harnessSources,
-      lockfileSha256: sha256(readFileSync(resolve(root, 'pnpm-lock.yaml'))),
-      productionSourceSha256: hashFiles(root, productionSources),
+      lockfileSha256: budgetProvenance.lockfileSha256,
+      productionSourceSha256: budgetProvenance.productionSourceSha256,
       revision,
-      toolVersions: {
-        esbuild: packageVersion('esbuild', resolve(root, 'tools/ecs-bench/package.json')),
-        koota: packageVersion('koota', resolve(root, 'tools/ecs-bench/package.json')),
-        node: process.version,
-        pnpm: execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim(),
-        react: packageVersion('react', resolve(root, 'packages/three-flatland/package.json')),
-        reactThreeFiber: packageVersion('@react-three/fiber', resolve(root, 'packages/three-flatland/package.json')),
-        three: packageVersion('three', resolve(root, 'packages/three-flatland/package.json')),
-      },
+      toolVersions,
     },
-    schemaVersion: 2,
+    schemaVersion: 3,
     sharedGraph: sharedGraph.attribution,
-    status: smokeOnly ? 'smoke-dirty' : 'measured-unreviewed',
+    status: captureStatus,
     target: 'es2022',
   }
 
@@ -727,7 +753,7 @@ export async function captureConsumerBundleEvidence(
   )
   const outputDirectory = resolveEvidenceOutputDirectory(options, root, revision)
   if (options.writeArtifacts !== false)
-    writeArtifacts(root, outputDirectory, report, captures, isolatedKoota, sharedGraph)
-  assertMinimumNetSaving(report.status, report.gate.minimumNetSavingPassed)
+    writeArtifacts(root, outputDirectory, report, budgetCandidate, captures, isolatedKoota, sharedGraph)
+  assertAcceptedConsumerBudget(report.status, report.acceptedCurrentBudget)
   return { outputDirectory, report }
 }

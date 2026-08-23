@@ -72,17 +72,37 @@ Brotli sizes; source, fixture, harness, baseline, and lockfile hashes; exact too
 full Git revisions.
 
 A passing definitive capture proves that the historical graph retains Koota and omits the private
-runtime; the current graph has the reverse attribution; the private runtime is retained in exactly
-one output per fixture; and every paired consumer saves at least 22 kB minified and 6 kB gzip. The
-isolated seven-export Koota bundle must still match the recorded 34,910 B minified / 10,584 B gzip /
-9,362 B Brotli number, but that value is a diagnostic only. It is never added to a consumer graph and
-is not a net-saving claim.
+runtime; the current graph has the reverse attribution; Koota is absent from current source and
+published output; and the private runtime is retained in exactly one output per fixture. The
+combined shipped runtime and optional capacity module have a separate 12,000 B minified / 4,000 B
+gzip / 3,800 B Brotli hard cap. The isolated seven-export Koota bundle must still match the recorded
+34,910 B minified / 10,584 B gzip / 9,362 B Brotli number, but that value is a dependency-attribution
+diagnostic only.
+
+The pinned pre-migration comparison is exact but report-only. It spans every package-source change
+reachable by each fixture between the historical revision and current source, so the report labels
+the result `all-smaller`, `all-larger`, `unchanged`, or `mixed` without presenting it as an isolated
+ECS saving.
+
+Current consumer growth is gated by the reviewed, versioned budget at
+`planning/internal-ecs/results/consumer-bundle-budget.json`. It records each fixture ID, source hash,
+absolute minified/gzip/Brotli maxima, source revision and hashes, and tool versions. A one-byte growth
+in any metric fails; smaller results pass without modifying or silently ratcheting the accepted
+maximum. Missing or extra fixtures and fixture source/hash drift also fail.
 
 Use `--allow-dirty` only while changing the harness. Supplying it always labels the capture
 `smoke-dirty`, even when the working tree happens to be clean, so an explicit smoke run cannot become
-release evidence accidentally. Smoke captures report the measured net difference even when it is
-negative. A definitive capture that misses the floor writes its inspectable artifacts and then
-fails the command. The source-freeze capture is still pending.
+release evidence accidentally. Every run writes `accepted-current-budget.candidate.json` beside the
+report. A dirty candidate records that state and is ineligible for acceptance.
+Any candidate from an explicit smoke capture is also ineligible, even if its source tree happened to
+be clean.
+
+The first clean frozen-source run writes its artifacts and then fails as `pending` until a reviewer
+copies the inspected candidate to the accepted budget path. After committing the reviewed artifact
+and returning to a clean tree, re-run to prove the accepted fixture set, hashes, provenance, and byte
+maxima. Future budget changes use the same explicit capture-review-copy-commit
+cycle; the harness never edits the accepted artifact. The source-freeze capture and initial
+accepted-current budget are still pending.
 
 ## Node renderer schedule evidence
 

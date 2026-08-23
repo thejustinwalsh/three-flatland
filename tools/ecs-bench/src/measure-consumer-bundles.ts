@@ -40,8 +40,12 @@ const { outputDirectory, report } = await captureConsumerBundleEvidence({
 process.stdout.write(
   `${JSON.stringify(
     {
-      captures: report.captures.map(({ fixture, netDifference }) => ({ fixture: fixture.id, netDifference })),
-      minimumNetSavingPassed: report.gate.minimumNetSavingPassed,
+      acceptedCurrentBudget: report.acceptedCurrentBudget,
+      captures: report.captures.map(({ fixture, historicalDifference }) => ({
+        fixture: fixture.id,
+        historicalDifference,
+      })),
+      historicalComparison: report.historicalComparison,
       outputDirectory,
       status: report.status,
     },
