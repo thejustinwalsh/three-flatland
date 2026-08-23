@@ -17,7 +17,6 @@
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
-    "koota": "^0.6.5",
     "three": "^0.185.1",
     "three-flatland": "^0.1.0-alpha.10"
   },

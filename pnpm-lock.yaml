@@ -1541,9 +1541,6 @@ importers:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.3
         version: 10.0.0-alpha.3(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.185.1)
-      koota:
-        specifier: ^0.6.5
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       react:
         specifier: ~19.2.0
         version: 19.2.3
@@ -1593,9 +1590,6 @@ importers:
 
   packages/create-three-flatland/templates/three:
     dependencies:
-      koota:
-        specifier: ^0.6.5
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       three:
         specifier: ^0.185.1
         version: 0.185.1

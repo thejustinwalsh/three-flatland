@@ -64,6 +64,7 @@ describe('scaffold', () => {
       expect(pkg.name).toBe('my-game')
       expect(pkg.private).toBe(true)
       expect(pkg.version).toBe('0.0.0')
+      expect(pkg.dependencies).not.toHaveProperty('koota')
     })
 
     it(`emits no workspace-only wiring for ${template} (leak guard)`, () => {
