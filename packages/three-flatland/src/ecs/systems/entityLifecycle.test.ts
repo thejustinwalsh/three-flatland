@@ -118,6 +118,29 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     // Batch should be recycled (no active sprites)
     expect(registry!.activeBatches.length).toBe(0)
   })
+
+  it('releases unique material references while retaining a still-live shared material', () => {
+    const shared = makeSprite(texture, material)
+    group.add(shared)
+    runSystems(group)
+    const registry = getRegistry(group)
+
+    for (let index = 0; index < 4; index++) {
+      const uniqueMaterial = new Sprite2DMaterial({ map: texture })
+      const transient = makeSprite(texture, uniqueMaterial)
+      group.add(transient)
+      runSystems(group)
+      expect(registry.materialRefs.get(uniqueMaterial.batchId)?.material).toBe(uniqueMaterial)
+
+      group.remove(transient)
+      runSystems(group)
+      runSystems(group)
+      expect(registry.materialRefs.has(uniqueMaterial.batchId)).toBe(false)
+    }
+
+    expect(registry.materialRefs.get(material.batchId)?.material).toBe(material)
+    expect(shared.entity).not.toBeNull()
+  })
 })
 
 // ============================================

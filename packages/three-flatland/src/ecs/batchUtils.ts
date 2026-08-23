@@ -359,6 +359,15 @@ export function recycleBatchIfEmpty(world: World, registry: RegistryData, batchE
     const key = computeRunKey(run.sortLayer, run.materialId, run.layersMask)
     registry.runs.delete(key)
     sortedRemove(registry.sortedRunKeys, key)
+
+    let materialStillBatched = false
+    for (const otherRun of registry.runs.values()) {
+      if (otherRun.materialId === run.materialId) {
+        materialStillBatched = true
+        break
+      }
+    }
+    if (!materialStillBatched) registry.materialRefs.delete(run.materialId)
   }
 
   // Free the batchIdx
