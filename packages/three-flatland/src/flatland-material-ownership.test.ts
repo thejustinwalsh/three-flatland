@@ -131,6 +131,55 @@ describe('Flatland material ownership', () => {
     flatland.dispose()
   })
 
+  it('retires every Flatland ownership registry when a directly owned sprite disposes', () => {
+    const flatland = new Flatland()
+    flatland.setLighting(new OwnershipLight())
+    const material = makeMaterial()
+    const sprite = makeSprite(material)
+    flatland.add(sprite)
+    const context = lightingContext(flatland)
+
+    sprite.dispose()
+
+    expect(flatland.spriteGroup.spriteCount).toBe(0)
+    expect(trackedMaterials(flatland).size).toBe(0)
+    expect(materialRefCounts(flatland).size).toBe(0)
+    expect(context.materials.size).toBe(0)
+    expect((Reflect.get(flatland, '_spriteOwnedMaterials') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_spriteMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_spriteDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_pendingChannelValidation') as Set<unknown>).size).toBe(0)
+    expect(material.globalUniforms).toBe(flatland.globals)
+
+    const next = new Flatland()
+    const nextSprite = makeSprite(material)
+    expect(() => next.add(nextSprite)).not.toThrow()
+    expect(material.globalUniforms).toBe(next.globals)
+    next.remove(nextSprite)
+    next.dispose()
+    flatland.dispose()
+  })
+
+  it('keeps shared material ownership until the final directly owned sprite disposes', () => {
+    const flatland = new Flatland()
+    const shared = makeMaterial()
+    const first = makeSprite(shared)
+    const second = makeSprite(shared)
+    flatland.add(first, second)
+
+    first.dispose()
+    expect(flatland.spriteGroup.spriteCount).toBe(1)
+    expect(trackedMaterials(flatland)).toEqual(new Set([shared]))
+    expect(materialRefCounts(flatland)).toEqual(new Map([[shared, 1]]))
+
+    second.dispose()
+    expect(flatland.spriteGroup.spriteCount).toBe(0)
+    expect(trackedMaterials(flatland).size).toBe(0)
+    expect(materialRefCounts(flatland).size).toBe(0)
+
+    flatland.dispose()
+  })
+
   it('rebinds globals and retires the previous owner during Three-style cross-Flatland reparenting', () => {
     const source = new Flatland()
     const destination = new Flatland()

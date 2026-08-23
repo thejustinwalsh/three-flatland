@@ -197,10 +197,19 @@ export class Sprite2D extends Mesh {
   /** Flatland observers share one material ownership path with tilemap rebuilds. */
   private readonly _materialChangeListeners = new Set<(previous: Sprite2DMaterial, current: Sprite2DMaterial) => void>()
 
+  /** Flatland observes terminal disposal so every ownership registry retires through its canonical remove path. */
+  private readonly _disposeListeners = new Set<() => void>()
+
   /** Observe live material replacement while this sprite is owned by a Flatland. @internal */
   _subscribeMaterialChanges(listener: (previous: Sprite2DMaterial, current: Sprite2DMaterial) => void): () => void {
     this._materialChangeListeners.add(listener)
     return () => this._materialChangeListeners.delete(listener)
+  }
+
+  /** Observe terminal disposal while this sprite is owned by a Flatland. @internal */
+  _subscribeDispose(listener: () => void): () => void {
+    this._disposeListeners.add(listener)
+    return () => this._disposeListeners.delete(listener)
   }
 
   /** Publish a completed material replacement to active owners. @internal */
@@ -2710,6 +2719,13 @@ export class Sprite2D extends Mesh {
   dispose() {
     if (this._disposed) return
     this._disposed = true
+
+    // Flatland owns registries beyond SpriteGroup enrollment (material
+    // references, lighting materials, pending validation, and owner
+    // subscriptions). Notify it before the fallback release below so a
+    // direct Flatland child retires through Flatland.remove().
+    for (const listener of this._disposeListeners) listener()
+    this._disposeListeners.clear()
 
     // Release through the owning path so hierarchy/auto/direct bookkeeping
     // and sprite counts stay coherent. A disposed source may remain in the

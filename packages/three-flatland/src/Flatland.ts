@@ -446,6 +446,7 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Live owner subscriptions make material replacement use the same tracking path as add/remove. */
   private _spriteMaterialSubscriptions = new Map<Sprite2D, () => void>()
+  private _spriteDisposeSubscriptions = new Map<Sprite2D, () => void>()
   private _spriteOwnedMaterials = new Map<Sprite2D, Sprite2DMaterial>()
   private _tileMapMaterialSubscriptions = new Map<TileMap2D, () => void>()
   private _tileMapOwnedMaterials = new Map<TileMap2D, readonly Sprite2DMaterial[]>()
@@ -880,12 +881,20 @@ export class Flatland extends Group implements WorldProvider {
       })
       this._spriteMaterialSubscriptions.set(sprite, unsubscribe)
     }
+    if (!this._spriteDisposeSubscriptions.has(sprite)) {
+      const unsubscribe = sprite._subscribeDispose(() => {
+        if (_flatlandSpriteOwners.get(sprite) === this) this.remove(sprite)
+      })
+      this._spriteDisposeSubscriptions.set(sprite, unsubscribe)
+    }
     _flatlandSpriteOwners.set(sprite, this)
   }
 
   private _untrackSprite(sprite: Sprite2D): void {
     this._spriteMaterialSubscriptions.get(sprite)?.()
     this._spriteMaterialSubscriptions.delete(sprite)
+    this._spriteDisposeSubscriptions.get(sprite)?.()
+    this._spriteDisposeSubscriptions.delete(sprite)
     const material = this._spriteOwnedMaterials.get(sprite)
     this._spriteOwnedMaterials.delete(sprite)
     if (material) this._releaseSpriteMaterial(material)
@@ -1061,6 +1070,7 @@ export class Flatland extends Group implements WorldProvider {
     // Canonical removal above should empty every registry. These terminal
     // clears keep the contract first-error-safe if user hooks interrupted one.
     for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const unsubscribe of this._spriteDisposeSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._tileMapMaterialSubscriptions.values()) runCleanup(unsubscribe)
     for (const sprite of this._spriteOwnedMaterials.keys()) {
       if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
@@ -1072,6 +1082,7 @@ export class Flatland extends Group implements WorldProvider {
       if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
     }
     this._spriteMaterialSubscriptions.clear()
+    this._spriteDisposeSubscriptions.clear()
     this._spriteOwnedMaterials.clear()
     this._tileMapMaterialSubscriptions.clear()
     this._tileMapOwnedMaterials.clear()
@@ -2520,6 +2531,7 @@ export class Flatland extends Group implements WorldProvider {
     }
     this._lights.length = 0
     for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const unsubscribe of this._spriteDisposeSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._tileMapMaterialSubscriptions.values()) runCleanup(unsubscribe)
     for (const sprite of this._spriteOwnedMaterials.keys()) {
       if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
@@ -2531,6 +2543,7 @@ export class Flatland extends Group implements WorldProvider {
       if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
     }
     this._spriteMaterialSubscriptions.clear()
+    this._spriteDisposeSubscriptions.clear()
     this._spriteOwnedMaterials.clear()
     this._tileMapMaterialSubscriptions.clear()
     this._tileMapOwnedMaterials.clear()
