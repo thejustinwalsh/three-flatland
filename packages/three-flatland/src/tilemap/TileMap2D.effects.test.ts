@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { InstancedMesh, Texture, type InstancedBufferAttribute } from 'three'
+import { Group, InstancedMesh, Texture, type InstancedBufferAttribute } from 'three'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { Flatland } from '../Flatland'
@@ -164,7 +164,17 @@ describe('TileMap2D retained material effects', () => {
     const previousLayers = [...map.getLayers()]
     const previousMaterials = previousLayers.map((layer) => layer.material)
     const disposals = previousMaterials.map((material) => vi.spyOn(material, 'dispose'))
+    const before = new Group()
+    const between = new Group()
+    const after = new Group()
+    const intruder = new Group()
+    const foreignParent = new Group()
+    map.remove(...previousLayers)
+    map.add(before, previousLayers[0]!, between, previousLayers[1]!, after)
+    const previousChildren = [...map.children]
     const throwOnRemoved = (): void => {
+      foreignParent.add(previousLayers[0]!)
+      map.add(intruder)
       throw 0
     }
     previousLayers[1]!.addEventListener('removed', throwOnRemoved)
@@ -182,8 +192,10 @@ describe('TileMap2D retained material effects', () => {
     expect(thrown).toBe(0)
     expect(map.data).toBe(originalData)
     expect(map.getLayers()).toEqual(previousLayers)
-    expect(map.children).toEqual(previousLayers)
+    expect(map.children).toEqual(previousChildren)
     expect(previousLayers.every((layer) => layer.parent === map)).toBe(true)
+    expect(foreignParent.children).toEqual([])
+    expect(intruder.parent).toBeNull()
     expect(map.getLayers().map((layer) => layer.material)).toEqual(previousMaterials)
     expect(disposals.every((dispose) => dispose.mock.calls.length === 0)).toBe(true)
 
@@ -270,6 +282,130 @@ describe('TileMap2D retained material effects', () => {
     expect(effect._tileMap).toBeNull()
 
     map.dispose()
+  })
+
+  it('rolls every layer and owner back when material replacement notification throws 0', () => {
+    const map = new TileMap2D({ data: makeMapData(2) })
+    const previousLayers = [...map.getLayers()]
+    const previousMaterials = previousLayers.map((layer) => layer.material)
+    const effect = new WideTileEffect()
+    const unsubscribe = map._subscribeLayerMaterials(() => {
+      throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      map.addEffect(effect)
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(map.getLayers()).toEqual(previousLayers)
+    expect(map.getLayers().map((layer) => layer.material)).toEqual(previousMaterials)
+    expect(previousMaterials.every((material) => !material.hasEffect(WideTileEffect))).toBe(true)
+    expect(effect._tileMap).toBeNull()
+
+    unsubscribe()
+    map.dispose()
+  })
+
+  it('commits add/remove ownership and Flatland tracking before draining every throwing old material', () => {
+    const map = new TileMap2D({ data: makeMapData(2) })
+    const flatland = new Flatland()
+    flatland.add(map)
+    const effect = new WideTileEffect()
+    const beforeAdd = map.getLayers().map((layer) => layer.material)
+    const addDisposals = beforeAdd.map((material) => vi.spyOn(material, 'dispose'))
+    beforeAdd[0]!.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let didAddThrow = false
+    let addError: unknown
+    try {
+      map.addEffect(effect)
+    } catch (error) {
+      didAddThrow = true
+      addError = error
+    }
+
+    const afterAdd = map.getLayers().map((layer) => layer.material)
+    expect(didAddThrow).toBe(true)
+    expect(addError).toBe(0)
+    expect(afterAdd).not.toEqual(beforeAdd)
+    expect(afterAdd.every((material) => material.hasEffect(WideTileEffect))).toBe(true)
+    expect(addDisposals.every((dispose) => dispose.mock.calls.length === 1)).toBe(true)
+    expect(effect._tileMap).toBe(map)
+    expect(Reflect.get(flatland, '_spriteMaterials')).toEqual(new Set(afterAdd))
+    expect(Reflect.get(flatland, '_spriteMaterialRefCounts')).toEqual(
+      new Map(afterAdd.map((material) => [material, 1]))
+    )
+
+    const removeDisposals = afterAdd.map((material) => vi.spyOn(material, 'dispose'))
+    afterAdd[0]!.addEventListener('dispose', () => {
+      throw false
+    })
+    let didRemoveThrow = false
+    let removeError: unknown
+    try {
+      map.removeEffect(effect)
+    } catch (error) {
+      didRemoveThrow = true
+      removeError = error
+    }
+
+    const afterRemove = map.getLayers().map((layer) => layer.material)
+    expect(didRemoveThrow).toBe(true)
+    expect(removeError).toBe(false)
+    expect(afterRemove.every((material) => !material.hasEffect(WideTileEffect))).toBe(true)
+    expect(removeDisposals.every((dispose) => dispose.mock.calls.length === 1)).toBe(true)
+    expect(effect._tileMap).toBeNull()
+    expect(Reflect.get(flatland, '_spriteMaterials')).toEqual(new Set(afterRemove))
+    expect(Reflect.get(flatland, '_spriteMaterialRefCounts')).toEqual(
+      new Map(afterRemove.map((material) => [material, 1]))
+    )
+
+    flatland.remove(map)
+    map.dispose()
+    flatland.dispose()
+  })
+
+  it('drains every chunk, layer material, and tileset after a geometry dispose listener throws 0', () => {
+    const data = makeMapData(2)
+    const map = new TileMap2D({ data, chunkSize: 1 })
+    const layers = [...map.getLayers()]
+    const chunks = layers.flatMap((layer) => [...layer.children] as InstancedMesh[])
+    const geometries = chunks.map((chunk) => chunk.geometry)
+    const geometryDisposals = geometries.map((geometry) => vi.spyOn(geometry, 'dispose'))
+    const materialDisposals = layers.map((layer) => vi.spyOn(layer.material, 'dispose'))
+    const textureDisposal = vi.spyOn(data.tilesets[0]!.texture!, 'dispose')
+    geometries[0]!.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      map.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(geometryDisposals.every((dispose) => dispose.mock.calls.length === 1)).toBe(true)
+    expect(materialDisposals.every((dispose) => dispose.mock.calls.length === 1)).toBe(true)
+    expect(textureDisposal).toHaveBeenCalledTimes(1)
+    expect(layers.every((layer) => layer.children.length === 0)).toBe(true)
+    expect(map.children).toEqual([])
+    expect(map.getLayers()).toEqual([])
+    expect(map.data).toBeNull()
+    expect(() => map.dispose()).not.toThrow()
   })
 
   it('rejects public state mutations after terminal disposal without retaining an effect', () => {

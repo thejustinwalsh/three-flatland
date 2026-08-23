@@ -212,6 +212,11 @@ export class Sprite2D extends Mesh {
     return () => this._disposeListeners.delete(listener)
   }
 
+  /** Whether this sprite has crossed its terminal disposal boundary. @internal */
+  _isDisposed(): boolean {
+    return this._disposed
+  }
+
   /** Publish a completed material replacement to active owners. @internal */
   _notifyMaterialChange(previous: Sprite2DMaterial, current: Sprite2DMaterial): void {
     if (previous === current) return

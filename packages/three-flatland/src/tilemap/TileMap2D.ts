@@ -484,9 +484,10 @@ export class TileMap2D extends Group {
     }
 
     const nextEffects = [...this._effects, effect]
-    this._reconcileEffects(nextEffects)
-    effect._attachTileMap(this)
-    this._effects.push(effect)
+    this._reconcileEffects(nextEffects, () => {
+      effect._attachTileMap(this)
+      this._effects.push(effect)
+    })
     return this
   }
 
@@ -495,9 +496,10 @@ export class TileMap2D extends Group {
     const index = this._effects.indexOf(effect)
     if (index === -1) return this
     const nextEffects = this._effects.filter((attached) => attached !== effect)
-    this._reconcileEffects(nextEffects)
-    this._effects.splice(index, 1)
-    effect._detachTileMap()
+    this._reconcileEffects(nextEffects, () => {
+      this._effects.splice(index, 1)
+      effect._detachTileMap()
+    })
     return this
   }
 
@@ -513,6 +515,11 @@ export class TileMap2D extends Group {
   _subscribeDispose(listener: () => void): () => void {
     this._disposeListeners.add(listener)
     return () => this._disposeListeners.delete(listener)
+  }
+
+  /** Whether this tilemap has crossed its terminal disposal boundary. @internal */
+  _isDisposed(): boolean {
+    return this._disposed
   }
 
   private _layerMaterials(): Sprite2DMaterial[] {
@@ -533,6 +540,7 @@ export class TileMap2D extends Group {
   private _rebuildProjection(data: TileMapData | null, chunkSize: number, disposePreviousTilesets: boolean): void {
     const previous = {
       bounds: this._bounds,
+      children: [...this.children],
       chunkSize: this._chunkSize,
       collisionShapes: this.collisionShapes,
       data: this._data,
@@ -594,30 +602,64 @@ export class TileMap2D extends Group {
           // listeners run. Preserve the original retirement failure.
         }
       }
+      const previousChildren = new Set(previous.children)
+      for (const child of this.children) {
+        if (!previousChildren.has(child) && child.parent === this) child.parent = null
+      }
+      for (const child of previous.children) {
+        if (child.parent === this) continue
+        const currentParent = child.parent
+        if (currentParent) {
+          const currentIndex = currentParent.children.indexOf(child)
+          if (currentIndex !== -1) currentParent.children.splice(currentIndex, 1)
+        }
+        child.parent = this
+      }
+      this.children.length = 0
+      for (const child of previous.children) this.children.push(child)
       throw error
     }
 
     this._data = data
-    try {
-      this._notifyMaterialReplacement(previousMaterials)
-    } finally {
-      for (const layer of previous.tileLayers) layer.dispose()
-      if (disposePreviousTilesets) {
-        const retainedTextures = new Set(this.tilesets.map((tileset) => tileset.texture))
-        for (const tileset of previous.tilesets) {
-          if (!retainedTextures.has(tileset.texture)) tileset.dispose()
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
         }
       }
     }
+    runCleanup(() => this._notifyMaterialReplacement(previousMaterials))
+    for (const layer of previous.tileLayers) runCleanup(() => layer.dispose())
+    if (disposePreviousTilesets) {
+      const retainedTextures = new Set(this.tilesets.map((tileset) => tileset.texture))
+      for (const tileset of previous.tilesets) {
+        if (!retainedTextures.has(tileset.texture)) runCleanup(() => tileset.dispose())
+      }
+    }
+    if (didError) throw firstError
   }
 
-  private _reconcileEffects(effects: readonly MaterialEffect[]): void {
-    if (this.tileLayers.length === 0) return
+  private _reconcileEffects(effects: readonly MaterialEffect[], commitOwnership: () => void): void {
+    if (this.tileLayers.length === 0) {
+      commitOwnership()
+      return
+    }
     const prepared: Sprite2DMaterial[] = []
     try {
       for (const layer of this.tileLayers) prepared.push(layer._prepareEffectMaterial(effects))
     } catch (error) {
-      for (const material of prepared) material.dispose()
+      for (const material of prepared) {
+        try {
+          material.dispose()
+        } catch {
+          // Preserve the preparation failure after draining every prepared material.
+        }
+      }
       throw error
     }
 
@@ -631,15 +673,58 @@ export class TileMap2D extends Group {
       // still observe either the complete old projection or the complete new
       // one. Restore every committed layer before publishing a replacement.
       for (let index = previous.length - 1; index >= 0; index--) {
-        const abandoned = this.tileLayers[index]!._replaceMaterial(previous[index]!)
-        abandoned.dispose()
+        try {
+          const abandoned = this.tileLayers[index]!._replaceMaterial(previous[index]!)
+          abandoned.dispose()
+        } catch {
+          // Preserve the replacement failure after best-effort rollback.
+        }
       }
-      for (let index = previous.length + 1; index < prepared.length; index++) prepared[index]!.dispose()
+      for (let index = previous.length + 1; index < prepared.length; index++) {
+        try {
+          prepared[index]!.dispose()
+        } catch {
+          // Preserve the replacement failure while draining prepared materials.
+        }
+      }
       throw error
     }
 
-    for (const material of previous) material.dispose()
-    for (const listener of this._materialListeners) listener(previous, prepared)
+    try {
+      for (const listener of this._materialListeners) listener(previous, prepared)
+    } catch (error) {
+      for (let index = previous.length - 1; index >= 0; index--) {
+        try {
+          const abandoned = this.tileLayers[index]!._replaceMaterial(previous[index]!)
+          abandoned.dispose()
+        } catch {
+          // Preserve the publication failure. Each layer replacement restores
+          // its prior material internally before throwing.
+        }
+      }
+      try {
+        this._notifyMaterialReplacement(prepared)
+      } catch {
+        // Best-effort owner rollback; preserve the original notification error.
+      }
+      throw error
+    }
+
+    commitOwnership()
+
+    let firstError: unknown
+    let didError = false
+    for (const material of previous) {
+      try {
+        material.dispose()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    if (didError) throw firstError
   }
 
   /**

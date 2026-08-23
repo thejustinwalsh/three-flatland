@@ -95,6 +95,9 @@ export class TileLayer extends Group {
    */
   private _batchMeshSource: MeshBatchSourceFn | null = null
 
+  /** Terminal disposal latch. */
+  private _disposed = false
+
   /** Total instance count across all chunks */
   private _totalInstanceCount: number = 0
 
@@ -813,20 +816,37 @@ export class TileLayer extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
+    if (this._disposed) return
+    this._disposed = true
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
     if (
       (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') &&
       this._batchMeshSource !== null
     ) {
-      _unregisterMeshBatchSource(this._batchMeshSource)
+      runCleanup(() => _unregisterMeshBatchSource(this._batchMeshSource!))
       this._batchMeshSource = null
     }
     for (const chunk of this.chunks.values()) {
-      chunk.mesh.geometry.dispose()
+      runCleanup(() => this.remove(chunk.mesh))
+      runCleanup(() => chunk.mesh.geometry.dispose())
     }
     this.chunks.clear()
-    this._material.dispose()
+    runCleanup(() => this._material.dispose())
     this.tileIndexMap.clear()
     this.animatedTilePositions.clear()
     this.animationTimers.clear()
+    this._totalInstanceCount = 0
+    if (didError) throw firstError
   }
 }

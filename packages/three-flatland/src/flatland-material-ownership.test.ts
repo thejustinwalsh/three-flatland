@@ -408,6 +408,54 @@ describe('Flatland material ownership', () => {
     flatland.dispose()
   })
 
+  it('rejects a disposed sprite before transfer or destination ownership publication', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const sprite = makeSprite()
+    source.add(sprite)
+    sprite.dispose()
+
+    expect(() => destination.add(sprite)).toThrow('Flatland.add: cannot add a disposed Sprite2D')
+    expect(source.spriteGroup.spriteCount).toBe(0)
+    expect(destination.spriteGroup.spriteCount).toBe(0)
+    expect(destination.scene.children).toEqual([destination.spriteGroup])
+    expect(trackedMaterials(source).size).toBe(0)
+    expect(trackedMaterials(destination).size).toBe(0)
+    expect(materialRefCounts(source).size).toBe(0)
+    expect(materialRefCounts(destination).size).toBe(0)
+    expect((Reflect.get(destination, '_spriteOwnedMaterials') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(destination, '_spriteMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(destination, '_spriteDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(destination, '_pendingChannelValidation') as Set<unknown>).size).toBe(0)
+    expect(sprite.entity).toBeNull()
+
+    source.dispose()
+    destination.dispose()
+  })
+
+  it('rejects a disposed tilemap before transfer or destination ownership publication', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    source.add(tileMap)
+    tileMap.dispose()
+
+    expect(() => destination.add(tileMap)).toThrow('Flatland.add: cannot add a disposed TileMap2D')
+    expect(source.scene.children).toEqual([source.spriteGroup])
+    expect(destination.scene.children).toEqual([destination.spriteGroup])
+    expect(trackedMaterials(source).size).toBe(0)
+    expect(trackedMaterials(destination).size).toBe(0)
+    expect(materialRefCounts(source).size).toBe(0)
+    expect(materialRefCounts(destination).size).toBe(0)
+    expect((Reflect.get(destination, '_tileMapOwnedMaterials') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(destination, '_tileMapMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(destination, '_tileMapDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect(tileMap.parent).toBeNull()
+
+    source.dispose()
+    destination.dispose()
+  })
+
   it('clears every coupled registry and remains bounded across refill cycles', () => {
     const flatland = new Flatland()
     flatland.setLighting(new OwnershipLight())

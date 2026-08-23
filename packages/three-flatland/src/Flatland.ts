@@ -981,6 +981,9 @@ export class Flatland extends Group implements WorldProvider {
   add(...objects: Object3D[]): this {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
+        if (child._isDisposed()) {
+          throw new Error('Flatland.add: cannot add a disposed Sprite2D')
+        }
         const previousOwner = _flatlandSpriteOwners.get(child)
         const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
         this._assertCanAdoptMaterials([child.material], transferring)
@@ -1002,6 +1005,9 @@ export class Flatland extends Group implements WorldProvider {
         // belongs to the user.
         this._pendingChannelValidation.add(child)
       } else if (child instanceof TileMap2D) {
+        if (child._isDisposed()) {
+          throw new Error('Flatland.add: cannot add a disposed TileMap2D')
+        }
         const previousOwner = _flatlandTileMapOwners.get(child)
         const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
         this._assertCanAdoptMaterials(
