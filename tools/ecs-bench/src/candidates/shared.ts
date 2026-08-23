@@ -59,6 +59,7 @@ export interface CandidateWorld {
   has(entity: Entity, trait: CandidateTrait): boolean
   read(entity: Entity, trait: CandidateTrait): TraitShape | undefined
   patch(entity: Entity, trait: CandidateTrait, patch: Partial<TraitShape>, tracked?: boolean): void
+  touch(entity: Entity, trait: CandidateTrait): void
   store(trait: CandidateTrait): Record<string, number[]>
   view(selector: CandidateSelector): readonly Entity[]
   drain(selector: CandidateEventSelector): readonly Entity[]
@@ -543,6 +544,12 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       if (tracked) emit('changed', handle, index)
     }
 
+    function touch(entity: Entity, handle: CandidateTrait): void {
+      const index = assertAlive(entity)
+      if (!hasIndex(index, handle)) throw new Error(`Entity ${entity} does not have trait ${handle.id}`)
+      emit('changed', handle, index)
+    }
+
     function store(handle: CandidateTrait): Record<string, number[]> {
       if (handle.kind !== 'numeric') throw new TypeError('Only numeric traits have SoA stores')
       return ensureTraitState(handle).numeric!
@@ -626,6 +633,7 @@ function createRuntimeAdapter(kind: KernelKind): CandidateAdapter {
       has,
       read,
       patch,
+      touch,
       store,
       view,
       drain,
@@ -799,6 +807,10 @@ export function createCandidateAdapter(kind: KernelKind): EcsAdapter {
           tracked = true
         ): void {
           world.patch(entity, asCandidateTrait(handle), value as Partial<TraitShape>, tracked)
+        },
+
+        touch(entity: Entity, handle: AnyTrait): void {
+          world.touch(entity, asCandidateTrait(handle))
         },
 
         store<TSchema extends NumericSchema>(handle: NumericTrait<TSchema>): NumericStore<TSchema> {

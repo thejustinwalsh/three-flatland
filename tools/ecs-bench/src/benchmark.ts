@@ -6,6 +6,7 @@ import { arch, cpus, platform, release } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { component, type AdapterWorld, type EcsAdapter, type Entity } from './adapter.ts'
+import { createFlatlandRuntimeAdapter } from './adapters/flatland-runtime.ts'
 import { kootaAdapter } from './adapters/koota.ts'
 import { createAnchoredScanAdapter } from './candidates/anchored-scan.ts'
 import { createSignaturePersistentAdapter } from './candidates/signature-persistent.ts'
@@ -100,6 +101,10 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
   const IsRenderable = adapter.tag()
   const IsBatched = adapter.tag()
   const DynamicEffect = adapter.numeric({ radius: 0, strength: 1 })
+  // Model long-lived editor/HMR declaration history before per-world dynamic
+  // effects. These traits are intentionally never attached in this adapter run.
+  Array.from({ length: 512 }, () => adapter.tag())
+  const DynamicEffectTraits = Array.from({ length: 256 }, () => adapter.numeric({ radius: 0, strength: 1 }))
   const AssignedTo = adapter.exclusive()
   const BatchedSprites = adapter.select(IsBatched, SpriteUV)
   const DynamicSprites = adapter.select(DynamicEffect)
@@ -183,6 +188,29 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
     )
   }
 
+  for (const count of quick ? [1_000] : [12_000, 60_000]) {
+    record(
+      `dynamic-effect-lifecycle-${count}`,
+      count * 2,
+      () => {
+        const world = adapter.createWorld()
+        const entities: Entity[] = []
+        for (let index = 0; index < count; index++) {
+          const effect = DynamicEffectTraits[index % DynamicEffectTraits.length]!
+          entities.push(world.spawn(...baseComponents, component(effect, { strength: index })))
+        }
+        let checksum = 0
+        for (const entity of entities) {
+          checksum ^= world.index(entity)
+          world.destroy(entity)
+        }
+        world.dispose()
+        return checksum
+      },
+      { samples: quick ? 2 : count === 60_000 ? 5 : 10, warmups: quick ? 1 : 3 }
+    )
+  }
+
   {
     const count = quick ? 2_048 : 16_384
     const world = adapter.createWorld()
@@ -190,18 +218,26 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
     const entityIndices = entities.map((entity) => world.index(entity))
     const uv = world.store(SpriteUV)
     const color = world.store(SpriteColor)
+    const uvX = uv.x
+    const uvY = uv.y
+    const uvWidth = uv.width
+    const uvHeight = uv.height
+    const colorR = color.r
+    const colorG = color.g
+    const colorB = color.b
+    const colorA = color.a
     record('direct-store-hot', count * 12, (sample) => {
       let checksum = 0
       for (const index of entityIndices) {
-        uv.x[index] = sample + index
-        uv.y[index] = index * 0.5
-        uv.width[index] = 16
-        uv.height[index] = 16
-        color.r[index] = 1
-        color.g[index] = 0.5
-        color.b[index] = 0.25
-        color.a[index] = 1
-        checksum += uv.x[index]! + color.a[index]!
+        uvX[index] = sample + index
+        uvY[index] = index * 0.5
+        uvWidth[index] = 16
+        uvHeight[index] = 16
+        colorR[index] = 1
+        colorG[index] = 0.5
+        colorB[index] = 0.25
+        colorA[index] = 1
+        checksum += uvX[index]! + colorA[index]!
       }
       return checksum | 0
     })
@@ -254,12 +290,21 @@ function benchmarkAdapter(adapter: EcsAdapter): AdapterResult {
     const count = quick ? 2_048 : 12_000
     const world = adapter.createWorld()
     const entities = spawnBase(world, count)
+    const indices = entities.map((entity) => world.index(entity))
+    const sortLayers = world.store(SortLayer).value
+    const materialRefs = world.store(SpriteMaterialRef).value
+    const cameraMasks = world.store(CameraLayersMask).value
     world.drain(RoutingChanges)
     record('routing-events', count * 3, (sample) => {
-      for (const entity of entities) {
-        world.patch(entity, SortLayer, { value: sample })
-        world.patch(entity, SpriteMaterialRef, { value: sample + 1 })
-        world.patch(entity, CameraLayersMask, { value: sample + 2 })
+      for (let position = 0; position < entities.length; position++) {
+        const entity = entities[position]!
+        const index = indices[position]!
+        sortLayers[index] = sample
+        materialRefs[index] = sample + 1
+        cameraMasks[index] = sample + 2
+        world.touch(entity, SortLayer)
+        world.touch(entity, SpriteMaterialRef)
+        world.touch(entity, CameraLayersMask)
       }
       const routed = world.drain(RoutingChanges).length
       if (routed !== count) throw new Error('Routing changes were not deduplicated to one event per entity')
@@ -302,9 +347,13 @@ const rootPackage = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../
 const kootaPackage = JSON.parse(
   readFileSync(resolve(dirname(require.resolve('koota')), '../package.json'), 'utf8')
 ) as { version: string }
+const tsxPackage = JSON.parse(readFileSync(resolve(dirname(require.resolve('tsx')), '../package.json'), 'utf8')) as {
+  version: string
+}
 
 const harnessSources = [
   'adapter.ts',
+  'adapters/flatland-runtime.ts',
   'adapters/koota.ts',
   'candidates/anchored-scan.ts',
   'candidates/shared.ts',
@@ -312,6 +361,12 @@ const harnessSources = [
   'candidates/sparse-persistent.ts',
   'provenance.ts',
   'benchmark.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/entity.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/index.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/selector.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/trait.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/world.ts',
 ] as const
 const harnessHash = createHash('sha256')
 for (const source of harnessSources) {
@@ -329,17 +384,29 @@ const environment = {
   node: process.version,
   operatingSystem: `${platform()} ${release()}`,
   packageManager: rootPackage.packageManager,
+  tsx: tsxPackage.version,
 }
 
 const adapterFactories: Readonly<Record<string, () => EcsAdapter>> = {
   'anchored-scan': createAnchoredScanAdapter,
+  'flatland-runtime': createFlatlandRuntimeAdapter,
   koota: () => kootaAdapter,
   'signature-persistent': createSignaturePersistentAdapter,
   'sparse-persistent': createSparsePersistentAdapter,
 }
 
 function isolatedResult(name: string): AdapterResult {
-  const args = ['--expose-gc', '--experimental-strip-types', import.meta.filename, `--adapter=${name}`]
+  // tsx 4.21 still uses Node's deprecated module.register hook internally.
+  // Suppress that one upstream warning so isolated benchmark output remains
+  // machine-readable on Node 26 without hiding any other warning category.
+  const args = [
+    '--disable-warning=DEP0205',
+    '--import',
+    'tsx',
+    '--expose-gc',
+    import.meta.filename,
+    `--adapter=${name}`,
+  ]
   if (quick) args.push('--quick')
   const childReport = JSON.parse(
     execFileSync(process.execPath, args, { encoding: 'utf8', maxBuffer: 1024 * 1024 })

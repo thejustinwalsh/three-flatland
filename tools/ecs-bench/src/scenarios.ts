@@ -176,19 +176,26 @@ function captureNumericStore(adapter: EcsAdapter): Snapshot {
   const trackedDrainCount = world.drain(ChangedPosition).length
   const repeatedDrainCount = world.drain(ChangedPosition).length
 
+  world.patch(entity, Position, { x: 3 })
+  const sameValueDrainCount = world.drain(ChangedPosition).length
+
   world.patch(entity, Position, { x: 5 }, false)
   const untrackedDrainCount = world.drain(ChangedPosition).length
 
   const store = world.store(Position)
   store.y[index] = 9
   const directWriteDrainCount = world.drain(ChangedPosition).length
+  world.touch(entity, Position)
+  const touchedDirectWriteDrainCount = world.drain(ChangedPosition).length
   const readAfterDirectWrite = value(world.read(entity, Position), 'direct store write')
 
   const result = {
     trackedDrainCount,
     repeatedDrainCount,
+    sameValueDrainCount,
     untrackedDrainCount,
     directWriteDrainCount,
+    touchedDirectWriteDrainCount,
     readAfterDirectWrite,
     storeAfterDirectWrite: { x: store.x[index]!, y: store.y[index]! },
   }
@@ -497,6 +504,13 @@ function captureExclusiveAssignment(adapter: EcsAdapter): Snapshot {
   const doesNotAliasRecycledTarget = world.target(sprite, AssignedTo) === undefined
   world.assign(sprite, AssignedTo, recycledBatch)
   const reassignedAfterRecycle = world.target(sprite, AssignedTo) === recycledBatch
+  world.destroy(sprite)
+  let staleSourceUnassignThrew = false
+  try {
+    world.unassign(sprite, AssignedTo)
+  } catch {
+    staleSourceUnassignThrew = true
+  }
 
   world.dispose()
   return {
@@ -507,6 +521,7 @@ function captureExclusiveAssignment(adapter: EcsAdapter): Snapshot {
     invalidatedAfterTargetDestroy,
     doesNotAliasRecycledTarget,
     reassignedAfterRecycle,
+    staleSourceUnassignThrew,
   }
 }
 

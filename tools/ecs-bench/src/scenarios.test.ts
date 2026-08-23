@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { component, type Trait } from './adapter.ts'
+import { createFlatlandRuntimeAdapter } from './adapters/flatland-runtime.ts'
 import { kootaAdapter } from './adapters/koota.ts'
 import { createReferenceAdapter } from './adapters/reference.ts'
 import { createAnchoredScanAdapter } from './candidates/anchored-scan.ts'
@@ -40,8 +41,10 @@ const FLATLAND_CONTRACT = {
   numericStore: {
     trackedDrainCount: 1,
     repeatedDrainCount: 0,
+    sameValueDrainCount: 1,
     untrackedDrainCount: 0,
     directWriteDrainCount: 0,
+    touchedDirectWriteDrainCount: 1,
     readAfterDirectWrite: { x: 5, y: 9 },
     storeAfterDirectWrite: { x: 5, y: 9 },
   },
@@ -117,6 +120,7 @@ const FLATLAND_CONTRACT = {
     invalidatedAfterTargetDestroy: true,
     doesNotAliasRecycledTarget: true,
     reassignedAfterRecycle: true,
+    staleSourceUnassignThrew: true,
   },
 } satisfies ScenarioReport
 
@@ -162,6 +166,10 @@ const KOOTA_BASELINE = {
       originalAliveAtEnd: false,
       finalHandleDiffers: true,
     },
+  },
+  exclusiveAssignment: {
+    ...FLATLAND_CONTRACT.exclusiveAssignment,
+    staleSourceUnassignThrew: false,
   },
 } satisfies ScenarioReport
 
@@ -227,6 +235,7 @@ describe('Flatland entity-store behavior contract', () => {
   })
 
   it.each([
+    ['production runtime', createFlatlandRuntimeAdapter],
     ['anchored scan', createAnchoredScanAdapter],
     ['signature persistent', createSignaturePersistentAdapter],
     ['sparse persistent', createSparsePersistentAdapter],
@@ -234,7 +243,7 @@ describe('Flatland entity-store behavior contract', () => {
     expect(captureReferenceScenarios(createAdapter())).toEqual(FLATLAND_CONTRACT)
   })
 
-  it('classifies the nine intentional Koota deltas explicitly', () => {
+  it('classifies the ten intentional Koota deltas explicitly', () => {
     const koota = captureReferenceScenarios(kootaAdapter)
 
     // Koota replaces an AoS factory result when an initializer is supplied;
@@ -301,5 +310,10 @@ describe('Flatland entity-store behavior contract', () => {
       originalAliveAtEnd: false,
       finalHandleDiffers: true,
     })
+
+    // Koota silently ignores relation removal from a destroyed source.
+    // Flatland treats stale-source unassignment as a structural bug, matching
+    // every other mutating operation on a stale handle.
+    expect(koota.exclusiveAssignment.staleSourceUnassignThrew).toBe(false)
   })
 })

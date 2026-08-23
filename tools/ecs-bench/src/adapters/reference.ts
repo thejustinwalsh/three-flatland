@@ -271,6 +271,13 @@ export function createReferenceAdapter(): EcsAdapter {
           if (tracked) emit('changed', entity, traitValue)
         },
 
+        touch(entity: Entity, traitHandle: AnyTrait): void {
+          const record = assertAlive(entity)
+          const traitValue = asTrait(traitHandle)
+          if (!record.traits.has(traitValue.id)) throw new Error('Cannot touch a missing trait')
+          emit('changed', entity, traitValue)
+        },
+
         store<TSchema extends NumericSchema>(traitValue: NumericTrait<TSchema>): NumericStore<TSchema> {
           const wrapped = asTrait(traitValue)
           let store = numericStores.get(wrapped.id)
