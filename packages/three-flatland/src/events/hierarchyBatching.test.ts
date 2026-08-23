@@ -156,6 +156,51 @@ describe('auto batching preserves the source hierarchy', () => {
     spriteGroup.dispose()
   })
 
+  it('preserves the old R3F picking proxy when reassignment preparation fails', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const sprite = makeSprite()
+    const interaction: object[] = [sprite]
+    const root = {
+      getState: () => ({ internal: { interaction, initialHits: [] } }),
+    }
+    ;(sprite as unknown as { __r3f: unknown }).__r3f = {
+      root,
+      eventCount: 1,
+      handlers: { onClick() {} },
+    }
+
+    spriteGroup.add(sprite)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+
+    const oldBatch = sprite._batchMesh
+    const oldSlot = sprite._batchSlot
+    expect(oldBatch).not.toBeNull()
+    expect(sprite._pickProxied).toBe(true)
+    expect(Object.hasOwn(sprite, 'raycast')).toBe(true)
+    expect(sprite.raycast).toBeNull()
+    expect(interaction).toEqual([oldBatch])
+
+    const updateMatrix = vi.spyOn(sprite, 'updateMatrix').mockImplementation(() => {
+      throw new Error('reassignment preparation failed')
+    })
+    sprite.texture = new Texture()
+
+    expect(() => scene.updateMatrixWorld(true)).toThrow('reassignment preparation failed')
+    expect(sprite._batchMesh).toBe(oldBatch)
+    expect(sprite._batchSlot).toBe(oldSlot)
+    expect(oldBatch!.slotEntities[oldSlot]).not.toBe(0)
+    expect(oldBatch!.spriteAtSlot(oldSlot)).toBe(sprite)
+    expect(sprite._pickProxied).toBe(true)
+    expect(Object.hasOwn(sprite, 'raycast')).toBe(true)
+    expect(sprite.raycast).toBeNull()
+    expect(interaction).toEqual([oldBatch])
+
+    updateMatrix.mockRestore()
+    spriteGroup.dispose()
+  })
+
   it('recomposes an auto-batched sprite after same-world remove and re-add', () => {
     const renderer = {}
     const scene = new Scene()

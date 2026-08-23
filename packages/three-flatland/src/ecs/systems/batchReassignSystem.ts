@@ -111,7 +111,6 @@ export function createBatchReassignSystem(
         world.patch(entity, BatchSlot, { batchEntity: newBatchEntity, batchIdx: newBatchIdx, slot: newSlot }, false)
       } catch (error) {
         newBatchMesh.mesh.grid.remove(sprite)
-        unproxyPickFromBatch(sprite, newBatchMesh.mesh)
         if (destinationCommitted) newBatchMesh.mesh.releaseSlot(newSlot, entity)
         else newBatchMesh.mesh.rollbackSlot(newSlot)
         newBatchMesh.mesh.syncCount()
