@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -11,6 +11,10 @@ import { BatchGeometryStrategy } from '../ecs/traits'
 import { readRequired } from '../ecs/testUtils.type-test'
 import type { RegistryData } from '../ecs/batchUtils'
 import type { SpriteFrame, SpriteFrameMesh } from '../sprites/types'
+
+const TIGHT_MESH_DEMOTION_WARNING =
+  'three-flatland: material carries more than 16 effect floats — staying on the ' +
+  'synth-quad path instead of tight-mesh (WebGPU vertex-buffer budget).'
 
 function makeTexture(): Texture {
   const texture = new Texture()
@@ -212,8 +216,15 @@ describe('tight-mesh batch routing', () => {
     const material = new Sprite2DMaterial({ map: texture, transparent: true, effectTier: 20 })
     ;(material as unknown as { _effectTotalFloats: number })._effectTotalFloats = 20
 
-    registerDiamondAtlas(texture)
-    material.setTexture(texture)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      registerDiamondAtlas(texture)
+      material.setTexture(texture)
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(TIGHT_MESH_DEMOTION_WARNING)
+    } finally {
+      warning.mockRestore()
+    }
 
     expect(material._tightMesh).toBe(false) // stayed synth — no uncompilable pipeline
   })
@@ -384,7 +395,14 @@ describe('late effect registration past the tight-mesh effect-float cap', () => 
     expect(() => material.registerEffect(Big1)).not.toThrow()
     expect(material._tightMesh).toBe(true) // 12 floats still fits under the 16 cap
 
-    expect(() => material.registerEffect(Big2)).not.toThrow() // would have thrown pre-fix
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => material.registerEffect(Big2)).not.toThrow() // would have thrown pre-fix
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(TIGHT_MESH_DEMOTION_WARNING)
+    } finally {
+      warning.mockRestore()
+    }
     expect(material._tightMesh).toBe(false) // demoted to synth-quad
     expect(material.maxEffectFloats).toBe(24)
     expect(material._effectTotalFloats).toBe(20)
@@ -413,7 +431,14 @@ describe('late effect registration past the tight-mesh effect-float cap', () => 
     })
 
     material.registerEffect(Big1)
-    material.registerEffect(Big2)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      material.registerEffect(Big2)
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(TIGHT_MESH_DEMOTION_WARNING)
+    } finally {
+      warning.mockRestore()
+    }
     expect(material._tightMesh).toBe(false) // already demoted at 24
     expect(material._effectTotalFloats).toBe(24)
 

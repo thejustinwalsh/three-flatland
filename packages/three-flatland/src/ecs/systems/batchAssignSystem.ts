@@ -1,4 +1,4 @@
-import { added, select, type AnyTrait, type Entity, type World } from '../runtime'
+import { added, select, type Entity, type NumericStore, type World } from '../runtime'
 import {
   IsRenderable,
   IsBatched,
@@ -17,9 +17,10 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
-import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
+import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty, removeRunIfEmpty } from '../batchUtils'
 import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
 import { entitySlot } from '../snapshot'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -27,7 +28,7 @@ const BatchRegistries = select(BatchRegistry)
  * Create a batch-assign system bound to its own scratch state.
  *
  * Each SpriteGroup constructs one. The returned function takes a world
- * + effect-trait map and assigns newly renderable sprites to batches.
+ * and assigns newly renderable sprites to batches.
  *
  * Triggered by Added(IsRenderable). Computes the run key from
  * (sortLayer, materialId, layers.mask), finds or creates a batch in that run, allocates
@@ -39,15 +40,23 @@ const BatchRegistries = select(BatchRegistry)
  * and the collections are cleared-and-reused
  * instead of allocated per frame.
  */
-export function createBatchAssignSystem(
-  ownerWorld: World
-): (world: World, effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>) => boolean {
+export function createBatchAssignSystem(ownerWorld: World): (world: World) => boolean {
   const AddedRenderable = added(IsRenderable)
   ownerWorld.activate(AddedRenderable)
+  const sortLayerStore = ownerWorld.store(SortLayer)
+  const materialRefStore = ownerWorld.store(SpriteMaterialRef)
+  const cameraLayersStore = ownerWorld.store(CameraLayersMask)
+  const batchSlotStore = ownerWorld.store(BatchSlot)
+  const batchMetaStore = ownerWorld.store(BatchMeta)
+  const projectionStores: SpriteProjectionStores = {
+    color: ownerWorld.store(SpriteColor),
+    uv: ownerWorld.store(SpriteUV),
+    flip: ownerWorld.store(SpriteFlip),
+  }
   const dirtyMeshes = new Set<SpriteBatch>()
   const pendingCounts = new Map<string, number>()
 
-  return function batchAssignSystem(world: World, effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>): boolean {
+  return function batchAssignSystem(world: World): boolean {
     const addedEntities = world.drain(AddedRenderable)
     if (addedEntities.length === 0) return false
 
@@ -58,105 +67,212 @@ export function createBatchAssignSystem(
 
     dirtyMeshes.clear()
 
-    // Precompute how many pending sprites share each run in this pass —
-    // a bulk prime (thousands of sprites added in one shot) sizes its
-    // first batch for that load instead of the ladder's bottom tier. See
-    // resolveBatchSize/findOrCreateBatch.
-    pendingCounts.clear()
-    for (const entity of addedEntities) {
-      const sprite = registry.spriteArr[entitySlot(entity)]
-      if (!sprite) continue
-      const layerData = world.read(entity, SortLayer)
-      const matRef = world.read(entity, SpriteMaterialRef)
-      if (!layerData || !matRef) continue
-      const layersMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
-      const key = computeRunKey(layerData.value, matRef.materialId, layersMask)
-      pendingCounts.set(key, (pendingCounts.get(key) ?? 0) + 1)
-    }
-
-    for (const entity of addedEntities) {
-      const sprite = registry.spriteArr[entitySlot(entity)]
-      if (!sprite) continue
-
-      // updateMatrix() is virtual/user-owned. Run it before route capture so
-      // reentrant layers/material changes are assigned to the current route.
-      sprite.updateMatrix()
-      const layerData = world.read(entity, SortLayer)
-      const matRef = world.read(entity, SpriteMaterialRef)
-      if (!layerData || !matRef) continue
-      const layersMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
-
-      // Track material for schema version detection
-      const material = sprite.material
-      if (!registry.materialRefs.has(matRef.materialId)) {
-        registry.materialRefs.set(matRef.materialId, {
-          material,
-          version: material._effectSchemaVersion,
-        })
+    let entityPosition = -1
+    try {
+      // Precompute how many pending sprites share each run in this pass —
+      // a bulk prime (thousands of sprites added in one shot) sizes its
+      // first batch for that load instead of the ladder's bottom tier. See
+      // resolveBatchSize/findOrCreateBatch.
+      pendingCounts.clear()
+      for (const entity of addedEntities) {
+        const index = entitySlot(entity)
+        const sprite = registry.spriteArr[index]
+        if (!sprite) continue
+        const sortLayer = sortLayerStore.value[index]
+        const materialId = materialRefStore.materialId[index]
+        if (sortLayer === undefined || materialId === undefined) continue
+        const layersMask = cameraLayersStore.mask[index] ?? sprite.layers.mask
+        const key = computeRunKey(sortLayer, materialId, layersMask)
+        pendingCounts.set(key, (pendingCounts.get(key) ?? 0) + 1)
       }
 
-      // Find or create the run for this (sortLayer, materialId, layers.mask)
-      const runKey = computeRunKey(layerData.value, matRef.materialId, layersMask)
-      const { run } = getOrCreateRun(registry, layerData.value, matRef.materialId, layersMask, material)
+      for (entityPosition = 0; entityPosition < addedEntities.length; entityPosition++) {
+        const entity = addedEntities[entityPosition]!
+        const index = entitySlot(entity)
+        const sprite = registry.spriteArr[index]
+        if (!sprite) continue
 
-      // Find or create a batch with free slots
-      const pendingCount = pendingCounts.get(runKey) ?? 0
-      const batchEntity = findOrCreateBatch(world, registry, run, pendingCount)
-      const batchMesh = world.read(batchEntity, BatchMesh)
-      if (!batchMesh?.mesh) continue
-      const mesh = batchMesh.mesh
-
-      // Allocate a slot
-      const slot = mesh.reserveSlot()
-      if (slot < 0) continue
-
-      const meta = world.read(batchEntity, BatchMeta)
-      const batchIdx = meta?.batchIdx ?? -1
-      let committed = false
-      try {
-        // Prepare every potentially-throwing projection before publishing
-        // ownership. A failed preparation leaves no IsBatched or reverse row.
-        syncSlotBuffers(world, entity, slot, mesh, sprite, effectTraits)
-        proxyPickToBatch(sprite, mesh)
-        world.patch(entity, BatchSlot, { batchEntity, batchIdx, slot }, false)
-        mesh.commitSlot(slot, entity, sprite)
-        committed = true
-
-        sprite._batchMesh = mesh
-        sprite._batchSlot = slot
-        sprite._batchIdx = batchIdx
-        if (sprite._autoRegistry || sprite._hierarchyManaged) sprite._setBatchSuppressed(true)
-        world.add(entity, IsBatched)
-        mesh.markSortDirty()
-        dirtyMeshes.add(mesh)
-      } catch (error) {
-        mesh.grid.remove(sprite)
-        unproxyPickFromBatch(sprite, mesh)
-        if (committed) mesh.releaseSlot(slot, entity)
-        else mesh.rollbackSlot(slot)
-        if (world.has(entity, IsBatched)) world.remove(entity, IsBatched)
-        if (world.isAlive(entity) && world.has(entity, BatchSlot)) {
-          world.patch(entity, BatchSlot, { batchEntity: 0, batchIdx: -1, slot: -1 }, false)
+        // updateMatrix() is virtual/user-owned. Run it before route capture so
+        // reentrant layers/material changes are assigned to the current route.
+        try {
+          sprite.updateMatrix()
+        } catch (error) {
+          if (world.isAlive(entity) && world.has(entity, IsRenderable)) {
+            world.remove(entity, IsRenderable)
+            world.add(entity, IsRenderable)
+          }
+          throw error
         }
-        sprite._batchMesh = null
-        sprite._batchSlot = -1
-        sprite._batchIdx = -1
-        sprite._setBatchSuppressed(false)
-        recycleBatchIfEmpty(world, registry, batchEntity, run)
-        throw error
+        if (
+          !world.isAlive(entity) ||
+          !world.has(entity, IsRenderable) ||
+          registry.spriteArr[entitySlot(entity)] !== sprite
+        ) {
+          continue
+        }
+        const sortLayer = sortLayerStore.value[index]
+        const materialId = materialRefStore.materialId[index]
+        if (sortLayer === undefined || materialId === undefined) continue
+        const layersMask = cameraLayersStore.mask[index] ?? sprite.layers.mask
+
+        // Track material for schema version detection
+        const material = sprite.material
+        if (!registry.materialRefs.has(materialId)) {
+          registry.materialRefs.set(materialId, {
+            material,
+            version: material._effectSchemaVersion,
+          })
+        }
+
+        // Find or create the run for this (sortLayer, materialId, layers.mask)
+        const runKey = computeRunKey(sortLayer, materialId, layersMask)
+        const { run, created: runCreated } = getOrCreateRun(registry, sortLayer, materialId, layersMask, material)
+
+        // Find or create a batch with free slots
+        const pendingCount = pendingCounts.get(runKey) ?? 0
+        let batchEntity: Entity
+        try {
+          batchEntity = findOrCreateBatch(world, registry, run, pendingCount)
+        } catch (error) {
+          if (runCreated) removeRunIfEmpty(registry, run)
+          // The Added event has already drained. Preserve retry semantics even
+          // when construction or trait publication fails before slot reserve.
+          if (world.isAlive(entity) && world.has(entity, IsRenderable)) {
+            world.remove(entity, IsRenderable)
+            world.add(entity, IsRenderable)
+          }
+          throw error
+        }
+        const batchMesh = world.read(batchEntity, BatchMesh)
+        if (!batchMesh?.mesh) {
+          if (runCreated) removeRunIfEmpty(registry, run)
+          throw new Error('three-flatland: Published batch is missing its mesh')
+        }
+        const mesh = batchMesh.mesh
+        const ownership = getSpriteBatchOwnership(mesh)
+
+        // Allocate a slot
+        const slot = ownership.reserveSlot()
+        if (slot < 0) {
+          recycleBatchIfEmpty(world, registry, batchEntity, run)
+          if (world.isAlive(entity) && world.has(entity, IsRenderable)) {
+            world.remove(entity, IsRenderable)
+            world.add(entity, IsRenderable)
+          }
+          throw new Error('three-flatland: Batch selected for assignment has no reservable slot')
+        }
+
+        const batchIdx = batchMetaStore.batchIdx[entitySlot(batchEntity)] ?? -1
+        let committed = false
+        try {
+          // Prepare every potentially-throwing projection before publishing
+          // ownership. A failed preparation leaves no IsBatched or reverse row.
+          syncSlotBuffers(index, slot, mesh, sprite, projectionStores)
+          if (
+            !world.isAlive(entity) ||
+            !world.has(entity, IsRenderable) ||
+            registry.spriteArr[entitySlot(entity)] !== sprite
+          ) {
+            mesh.grid.remove(sprite)
+            ownership.rollbackSlot(slot)
+            recycleBatchIfEmpty(world, registry, batchEntity, run)
+            continue
+          }
+          proxyPickToBatch(sprite, mesh)
+          batchSlotStore.batchEntity[index] = batchEntity
+          batchSlotStore.batchIdx[index] = batchIdx
+          batchSlotStore.slot[index] = slot
+          ownership.commitSlot(slot, entity, sprite)
+          committed = true
+
+          sprite._batchMesh = mesh
+          sprite._batchSlot = slot
+          sprite._batchIdx = batchIdx
+          if (sprite._autoRegistry || sprite._hierarchyManaged) sprite._setBatchSuppressed(true)
+          world.add(entity, IsBatched)
+          mesh.markSortDirty()
+          dirtyMeshes.add(mesh)
+        } catch (error) {
+          mesh.grid.remove(sprite)
+          unproxyPickFromBatch(sprite, mesh)
+          if (committed) ownership.releaseSlot(slot, entity)
+          else ownership.rollbackSlot(slot)
+          if (world.has(entity, IsBatched)) world.remove(entity, IsBatched)
+          if (world.isAlive(entity) && world.has(entity, BatchSlot)) {
+            batchSlotStore.batchEntity[index] = 0
+            batchSlotStore.batchIdx[index] = -1
+            batchSlotStore.slot[index] = -1
+          }
+          sprite._batchMesh = null
+          sprite._batchSlot = -1
+          sprite._batchIdx = -1
+          sprite._setBatchSuppressed(false)
+          recycleBatchIfEmpty(world, registry, batchEntity, run)
+          // The Added(IsRenderable) event that selected this entity was drained
+          // before preparation failed. Re-trigger it after exact rollback so a
+          // transient projection error can retry on the next schedule instead
+          // of stranding a live renderable forever.
+          if (world.isAlive(entity) && world.has(entity, IsRenderable)) {
+            world.remove(entity, IsRenderable)
+            world.add(entity, IsRenderable)
+          }
+          throw error
+        }
       }
+
+      finalizeDirtyMeshes(registry, dirtyMeshes)
+    } catch (error) {
+      // A later entity can fail after an earlier entity committed. Publish the
+      // committed prefix before propagating the first error; otherwise its
+      // batch owns a live row while InstancedMesh.count remains stale.
+      const cleanupErrors: unknown[] = []
+      try {
+        finalizeDirtyMeshes(registry, dirtyMeshes)
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError)
+      }
+      try {
+        // drain() consumes the whole borrowed queue up front. The failing
+        // entity normally requeues itself in its local rollback path, but an
+        // invariant can throw before that transaction begins. Include current;
+        // HandleQueue dedupes its retry when the local path already emitted it.
+        requeueAssignments(world, addedEntities, Math.max(0, entityPosition))
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError)
+      }
+      if (cleanupErrors.length > 0) {
+        const message = error instanceof Error ? error.message : 'three-flatland: Batch assignment failed'
+        throw new AggregateError([error, ...cleanupErrors], message)
+      }
+      throw error
     }
 
-    // Flush syncCount once per mesh, not per entity.
-    // needsUpdate and dirty ranges are tracked by SpriteBatch write methods;
-    // flushDirtyRanges() is called once at end of frame by SpriteGroup.
-    for (const mesh of dirtyMeshes) {
-      mesh.syncCount()
-    }
+    return dirtyMeshes.size > 0
+  }
+}
 
-    if (dirtyMeshes.size > 0) registry.transformsDirty = true
+/**
+ * Publish all rows committed during this drain exactly once per mesh.
+ *
+ * This runs on both the success and exceptional paths so a committed prefix
+ * remains renderable even when projection of a later entity fails.
+ */
+function finalizeDirtyMeshes(registry: RegistryData, dirtyMeshes: ReadonlySet<SpriteBatch>): void {
+  // needsUpdate and dirty ranges are tracked by SpriteBatch write methods;
+  // flushDirtyRanges() is called once at end of frame by SpriteGroup.
+  for (const mesh of dirtyMeshes) {
+    mesh.syncCount()
+  }
 
-    return true
+  if (dirtyMeshes.size > 0) registry.transformsDirty = true
+}
+
+function requeueAssignments(world: World, entities: readonly Entity[], start: number): void {
+  for (let position = start; position < entities.length; position++) {
+    const entity = entities[position]!
+    if (!world.isAlive(entity) || !world.has(entity, IsRenderable) || world.has(entity, IsBatched)) continue
+    world.remove(entity, IsRenderable)
+    world.add(entity, IsRenderable)
   }
 }
 
@@ -165,30 +281,35 @@ export function createBatchAssignSystem(
  * Called once on batch assignment to initialize the slot.
  * Does NOT set needsUpdate — caller batches that across all entities.
  */
+interface SpriteProjectionStores {
+  readonly color: NumericStore<typeof SpriteColor.defaults>
+  readonly uv: NumericStore<typeof SpriteUV.defaults>
+  readonly flip: NumericStore<typeof SpriteFlip.defaults>
+}
+
 function syncSlotBuffers(
-  world: World,
-  entity: Entity,
+  entityIndex: number,
   slot: number,
   mesh: SpriteBatch,
   sprite: Sprite2D,
-  effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>
+  stores: SpriteProjectionStores
 ): void {
   // Color
-  const c = world.read(entity, SpriteColor)
-  if (c) {
-    mesh.writeColor(slot, c.r, c.g, c.b, c.a)
+  const r = stores.color.r[entityIndex]
+  if (r !== undefined) {
+    mesh.writeColor(slot, r, stores.color.g[entityIndex]!, stores.color.b[entityIndex]!, stores.color.a[entityIndex]!)
   }
 
   // UV
-  const uv = world.read(entity, SpriteUV)
-  if (uv) {
-    mesh.writeUV(slot, uv.x, uv.y, uv.w, uv.h)
+  const x = stores.uv.x[entityIndex]
+  if (x !== undefined) {
+    mesh.writeUV(slot, x, stores.uv.y[entityIndex]!, stores.uv.w[entityIndex]!, stores.uv.h[entityIndex]!)
   }
 
   // Flip
-  const f = world.read(entity, SpriteFlip)
-  if (f) {
-    mesh.writeFlip(slot, f.x, f.y)
+  const flipX = stores.flip.x[entityIndex]
+  if (flipX !== undefined) {
+    mesh.writeFlip(slot, flipX, stores.flip.y[entityIndex]!)
   }
 
   // updateMatrix() runs before route capture in the caller.
@@ -205,15 +326,10 @@ function syncSlotBuffers(
   mesh.writeShadowRadius(slot, sprite.shadowRadius ?? Math.max(Math.abs(sprite.scale.x), Math.abs(sprite.scale.y)))
 
   // Effect data
-  syncEffectBuffers(slot, mesh, sprite, effectTraits)
+  syncEffectBuffers(slot, mesh, sprite)
 }
 
-function syncEffectBuffers(
-  slot: number,
-  mesh: SpriteBatch,
-  sprite: Sprite2D,
-  _effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>
-): void {
+function syncEffectBuffers(slot: number, mesh: SpriteBatch, sprite: Sprite2D): void {
   const material = sprite.material
   const tier = material._effectTier
   if (tier === 0) return
@@ -241,7 +357,7 @@ function syncEffectBuffers(
         const comp = slotInfo.offset % 4
         mesh.writeEffectSlot(slot, bufIdx, comp, value)
       } else {
-        for (let i = 0; i < value.length; i++) {
+        for (let i = 0; i < field.size; i++) {
           const off = slotInfo.offset + i
           mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value[i]!)
         }

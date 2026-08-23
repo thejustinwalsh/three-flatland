@@ -1,9 +1,10 @@
 import type { Group, Object3D } from 'three'
-import { select, type World } from '../runtime'
+import { select, type NumericStore, type World } from '../runtime'
 import { BatchRegistry, BatchMesh, BatchMeta } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { rebuildBatchOrder } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+import { entitySlot } from '../snapshot'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -26,6 +27,7 @@ export function createSceneGraphSyncSystem(): (
   parentRemove: (...objects: Object3D[]) => Group
 ) => void {
   const activeMeshes = new Set<Object3D>()
+  let batchMetaStore: NumericStore<typeof BatchMeta.defaults> | null = null
 
   return function sceneGraphSyncSystem(
     world: World,
@@ -39,7 +41,8 @@ export function createSceneGraphSyncSystem(): (
     if (!registry) return
 
     // Rebuild sorted order if needed
-    rebuildBatchOrder(world, registry)
+    if (!rebuildBatchOrder(world, registry)) return
+    batchMetaStore ??= world.store(BatchMeta)
 
     // Build set of active batch meshes — clear-and-fill instead of new.
     activeMeshes.clear()
@@ -73,7 +76,7 @@ export function createSceneGraphSyncSystem(): (
       const batchMesh = world.read(batchEntity, BatchMesh)
       if (!batchMesh?.mesh) continue
 
-      const sortLayer = world.read(batchEntity, BatchMeta)?.sortLayer ?? 0
+      const sortLayer = batchMetaStore.sortLayer[entitySlot(batchEntity)] ?? 0
       subOrder = sortLayer === prevLayer ? subOrder + 1 : 0
       prevLayer = sortLayer
       batchMesh.mesh.renderOrder = sortLayer + subOrder * 1e-6

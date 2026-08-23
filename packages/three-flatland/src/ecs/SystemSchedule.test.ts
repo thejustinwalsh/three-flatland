@@ -70,4 +70,47 @@ describe('SystemSchedule', () => {
     schedule.run(fakeWorld)
     expect(order).toEqual(['b'])
   })
+
+  it('runs deduplicated finalizers after normal and throwing schedule attempts', () => {
+    const order: string[] = []
+    const finalizer = () => order.push('finalize')
+    const schedule = new SystemSchedule()
+    schedule
+      .add(() => order.push('run'), { track: PERF_TRACK.Batch, name: 'run' })
+      .add(
+        () => {
+          throw new Error('stop')
+        },
+        { track: PERF_TRACK.Batch, name: 'throw' }
+      )
+      .addFinalizer(finalizer)
+      .addFinalizer(finalizer)
+
+    schedule.nextFrame()
+    expect(() => schedule.run(fakeWorld)).toThrow('stop')
+    expect(order).toEqual(['run', 'finalize'])
+  })
+
+  it('runs every finalizer and preserves the original system failure', () => {
+    const order: string[] = []
+    const schedule = new SystemSchedule()
+    schedule
+      .add(
+        () => {
+          throw new Error('system failed')
+        },
+        { track: PERF_TRACK.Batch, name: 'throw' }
+      )
+      .addFinalizer(() => {
+        order.push('first')
+        throw new Error('cleanup failed')
+      })
+      .addFinalizer(() => {
+        order.push('second')
+      })
+
+    schedule.nextFrame()
+    expect(() => schedule.run(fakeWorld)).toThrow('system failed')
+    expect(order).toEqual(['first', 'second'])
+  })
 })

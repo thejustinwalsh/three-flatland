@@ -8,6 +8,7 @@ import { BatchSlot } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import { batchFor, readRequired, registryFor, requiredEntity } from '../testUtils.type-test'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 // ============================================
 // Helpers
@@ -112,7 +113,7 @@ describe('batchSortSystem (Option B — transparent path)', () => {
     runSystems(group)
 
     const batch = getBatchForSprite(group, a)!
-    const swapSpy = vi.spyOn(batch, 'swapSlots')
+    const swapSpy = vi.spyOn(getSpriteBatchOwnership(batch), 'swapSlots')
 
     // Run another frame without touching zIndex.
     runSystems(group)
@@ -155,7 +156,7 @@ describe('batchSortSystem (Option A — alphaTest opt-in)', () => {
     runSystems(group)
 
     const batch = getBatchForSprite(group, a)!
-    const swapSpy = vi.spyOn(batch, 'swapSlots')
+    const swapSpy = vi.spyOn(getSpriteBatchOwnership(batch), 'swapSlots')
 
     // Flip zIndex — this would normally trigger a sort on a transparent batch.
     a.zIndex = 0
@@ -335,7 +336,7 @@ describe('Sort correctness — regression guards', () => {
     m[slotA * 16 + 14] = 5.5
     m[slotB * 16 + 14] = 7.7
 
-    batch.swapSlots(slotA, slotB)
+    getSpriteBatchOwnership(batch).swapSlots(slotA, slotB)
 
     const colorAttr = batch.getColorAttribute().array as Float32Array
     const uvAttr = batch.getUVAttribute().array as Float32Array
@@ -355,7 +356,7 @@ describe('Sort correctness — regression guards', () => {
     // This unit exercises the raw physical permutation directly, outside
     // batchSortSystem's matching BatchSlot patches. Restore ownership before
     // the group teardown validates every physical row against ECS metadata.
-    batch.swapSlots(slotA, slotB)
+    getSpriteBatchOwnership(batch).swapSlots(slotA, slotB)
   })
 
   // (2) Y-as-zIndex pattern across multiple frames of motion. This is
@@ -504,7 +505,7 @@ describe('Sort correctness — regression guards', () => {
     runSystems(group) // initial sort
 
     const batch = getBatchForSprite(group, sprites[0]!)!
-    const swapSpy = vi.spyOn(batch, 'swapSlots')
+    const swapSpy = vi.spyOn(getSpriteBatchOwnership(batch), 'swapSlots')
 
     // Run several more frames without touching zIndex.
     for (let i = 0; i < 5; i++) runSystems(group)
@@ -539,7 +540,7 @@ describe('Sort correctness — regression guards', () => {
     const colorVerBefore = colorBuf.version
     const matrixVerBefore = matrix.version
 
-    batch.swapSlots(slotA, slotB)
+    getSpriteBatchOwnership(batch).swapSlots(slotA, slotB)
     batch.flushDirtyRanges()
 
     expect(colorBuf.version).toBeGreaterThan(colorVerBefore)
@@ -547,6 +548,6 @@ describe('Sort correctness — regression guards', () => {
 
     // Keep the direct unit's physical ownership aligned with the untouched
     // BatchSlot records before the group teardown releases both rows.
-    batch.swapSlots(slotA, slotB)
+    getSpriteBatchOwnership(batch).swapSlots(slotA, slotB)
   })
 })

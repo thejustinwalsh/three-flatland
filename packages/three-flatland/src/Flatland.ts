@@ -93,6 +93,9 @@ interface LightingContextData {
 // default camera and permanently disabling automatic frustum updates.
 const _flatlandInternalCameras = new WeakMap<OrthographicCamera, Flatland>()
 
+/** Pass builders are user code and may try to attach the same instance elsewhere. */
+const _preparingPassEffects = new WeakSet<PassEffect>()
+
 /**
  * Options for creating a Flatland instance.
  */
@@ -384,6 +387,9 @@ export class Flatland extends Group implements WorldProvider {
   /** Active PassEffect instances */
   private _passes: PassEffect[] = []
 
+  /** Reject nested addPass transactions on this Flatland. */
+  private _passTransitioning = false
+
   /** Auto-increment counter for insertion-ordered passes */
   private _nextPassOrder = 0
 
@@ -406,6 +412,12 @@ export class Flatland extends Group implements WorldProvider {
 
   /** Active LightEffect instance */
   private _lightEffect: LightEffect | null = null
+
+  /** Reject user-hook recursion across lighting publication and disposal. */
+  private _lightingTransitioning = false
+
+  /** Changes whenever terminal disposal starts so preparations can revalidate. */
+  private _lifecycleRevision = 0
 
   /** ECS: LightingContext singleton entity */
   private _lightingContextEntity: Entity | null = null
@@ -987,27 +999,59 @@ export class Flatland extends Group implements WorldProvider {
    * ```
    */
   addPass(passEffect: PassEffect, order?: number): this {
+    if (this._passTransitioning) {
+      throw new Error('three-flatland: addPass() cannot run reentrantly on the same Flatland')
+    }
+    if (_preparingPassEffects.has(passEffect)) {
+      throw new Error('three-flatland: PassEffect is already being prepared by another Flatland')
+    }
+    this._passTransitioning = true
+    _preparingPassEffects.add(passEffect)
+    try {
+      return this._addPass(passEffect, order)
+    } finally {
+      _preparingPassEffects.delete(passEffect)
+      this._passTransitioning = false
+    }
+  }
+
+  private _addPass(passEffect: PassEffect, order?: number): this {
+    if (this._disposed) {
+      throw new Error('three-flatland: addPass() cannot run after Flatland.dispose()')
+    }
+    if (passEffect._flatland && passEffect._flatland !== this) {
+      throw new Error(
+        'three-flatland: PassEffect is already attached to another Flatland; remove it before attaching it here'
+      )
+    }
     if (this._passes.includes(passEffect)) return this
 
-    this._ensurePostPassRegistry()
-
-    // Set order and attach
-    passEffect._order = order ?? this._nextPassOrder++
-    passEffect._attach(this)
-
-    // Build the pass function (calls static buildPass once, caches result)
-    const fn = passEffect._buildPassFn()
-
-    // Spawn ECS entity with PostPassTrait
+    // User builders are preparation, not publication. Build while the effect
+    // is still detached so a throw cannot consume insertion order, create a
+    // registry singleton, or strand an owner without an ECS entity.
+    const previousPassFn = passEffect._passFn
+    const lifecycleRevision = this._lifecycleRevision
+    let fn: ReturnType<PassEffect['_buildPassFn']>
+    try {
+      fn = passEffect._buildPassFn()
+    } catch (error) {
+      passEffect._passFn = previousPassFn
+      throw error
+    }
+    if (this._disposed || this._lifecycleRevision !== lifecycleRevision) {
+      passEffect._passFn = previousPassFn
+      throw new Error('three-flatland: dispose() cannot run reentrantly during addPass()')
+    }
+    if (this._passes.includes(passEffect) || passEffect._flatland !== null || passEffect._entity !== null) {
+      passEffect._passFn = previousPassFn
+      throw new Error('three-flatland: PassEffect ownership changed during pass preparation')
+    }
+    const resolvedOrder = order ?? this._nextPassOrder
     const ctor = passEffect.constructor as typeof PassEffect
-    const entity = this._runtimeWorld.spawn(
-      PostPassTrait({ fn, order: passEffect._order, enabled: passEffect.enabled })
-    )
-
-    // Add class-specific trait if schema has fields
+    let traitValues: Record<string, number> | null = null
     if (ctor._fields.length > 0) {
       // Build initial trait values from defaults
-      const traitValues: Record<string, number> = {}
+      traitValues = Object.create(null) as Record<string, number>
       for (const field of ctor._fields) {
         if (field.size === 1) {
           traitValues[field.name] = passEffect._defaults[field.name] as number
@@ -1018,15 +1062,65 @@ export class Flatland extends Group implements WorldProvider {
           }
         }
       }
-      const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
-      this._runtimeWorld.add(entity, runtimeTrait(traitValues))
     }
 
-    passEffect._entity = entity
-    this._passes.push(passEffect)
+    const world = this._runtimeWorld
+    const previousRegistryEntity = this._postPassRegistryEntity
+    const previousOrder = passEffect._order
+    const previousNextOrder = this._nextPassOrder
+    const previousPipelineEnabled = this._renderPipelineEnabled
+    let entity: Entity | null = null
+    let registryEntity = previousRegistryEntity
+    let registryCreated = false
+    let attached = false
+    try {
+      // Fully populate a provisional entity before publishing ownership/order.
+      entity = world.spawn(PostPassTrait({ fn, order: resolvedOrder, enabled: passEffect.enabled }))
+      if (traitValues) {
+        const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+        world.add(entity, runtimeTrait(traitValues))
+      }
+      if (!registryEntity) {
+        registryEntity = world.spawn(PostPassRegistry({ dirty: false }))
+        registryCreated = true
+      }
 
-    this._runtimeWorld.patch(this._postPassRegistryEntity!, PostPassRegistry, { dirty: true })
-    this._renderPipelineEnabled = true
+      passEffect._attach(this)
+      attached = true
+      passEffect._order = resolvedOrder
+      passEffect._entity = entity
+      this._postPassRegistryEntity = registryEntity
+      world.patch(registryEntity, PostPassRegistry, { dirty: true })
+      this._passes.push(passEffect)
+      if (order === undefined) this._nextPassOrder++
+      this._renderPipelineEnabled = true
+    } catch (error) {
+      const publishedIndex = this._passes.indexOf(passEffect)
+      if (publishedIndex >= 0) this._passes.splice(publishedIndex, 1)
+      this._nextPassOrder = previousNextOrder
+      this._renderPipelineEnabled = previousPipelineEnabled
+      this._postPassRegistryEntity = previousRegistryEntity
+      if (attached) {
+        try {
+          passEffect._detach()
+        } catch {}
+      }
+      passEffect._order = previousOrder
+      passEffect._entity = null
+      passEffect._passFn = previousPassFn
+      if (entity && world.isAlive(entity)) {
+        try {
+          world.destroy(entity)
+        } catch {}
+      }
+      if (registryCreated && registryEntity && world.isAlive(registryEntity)) {
+        try {
+          world.destroy(registryEntity)
+        } catch {}
+      }
+      throw error
+    }
+
     return this
   }
 
@@ -1137,125 +1231,36 @@ export class Flatland extends Group implements WorldProvider {
    * ```
    */
   setLighting(lightEffect: LightEffect | null): this {
+    if (this._disposed) {
+      throw new Error('three-flatland: setLighting() cannot run after Flatland.dispose()')
+    }
+    if (this._lightingTransitioning) {
+      throw new Error('three-flatland: setLighting() cannot run reentrantly during a lighting transition')
+    }
+    this._lightingTransitioning = true
+    try {
+      return this._setLighting(lightEffect)
+    } finally {
+      this._lightingTransitioning = false
+    }
+  }
+
+  private _setLighting(lightEffect: LightEffect | null): this {
+    if (lightEffect?._flatland && lightEffect._flatland !== this) {
+      throw new Error(
+        'three-flatland: LightEffect is already attached to another Flatland; clear it before attaching it here'
+      )
+    }
     if (this._lightEffect === lightEffect) return this
 
-    // Detach previous
-    if (this._lightEffect) {
-      // Flatland owns the active effect lifecycle. Release any GPU resources
-      // before detaching so reusing the same instance later can safely init
-      // against its next renderer without leaking the previous allocation.
-      this._lightEffect.dispose()
-      if (this._lightEffect._entity) {
-        this._runtimeWorld.destroy(this._lightEffect._entity)
+    if (!lightEffect) {
+      const previous = this._lightEffect
+      if (previous) {
+        previous.dispose()
+        if (previous._entity) this._runtimeWorld.destroy(previous._entity)
+        previous._detach()
       }
-      this._lightEffect._detach()
-    }
-
-    this._lightEffect = lightEffect
-
-    if (lightEffect) {
-      // Lazy-init LightStore
-      if (!this._lightStore) {
-        this._lightStore = new LightStore()
-      }
-
-      // Attach effect with dirty callback
-      lightEffect._attach(this, () => {
-        this._markLightingDirty()
-      })
-
-      // Store required channels from the effect class
-      const ctor = lightEffect.constructor as typeof LightEffect
-
-      // Ensure the ShadowPipeline singleton entity exists. For effects that
-      // declare `needsShadows`, eagerly allocate the SDFGenerator +
-      // OcclusionPass NOW (not on first system tick) so the sdfTexture
-      // reference is bindable in buildLightFn's TSL `texture()` call. The
-      // RTs are 1×1 placeholders at this point; shadowPipelineSystem
-      // resizes them to the viewport on first frame.
-      this._ensureShadowPipelineEntity()
-      let sdfTexture: Texture | null = null
-      if (ctor.needsShadows && this._shadowPipelineEntity) {
-        const pipeline = this._runtimeWorld.read(this._shadowPipelineEntity, ShadowPipeline)
-        if (pipeline) {
-          if (!pipeline.sdfGenerator) pipeline.sdfGenerator = new SDFGenerator()
-          if (!pipeline.occlusionPass) pipeline.occlusionPass = new OcclusionPass()
-          sdfTexture = pipeline.sdfGenerator.sdfTexture
-        }
-      }
-
-      // Build the colorTransform and wrap with per-instance lit-bit check.
-      // The SDF texture reference passed here is stable — safe to close over
-      // in TSL. World-bound uniforms are Flatland-owned so every effect
-      // shares one update-path.
-      const fn = lightEffect._buildLightFn(
-        this._lightStore,
-        this._worldSizeUniform,
-        this._worldOffsetUniform,
-        sdfTexture
-      )
-      const wrappedLightFn = wrapWithLightFlags(fn)
-
-      const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
-
-      // Spawn ECS entity for the effect
-      const entity = this._runtimeWorld.spawn(LightEffectTrait({ fn, enabled: lightEffect.enabled }))
-
-      // Add class-specific trait if schema has fields
-      if (ctor._fields.length > 0) {
-        const traitValues: Record<string, number> = {}
-        for (const field of ctor._fields) {
-          if (field.size === 1) {
-            traitValues[field.name] = lightEffect._defaults[field.name] as number
-          } else {
-            const arr = lightEffect._defaults[field.name] as number[]
-            for (let i = 0; i < field.size; i++) {
-              traitValues[`${field.name}_${i}`] = arr[i]!
-            }
-          }
-        }
-        const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
-        this._runtimeWorld.add(entity, runtimeTrait(traitValues))
-      }
-
-      lightEffect._entity = entity
-
-      // Spawn or update LightingContext singleton
-      this._ensureLightingContext()
-      const lctxEntity = this._lightingContextEntity!
-      // Get existing context to preserve runtime fields
-      const existingCtx = this._runtimeWorld.read(lctxEntity, LightingContext) as LightingContextData | undefined
-      this._runtimeWorld.patch(lctxEntity, LightingContext, {
-        effect: lightEffect,
-        lightStore: this._lightStore,
-        lights: this._lights,
-        wrappedLightFn,
-        requiredChannels,
-        materials: this._spriteMaterials,
-        dirty: true,
-        initialized: false,
-        surfaceSize: existingCtx?.surfaceSize ?? new Vector2(),
-        resizePending: false,
-        renderer: existingCtx?.renderer ?? null,
-        camera: existingCtx?.camera ?? null,
-        scene: existingCtx?.scene ?? null,
-        worldSize: existingCtx?.worldSize ?? new Vector2(),
-        worldOffset: existingCtx?.worldOffset ?? new Vector2(),
-      })
-      if (this._lastSyncedWidth > 0 && this._lastSyncedHeight > 0) {
-        this._queueLightEffectResize(this._lastSyncedWidth, this._lastSyncedHeight)
-      }
-
-      // Register lighting systems on the schedule (before sprite systems)
-      this._ensureLightingSystems()
-
-      // Dev-time: warn on any already-added lit sprite whose MaterialEffects
-      // don't cover the lighting's declared channel `requires`. Without this,
-      // missing providers silently fall back to channelDefaults (flat
-      // normals, etc.) and "why does my lighting look wrong" takes an hour.
-      this._validateLightingChannels()
-    } else {
-      // Clearing lighting
+      this._lightEffect = null
       if (this._lightingContextEntity) {
         const existingCtx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext) as
           | LightingContextData
@@ -1278,8 +1283,175 @@ export class Flatland extends Group implements WorldProvider {
           worldOffset: existingCtx?.worldOffset ?? new Vector2(),
         })
       }
+      return this
     }
 
+    const previous = this._lightEffect
+    const world = this._runtimeWorld
+    const ctor = lightEffect.constructor as typeof LightEffect
+    let preparedLightStore = this._lightStore
+    let createdLightStore = false
+    let preparedSdfGenerator: SDFGenerator | null = null
+    let preparedOcclusionPass: OcclusionPass | null = null
+    let effectEntity: Entity | null = null
+    let shadowEntity = this._shadowPipelineEntity
+    let shadowCreated = false
+    let contextEntity = this._lightingContextEntity
+    let contextCreated = false
+
+    const discardPrepared = (): void => {
+      lightEffect._lightFn = null
+      try {
+        preparedSdfGenerator?.dispose()
+      } catch {}
+      try {
+        preparedOcclusionPass?.dispose()
+      } catch {}
+      if (createdLightStore) {
+        try {
+          preparedLightStore?.dispose()
+        } catch {}
+      }
+      if (effectEntity && world.isAlive(effectEntity)) {
+        try {
+          world.destroy(effectEntity)
+        } catch {}
+      }
+      if (contextCreated && contextEntity && world.isAlive(contextEntity)) {
+        try {
+          world.destroy(contextEntity)
+        } catch {}
+      }
+      if (shadowCreated && shadowEntity && world.isAlive(shadowEntity)) {
+        try {
+          world.destroy(shadowEntity)
+        } catch {}
+      }
+    }
+
+    let fn: ReturnType<LightEffect['_buildLightFn']>
+    let wrappedLightFn: ReturnType<typeof wrapWithLightFlags>
+    let requiredChannels: ReadonlySet<ChannelName>
+    try {
+      if (!preparedLightStore) {
+        preparedLightStore = new LightStore()
+        createdLightStore = true
+      }
+
+      let sdfTexture: Texture | null = null
+      if (ctor.needsShadows) {
+        const existingPipeline = shadowEntity ? world.read(shadowEntity, ShadowPipeline) : undefined
+        if (!existingPipeline?.sdfGenerator) preparedSdfGenerator = new SDFGenerator()
+        if (!existingPipeline?.occlusionPass) preparedOcclusionPass = new OcclusionPass()
+        sdfTexture = existingPipeline?.sdfGenerator?.sdfTexture ?? preparedSdfGenerator!.sdfTexture
+      }
+
+      fn = lightEffect._buildLightFn(preparedLightStore, this._worldSizeUniform, this._worldOffsetUniform, sdfTexture)
+      wrappedLightFn = wrapWithLightFlags(fn)
+      requiredChannels = new Set(ctor.requires ?? [])
+
+      let traitValues: Record<string, number> | null = null
+      if (ctor._fields.length > 0) {
+        traitValues = Object.create(null) as Record<string, number>
+        for (const field of ctor._fields) {
+          if (field.size === 1) {
+            traitValues[field.name] = lightEffect._defaults[field.name] as number
+          } else {
+            const arr = lightEffect._defaults[field.name] as number[]
+            for (let i = 0; i < field.size; i++) traitValues[`${field.name}_${i}`] = arr[i]!
+          }
+        }
+      }
+
+      // Every entity is provisional until the previous effect has disposed.
+      effectEntity = world.spawn(LightEffectTrait({ fn, enabled: lightEffect.enabled }))
+      if (traitValues) {
+        const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+        world.add(effectEntity, runtimeTrait(traitValues))
+      }
+      if (!shadowEntity) {
+        shadowEntity = world.spawn(ShadowPipeline)
+        shadowCreated = true
+      }
+      if (!contextEntity) {
+        contextEntity = world.spawn(
+          LightingContext({
+            effect: null,
+            lightStore: null,
+            lights: [],
+            wrappedLightFn: null,
+            requiredChannels: new Set(),
+            materials: new Set<Sprite2DMaterial>(),
+            dirty: false,
+            initialized: false,
+            surfaceSize: new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
+            resizePending: false,
+            renderer: null,
+            camera: null,
+            scene: null,
+            worldSize: new Vector2(),
+            worldOffset: new Vector2(),
+          })
+        )
+        contextCreated = true
+      }
+
+      if (this._lightEffect !== previous || lightEffect._flatland !== null || lightEffect._entity !== null) {
+        throw new Error('three-flatland: lighting ownership changed during effect preparation')
+      }
+
+      // User disposal remains pre-publication. A throw rolls every candidate
+      // allocation/cache back and leaves the current owner/context authoritative.
+      previous?.dispose()
+      if (this._lightEffect !== previous || lightEffect._flatland !== null || lightEffect._entity !== null) {
+        throw new Error('three-flatland: lighting ownership changed during previous-effect disposal')
+      }
+    } catch (error) {
+      discardPrepared()
+      throw error
+    }
+
+    if (previous?._entity) world.destroy(previous._entity)
+    previous?._detach()
+
+    const pipeline = world.read(shadowEntity!, ShadowPipeline)
+    if (pipeline) {
+      if (preparedSdfGenerator) pipeline.sdfGenerator = preparedSdfGenerator
+      if (preparedOcclusionPass) pipeline.occlusionPass = preparedOcclusionPass
+    }
+
+    lightEffect._attach(this, () => {
+      this._markLightingDirty()
+    })
+    lightEffect._entity = effectEntity
+    this._lightStore = preparedLightStore
+    this._shadowPipelineEntity = shadowEntity
+    this._lightingContextEntity = contextEntity
+    this._lightEffect = lightEffect
+
+    const existingCtx = world.read(contextEntity!, LightingContext) as LightingContextData | undefined
+    world.patch(contextEntity!, LightingContext, {
+      effect: lightEffect,
+      lightStore: preparedLightStore,
+      lights: this._lights,
+      wrappedLightFn,
+      requiredChannels,
+      materials: this._spriteMaterials,
+      dirty: true,
+      initialized: false,
+      surfaceSize: existingCtx?.surfaceSize ?? new Vector2(),
+      resizePending: false,
+      renderer: existingCtx?.renderer ?? null,
+      camera: existingCtx?.camera ?? null,
+      scene: existingCtx?.scene ?? null,
+      worldSize: existingCtx?.worldSize ?? new Vector2(),
+      worldOffset: existingCtx?.worldOffset ?? new Vector2(),
+    })
+    if (this._lastSyncedWidth > 0 && this._lastSyncedHeight > 0) {
+      this._queueLightEffectResize(this._lastSyncedWidth, this._lastSyncedHeight)
+    }
+    this._ensureLightingSystems()
+    this._validateLightingChannels()
     return this
   }
 
@@ -2097,56 +2269,111 @@ export class Flatland extends Group implements WorldProvider {
    * Dispose of all resources.
    */
   dispose(): void {
+    if (this._lightingTransitioning) {
+      throw new Error('three-flatland: dispose() cannot run reentrantly during a lighting transition')
+    }
+    this._lifecycleRevision++
+    this._lightingTransitioning = true
+    try {
+      this._dispose()
+    } finally {
+      this._lightingTransitioning = false
+    }
+  }
+
+  private _dispose(): void {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
     this._disposed = true
-    this._devtools?.dispose()
+    const devtools = this._devtools
     this._devtools = null
+    if (devtools) runCleanup(() => devtools.dispose())
 
-    // Clear ECS pass entities before world destruction
-    this.clearPasses()
+    // Clear every pass independently. One hostile destroy/detach hook must not
+    // retain later effects or prevent the world from reaching terminal state.
+    for (const passEffect of this._passes) {
+      const entity = passEffect._entity
+      if (entity) runCleanup(() => this._runtimeWorld.destroy(entity))
+      runCleanup(() => passEffect._detach())
+    }
+    this._passes.length = 0
+    this._nextPassOrder = 0
     if (this._postPassRegistryEntity) {
-      this._runtimeWorld.destroy(this._postPassRegistryEntity)
+      const registryEntity = this._postPassRegistryEntity
       this._postPassRegistryEntity = null
+      runCleanup(() => this._runtimeWorld.destroy(registryEntity))
     }
 
     // Clear lighting
-    if (this._lightEffect) {
-      this._lightEffect.dispose()
-      if (this._lightEffect._entity) {
-        this._runtimeWorld.destroy(this._lightEffect._entity)
-      }
-      this._lightEffect._detach()
-      this._lightEffect = null
+    const lightEffect = this._lightEffect
+    this._lightEffect = null
+    if (lightEffect) {
+      const entity = lightEffect._entity
+      runCleanup(() => lightEffect.dispose())
+      if (entity) runCleanup(() => this._runtimeWorld.destroy(entity))
+      runCleanup(() => lightEffect._detach())
     }
     if (this._lightingContextEntity) {
-      this._runtimeWorld.destroy(this._lightingContextEntity)
+      const contextEntity = this._lightingContextEntity
       this._lightingContextEntity = null
+      runCleanup(() => this._runtimeWorld.destroy(contextEntity))
     }
-    this._lightStore?.dispose()
+    const lightStore = this._lightStore
     this._lightStore = null
+    if (lightStore) runCleanup(() => lightStore.dispose())
     // ShadowPipeline trait data is disposed by shadowPipelineSystem when
     // the effect detaches. Destroying the world during Flatland.dispose()
     // drops the singleton entity with it.
     if (this._shadowPipelineEntity) {
-      const pipeline = this._runtimeWorld.read(this._shadowPipelineEntity, ShadowPipeline)
-      pipeline?.sdfGenerator?.dispose()
-      pipeline?.occlusionPass?.dispose()
-      this._runtimeWorld.destroy(this._shadowPipelineEntity)
+      const shadowEntity = this._shadowPipelineEntity
       this._shadowPipelineEntity = null
+      let pipeline:
+        | {
+            sdfGenerator: SDFGenerator | null
+            occlusionPass: OcclusionPass | null
+          }
+        | undefined
+      runCleanup(() => {
+        pipeline = this._runtimeWorld.read(shadowEntity, ShadowPipeline)
+      })
+      const sdfGenerator = pipeline?.sdfGenerator
+      const occlusionPass = pipeline?.occlusionPass
+      if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
+      if (occlusionPass) runCleanup(() => occlusionPass.dispose())
+      runCleanup(() => this._runtimeWorld.destroy(shadowEntity))
     }
     this._lights.length = 0
     this._spriteMaterials.clear()
     this._lightingSystemsRegistered = false
 
-    this.spriteGroup.dispose()
+    runCleanup(() => this.spriteGroup.dispose())
 
     // Dispose render pipeline
-    if (this._renderPipeline) {
-      this._restoreManagedPassSize()
-      this._renderPipeline.dispose?.()
-      this._renderPipeline = null
-    }
+    const renderPipeline = this._renderPipeline
+    runCleanup(() => this._restoreManagedPassSize())
+    this._managedPassNode = null
+    this._managedPassOriginalSetSize = null
+    this._managedPassWrappedSetSize = null
+    this._renderPipeline = null
+    this._passNode = null
+    this._outputNode = null
+    this._renderPipelineEnabled = false
+    if (renderPipeline) runCleanup(() => renderPipeline.dispose?.())
     this._autoRenderPipeline = false
+
+    if (didError) throw firstError
   }
 }

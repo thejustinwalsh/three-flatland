@@ -29,6 +29,8 @@ describe('attachEffect', () => {
     texture = new Texture()
     texture.image = { width: 100, height: 100 }
     material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
+    material.registerEffect(Flash)
     sprite = new Sprite2D({ texture, material })
   })
 

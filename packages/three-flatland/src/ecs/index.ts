@@ -61,7 +61,6 @@ export {
   lightEffectSystem,
   lightMaterialAssignSystem,
   materialVersionSystem,
-  effectTraitsSystem,
   conditionalTransformSyncSystem,
   flushDirtyRangesSystem,
 } from './systems'

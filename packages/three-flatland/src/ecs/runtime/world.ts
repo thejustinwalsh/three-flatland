@@ -477,7 +477,7 @@ export function createWorld(): World {
     if (trait.kind === 'tag') return undefined
     if (trait.kind === 'object') return state.objects![index] as TValue
 
-    const result: Record<string, number> = {}
+    const result = Object.create(null) as Record<string, number>
     const numericTrait = trait as unknown as NumericTrait<NumericSchema>
     for (const field of numericTrait.fields) {
       Object.defineProperty(result, field, {

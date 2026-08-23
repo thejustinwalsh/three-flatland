@@ -4,6 +4,7 @@ import type { RegistryData } from '../batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../batchUtils'
 import { unproxyPickFromBatch } from '../../react/batchPicking'
 import { entitySlot, liveStoredEntity } from '../snapshot'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -26,6 +27,8 @@ const BatchRegistries = select(BatchRegistry)
 export function createBatchRemoveSystem(ownerWorld: World): (world: World, pendingDestroy: Entity[]) => void {
   const RemovedRenderable = removed(IsRenderable)
   ownerWorld.activate(RemovedRenderable)
+  const batchSlotStore = ownerWorld.store(BatchSlot)
+  const batchMetaStore = ownerWorld.store(BatchMeta)
 
   return function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {
     const removedEntities = world.drain(RemovedRenderable)
@@ -42,26 +45,25 @@ export function createBatchRemoveSystem(ownerWorld: World): (world: World, pendi
       // stale by the time this system runs and must not retire the survivor.
       if (!world.isAlive(entity) || world.has(entity, IsRenderable)) continue
 
-      const assignment = world.read(entity, BatchSlot)
-      const batchEntity = liveStoredEntity(world, assignment?.batchEntity ?? 0)
+      const entityIndex = entitySlot(entity)
+      const batchEntity = liveStoredEntity(world, batchSlotStore.batchEntity[entityIndex] ?? 0)
       const batchMesh = batchEntity ? world.read(batchEntity, BatchMesh) : undefined
 
       // BatchSlot.slot is the authoritative live slot: batchSortSystem keeps it
       // in sync on swaps. Read it from the SoA, not sprite._batchSlot —
       // _unenrollFromWorld has already nulled
       // the spriteArr entry by the time this deferred system runs.
-      const slot = assignment?.slot ?? -1
+      const slot = batchSlotStore.slot[entityIndex] ?? -1
 
       if (slot >= 0 && batchMesh?.mesh) {
-        batchMesh.mesh.releaseSlot(slot, entity)
+        getSpriteBatchOwnership(batchMesh.mesh).releaseSlot(slot, entity)
         batchMesh.mesh.syncCount()
       }
 
       // Clear the sprite's cached batch references — once we free the
       // slot, setter direct-write paths must fall back to standalone-mode
       // until the next batchAssignSystem pass.
-      const eid = entitySlot(entity)
-      const sprite = registry?.spriteArr[eid]
+      const sprite = registry?.spriteArr[entityIndex]
       if (sprite) {
         // Drop the picking-broadphase entry. The common removal path
         // (Sprite2D._unenrollFromWorld) has already nulled spriteArr AND
@@ -78,15 +80,20 @@ export function createBatchRemoveSystem(ownerWorld: World): (world: World, pendi
       }
 
       if (world.has(entity, BatchSlot)) {
-        world.patch(entity, BatchSlot, { batchEntity: 0, batchIdx: -1, slot: -1 }, false)
+        batchSlotStore.batchEntity[entityIndex] = 0
+        batchSlotStore.batchIdx[entityIndex] = -1
+        batchSlotStore.slot[entityIndex] = -1
       }
       if (world.has(entity, IsBatched)) world.remove(entity, IsBatched)
 
       // Recycle batch if empty
       if (registry && batchEntity && batchMesh?.mesh?.isEmpty) {
-        const meta = world.read(batchEntity, BatchMeta)
-        if (meta) {
-          const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
+        const batchIndex = entitySlot(batchEntity)
+        const sortLayer = batchMetaStore.sortLayer[batchIndex]
+        const materialId = batchMetaStore.materialId[batchIndex]
+        const layersMask = batchMetaStore.layersMask[batchIndex]
+        if (sortLayer !== undefined && materialId !== undefined && layersMask !== undefined) {
+          const key = computeRunKey(sortLayer, materialId, layersMask)
           const run = registry.runs.get(key)
           if (run) {
             recycleBatchIfEmpty(world, registry, batchEntity, run)

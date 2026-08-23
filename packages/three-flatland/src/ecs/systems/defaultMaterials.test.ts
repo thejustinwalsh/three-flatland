@@ -138,6 +138,66 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     group.dispose()
   })
 
+  it('runs world cleanup before an earlier user dispose listener throws the exact value 0', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const custom = new Sprite2DMaterial({ map: texture })
+    const userListener = (): void => {
+      throw 0
+    }
+    // Register before enrollment; EventDispatcher order previously let this
+    // abort dispatch before the world's later cleanup listener ran.
+    custom.addEventListener('dispose', userListener)
+    const group = new SpriteGroup()
+    const sprite = new Sprite2D({ texture, material: custom })
+    group.add(sprite)
+    group.update()
+    expect(sprite._batchMesh).not.toBeNull()
+
+    let thrown: unknown = Symbol('not-thrown')
+    try {
+      custom.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(sprite.material).toBe(custom)
+    expect(sprite.entity).toBeNull()
+    expect(sprite._batchMesh).toBeNull()
+    expect(sprite.isMesh).toBe(true)
+    expect(group.spriteCount).toBe(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
+    custom.removeEventListener('dispose', userListener)
+    group.dispose()
+  })
+
+  it('runs every world hook when two worlds share one user material', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const shared = new Sprite2DMaterial({ map: texture })
+    const groupA = new SpriteGroup()
+    const groupB = new SpriteGroup()
+    const spriteA = new Sprite2D({ texture, material: shared })
+    const spriteB = new Sprite2D({ texture, material: shared })
+    groupA.add(spriteA)
+    groupB.add(spriteB)
+    groupA.update()
+    groupB.update()
+    expect(spriteA._batchMesh).not.toBeNull()
+    expect(spriteB._batchMesh).not.toBeNull()
+
+    shared.dispose()
+
+    expect(spriteA.entity).toBeNull()
+    expect(spriteB.entity).toBeNull()
+    expect(spriteA._batchMesh).toBeNull()
+    expect(spriteB._batchMesh).toBeNull()
+    expect(groupA.spriteCount).toBe(0)
+    expect(groupB.spriteCount).toBe(0)
+    expect(warn).toHaveBeenCalledTimes(2)
+    groupA.dispose()
+    groupB.dispose()
+  })
+
   it('keeps a hierarchy sprite unbatched after custom material disposal until replacement', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const custom = new Sprite2DMaterial({ map: texture })

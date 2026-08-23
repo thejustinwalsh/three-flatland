@@ -4,18 +4,40 @@ import { BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { HierarchyStateTracker } from '../HierarchyStateTracker'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 const BatchRegistries = select(BatchRegistry)
 
-/** Scratch for quadHalfExtents — systems are single-threaded. */
-const _he = { hx: 0, hy: 0 }
-const _updatedParents = new Set<Object3D>()
 const _trackers = new WeakMap<RegistryData, HierarchyStateTracker>()
-const _rootInverse = new Matrix4()
-const _relativeMatrix = new Matrix4()
-const _relativeParents = new Map<Object3D, Matrix4>()
-const _relativeParentPool: Matrix4[] = []
-let _relativeParentPoolIndex = 0
+
+interface TransformScratch {
+  readonly halfExtents: { hx: number; hy: number }
+  readonly updatedParents: Set<Object3D>
+  readonly rootInverse: Matrix4
+  readonly relativeMatrix: Matrix4
+  readonly relativeParents: Map<Object3D, Matrix4>
+  readonly relativeParentPool: Matrix4[]
+  relativeParentPoolIndex: number
+}
+
+const _scratchByRegistry = new WeakMap<RegistryData, TransformScratch>()
+
+function transformScratch(registry: RegistryData): TransformScratch {
+  let scratch = _scratchByRegistry.get(registry)
+  if (!scratch) {
+    scratch = {
+      halfExtents: { hx: 0, hy: 0 },
+      updatedParents: new Set(),
+      rootInverse: new Matrix4(),
+      relativeMatrix: new Matrix4(),
+      relativeParents: new Map(),
+      relativeParentPool: [],
+      relativeParentPoolIndex: 0,
+    }
+    _scratchByRegistry.set(registry, scratch)
+  }
+  return scratch
+}
 
 /** Write a slot only when its visible or hidden matrix representation changed. */
 function syncInstanceSlot(buffer: Float32Array, offset: number, matrix: Matrix4, visible: boolean): boolean {
@@ -132,6 +154,7 @@ export function transformSyncSystem(world: World): void {
   const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
   if (!registry) return
   const meshSlots = registry.batchSlots
+  const scratch = transformScratch(registry)
 
   // Explicit SpriteGroup schedules run before their own normal matrix
   // compose. Refresh that shared hierarchy boundary once. Auto sprites'
@@ -139,9 +162,9 @@ export function transformSyncSystem(world: World): void {
   // hidden orchestration group runs.
   const group = registry.parentGroup
   group?.updateWorldMatrix(true, false)
-  _updatedParents.clear()
-  _relativeParents.clear()
-  _relativeParentPoolIndex = 0
+  scratch.updatedParents.clear()
+  scratch.relativeParents.clear()
+  scratch.relativeParentPoolIndex = 0
   let tracker = _trackers.get(registry)
   if (!tracker) {
     tracker = new HierarchyStateTracker()
@@ -151,8 +174,8 @@ export function transformSyncSystem(world: World): void {
   const rootChanged = group ? tracker.pathChanged(group, null, undefined, undefined, false) : false
   const rootIsIdentity = !group || isIdentity(group.matrixWorld)
   const rootVisible = hierarchyVisibleFrom(group)
-  if (group) _rootInverse.copy(group.matrixWorld).invert()
-  else _rootInverse.identity()
+  if (group) scratch.rootInverse.copy(group.matrixWorld).invert()
+  else scratch.rootInverse.identity()
 
   // Traverse one batch's packed active-member table to completion before
   // advancing to the next GPU buffer. Sorting only changes each member's
@@ -160,22 +183,44 @@ export function transformSyncSystem(world: World): void {
   // stable across sort permutations. Swap-removal keeps the table hole-free.
   for (const mesh of meshSlots) {
     if (!mesh) continue
-    const sprites = mesh.memberSprites
-    const memberSpan = mesh.memberSpan
+    const ownership = getSpriteBatchOwnership(mesh)
+    const sprites = ownership.memberSprites
+    const memberSpan = ownership.memberSpan()
     const buf = mesh.instanceMatrix.array as Float32Array
     for (let member = 0; member < memberSpan; member++) {
       const sprite = sprites[member]
       if (!sprite) continue
-      const slot = mesh.memberSlotAt(member)
+      const slot = ownership.memberSlotAt(member)
+      const owner = ownership.slotEntities[slot] ?? 0
 
       const o = slot * 16
       const directRoot = !sprite._autoRegistry && !sprite._hierarchyManaged
       const sourceParent = sprite._autoRegistry || sprite._hierarchyManaged ? sprite.parent : group
-      if (sourceParent && sourceParent !== group && !_updatedParents.has(sourceParent)) {
+      if (sourceParent && sourceParent !== group && !scratch.updatedParents.has(sourceParent)) {
         sourceParent.updateWorldMatrix(true, false)
-        _updatedParents.add(sourceParent)
+        scratch.updatedParents.add(sourceParent)
       }
       sprite.updateMatrix()
+      // updateMatrix() is virtual user code. Removal/disposal can synchronously
+      // unenroll the sprite while this pass still holds its borrowed member
+      // reference. Never project that stale sprite into a row now owned by a
+      // different entity (or leave its deferred-removal row visible).
+      const rowStillOwned = ownership.slotEntities[slot] === owner && ownership.spriteAtSlot(slot) === sprite
+      if (
+        owner === 0 ||
+        sprite.entity !== owner ||
+        sprite._batchMesh !== mesh ||
+        sprite._batchSlot !== slot ||
+        !rowStillOwned
+      ) {
+        // A deferred removal leaves ownership published until batchRemove runs
+        // next frame, so hide that stale row immediately. If user code released
+        // and reused the row reentrantly, however, its replacement is already
+        // authoritative and must not be zeroed here.
+        if (rowStillOwned) ownership.hideSlot(slot)
+        mesh.grid.remove(sprite)
+        continue
+      }
       const sourceVisible = sprite._batchVisibilityState()
       const pathChanged = tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
       if (!pathChanged && !rootChanged) {
@@ -198,18 +243,18 @@ export function transformSyncSystem(world: World): void {
       let relativeMatrix: Matrix4
       if (!sourceParent || sourceParent === group) relativeMatrix = sprite.matrix
       else {
-        let relativeParent = _relativeParents.get(sourceParent)
+        let relativeParent = scratch.relativeParents.get(sourceParent)
         if (!relativeParent) {
-          relativeParent = _relativeParentPool[_relativeParentPoolIndex]
+          relativeParent = scratch.relativeParentPool[scratch.relativeParentPoolIndex]
           if (!relativeParent) {
             relativeParent = new Matrix4()
-            _relativeParentPool.push(relativeParent)
+            scratch.relativeParentPool.push(relativeParent)
           }
-          _relativeParentPoolIndex++
-          relativeParent.multiplyMatrices(_rootInverse, sourceParent.matrixWorld)
-          _relativeParents.set(sourceParent, relativeParent)
+          scratch.relativeParentPoolIndex++
+          relativeParent.multiplyMatrices(scratch.rootInverse, sourceParent.matrixWorld)
+          scratch.relativeParents.set(sourceParent, relativeParent)
         }
-        relativeMatrix = _relativeMatrix.multiplyMatrices(relativeParent, sprite.matrix)
+        relativeMatrix = scratch.relativeMatrix.multiplyMatrices(relativeParent, sprite.matrix)
       }
 
       if (pathChanged) {
@@ -225,8 +270,22 @@ export function transformSyncSystem(world: World): void {
       // (the same translation the GPU draws at). No-op inside the grid when the
       // sprite's cell coverage hasn't changed — the static-sprite frame.
       if (hierarchyVisible) {
-        quadHalfExtents(worldMatrix[0]!, worldMatrix[4]!, worldMatrix[1]!, worldMatrix[5]!, sprite.hitRadius, _he)
-        mesh.grid.update(sprite, worldMatrix[12]!, worldMatrix[13]!, _he.hx, _he.hy, worldMatrix[14]!)
+        quadHalfExtents(
+          worldMatrix[0]!,
+          worldMatrix[4]!,
+          worldMatrix[1]!,
+          worldMatrix[5]!,
+          sprite.hitRadius,
+          scratch.halfExtents
+        )
+        mesh.grid.update(
+          sprite,
+          worldMatrix[12]!,
+          worldMatrix[13]!,
+          scratch.halfExtents.hx,
+          scratch.halfExtents.hy,
+          worldMatrix[14]!
+        )
       } else {
         mesh.grid.remove(sprite)
       }

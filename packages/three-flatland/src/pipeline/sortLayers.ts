@@ -22,7 +22,7 @@
 
 /** Configuration carried by a declared sort layer. */
 export interface SortLayerConfig {
-  /** Numeric order compiled down to three's `renderOrder` on batches. */
+  /** Finite signed 32-bit order compiled down to three's `renderOrder` on batches. */
   renderOrder: number
 }
 
@@ -71,7 +71,7 @@ export type SortLayerName = Extract<keyof SortLayerRegistry, string>
 /**
  * Anything assignable to `sprite.sortLayer`: a registered name (typed,
  * autocompleted) or a raw numeric order (escape hatch for dynamic
- * layering schemes).
+ * layering schemes). Numeric orders must be finite signed 32-bit integers.
  */
 export type SortLayerValue = SortLayerName | (number & {})
 
@@ -116,13 +116,22 @@ const declaredSortLayers = new Map<string, SortLayerConfig>([
   ['ui', { renderOrder: SortLayers.UI }],
 ])
 
+function assertSortLayerOrder(value: number): number {
+  if (!Number.isInteger(value) || value < -0x80000000 || value > 0x7fffffff) {
+    throw new RangeError(`three-flatland: sortLayer order must be a finite signed 32-bit integer; received ${value}`)
+  }
+  return value
+}
+
 /**
  * Declare (or redeclare) a named sort layer.
  *
  * Pair with a `SortLayerRegistry` interface augmentation for typed use.
+ *
+ * @throws {RangeError} When `config.renderOrder` is not a finite signed 32-bit integer.
  */
 export function declareSortLayer(name: SortLayerName, config: SortLayerConfig): SortLayerConfig {
-  declaredSortLayers.set(name, { ...config })
+  declaredSortLayers.set(name, { ...config, renderOrder: assertSortLayerOrder(config.renderOrder) })
   return declaredSortLayers.get(name)!
 }
 
@@ -136,11 +145,13 @@ export function getSortLayer(name: SortLayerName): SortLayerConfig | undefined {
  *
  * Unknown names resolve to `'default'` (0) with a dev warning — a typo'd
  * name is already a TS error, so this only fires for untyped callers.
+ *
+ * @throws {RangeError} When a numeric value is not a finite signed 32-bit integer.
  */
 export function resolveSortLayer(value: SortLayerValue): number {
-  if (typeof value === 'number') return value
+  if (typeof value === 'number') return assertSortLayerOrder(value)
   const config = declaredSortLayers.get(value)
-  if (config) return config.renderOrder
+  if (config) return assertSortLayerOrder(config.renderOrder)
   console.warn(
     `three-flatland: unknown sortLayer '${value}' — declare it with declareSortLayer() first. Falling back to 'default' (0).`
   )

@@ -1,4 +1,4 @@
-import { select, type AnyTrait, type World } from '../ecs/runtime'
+import { select, type Selector, type World } from '../ecs/runtime'
 import type { EntityHandle, WorldHandle } from '../internal/ecs-handles'
 import type { SpriteBatch } from './SpriteBatch'
 import {
@@ -29,6 +29,19 @@ export const IsLitBatch: BatchQueryTag = _IsLitBatch as unknown as BatchQueryTag
 /** Batch classification: material is unlit. */
 export const IsUnlitBatch: BatchQueryTag = _IsUnlitBatch as unknown as BatchQueryTag
 
+const AlphaBlendedBatches = select(_IsAlphaBlendedBatch, BatchMesh)
+const AlphaTestedBatches = select(_IsAlphaTestedBatch, BatchMesh)
+const LitBatches = select(_IsLitBatch, BatchMesh)
+const UnlitBatches = select(_IsUnlitBatch, BatchMesh)
+
+function selectorFor(tag: BatchQueryTag): Selector {
+  if (tag === IsAlphaBlendedBatch) return AlphaBlendedBatches
+  if (tag === IsAlphaTestedBatch) return AlphaTestedBatches
+  if (tag === IsLitBatch) return LitBatches
+  if (tag === IsUnlitBatch) return UnlitBatches
+  throw new TypeError('three-flatland: unsupported batch classification token')
+}
+
 /**
  * Read-only view over a world's batches: a `Map<RunKey, SpriteBatch[]>`
  * with a classification query —
@@ -54,7 +67,7 @@ export class BatchQueryView extends Map<string, SpriteBatch[]> {
     if (!this._world) return []
     const world = this._world as World
     const result: SpriteBatch[] = []
-    for (const entity of world.view(select(tag as unknown as AnyTrait, BatchMesh))) {
+    for (const entity of world.view(selectorFor(tag))) {
       const mesh = world.read(entity, BatchMesh)?.mesh
       if (mesh) result.push(mesh)
     }

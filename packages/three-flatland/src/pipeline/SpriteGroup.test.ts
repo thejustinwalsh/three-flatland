@@ -1,12 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { Texture } from 'three'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Texture, type Group, type Object3D } from 'three'
 import { SpriteGroup } from './SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { SortLayers } from './sortLayers'
-import { SpriteColor, BatchSlot, IsBatched } from '../ecs/traits'
+import { SpriteColor, BatchMesh, BatchRegistry, BatchSlot, IsBatched } from '../ecs/traits'
 import { batchEntityFor, batchFor, readRequired, requiredEntity } from '../ecs/testUtils.type-test'
+import { registryFor } from '../ecs/testUtils.type-test'
+import { select, type World } from '../ecs/runtime'
+import { MAX_BATCH_SIZE } from '../internal/max-batch-size'
+import { createSceneGraphSyncSystem } from '../ecs/systems/sceneGraphSyncSystem'
+
+const INVALID_BATCH_SIZES = [0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, MAX_BATCH_SIZE + 1]
+const BatchMeshes = select(BatchMesh)
 
 // Create the effect class once so every test exercises the same declared trait.
 const DissolveRenderer = createMaterialEffect({
@@ -50,6 +57,28 @@ describe('SpriteGroup', () => {
 
     expect(renderer.autoSort).toBe(false)
     expect(renderer.frustumCulling).toBe(false)
+  })
+
+  it.each(INVALID_BATCH_SIZES)('rejects invalid constructor maxBatchSize %s', (maxBatchSize) => {
+    expect(() => new SpriteGroup({ maxBatchSize })).toThrow(
+      `maxBatchSize must be a positive safe integer no greater than ${MAX_BATCH_SIZE}`
+    )
+  })
+
+  it.each(INVALID_BATCH_SIZES)('atomically rejects React-style maxBatchSize property assignment %s', (maxBatchSize) => {
+    renderer = new SpriteGroup()
+    const registry = registryFor(renderer.world as World)
+    const previousMaxBatchSize = renderer.maxBatchSize
+    const previousRegistryMaxBatchSize = registry.maxBatchSize
+    const previousTierLadder = registry.tierLadder
+
+    expect(() => Object.assign(renderer!, { maxBatchSize })).toThrow(
+      `maxBatchSize must be a positive safe integer no greater than ${MAX_BATCH_SIZE}`
+    )
+
+    expect(renderer.maxBatchSize).toBe(previousMaxBatchSize)
+    expect(registry.maxBatchSize).toBe(previousRegistryMaxBatchSize)
+    expect(registry.tierLadder).toBe(previousTierLadder)
   })
 
   it('should add sprites', () => {
@@ -173,6 +202,8 @@ describe('SpriteGroup', () => {
 
     renderer.add(sprite)
     renderer.update()
+    const world = renderer.world as World
+    const batchEntity = registryFor(world).activeBatches[0]!
     renderer.clear()
 
     expect(renderer.isEmpty).toBe(true)
@@ -181,6 +212,81 @@ describe('SpriteGroup', () => {
     expect(sprite.entity).toBeNull()
     expect(sprite._batchMesh).toBeNull()
     expect(sprite.isMesh).toBe(true)
+    expect(world.isAlive(batchEntity)).toBe(false)
+    expect(world.view(BatchMeshes)).toHaveLength(0)
+
+    const replacement = new Sprite2D({ texture, material })
+    renderer.add(replacement)
+    renderer.update()
+    expect(world.view(BatchMeshes)).toHaveLength(1)
+    renderer.clear()
+    expect(world.view(BatchMeshes)).toHaveLength(0)
+  })
+
+  it('destroys batch entities when a mesh disposal listener throws during clear', () => {
+    renderer = new SpriteGroup()
+    renderer.add(new Sprite2D({ texture, material }))
+    renderer.update()
+    const world = renderer.world as World
+    const batchEntity = registryFor(world).activeBatches[0]!
+    const mesh = world.read(batchEntity, BatchMesh)!.mesh!
+    mesh.geometry.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      renderer.clear()
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(0)
+    expect(world.isAlive(batchEntity)).toBe(false)
+    expect(world.view(BatchMeshes)).toHaveLength(0)
+    expect(renderer.isEmpty).toBe(true)
+  })
+
+  it('finishes terminal disposal after active and pooled mesh listeners throw', () => {
+    renderer = new SpriteGroup({ maxBatchSize: 1 })
+    const activeSprite = new Sprite2D({ texture, material })
+    const pooledSprite = new Sprite2D({ texture, material })
+    renderer.addSprites(activeSprite, pooledSprite)
+    renderer.update()
+
+    const world = renderer.world as World
+    const registry = registryFor(world)
+    renderer.remove(pooledSprite)
+    renderer.update()
+    expect(registry.activeBatches).toHaveLength(1)
+    expect(registry.batchPool).toHaveLength(1)
+
+    const activeMesh = world.read(registry.activeBatches[0]!, BatchMesh)!.mesh!
+    const pooledMesh = world.read(registry.batchPool[0]!, BatchMesh)!.mesh!
+    const activeListener = vi.fn(() => {
+      throw 0
+    })
+    const pooledListener = vi.fn(() => {
+      throw 0
+    })
+    activeMesh.geometry.addEventListener('dispose', activeListener)
+    pooledMesh.geometry.addEventListener('dispose', pooledListener)
+    const removeMaterialListener = vi.spyOn(material, '_removePreDisposeHook')
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      renderer.dispose()
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(0)
+    expect(activeListener).toHaveBeenCalledOnce()
+    expect(pooledListener).toHaveBeenCalledOnce()
+    expect(registry.activeBatches).toEqual([])
+    expect(registry.batchPool).toEqual([])
+    expect(registry.spriteArr).toEqual([])
+    expect(world.disposed).toBe(true)
+    expect(removeMaterialListener).toHaveBeenCalledWith(expect.any(Function))
+    renderer = null
   })
 
   it('should add batch objects to scene graph', () => {
@@ -191,6 +297,56 @@ describe('SpriteGroup', () => {
     renderer.update()
 
     expect(renderer.children.length).toBe(1)
+  })
+
+  it('does no batch reads or parent work on a clean scene-graph frame', () => {
+    renderer = new SpriteGroup()
+    renderer.add(new Sprite2D({ material }))
+    renderer.update()
+    const world = renderer.world as World
+    expect(registryFor(world).renderOrderDirty).toBe(false)
+
+    const readTraits: unknown[] = []
+    const instrumentedWorld = new Proxy(world, {
+      get(target, property, receiver) {
+        if (property !== 'read') return Reflect.get(target, property, receiver)
+        return (entity: Parameters<World['read']>[0], trait: Parameters<World['read']>[1]) => {
+          readTraits.push(trait)
+          return target.read(entity, trait)
+        }
+      },
+    }) as World
+    const untouchedParent = {
+      get children(): never {
+        throw new Error('clean scene-graph sync touched parent children')
+      },
+    } as unknown as Group
+    const parentAdd = vi.fn((..._objects: Object3D[]) => untouchedParent)
+    const parentRemove = vi.fn((..._objects: Object3D[]) => untouchedParent)
+
+    createSceneGraphSyncSystem()(instrumentedWorld, untouchedParent, parentAdd, parentRemove)
+
+    expect(readTraits).toEqual([BatchRegistry])
+    expect(parentAdd).not.toHaveBeenCalled()
+    expect(parentRemove).not.toHaveBeenCalled()
+  })
+
+  it('syncs scene children when a batch is created, recycled, and reused', () => {
+    renderer = new SpriteGroup({ maxBatchSize: 1 })
+    const first = new Sprite2D({ material })
+    renderer.add(first)
+    renderer.update()
+    const firstBatch = renderer.children.find((child) => (child as { isSpriteBatch?: boolean }).isSpriteBatch)
+    expect(firstBatch).toBeDefined()
+
+    renderer.remove(first)
+    renderer.update()
+    expect(renderer.children.some((child) => (child as { isSpriteBatch?: boolean }).isSpriteBatch)).toBe(false)
+
+    renderer.add(new Sprite2D({ material }))
+    renderer.update()
+    const reusedBatch = renderer.children.find((child) => (child as { isSpriteBatch?: boolean }).isSpriteBatch)
+    expect(reusedBatch).toBe(firstBatch)
   })
 
   // ============================================
@@ -283,6 +439,7 @@ describe('SpriteGroup', () => {
 
   it('should sync effect data through updateMatrixWorld', () => {
     renderer = new SpriteGroup()
+    material.registerEffect(DissolveRenderer)
     const sprite = new Sprite2D({ material })
     const dissolve = new DissolveRenderer()
     sprite.addEffect(dissolve)

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { Raycaster, Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
-import { proxyPickToBatch, unproxyPickFromBatch, retireBatchPicking } from './batchPicking'
+import { proxyPickToBatch, unproxyPickFromBatch, retireBatchPicking, recordBatchRaycastResult } from './batchPicking'
 
 /**
  * R3F batch-root picking rewires which object R3F raycasts: a batched sprite
@@ -104,7 +104,7 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     expect(internal.interaction).toEqual([s])
   })
 
-  it('uses the captured interaction list when the external store later throws', () => {
+  it('uses the captured internal owner when the external store later throws', () => {
     let storeAvailable = true
     const throwingStore: FakeStore = {
       getState: () => {
@@ -120,6 +120,20 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     expect(() => unproxyPickFromBatch(s, batch)).not.toThrow()
     expect(s._pickProxied).toBe(false)
     expect(typeof s.raycast).toBe('function')
+    expect(internal.interaction).toEqual([s])
+  })
+
+  it('follows an interaction array replaced by R3F after registration', () => {
+    const s = makeManagedSprite(store)
+    internal.interaction.push(s)
+    proxyPickToBatch(s, batch)
+    expect(internal.interaction).toEqual([batch])
+
+    // R3F v10's removeInteractivity replaces this array with filter(). The
+    // registration must follow the live field, not mutate the stale array.
+    internal.interaction = [...internal.interaction]
+    unproxyPickFromBatch(s, batch)
+
     expect(internal.interaction).toEqual([s])
   })
 
@@ -208,12 +222,37 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     internal.pointerMap.set(9, { initialHits: [b] })
     const batchHandlers = (batch as unknown as { __r3f: { handlers: Record<string, (e: unknown) => void> } }).__r3f
       .handlers
+    recordBatchRaycastResult(batch, true)
     batchHandlers.onPointerMissed({ pointerId: 7 })
     expect(missed).toEqual(['b'])
 
     missed.length = 0
+    recordBatchRaycastResult(batch, true)
     batchHandlers.onPointerMissed({ nativeEvent: { pointerId: 9 } })
     expect(missed).toEqual(['a'])
+
+    missed.length = 0
+    internal.pointerMap.set(0, { initialHits: [a] })
+    recordBatchRaycastResult(batch, true)
+    batchHandlers.onPointerMissed({})
+    expect(missed).toEqual(['b'])
+  })
+
+  it('forwards a cancelled click to every member when the current click hits empty space', () => {
+    const missed: string[] = []
+    const a = makeManagedSprite(store, { onClick() {}, onPointerMissed: () => missed.push('a') })
+    const b = makeManagedSprite(store, { onClick() {}, onPointerMissed: () => missed.push('b') })
+    internal.interaction.push(a, b)
+    proxyPickToBatch(a, batch)
+    proxyPickToBatch(b, batch)
+    internal.pointerMap.set(7, { initialHits: [a] })
+    recordBatchRaycastResult(batch, false)
+
+    const batchHandlers = (batch as unknown as { __r3f: { handlers: Record<string, (e: unknown) => void> } }).__r3f
+      .handlers
+    batchHandlers.onPointerMissed({ pointerId: 7 })
+
+    expect(missed.sort()).toEqual(['a', 'b'])
   })
 
   it('no-ops for a vanilla (non-R3F) sprite', () => {

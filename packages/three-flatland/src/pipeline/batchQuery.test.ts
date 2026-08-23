@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -9,6 +9,7 @@ import type { RegistryData } from '../ecs/batchUtils'
 import { vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { readRequired } from '../ecs/testUtils.type-test'
+import type { Selector, World } from '../ecs/runtime'
 
 function makeTexture(): Texture {
   const texture = new Texture()
@@ -63,6 +64,21 @@ describe('batch classification traits + query facade', () => {
     expect(litBatches.length).toBe(1)
     expect(unlitBatches.length).toBe(1)
     expect(litBatches[0]!.spriteMaterial).toBe(lit)
+  })
+
+  it('reuses one persistent selector for repeated classification reads', () => {
+    group.add(new Sprite2D({ texture }))
+    group.update()
+    const world = group.world as World
+    const view = vi.spyOn(world, 'view')
+
+    for (let index = 0; index < 100; index++) group.batches.where(IsUnlitBatch)
+
+    const selectors = view.mock.calls.map(([selector]) => selector as Selector)
+    // One stable BatchRegistry selector builds each facade and one stable
+    // classification selector serves `where`; neither grows with history.
+    expect(selectors).toHaveLength(200)
+    expect(new Set(selectors).size).toBe(2)
   })
 
   it('every batch carries BatchGeometryStrategy { kind: synth-quad }', () => {

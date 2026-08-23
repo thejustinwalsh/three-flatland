@@ -70,7 +70,11 @@ export type ClipRect = readonly [x: number, y: number, width: number, height: nu
  * Options for SpriteGroup.
  */
 export interface SpriteGroupOptions {
-  /** Maximum sprites per batch. Omit to use 1024 → 4096 → 16384 capacity tiers; set a value to pin every batch. */
+  /**
+   * Maximum sprites per batch. Must be a positive safe integer no greater
+   * than the world's 20-bit entity capacity (1,048,576). Omit to use
+   * 1024 → 4096 → 16384 capacity tiers; set a value to pin every batch.
+   */
   maxBatchSize?: number
   /** Enable automatic sorting (default: true) */
   autoSort?: boolean

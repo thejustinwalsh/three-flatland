@@ -7,6 +7,7 @@ import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { materialVersionSystem } from './materialVersionSystem'
 import { BatchSlot, IsBatched } from '../traits'
 import { batchFor, readRequired, requiredEntity } from '../testUtils.type-test'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 function makeTexture(): Texture {
   const texture = new Texture()
@@ -52,7 +53,7 @@ describe('materialVersionSystem', () => {
     expect(slotBAfter).toBe(slotABefore)
 
     const mesh = batchFor(group.world, a)
-    const releaseSlotSpy = vi.spyOn(mesh, 'releaseSlot')
+    const releaseSlotSpy = vi.spyOn(getSpriteBatchOwnership(mesh), 'releaseSlot')
 
     // Bump the material's effect schema version so materialVersionSystem
     // detects the mismatch and evicts every sprite using it.

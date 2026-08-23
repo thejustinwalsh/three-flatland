@@ -1,12 +1,11 @@
 import { trait } from './runtime'
 import { Vector2 } from 'three'
-import type { AnyTrait, Entity, World } from './runtime'
+import type { Entity, World } from './runtime'
 import type { Group, Object3D, OrthographicCamera, Scene, Texture } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DMaterial, ColorTransformFn } from '../materials/Sprite2DMaterial'
-import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { LightEffect } from '../lights/LightEffect'
 import type { LightStore } from '../lights/LightStore'
 import type { Light2D } from '../lights/Light2D'
@@ -85,9 +84,8 @@ export const BatchSlot = trait({ batchEntity: 0, batchIdx: -1, slot: -1 })
 
 /**
  * AoS — reference to the SpriteBatch that owns GPU buffers AND slot management.
- * SpriteBatch already has: writeColor(), writeUV(), writeFlip(),
- * writeMatrix(), writeCustom(), writeEffectSlot(), reserveSlot(), commitSlot(),
- * and ownership-checked releaseSlot().
+ * Public buffer writes stay on SpriteBatch; private physical-row ownership is
+ * coordinated by the batching systems through their internal friend access.
  */
 export const BatchMesh = trait(() => ({
   mesh: null as SpriteBatch | null,
@@ -181,6 +179,8 @@ export const BatchRegistry = trait(() => ({
   tierLadder: null as readonly number[] | null,
   /** Material references for schema version tracking. */
   materialRefs: new Map<number, { material: Sprite2DMaterial; version: number }>(),
+  /** Retired ids awaiting one batched material-liveness sweep. */
+  materialReleaseCandidates: new Set<number>(),
   /**
    * Per-texture default Sprite2DMaterials, scoped to this world —
    * replaces the cross-world static cache footgun. Registering an
@@ -201,8 +201,6 @@ export const BatchRegistry = trait(() => ({
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: [] as (Sprite2D | null)[],
-  /** Cached effect traits across all materials. Populated by materialVersionSystem. */
-  effectTraits: new Map() as Map<AnyTrait, typeof MaterialEffect>,
   /** Entities whose destruction is deferred to the top of the next frame. */
   pendingDestroy: [] as Entity[],
   /** The SpriteGroup (parent Group) for scene graph sync. */

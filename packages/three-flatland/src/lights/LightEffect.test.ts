@@ -12,6 +12,85 @@ const stubLightFn: ColorTransformFn = (ctx) => ctx.color
 // ============================================
 
 describe('createLightEffect', () => {
+  it('rejects reserved and flattened-collision schema keys atomically', () => {
+    const make = (name: string, schema: Record<string, unknown>) =>
+      createLightEffect({ name, schema: schema as never, light: () => stubLightFn })
+    const Effects = [
+      make('light_reserved_constructor', { constructor: 1 }),
+      make('light_reserved_own', { name: 1 }),
+      make('light_reserved_method', { update: 1 }),
+      make('light_flattened_collision', { vector: [0, 0], vector_0: 1 }),
+      make('light_invalid_non_array', { value: 'invalid' }),
+      make('light_invalid_vec1', { value: [1] }),
+      make('light_invalid_vec5', { value: [1, 2, 3, 4, 5] }),
+      make('light_invalid_component', { value: [1, 'invalid'] }),
+      make('light_invalid_scalar', { value: Number.POSITIVE_INFINITY }),
+    ]
+
+    for (const Effect of Effects) {
+      expect(() => new Effect()).toThrow(/conflicts|flatten|numeric tuple|finite/)
+      expect(Effect._initialized).toBe(false)
+    }
+  })
+
+  it('rejects schema accessors and initializes from one cloned descriptor snapshot', () => {
+    let getterReads = 0
+    const accessorSchema = Object.defineProperty({}, 'vector', {
+      enumerable: true,
+      get() {
+        getterReads++
+        return [1, 2]
+      },
+    })
+    const AccessorEffect = createLightEffect({
+      name: 'light_accessor_schema',
+      schema: accessorSchema as never,
+      light: () => stubLightFn,
+    })
+    expect(() => new AccessorEffect()).toThrow(/own data property; accessors are not supported/)
+    expect(getterReads).toBe(0)
+    expect(AccessorEffect._initialized).toBe(false)
+
+    let descriptorReads = 0
+    const proxySchema = new Proxy(
+      { vector: [1, 2] },
+      {
+        getOwnPropertyDescriptor(target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, property)!
+          descriptorReads++
+          return { ...descriptor, value: descriptorReads === 1 ? [1, 2] : [1, 2, 3, 4, 5] }
+        },
+      }
+    )
+    const SnapshotEffect = createLightEffect({
+      name: 'light_snapshot_schema',
+      schema: proxySchema as never,
+      light: () => stubLightFn,
+    })
+    const snapshot = new SnapshotEffect()
+    expect(descriptorReads).toBe(1)
+    expect(SnapshotEffect._fields).toEqual([{ name: 'vector', size: 2, default: [1, 2] }])
+    expect(snapshot.vector).toEqual([1, 2])
+  })
+
+  it('uses null-prototype records for valid metadata, snapshots, constants, and uniforms', () => {
+    const Effect = createLightEffect({
+      name: 'light_null_proto_records',
+      schema: { constructor_value: 1, toString_value: () => 7 },
+      light: () => stubLightFn,
+    })
+    const effect = new Effect()
+
+    expect(Object.getPrototypeOf(Effect._fieldKeys)).toBeNull()
+    expect(Object.getPrototypeOf(Effect._constantFactories)).toBeNull()
+    expect(Object.getPrototypeOf(effect._defaults)).toBeNull()
+    expect(Object.getPrototypeOf(effect._constants)).toBeNull()
+    expect(Object.getPrototypeOf(effect._uniforms)).toBeNull()
+    effect.constructor_value = 9
+    expect(effect.constructor_value).toBe(9)
+    expect(effect.toString_value).toBe(7)
+  })
+
   it('should create a class with correct lightName and schema', () => {
     const Simple = createLightEffect({
       name: 'defaultLight',
@@ -90,6 +169,58 @@ describe('class-based LightEffect', () => {
     const effect = new TestLightEffect()
     expect(effect.name).toBe('testLight')
     expect(effect.brightness).toBe(1.0)
+    expect(Object.getOwnPropertyDescriptor(effect, 'brightness')?.configurable).toBe(false)
+  })
+
+  it('rejects emitted subclass fields that would shadow uniform or constant accessors', () => {
+    class UniformShadow extends LightEffect {
+      static readonly lightName = 'light_uniform_shadow'
+      static readonly lightSchema = { intensity: 0 } as const
+      intensity = 1
+      static override buildLightFn(): ColorTransformFn {
+        return stubLightFn
+      }
+    }
+    class ConstantShadow extends LightEffect {
+      static readonly lightName = 'light_constant_shadow'
+      static readonly lightSchema = { mode: () => 'base' } as const
+      mode = 'field'
+      static override buildLightFn(): ColorTransformFn {
+        return stubLightFn
+      }
+    }
+
+    expect(() => new UniformShadow()).toThrow(/Cannot redefine property: intensity/)
+    expect(() => new ConstantShadow()).toThrow(/Cannot redefine property: mode/)
+  })
+
+  it('initializes independent metadata for second-level subclasses', () => {
+    class ParentEffect extends LightEffect {
+      static readonly lightName = 'parent_light_effect'
+      static readonly lightSchema: typeof LightEffect.lightSchema = { parentValue: 1 }
+      declare parentValue: number
+      static override buildLightFn(): ColorTransformFn {
+        return stubLightFn
+      }
+    }
+    class ChildEffect extends ParentEffect {
+      static override readonly lightName = 'child_light_effect'
+      static override readonly lightSchema: typeof LightEffect.lightSchema = { childValue: 2 }
+      declare childValue: number
+      static override buildLightFn(): ColorTransformFn {
+        return stubLightFn
+      }
+    }
+
+    const parent = new ParentEffect()
+    const child = new ChildEffect()
+
+    expect(parent.parentValue).toBe(1)
+    expect(child.childValue).toBe(2)
+    expect(ParentEffect._fields.map(({ name }) => name)).toEqual(['parentValue'])
+    expect(ChildEffect._fields.map(({ name }) => name)).toEqual(['childValue'])
+    expect(Object.hasOwn(ChildEffect, '_initialized')).toBe(true)
+    expect(ChildEffect._trait).not.toBe(ParentEffect._trait)
   })
 
   it('should support needsShadows override', () => {
@@ -143,9 +274,15 @@ describe('LightEffect instances', () => {
     })
 
     const instance = new Effect()
+    const baseClass: typeof LightEffect = Effect
+    expect(baseClass._fieldKeys.tint).toEqual(['tint_0', 'tint_1', 'tint_2'])
+    expect(baseClass._fieldMap.get('tint')?.size).toBe(3)
     expect(instance.tint).toEqual([1, 0, 0])
 
     instance.tint = [0, 1, 0]
+    expect(instance.tint).toEqual([0, 1, 0])
+
+    expect(() => instance._setField('tint', [1, 2, 3, 4])).toThrow(/3 numeric components/)
     expect(instance.tint).toEqual([0, 1, 0])
   })
 

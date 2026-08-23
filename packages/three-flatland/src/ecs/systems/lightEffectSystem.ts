@@ -5,20 +5,34 @@ import type { LightEffectRuntimeContext } from '../../lights/LightEffect'
 const LightingContexts = select(LightingContext)
 const ShadowPipelines = select(ShadowPipeline)
 
-// Module-scoped scratch reused every frame — mutated in place so the
-// per-frame update path stays zero-alloc past warmup (matches the perf
-// conventions in transformSyncSystem / OcclusionPass). Field shape mirrors
-// LightEffectRuntimeContext exactly; every field is reassigned below before
-// the context is handed to the effect, so the null/[] seeds never leak.
-const _runtimeCtx = {
-  renderer: null,
-  camera: null,
-  lightStore: null,
-  sdfGenerator: null,
-  lights: [],
-  worldSize: null,
-  worldOffset: null,
-} as unknown as LightEffectRuntimeContext
+// One scratch context per world keeps the per-frame path allocation-free
+// after warmup without sharing mutable state across synchronously nested
+// renders. Terminal owners explicitly delete their entry so a retained public
+// world handle cannot keep renderer/camera state alive until that handle is
+// itself collected.
+const _runtimeContexts = new WeakMap<World, LightEffectRuntimeContext>()
+
+/** Release a world's renderer-bearing scratch context during terminal disposal. @internal */
+export function releaseLightEffectRuntimeContext(world: World): boolean {
+  return _runtimeContexts.delete(world)
+}
+
+function runtimeContextFor(world: World): LightEffectRuntimeContext {
+  let context = _runtimeContexts.get(world)
+  if (!context) {
+    context = {
+      renderer: null,
+      camera: null,
+      lightStore: null,
+      sdfGenerator: null,
+      lights: [],
+      worldSize: null,
+      worldOffset: null,
+    } as unknown as LightEffectRuntimeContext
+    _runtimeContexts.set(world, context)
+  }
+  return context
+}
 
 /**
  * Run LightEffect lifecycle: lazy init, ordered surface resize, and update.
@@ -52,18 +66,19 @@ export function lightEffectSystem(world: World): void {
   worldSize.set(cam.right - cam.left, cam.top - cam.bottom)
   worldOffset.set(cam.left, cam.bottom)
 
-  // Mutate the module-scoped scratch in place — no per-frame allocation.
-  _runtimeCtx.renderer = ctx.renderer
-  _runtimeCtx.camera = cam
-  _runtimeCtx.lightStore = ctx.lightStore
-  _runtimeCtx.sdfGenerator = sdfGenerator
-  _runtimeCtx.lights = ctx.lights
-  _runtimeCtx.worldSize = worldSize
-  _runtimeCtx.worldOffset = worldOffset
+  // Mutate this world's scratch in place — no per-frame allocation.
+  const runtimeCtx = runtimeContextFor(world)
+  runtimeCtx.renderer = ctx.renderer
+  runtimeCtx.camera = cam
+  runtimeCtx.lightStore = ctx.lightStore
+  runtimeCtx.sdfGenerator = sdfGenerator
+  runtimeCtx.lights = ctx.lights
+  runtimeCtx.worldSize = worldSize
+  runtimeCtx.worldOffset = worldOffset
 
   // Lazy init on first render
   if (!ctx.initialized) {
-    ctx.effect.init(_runtimeCtx)
+    ctx.effect.init(runtimeCtx)
     ctx.effect._initialized = true
     ctx.initialized = true
     ctx.resizePending = true
@@ -77,5 +92,5 @@ export function lightEffectSystem(world: World): void {
   }
 
   // Per-frame update (tiling, SDF shadows, radiance cascades, etc.)
-  ctx.effect.update(_runtimeCtx)
+  ctx.effect.update(runtimeCtx)
 }

@@ -75,6 +75,12 @@ function within(file, directory) {
   return path === '' || (!path.startsWith(`..${sep}`) && path !== '..')
 }
 
+function containsForbidden(source, pattern) {
+  if (pattern.includes('/')) return source.includes(pattern)
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?<![$\\w])${escaped}(?![$\\w])`).test(source)
+}
+
 const pending = [...roots]
 const visited = new Set()
 const parent = new Map()
@@ -100,7 +106,7 @@ while (pending.length > 0) {
   }
   const source = readFileSync(file, 'utf8')
   for (const pattern of forbidden) {
-    if (source.includes(pattern)) {
+    if (containsForbidden(source, pattern)) {
       violations.push(`${relative(packageDirectory, file)} contains ${JSON.stringify(pattern)}`)
     }
   }

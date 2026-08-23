@@ -49,10 +49,51 @@ import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
 import { unproxyPickFromBatch } from '../react/batchPicking'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
-
-const BatchRegistries = select(BatchRegistry)
 import type { Registry } from '../orchestration/registry'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
+
+let nextEffectConstantIdentity = 1
+const effectConstantObjectIdentities = new WeakMap<object, number>()
+const effectConstantSymbolIdentities = new Map<symbol, number>()
+
+function effectConstantIdentity(value: object | symbol): number {
+  if (typeof value === 'symbol') {
+    const existing = effectConstantSymbolIdentities.get(value)
+    if (existing !== undefined) return existing
+    const identity = nextEffectConstantIdentity++
+    effectConstantSymbolIdentities.set(value, identity)
+    return identity
+  }
+  const existing = effectConstantObjectIdentities.get(value)
+  if (existing !== undefined) return existing
+  const identity = nextEffectConstantIdentity++
+  effectConstantObjectIdentities.set(value, identity)
+  return identity
+}
+
+function encodeEffectConstant(value: unknown): string {
+  if (value === null) return 'null'
+  switch (typeof value) {
+    case 'undefined':
+      return 'undefined'
+    case 'string':
+      return `string:${value.length}:${value}`
+    case 'number':
+      return `number:${Object.is(value, -0) ? '-0' : String(value)}`
+    case 'boolean':
+      return `boolean:${value ? '1' : '0'}`
+    case 'bigint':
+      return `bigint:${value}`
+    case 'symbol':
+      return `symbol:${effectConstantIdentity(value)}`
+    case 'function':
+    case 'object':
+      return `reference:${effectConstantIdentity(value)}`
+  }
+  throw new TypeError(`Unsupported effect constant type: ${typeof value}`)
+}
+
+const BatchRegistries = select(BatchRegistry)
 
 // Types the build-time `process.env` read without requiring @types/node
 // (shadows the global where present; erased at compile).
@@ -1183,19 +1224,13 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _constantsKey(constants: Record<string, unknown>): string {
-    const parts: string[] = []
-    for (const [key, value] of Object.entries(constants)) {
-      if (value && typeof value === 'object' && 'id' in value) {
-        parts.push(`${key}=${(value as { id: number }).id}`)
-      } else if (value == null) {
-        parts.push(`${key}=null`)
-      } else {
-        parts.push(
-          `${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`
-        )
-      }
-    }
-    return parts.join(',')
+    return Object.entries(constants)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => {
+        const encoded = encodeEffectConstant(value)
+        return `${key.length}:${key}:${encoded.length}:${encoded}`
+      })
+      .join('|')
   }
 
   /**
@@ -1207,14 +1242,16 @@ export class Sprite2D extends Mesh {
    * effect state.
    * @internal
    */
-  private _buildEffectsKey(): string {
-    return this._effects
+  private _buildEffectsKey(additionalEffect?: MaterialEffect): string {
+    const effects = additionalEffect ? [...this._effects, additionalEffect] : this._effects
+    return effects
       .filter((e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0)
       .map((e) => {
         const EC = e.constructor as typeof MaterialEffect
-        return `${EC.effectName}:${this._constantsKey(e._constants)}`
+        const constants = this._constantsKey(e._constants)
+        return `effect:${EC.effectName.length}:${EC.effectName}:constants:${constants.length}:${constants}`
       })
-      .join(';')
+      .join('|')
   }
 
   /**
@@ -1510,8 +1547,11 @@ export class Sprite2D extends Mesh {
 
   /**
    * Set the sortLayer (primary sort key) — a registered name (typed via
-   * `SortLayerRegistry` augmentation) or a raw numeric order. Routes the
-   * sprite to the batch matching its new run key on the next system pass.
+   * `SortLayerRegistry` augmentation) or a finite signed 32-bit numeric
+   * order. Routes the sprite to the batch matching its new run key on the
+   * next system pass.
+   *
+   * @throws {RangeError} When a numeric order is outside the signed 32-bit range.
    */
   set sortLayer(value: SortLayerValue) {
     const numeric = resolveSortLayer(value)
@@ -1764,20 +1804,30 @@ export class Sprite2D extends Mesh {
   addEffect(effect: MaterialEffect): this {
     // Same instance already attached — no-op (R3F stable children)
     if (this._effects.includes(effect)) return this
+    if (effect._sprite && effect._sprite !== this) {
+      throw new Error(
+        `Sprite2D.addEffect: effect '${effect.name}' is already attached to a different sprite; remove it before reattaching`
+      )
+    }
 
     const EffectClass = effect.constructor as typeof MaterialEffect
+    if (this._effects.some((attached) => attached.constructor === EffectClass)) {
+      throw new Error(
+        `Sprite2D.addEffect: only one '${EffectClass.effectName}' instance may be attached to a sprite at a time`
+      )
+    }
     const hasConstants = Object.keys(EffectClass._constantFactories).length > 0
 
     // Provider effects with constants may need a different material
     if (hasConstants) {
-      // Link and store the effect first (needed for _switchToMaterial /
-      // _buildEffectsKey, which reads this._effects)
-      effect._attach(this)
-      this._effects.push(effect)
+      // Validate against the current complete material layout before resolving
+      // a shared variant. A rejected 25th provider must not create a cache entry,
+      // attach the effect, change the ECS route, or alter sprite flags/material.
+      this.material._assertEffectRegistrations([{ effectClass: EffectClass, constants: effect._constants }])
 
       const options: Sprite2DMaterialOptions = {
         ...this.material.variantOptions,
-        effectsKey: this._buildEffectsKey(),
+        effectsKey: this._buildEffectsKey(effect),
       }
 
       // Resolve through the sprite's world/registry when enrolled, so
@@ -1788,6 +1838,20 @@ export class Sprite2D extends Mesh {
       const worldVariant = this._texture ? this._resolveWorldEffectVariant(this._texture, options) : null
       const newMaterial = worldVariant ?? Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
 
+      // Preflight and commit the complete union on the destination before the
+      // sprite changes. `_registerEffects` is atomic, so a cached variant with
+      // an incompatible schema cannot leave a half-attached sprite either.
+      const tierChanged = newMaterial._registerEffects([
+        ...this._effects.map((attached) => ({
+          effectClass: attached.constructor as typeof MaterialEffect,
+          constants: attached._constants,
+        })),
+        { effectClass: EffectClass, constants: effect._constants },
+      ])
+
+      effect._attach(this)
+      this._effects.push(effect)
+
       if (newMaterial !== this.material) {
         this._switchToMaterial(newMaterial)
         if (worldVariant) {
@@ -1796,12 +1860,8 @@ export class Sprite2D extends Mesh {
           this._materialIsBootstrapVariant = true
         }
       } else {
-        // Same material — just register the effect
-        if (!this.material.hasEffect(EffectClass)) {
-          const tierChanged = this.material.registerEffect(EffectClass, effect._constants)
-          if (tierChanged) {
-            this._setupInstanceAttributes()
-          }
+        if (tierChanged) {
+          this._setupInstanceAttributes()
         }
       }
 
@@ -1815,7 +1875,9 @@ export class Sprite2D extends Mesh {
         this._runtimeWorld?.add(this._entity, (EffectClass._trait as NumericTrait<NumericSchema>)(traitData))
       }
 
-      if (!this._entity) {
+      if (this._batchMesh) {
+        this._writeEffectStateToBatch()
+      } else if (!this._entity) {
         this._writeEffectDataOwn()
       }
 
@@ -1918,7 +1980,13 @@ export class Sprite2D extends Mesh {
   private _writeEffectStateToBatch(): void {
     const mesh = this._batchMesh
     if (!mesh) return
-    const material = this.material
+    // A material setter publishes the new Sprite2D material before the ECS
+    // reassignment pass moves the sprite. The cached mesh still belongs to
+    // the old schema during that window; writing new-layout offsets into it
+    // would corrupt whichever sprite owns those physical lanes. Reassignment
+    // projects the full effect state into the destination, so defer the write.
+    if (mesh.spriteMaterial !== this.material) return
+    const material = mesh.spriteMaterial
     if (material._effectTier === 0) return
 
     const slot = this._batchSlot
@@ -1939,7 +2007,7 @@ export class Sprite2D extends Mesh {
           const off = slotInfo.offset
           mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value)
         } else {
-          for (let i = 0; i < value.length; i++) {
+          for (let i = 0; i < field.size; i++) {
             const off = slotInfo.offset + i
             mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value[i]!)
           }
@@ -1954,7 +2022,7 @@ export class Sprite2D extends Mesh {
    */
   private _buildTraitData(effect: MaterialEffect): Record<string, number> {
     const ctor = effect.constructor as typeof MaterialEffect
-    const data: Record<string, number> = {}
+    const data = Object.create(null) as Record<string, number>
     for (const field of ctor._fields) {
       const value = effect._defaults[field.name]
       if (field.size === 1) {
@@ -2000,7 +2068,7 @@ export class Sprite2D extends Mesh {
         if (typeof value === 'number') {
           this._writePackedSlotOwn(slotInfo.offset, value)
         } else {
-          for (let i = 0; i < value.length; i++) {
+          for (let i = 0; i < field.size; i++) {
             this._writePackedSlotOwn(slotInfo.offset + i, value[i]!)
           }
         }
@@ -2486,6 +2554,7 @@ export class Sprite2D extends Mesh {
       w.add(this._entity, effectTrait(this._buildTraitData(effect)))
       // Update entity reference on effect instance
       effect._entity = this._entity
+      effect._bindStore(w)
     }
   }
 
@@ -2695,6 +2764,10 @@ export class Sprite2D extends Mesh {
           clonedEffect._defaults[field.name] = [...(value as number[])]
         }
       }
+      // Clone owns this material and is intentionally reproducing a known
+      // effect schema. Register it explicitly so addEffect does not report the
+      // user-facing late-registration warning for this internal operation.
+      cloned.material.registerEffect(EffectClass as unknown as typeof MaterialEffect, clonedEffect._constants)
       cloned.addEffect(clonedEffect)
     }
 
@@ -2767,6 +2840,18 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
   },
   set(this: Sprite2D, value: Sprite2DMaterial): void {
     const previousMaterial = this._materialRef
+    const interceptionArmed = Reflect.get(this, '_interceptionArmed') === true
+    // Carry attached effects only after validating their complete union with
+    // the replacement's existing schema. An over-cap replacement must leave
+    // the sprite, its ECS route, and the replacement material untouched.
+    if (interceptionArmed) {
+      value._registerEffects(
+        this._effects.map((effect) => ({
+          effectClass: effect.constructor as typeof MaterialEffect,
+          constants: effect._constants,
+        }))
+      )
+    }
     this._materialRef = value
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
@@ -2794,11 +2879,7 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     // instance buffers. Every later public assignment must rebuild the source
     // geometry's material-dependent effect attributes, including for a
     // currently batched sprite that may later be demoted to its own Mesh.
-    if (Reflect.get(this, '_interceptionArmed') === true) {
-      for (const effect of this._effects) {
-        const EffectClass = effect.constructor as typeof MaterialEffect
-        if (!value.hasEffect(EffectClass)) value.registerEffect(EffectClass, effect._constants)
-      }
+    if (interceptionArmed) {
       this._setupInstanceAttributes()
       // This is a cold material-change path. Refresh even while batched so a
       // later demotion has the current ECS-backed effect values immediately.

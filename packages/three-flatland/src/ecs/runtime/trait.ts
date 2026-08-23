@@ -63,7 +63,7 @@ export function numericDataSnapshot(value: object): Record<string, number> | und
   const prototype = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) return undefined
 
-  const snapshot: Record<string, number> = {}
+  const snapshot = Object.create(null) as Record<string, number>
   for (const field of Reflect.ownKeys(value)) {
     if (typeof field !== 'string') return undefined
     const descriptor = Object.getOwnPropertyDescriptor(value, field)

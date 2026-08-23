@@ -3,7 +3,7 @@ import { Texture } from 'three'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import type { RegistryData } from './batchUtils'
+import { flushUnusedMaterials, releaseMaterialIfUnused, type RegistryData } from './batchUtils'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import { registryFor } from './testUtils.type-test'
 
@@ -115,5 +115,43 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     for (const mesh of meshes) expect(mesh.maxSize).toBe(8192)
 
     pinned.dispose()
+  })
+
+  it('flushes material churn with one run scan and one sprite scan', () => {
+    const registry = getRegistry(group)
+    const originalRunValues = registry.runs.values.bind(registry.runs)
+    const originalSpriteIterator = registry.spriteArr[Symbol.iterator].bind(registry.spriteArr)
+    let runScans = 0
+    let spriteScans = 0
+
+    registry.runs.values = () => {
+      runScans++
+      return originalRunValues()
+    }
+    Object.defineProperty(registry.spriteArr, Symbol.iterator, {
+      configurable: true,
+      value: () => {
+        spriteScans++
+        return originalSpriteIterator()
+      },
+    })
+
+    try {
+      for (let i = 0; i < 1_000; i++) {
+        const transient = new Sprite2DMaterial()
+        registry.materialRefs.set(transient.batchId, { material: transient, version: transient.version })
+        releaseMaterialIfUnused(group.world, registry, transient)
+      }
+
+      flushUnusedMaterials(group.world, registry)
+
+      expect(runScans).toBe(1)
+      expect(spriteScans).toBe(1)
+      expect(registry.materialRefs.size).toBe(0)
+      expect(registry.materialReleaseCandidates.size).toBe(0)
+    } finally {
+      registry.runs.values = originalRunValues
+      delete registry.spriteArr[Symbol.iterator]
+    }
   })
 })
