@@ -1,0 +1,57 @@
+{
+  "fixtures": {
+    "basic-three": {
+      "maximum": {
+        "brotliBytes": 185650,
+        "gzipBytes": 229519,
+        "minifiedBytes": 847110
+      },
+      "source": "tools/ecs-bench/src/fixtures/consumer-basic-three.ts.fixture",
+      "sourceSha256": "be9605e2008f7f50ed2ed304e60b2049988a784876ef1883085a27b6a0a5ead4"
+    },
+    "basic-react": {
+      "maximum": {
+        "brotliBytes": 441865,
+        "gzipBytes": 555700,
+        "minifiedBytes": 2008564
+      },
+      "source": "tools/ecs-bench/src/fixtures/consumer-basic-react.ts.fixture",
+      "sourceSha256": "15871fd60a1ddf7cf1dd951664aaf8214798d5882eca056cc889ea7300f15e27"
+    },
+    "knightmark": {
+      "maximum": {
+        "brotliBytes": 167640,
+        "gzipBytes": 207198,
+        "minifiedBytes": 760170
+      },
+      "source": "tools/ecs-bench/src/fixtures/consumer-knightmark.ts.fixture",
+      "sourceSha256": "372affb9a6aa8df35a4d469c1c77df7a85a5a4bc29363607995fe834e1d589b8"
+    },
+    "pass-lighting": {
+      "maximum": {
+        "brotliBytes": 188449,
+        "gzipBytes": 234249,
+        "minifiedBytes": 864630
+      },
+      "source": "tools/ecs-bench/src/fixtures/consumer-pass-lighting.ts.fixture",
+      "sourceSha256": "e2654b7e117123b789d9ca561b2f75cdda203401201204a2a2876a4890161d05"
+    }
+  },
+  "provenance": {
+    "captureStatus": "measured-unreviewed",
+    "lockfileSha256": "35208220e7fa7b483aecfbab3edd91d679e0ab44399bb881b2002848ae5a924b",
+    "productionSourceSha256": "efd024d7cc3cedbf513284c3a3970cf7acaddd211e01aa4d69f892b5564dbc30",
+    "revision": "7faf7f400a20741f9686bd15a3e9a0652c4c15fd",
+    "sourceTreeDirty": false,
+    "toolVersions": {
+      "esbuild": "0.28.1",
+      "koota": "0.6.5",
+      "node": "v26.5.0",
+      "pnpm": "10.28.1",
+      "react": "19.2.3",
+      "reactThreeFiber": "10.0.0-alpha.3",
+      "three": "0.185.1"
+    }
+  },
+  "schemaVersion": 1
+}
