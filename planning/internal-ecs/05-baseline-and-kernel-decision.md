@@ -13,13 +13,13 @@ It is the best current balance for Flatland's bounded trait surface:
 
 - 68.5% less active heap than Koota at 60,000 entities,
 - the production runtime uses 44.6% less active heap than the sparse-persistent candidate,
-- 50.3% lower median for the 60,000-entity lifecycle workload than Koota,
-- 52.1% lower median for the 60,000-entity, 256-dynamic-effect-trait lifecycle,
+- 51.1% lower median for the 60,000-entity lifecycle workload than Koota,
+- 52.9% lower median for the 60,000-entity, 256-dynamic-effect-trait lifecycle,
 - 99.8% lower median for repeated stable-query retrieval,
-- 46.4% lower median when actually iterating 16.384 million stable-query entities,
-- 64.3% lower median for 12,000 routing changes,
-- 81.5% lower median for 12,000 dynamic structural changes, and
-- 60.5% lower median for full-handle numeric batch assignment.
+- 46.6% lower median when actually iterating 16.384 million stable-query entities,
+- 66.1% lower median for 12,000 routing changes,
+- 80.8% lower median for 12,000 dynamic structural changes, and
+- 60.6% lower median for full-handle numeric batch assignment.
 
 The production runtime passes the `SystemSchedule`, allocation, isolated-kernel-size, declaration,
 and package test gates. Deterministic Knightmark and lighting runs still have to prove
@@ -93,15 +93,15 @@ incompatibilities during migration.
 | ----------------------------------------- | -------: | -------: | ------: |
 | Koota seven-import kernel                 | 34,910 B | 10,584 B | 9,362 B |
 | Shared candidate superset, signature mode |  8,637 B |  3,209 B | 2,940 B |
-| Private production runtime                | 11,647 B |  3,826 B | 3,434 B |
+| Private production runtime                | 11,681 B |  3,828 B | 3,432 B |
 
 The prototype result is conservative: the candidate artifact still contains the shared
 benchmark-adapter shell and branches for all three query modes. Even that superset is 26,273 bytes
 smaller minified, 7,375 bytes smaller gzip, and 6,422 bytes smaller Brotli than the exact Koota
 import surface. It is below the isolated kernel caps of 12,000 / 4,000 / 3,800 bytes.
 
-The specialized private runtime now measures 23,263 bytes smaller minified, 6,758 bytes smaller
-gzip, and 5,928 bytes smaller Brotli than the exact Koota import surface. Its additional entity
+The specialized private runtime now measures 23,229 bytes smaller minified, 6,756 bytes smaller
+gzip, and 5,930 bytes smaller Brotli than the exact Koota import surface. Its additional entity
 safety, nominal types, explicit per-world event activation, and release paths remain below the
 12,000 / 4,000 / 3,800 byte caps. This isolated result does not substitute for the required basic
 Three.js, basic React, stress, and dynamic-effect consumer attribution after the core migration.
@@ -112,24 +112,27 @@ Times are milliseconds per sample. Lower is better.
 
 | Workload                              | Koota median / p95 | Production median / p95 | Median change |
 | ------------------------------------- | -----------------: | ----------------------: | ------------: |
-| Lifecycle, 1,000                      |      1.817 / 2.260 |           1.313 / 1.907 |        -27.7% |
-| Lifecycle, 16,384                     |    33.460 / 35.706 |         16.632 / 17.115 |        -50.3% |
-| Lifecycle, 60,000                     |  126.556 / 132.158 |         62.888 / 66.285 |        -50.3% |
-| 256-effect-trait lifecycle, 12,000    |    58.414 / 62.831 |         45.079 / 53.298 |        -22.8% |
-| 256-effect-trait lifecycle, 60,000    |  253.997 / 262.836 |       121.701 / 124.275 |        -52.1% |
-| Stable view retrieval, 1,000 calls    |      8.820 / 9.086 |           0.015 / 0.028 |        -99.8% |
-| Stable view iteration, 16.384M visits |    15.891 / 16.107 |           8.512 / 8.967 |        -46.4% |
-| Dynamic add/remove, 12,000            |    13.053 / 13.924 |           2.421 / 2.672 |        -81.5% |
-| Three routing writes, 12,000          |      4.984 / 5.269 |           1.781 / 1.807 |        -64.3% |
-| Exclusive assign/read/remove, 12,000  |      3.654 / 4.457 |           1.442 / 1.572 |        -60.5% |
+| Lifecycle, 1,000                      |      1.837 / 2.347 |           1.290 / 1.903 |        -29.8% |
+| Lifecycle, 16,384                     |    33.903 / 38.039 |         16.228 / 20.980 |        -52.1% |
+| Lifecycle, 60,000                     |  123.567 / 132.225 |         60.453 / 65.511 |        -51.1% |
+| 256-effect-trait lifecycle, 12,000    |    58.880 / 63.114 |         45.738 / 52.014 |        -22.3% |
+| 256-effect-trait lifecycle, 60,000    |  259.267 / 268.755 |       122.061 / 133.156 |        -52.9% |
+| Stable view retrieval, 1,000 calls    |      8.974 / 9.284 |           0.015 / 0.029 |        -99.8% |
+| Stable view iteration, 16.384M visits |    15.934 / 16.161 |           8.508 / 9.093 |        -46.6% |
+| Dynamic add/remove, 12,000            |    13.350 / 14.794 |           2.564 / 2.893 |        -80.8% |
+| Three routing writes, 12,000          |      4.994 / 5.202 |           1.694 / 1.947 |        -66.1% |
+| Exclusive assign/read/remove, 12,000  |      3.689 / 4.435 |           1.455 / 1.600 |        -60.6% |
 
-The production stable-iteration observations include two 84.5–84.6 ms timing outliers;
-the other 43 observations cluster between 8.15 and 8.97 ms. The aggregate p95 remains 8.967 ms, and
+The production stable-iteration observations include two 86.3–86.7 ms timing outliers;
+the other 43 observations cluster between 8.43 and 9.09 ms. The aggregate p95 remains 9.093 ms, and
 the raw result intentionally retains that timing variance instead of filtering it
 from the evidence.
 
-The direct-store loop measured 0.176 ms for both the production runtime and Koota, with an absolute
-difference below 0.001 ms. After setup, that loop performs only identical cached index and
+The production 16,384-entity lifecycle observations likewise retain two slower samples at 20.980
+and 25.618 ms; the other 28 span 15.537–17.137 ms, producing the reported 20.980 ms p95.
+
+The direct-store loop measured 0.182 ms for the production runtime and 0.175 ms for Koota, with an
+absolute median difference of 0.007 ms. After setup, that loop performs only identical cached index and
 `number[]` operations—no adapter operation is in the timed region—so the disagreement is classified
 as sub-millisecond process/JIT noise rather than a kernel result. The end-to-end schedule and
 batch-local traversal gates remain authoritative. The assignment row uses a full packed handle in a
@@ -157,12 +160,12 @@ strategies.
 
 ### Selected: signatures plus persistent views
 
-The signature candidate is 11.0% faster than sparse-persistent at the 60,000-entity lifecycle,
-8.9% faster for structural churn, 55.1% faster for the 256-effect-trait lifecycle, 2.8% slower for
-exclusive assignment, 21.5% faster for routing, and uses 44.5% less active heap. Multiple 32-bit
+The signature candidate is 8.9% faster than sparse-persistent at the 60,000-entity lifecycle,
+10.4% faster for structural churn, 52.8% faster for the 256-effect-trait lifecycle, 7.8% faster for
+exclusive assignment, 22.0% faster for routing, and uses 44.5% less active heap. Multiple 32-bit
 words support dynamic effect traits without a fixed 32-trait ceiling. The specialized production
-runtime's dense active-signature-word scan with present-bit traversal improves another 19.5% over
-the shared signature prototype on the 60,000-entity base lifecycle and 66.5% on the dynamic-effect
+runtime's dense active-signature-word scan with present-bit traversal improves another 23.6% over
+the shared signature prototype on the 60,000-entity base lifecycle and 67.5% on the dynamic-effect
 lifecycle.
 
 ### Rejected: sparse membership plus persistent views
@@ -174,7 +177,7 @@ paths make it the weaker overall kernel.
 ### Rejected: anchored scans
 
 Anchored scans are small and fast under structural churn, but the unchanged 16,384-entity query
-retrieval workload took 350.2 ms versus Koota's 8.8 ms, and full iteration took 356.1 ms versus
+retrieval workload took 349.3 ms versus Koota's 9.0 ms, and full iteration took 354.5 ms versus
 15.9 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
 
 ## Next gate

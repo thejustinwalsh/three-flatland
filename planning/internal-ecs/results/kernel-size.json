@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "c9429ba938135a20ffef8624f4a215b7e813a4c2abfa7596ecd1fb5a95636c25",
+  "harnessSha256": "899684bdf422ff31a68c03c0d3ceb24c611b78775fbfc36fb0daeaf0957f261f",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -26,9 +26,9 @@
   "measurements": [
     {
       "artifact": "Flatland private production runtime",
-      "brotliBytes": 3434,
-      "gzipBytes": 3826,
-      "minifiedBytes": 11647
+      "brotliBytes": 3432,
+      "gzipBytes": 3828,
+      "minifiedBytes": 11681
     },
     {
       "artifact": "Koota seven-import tree-shaken browser kernel",
