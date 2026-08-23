@@ -3,7 +3,7 @@ title: LLMs
 description: LLM-readable context and copy-paste prompts for AI coding assistants building with three-flatland.
 ---
 
-import { Aside, Tabs, TabItem } from 'starlight-theme/components';
+import { Aside, Tabs, TabItem } from 'starlight-theme/components'
 
 three-flatland provides machine-readable documentation so AI coding assistants can help you write correct code from the start. This page explains what's available and includes ready-to-use prompts.
 
@@ -11,15 +11,17 @@ three-flatland provides machine-readable documentation so AI coding assistants c
 
 three-flatland publishes two files that AI assistants can consume directly:
 
-| File | What it contains | When to use it |
-|------|------------------|----------------|
-| [`llms.txt`](/three-flatland/llms.txt) | Links to all docs pages, guides, and examples | AI tools that can browse and follow links |
+| File                                             | What it contains                                                          | When to use it                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------- |
+| [`llms.txt`](/three-flatland/llms.txt)           | Links to all docs pages, guides, and examples                             | AI tools that can browse and follow links |
 | [`llms-full.txt`](/three-flatland/llms-full.txt) | Self-contained API reference with imports, classes, effects, and examples | AI tools that need everything in one file |
 
 These follow the [llms.txt standard](https://llmstxt.org/) — a convention for providing LLM-friendly documentation alongside your website.
 
 <Aside type="tip" title="How this helps">
-Without context, AI assistants often generate three-flatland code with wrong imports, missing `await renderer.init()`, or using `WebGLRenderer` instead of `WebGPURenderer`. These files prevent those common mistakes by giving the AI the right patterns upfront.
+  Without context, AI assistants often generate three-flatland code with wrong imports, missing `await renderer.init()`,
+  or using `WebGLRenderer` instead of `WebGPURenderer`. These files prevent those common mistakes by giving the AI the
+  right patterns upfront.
 </Aside>
 
 ## Prompts
@@ -30,7 +32,7 @@ Copy a prompt below, paste it into your AI assistant, and replace the placeholde
 
 The general-purpose prompt. Works with any AI assistant that can fetch URLs.
 
-~~~
+```
 I'm working with three-flatland, a 2D sprite and effects library for Three.js
 using WebGPU and TSL (Three Shader Language). It's currently in alpha.
 
@@ -41,12 +43,12 @@ Key things to know:
 - Three.js users import from "three-flatland"
 - React Three Fiber users import from "three-flatland/react"
 - TSL effect nodes come from "@three-flatland/nodes"
-- Install: npm install three-flatland three koota
-- Requires three.js ^0.185.1, koota, and WebGPURenderer from "three/webgpu"
+- Install: npm install three-flatland three
+- Requires three.js ^0.185.1 and WebGPURenderer from "three/webgpu"
 
 Help me with the following:
 [Describe your task here]
-~~~
+```
 
 ### Build from an Example
 
@@ -65,6 +67,7 @@ Start from a working example and adapt it. The AI reads the actual source code f
     Adapt it for my needs:
     [Describe what you want to build]
     ~~~
+
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ~~~
@@ -78,29 +81,30 @@ Start from a working example and adapt it. The AI reads the actual source code f
     Adapt it for my needs:
     [Describe what you want to build]
     ~~~
+
   </TabItem>
 </Tabs>
 
 Replace `EXAMPLE_NAME` with one of these:
 
-| Example | What it demonstrates |
-|---------|---------------------|
-| `basic-sprite` | Texture loading, sprite creation, interaction |
-| `animation` | Spritesheet animation with `AnimatedSprite2D` |
-| `batch-demo` | Thousands of sprites in few draw calls |
-| `tsl-nodes` | Per-sprite effects with `MaterialEffect` and TSL nodes |
-| `pass-effects` | Full-screen post-processing with `PassEffect` |
-| `tilemap` | Tiled/LDtk tilemap loading and rendering |
-| `lighting` | 2D lighting, draggable point lights, preset comparison |
-| `skia` | Skia WASM vector graphics — shapes, text, paths, gradients |
-| `slug-text` | GPU-rendered vector text with the Slug font pipeline |
-| `knightmark` | Sprite benchmark with batching stress test |
+| Example        | What it demonstrates                                       |
+| -------------- | ---------------------------------------------------------- |
+| `basic-sprite` | Texture loading, sprite creation, interaction              |
+| `animation`    | Spritesheet animation with `AnimatedSprite2D`              |
+| `batch-demo`   | Thousands of sprites in few draw calls                     |
+| `tsl-nodes`    | Per-sprite effects with `MaterialEffect` and TSL nodes     |
+| `pass-effects` | Full-screen post-processing with `PassEffect`              |
+| `tilemap`      | Tiled/LDtk tilemap loading and rendering                   |
+| `lighting`     | 2D lighting, draggable point lights, preset comparison     |
+| `skia`         | Skia WASM vector graphics — shapes, text, paths, gradients |
+| `slug-text`    | GPU-rendered vector text with the Slug font pipeline       |
+| `knightmark`   | Sprite benchmark with batching stress test                 |
 
 ### Deep Context (File Access Required)
 
 For AI assistants that can read local files — Claude Code, Cursor, Copilot workspace. The AI reads the project's own documentation files and explores the source code based on your task.
 
-~~~
+```
 I'm working in the three-flatland repository.
 
 Start by reading these files:
@@ -115,16 +119,16 @@ Then explore based on what I need:
 
 Help me with the following:
 [Describe your task here]
-~~~
+```
 
 ## Common Pitfalls
 
 These are the mistakes AI assistants make most often with three-flatland. If you see any of these in generated code, correct the AI:
 
-| Mistake | Fix |
-|---------|-----|
-| `new THREE.WebGLRenderer()` | Use `new WebGPURenderer()` from `'three/webgpu'` |
-| `import { ... } from '@three-flatland/core'` | Import from `'three-flatland'` (or `'three-flatland/react'`) |
-| Missing `await renderer.init()` | WebGPU requires async initialization before rendering |
-| Using `THREE.Sprite` | Use `Sprite2D` from three-flatland — different API entirely |
+| Mistake                                        | Fix                                                                         |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `new THREE.WebGLRenderer()`                    | Use `new WebGPURenderer()` from `'three/webgpu'`                            |
+| `import { ... } from '@three-flatland/core'`   | Import from `'three-flatland'` (or `'three-flatland/react'`)                |
+| Missing `await renderer.init()`                | WebGPU requires async initialization before rendering                       |
+| Using `THREE.Sprite`                           | Use `Sprite2D` from three-flatland — different API entirely                 |
 | `renderer.render(scene, camera)` with Flatland | Use `flatland.render(renderer)` — Flatland manages its own scene and camera |

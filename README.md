@@ -11,9 +11,9 @@
 
 ## Features
 
-- **2D primitives on the Three.js scene graph.** `Sprite2D`, `AnimatedSprite2D`, `SpriteGroup`, and `TileMap2D` as plain `Object3D` subclasses. Transform hierarchy and render order are independent (`layer` + `zIndex`).
+- **2D primitives on the Three.js scene graph.** `Sprite2D`, `AnimatedSprite2D`, `SpriteGroup`, and `TileMap2D` as plain `Object3D` subclasses. Transform hierarchy and render order are independent (`sortLayer` + `zIndex`).
 - **TSL-native effect composition.** Effects are TSL node graphs that ride on a shared material. Sprites in a batch stay batched as effects come and go.
-- **Sprite batching via ECS.** A `koota`-backed batch system keeps archetypes optimal; per-sprite uniforms pack into shared GPU buffers.
+- **Sprite batching via a package-private ECS.** Batch archetypes adapt as sprites and effects change; per-sprite uniforms pack into shared GPU buffers.
 - **Spritesheet animation with frame-precise timing.** `AnimationController` handles play/pause/onComplete; declare named animations against a sheet.
 - **Tilemap loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/).** Animated tiles supported.
 - **Pixel-perfect by default.** `FlatlandConfig` coordinates texture loading, integer camera scale, and projected-pivot snapping; override the whole pipeline or one subsystem.
@@ -25,7 +25,7 @@
 
 ```bash
 # Core library (Three.js)
-npm install three-flatland three koota
+npm install three-flatland three
 
 # For React Three Fiber
 npm install three-flatland @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
@@ -106,12 +106,12 @@ export default function App() {
 
 ## Core Concepts
 
-### Layers and Z-Ordering
+### Sort layers and z-ordering
 
 Unlike traditional 3D engines, three-flatland separates transform hierarchy from render order:
 
 ```typescript
-import { Sprite2D, Layers } from 'three-flatland'
+import { SortLayers, Sprite2D } from 'three-flatland'
 
 // Scene graph controls position inheritance
 const player = new THREE.Group()
@@ -120,8 +120,8 @@ const body = new Sprite2D({ texture: bodyTex })
 player.add(shadow, body)
 
 // Render order is explicit and independent
-shadow.layer = Layers.SHADOWS   // Renders first
-body.layer = Layers.ENTITIES    // Renders on top
+shadow.sortLayer = SortLayers.SHADOWS // Renders first
+body.sortLayer = SortLayers.ENTITIES // Renders on top
 
 // Shadow moves with player but always renders below
 player.position.x += 10
@@ -174,19 +174,18 @@ flash.intensity = 0.8 // Animate per frame
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| [`three-flatland`](https://www.npmjs.com/package/three-flatland) | Core library. Sprites, materials, animation, loaders, tilemaps, render pipeline. |
-| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath. Re-exports core plus JSX type augmentation. |
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | TSL shader nodes for effects (per-category subpaths). |
-| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia compiled to WASM. GPU vector graphics, text, paths, image filters. |
-| [`@three-flatland/devtools`](https://www.npmjs.com/package/@three-flatland/devtools) | Tweakpane v4 theme + React hooks. Devtools panel for Flatland scenes. |
-| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (in development). |
+| Package                                                                              | Description                                                                      |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| [`three-flatland`](https://www.npmjs.com/package/three-flatland)                     | Core library. Sprites, materials, animation, loaders, tilemaps, render pipeline. |
+| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland)               | React Three Fiber subpath. Re-exports core plus JSX type augmentation.           |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes)       | TSL shader nodes for effects (per-category subpaths).                            |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia)         | Skia compiled to WASM. GPU vector graphics, text, paths, image filters.          |
+| [`@three-flatland/devtools`](https://www.npmjs.com/package/@three-flatland/devtools) | Tweakpane v4 theme + React hooks. Devtools panel for Flatland scenes.            |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets)   | Pre-configured effect combinations (in development).                             |
 
 ## Requirements
 
 - **three** ^0.185.1 (TSL/WebGPU support)
-- **koota** ^0.6.5 (ECS for batch rendering)
 - **React** ~19.2.0 (for `three-flatland/react`, capped below 19.3 by R3F alpha.3)
 - **@react-three/fiber** 10.0.0-alpha.3 (for React, WebGPU support)
 

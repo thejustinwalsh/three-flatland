@@ -30,7 +30,7 @@ three-flatland exposes 2D primitives as plain `Object3D` subclasses on the Three
 ## Install
 
 ```bash
-npm install three-flatland
+npm install three-flatland three
 ```
 
 For React Three Fiber:
@@ -42,7 +42,6 @@ npm install three-flatland @react-three/fiber@10.0.0-alpha.3
 ### Requirements
 
 - **three** ^0.185.1 (WebGPU/TSL support)
-- **koota** ^0.6.5 (ECS for batch rendering)
 - **React** ~19.2.0 and **@react-three/fiber** 10.0.0-alpha.3 (optional, for R3F)
 
 ## Quick Start
@@ -169,12 +168,12 @@ import { Sprite2D, attachEffect, type EffectElement } from 'three-flatland/react
 
 ## Companion Packages
 
-| Package | Description |
-|---------|-------------|
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | 50+ TSL shader nodes. Tint, outline, dissolve, blur, CRT, palette swap, and more. |
-| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia compiled to WASM. GPU vector graphics, text, paths, image filters. |
-| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 theme + React hooks (transitioning to a devtools package). |
-| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (in development). |
+| Package                                                                                | Description                                                                       |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes)         | 50+ TSL shader nodes. Tint, outline, dissolve, blur, CRT, palette swap, and more. |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia)           | Skia compiled to WASM. GPU vector graphics, text, paths, image filters.           |
+| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 theme + React hooks (transitioning to a devtools package).           |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets)     | Pre-configured effect combinations (in development).                              |
 
 ## When not to reach for three-flatland
 
