@@ -1250,18 +1250,8 @@ export class Sprite2D extends Mesh {
     newMaterial.requiredChannels = current.requiredChannels
     newMaterial.colorTransform = current.colorTransform
 
-    // Re-register all effects on the new material
-    for (const effect of this._effects) {
-      const EffectClass = effect.constructor as typeof MaterialEffect
-      if (!newMaterial.hasEffect(EffectClass)) {
-        newMaterial.registerEffect(EffectClass, effect._constants)
-      }
-    }
-
-    this._setupInstanceAttributes()
-    if (!this._entity) {
-      this._writeEffectDataOwn()
-    }
+    // The public material interceptor already carried this sprite's effects,
+    // rebuilt its source attribute schema, and refreshed standalone values.
   }
 
   /**
@@ -1685,6 +1675,7 @@ export class Sprite2D extends Mesh {
 
     // Custom attributes from material schema (pure effect data — no
     // system reservations)
+    for (const name of this._customBuffers.keys()) geo.deleteAttribute(name)
     this._customBuffers.clear()
     const schema = this.material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
@@ -2793,6 +2784,20 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
         ensureMaterialDisposeHook(world, registry, value)
       }
       world.patch(entity, SpriteMaterialRef, { materialId: value.batchId })
+    }
+    // Mesh invokes this setter during super(), before Sprite2D has geometry or
+    // instance buffers. Every later public assignment must rebuild the source
+    // geometry's material-dependent effect attributes, including for a
+    // currently batched sprite that may later be demoted to its own Mesh.
+    if (Reflect.get(this, '_interceptionArmed') === true) {
+      for (const effect of this._effects) {
+        const EffectClass = effect.constructor as typeof MaterialEffect
+        if (!value.hasEffect(EffectClass)) value.registerEffect(EffectClass, effect._constants)
+      }
+      this._setupInstanceAttributes()
+      // This is a cold material-change path. Refresh even while batched so a
+      // later demotion has the current ECS-backed effect values immediately.
+      this._writeEffectDataOwn()
     }
     const registry = this._autoRegistry as Registry | null
     if (registry) {

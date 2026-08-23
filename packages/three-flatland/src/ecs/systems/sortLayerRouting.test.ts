@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
+import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
 import { declareSortLayer } from '../../pipeline/sortLayers'
@@ -198,6 +199,39 @@ describe('sortLayer + layers.mask run-key routing', () => {
     replacement.dispose()
     expect(sprite.entity).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
+  })
+
+  it('rebuilds source effect attributes on direct material assignment', () => {
+    const noEffects = new Sprite2DMaterial({ map: texture, effectTier: 0 })
+    const withEffects = new Sprite2DMaterial({ map: texture, effectTier: 8 })
+    const standalone = new Sprite2D({ texture, material: noEffects })
+
+    expect(standalone.geometry.hasAttribute('effectBuf0')).toBe(false)
+    standalone.material = withEffects
+    expect(standalone.geometry.hasAttribute('effectBuf0')).toBe(true)
+    standalone.material = noEffects
+    expect(standalone.geometry.hasAttribute('effectBuf0')).toBe(false)
+
+    const Intensity = createMaterialEffect({
+      name: 'directMaterialAssignmentIntensity',
+      schema: { value: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const enrolledMaterial = new Sprite2DMaterial({ map: texture, effectTier: 0 })
+    const enrolled = new Sprite2D({ texture, material: enrolledMaterial })
+    const intensity = new Intensity()
+    enrolled.addEffect(intensity)
+    group.add(enrolled)
+    runSystems(group)
+    intensity.value = 0.7
+    enrolled.material = withEffects
+    runSystems(group)
+    enrolled.renderOrder = 999
+
+    expect(enrolled.entity).toBeNull()
+    expect(enrolled.geometry.hasAttribute('effectBuf0')).toBe(true)
+    const buffer = enrolled.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
+    expect(buffer.array[0]).toBeCloseTo(0.7)
   })
 
   it('renderOrder override demotes the sprite to standalone with the custom order', () => {
