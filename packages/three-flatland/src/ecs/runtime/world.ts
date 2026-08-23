@@ -138,6 +138,10 @@ export function createWorld(): World {
   const entities = new EntityPool()
 
   function reserve(capacity: number): void {
+    assertUsable()
+    if (!Number.isSafeInteger(capacity) || capacity < 0 || capacity > ENTITY_INDEX_STRIDE) {
+      fail('Invalid reserved capacity', RangeError)
+    }
     if (capacity <= reservedCapacity) return
     reservedCapacity = capacity
     reserveIndexedArray(entities.generations, capacity, 1)

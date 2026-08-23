@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { nextCapacity } from '../../internal/capacity'
 import { reserveWorld } from '../../internal/reserved-world'
+import { ENTITY_INDEX_STRIDE } from './entity'
 import { added, createWorld, select, trait, type Entity } from './index'
 
 describe('private ECS advisory capacity', () => {
@@ -15,6 +16,47 @@ describe('private ECS advisory capacity', () => {
 
   it('rejects an impossible growth request instead of returning an undersized capacity', () => {
     expect(() => nextCapacity(4, 5, 4)).toThrow(/intrinsic maximum/)
+  })
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, ENTITY_INDEX_STRIDE + 1])(
+    'rejects direct invalid world reservation %s atomically',
+    (capacity) => {
+      const Position = trait({ x: 0 })
+      const world = createWorld()
+      world.reserve(4)
+      const x = world.store(Position).x
+
+      expect(() => world.reserve(capacity)).toThrow(/reserved capacity/)
+      expect(world.capacity).toBe(4)
+      expect(x).toHaveLength(4)
+      world.dispose()
+    }
+  )
+
+  it('rejects reservation after disposal, including an otherwise harmless no-op', () => {
+    const world = createWorld()
+    world.reserve(4)
+    world.dispose()
+
+    expect(() => world.reserve(0)).toThrow(/World disposed/)
+    expect(world.capacity).toBe(0)
+  })
+
+  it('rejects reservation reentrancy from trait preparation without consuming capacity or an entity', () => {
+    const Present = trait()
+    const world = createWorld()
+    world.reserve(4)
+    const Reserving = trait(() => {
+      world.reserve(4)
+      return { value: 1 }
+    })
+
+    expect(() => world.spawn(Present, Reserving)).toThrow(/Trait inputs cannot access mutable world state/)
+    expect(world.capacity).toBe(4)
+    const entity = world.spawn(Present)
+    expect(world.index(entity)).toBe(0)
+    expect(world.has(entity, Reserving)).toBe(false)
+    world.dispose()
   })
 
   it('reserves hot index structures, grows geometrically, and preserves stable stores', () => {
