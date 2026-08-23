@@ -71,10 +71,7 @@ export function numericDataSnapshot(value: object): Record<string, number> | und
     if (descriptor?.enumerable !== true || !('value' in descriptor) || typeof descriptor.value !== 'number') {
       return undefined
     }
-    Object.defineProperty(snapshot, field, {
-      enumerable: true,
-      value: descriptor.value,
-    })
+    snapshot[field] = descriptor.value
   }
   return snapshot
 }

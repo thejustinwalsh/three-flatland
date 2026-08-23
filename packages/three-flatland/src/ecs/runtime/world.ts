@@ -41,11 +41,6 @@ interface PreparedInput {
   readonly objectValue?: object
 }
 
-interface ValidatedNumericFields {
-  readonly fields: readonly string[]
-  readonly snapshot: Record<string, number>
-}
-
 class HandleQueue {
   readonly dense: Entity[] = []
   readonly positions: Array<number | undefined> = []
@@ -222,15 +217,12 @@ export function createWorld(): World {
 
     let numeric: Record<string, number[]> | undefined
     if (trait.kind === 'numeric') {
-      numeric = {}
+      numeric = Object.create(null) as Record<string, number[]>
       const numericTrait = trait as NumericTrait<NumericSchema>
       for (const field of numericTrait.fields) {
         const values: number[] = []
         reserveIndexedArray(values, reservedCapacity, numericTrait.defaults[field]!)
-        Object.defineProperty(numeric, field, {
-          enumerable: true,
-          value: values,
-        })
+        numeric[field] = values
       }
     }
     const objects: Array<object | undefined> | undefined = trait.kind === 'object' ? [] : undefined
@@ -245,25 +237,24 @@ export function createWorld(): World {
     return state
   }
 
-  function validatedNumericFields(trait: NumericTrait<NumericSchema>, value: object): ValidatedNumericFields {
+  function validatedNumericSnapshot(trait: NumericTrait<NumericSchema>, value: object): Record<string, number> {
     const snapshot = numericDataSnapshot(value)
     if (snapshot === undefined) {
       fail('Invalid numeric initializer', TypeError)
     }
-    const fields = Object.keys(snapshot)
-    for (const field of fields) {
+    for (const field in snapshot) {
       if (!Object.hasOwn(trait.defaults, field)) {
         fail(`Invalid numeric initializer: ${field}`, TypeError)
       }
     }
-    return { fields, snapshot }
+    return snapshot
   }
 
   function validateNumericInitial(
     trait: NumericTrait<NumericSchema>,
     initial: object | undefined
   ): Record<string, number> | undefined {
-    return initial === undefined ? undefined : validatedNumericFields(trait, initial).snapshot
+    return initial === undefined ? undefined : validatedNumericSnapshot(trait, initial)
   }
 
   function prepareObjectValue(trait: ObjectTrait<object>, initial: object | undefined): object {
@@ -292,10 +283,7 @@ export function createWorld(): World {
       if (targetDescriptor === undefined || !('value' in targetDescriptor) || targetDescriptor.writable !== true) {
         fail('Needs existing writable data fields', TypeError)
       }
-      Object.defineProperty(snapshot, field, {
-        enumerable: true,
-        value: Reflect.get(patch, field),
-      })
+      Reflect.set(snapshot, field, Reflect.get(patch, field))
     }
     return snapshot
   }
@@ -314,8 +302,8 @@ export function createWorld(): World {
     value: object,
     state: TraitState
   ): void {
-    const { fields, snapshot } = validatedNumericFields(trait, value)
-    for (const field of fields) {
+    const snapshot = validatedNumericSnapshot(trait, value)
+    for (const field in snapshot) {
       state.numeric![field]![index] = snapshot[field]!
     }
   }
@@ -370,9 +358,8 @@ export function createWorld(): World {
         continue
       }
 
-      const position = state.members.indexOf(index)
+      const position = state.members.delete(index)
       if (position === -1) continue
-      state.members.delete(index)
       state.view.pop()
       if (position < state.members.dense.length) {
         const movedIndex = state.members.dense[position]!
@@ -518,12 +505,7 @@ export function createWorld(): World {
     const result = Object.create(null) as Record<string, number>
     const numericTrait = trait as unknown as NumericTrait<NumericSchema>
     for (const field of numericTrait.fields) {
-      Object.defineProperty(result, field, {
-        configurable: true,
-        enumerable: true,
-        value: state.numeric![field]![index]!,
-        writable: true,
-      })
+      result[field] = state.numeric![field]![index]!
     }
     return result as TValue
   }
@@ -618,7 +600,7 @@ export function createWorld(): World {
     for (const state of activeTraitStates) {
       if (state.objects !== undefined) state.objects.length = 0
       if (state.numeric !== undefined) {
-        for (const field of Object.values(state.numeric)) field.length = 0
+        for (const field in state.numeric) state.numeric[field]!.length = 0
       }
     }
     for (const state of activeSelectorStates) {

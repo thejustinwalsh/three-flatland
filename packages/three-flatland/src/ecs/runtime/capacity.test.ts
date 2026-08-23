@@ -9,7 +9,7 @@ describe('private ECS advisory capacity', () => {
     'rejects invalid expected entity capacity %s',
     (expectedEntities) => {
       const world = createWorld()
-      expect(() => reserveWorld(world, expectedEntities)).toThrow(/expectedEntities/)
+      expect(() => reserveWorld(world, expectedEntities)).toThrow(/reserved capacity/)
       world.dispose()
     }
   )
