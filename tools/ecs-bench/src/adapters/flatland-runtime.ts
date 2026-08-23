@@ -35,6 +35,10 @@ interface RuntimeRelation extends ExclusiveRelation {
   readonly target: RuntimeNumericTrait<{ target: number }>
 }
 
+interface RuntimeAdapterEventSelector extends EventSelector {
+  readonly runtimeSelectors: readonly RuntimeEventSelector[]
+}
+
 let nextRelationId = 0
 
 function runtimeTrait(handle: AnyTrait): RuntimeTrait {
@@ -56,8 +60,8 @@ function runtimeSelector(selector: Selector): RuntimeSelector {
   return selector as unknown as RuntimeSelector
 }
 
-function runtimeEventSelector(selector: EventSelector): RuntimeEventSelector {
-  return selector as unknown as RuntimeEventSelector
+function runtimeEventSelectors(selector: EventSelector): readonly RuntimeEventSelector[] {
+  return (selector as RuntimeAdapterEventSelector).runtimeSelectors
 }
 
 const runtimeSelect = select as unknown as (...required: readonly RuntimeTrait[]) => RuntimeSelector
@@ -107,7 +111,14 @@ function createAdapterWorld(activeEvents: readonly RuntimeEventSelector[]): Adap
       world.dispose()
     },
     drain(selector) {
-      return world.drain(runtimeEventSelector(selector))
+      const selectors = runtimeEventSelectors(selector)
+      if (selectors.length === 1) return world.drain(selectors[0]!)
+
+      const entities = new Set<Entity>()
+      for (const runtimeSelector of selectors) {
+        for (const entity of world.drain(runtimeSelector)) entities.add(entity as Entity)
+      }
+      return [...entities]
     },
     generation(entity) {
       return world.generation(runtimeEntity(entity))
@@ -161,27 +172,29 @@ function createAdapterWorld(activeEvents: readonly RuntimeEventSelector[]): Adap
 
 export function createFlatlandRuntimeAdapter(): EcsAdapter {
   const activeEvents: RuntimeEventSelector[] = []
+  let nextEventId = 0
   return {
     name: 'flatland-runtime',
     createWorld: () => createAdapterWorld(activeEvents),
     event(kind: EventKind, observed: readonly AnyTrait[], required: readonly AnyTrait[] = []) {
       const runtimeObserved = observed.map(runtimeTrait)
       const runtimeRequired = required.map(runtimeTrait)
+      if (runtimeObserved.length === 0) throw new Error(`${kind} selectors require an observed trait`)
+
+      let runtimeSelectors: RuntimeEventSelector[]
       if (kind === 'changed') {
-        const first = runtimeObserved[0]
-        if (first === undefined) throw new Error('changed selectors require an observed trait')
-        const selector = changed({ any: [first, ...runtimeObserved.slice(1)], all: runtimeRequired })
-        activeEvents.push(selector)
-        return selector as unknown as EventSelector
+        runtimeSelectors = [changed({ any: [runtimeObserved[0]!, ...runtimeObserved.slice(1)], all: runtimeRequired })]
+      } else {
+        runtimeSelectors = runtimeObserved.map((observedTrait) =>
+          kind === 'added' ? added(observedTrait, ...runtimeRequired) : removed(observedTrait, ...runtimeRequired)
+        )
       }
-      if (runtimeObserved.length !== 1) {
-        throw new Error(`${kind} selectors require exactly one observed trait`)
-      }
-      const observedTrait = runtimeObserved[0]!
-      const selector =
-        kind === 'added' ? added(observedTrait, ...runtimeRequired) : removed(observedTrait, ...runtimeRequired)
-      activeEvents.push(selector)
-      return selector as unknown as EventSelector
+      const stableRuntimeSelectors = Object.freeze(runtimeSelectors)
+      activeEvents.push(...stableRuntimeSelectors)
+      return Object.freeze({
+        id: nextEventId++,
+        runtimeSelectors: stableRuntimeSelectors,
+      }) as RuntimeAdapterEventSelector
     },
     exclusive(): RuntimeRelation {
       return {

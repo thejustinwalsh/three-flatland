@@ -176,6 +176,70 @@ const KOOTA_BASELINE = {
 describe('Flatland entity-store behavior contract', () => {
   it.each([
     ['reference', createReferenceAdapter],
+    ['Koota', () => kootaAdapter],
+    ['production runtime', createFlatlandRuntimeAdapter],
+    ['anchored scan', createAnchoredScanAdapter],
+    ['signature persistent', createSignaturePersistentAdapter],
+    ['sparse persistent', createSparsePersistentAdapter],
+  ])('%s combines and de-duplicates multi-trait Added and Removed events', (_name, createAdapter) => {
+    const adapter = createAdapter()
+    adapter.reset()
+    const First = adapter.tag()
+    const Second = adapter.tag()
+    const AddedEither = adapter.event('added', [First, Second])
+    const RemovedEither = adapter.event('removed', [First, Second])
+    const world = adapter.createWorld()
+
+    try {
+      const first = world.spawn(component(First))
+      const both = world.spawn(component(First), component(Second))
+      const second = world.spawn(component(Second))
+      expect(new Set(world.drain(AddedEither))).toEqual(new Set([first, both, second]))
+
+      world.remove(both, First)
+      world.remove(both, Second)
+      expect(world.drain(RemovedEither)).toEqual([both])
+    } finally {
+      world.dispose()
+      adapter.reset()
+    }
+  })
+
+  it('uses Koota touch as notification-only tracking and rejects stale or missing sources', () => {
+    kootaAdapter.reset()
+    const Inventory = kootaAdapter.object(() => ({ items: [] as number[], owner: 'nobody' }))
+    const ChangedInventory = kootaAdapter.event('changed', [Inventory])
+    const world = kootaAdapter.createWorld()
+
+    try {
+      const original = world.spawn(component(Inventory))
+      const inventory = world.read(original, Inventory)!
+      inventory.owner = 'original'
+      inventory.items.push(42)
+      world.touch(original, Inventory)
+      expect(world.drain(ChangedInventory)).toEqual([original])
+      expect(world.read(original, Inventory)).toEqual({ items: [42], owner: 'original' })
+
+      world.destroy(original)
+      const recycled = world.spawn(component(Inventory))
+      world.read(recycled, Inventory)!.owner = 'recycled'
+      expect(world.index(recycled)).toBe(world.index(original))
+      world.drain(ChangedInventory)
+      expect(() => world.touch(original, Inventory)).toThrow(/Stale entity handle/)
+      expect(world.read(recycled, Inventory)).toEqual({ items: [], owner: 'recycled' })
+
+      const missing = world.spawn()
+      world.drain(ChangedInventory)
+      expect(() => world.touch(missing, Inventory)).toThrow(/missing trait/)
+      expect(world.drain(ChangedInventory)).toEqual([])
+    } finally {
+      world.dispose()
+      kootaAdapter.reset()
+    }
+  })
+
+  it.each([
+    ['reference', createReferenceAdapter],
     ['anchored scan', createAnchoredScanAdapter],
     ['signature persistent', createSignaturePersistentAdapter],
     ['sparse persistent', createSparsePersistentAdapter],

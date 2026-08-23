@@ -89,8 +89,6 @@ function createTrackingModifier(kind: EventKind, observed: KootaNativeTrait): Mo
   }
 }
 
-const EMPTY_TRACKED_PATCH = Object.freeze({})
-
 class KootaWorld implements AdapterWorld {
   #world: World
   #disposed = false
@@ -137,7 +135,10 @@ class KootaWorld implements AdapterWorld {
 
   touch(entity: Entity, traitValue: AnyTrait): void {
     const kootaEntity = entity as KootaEntity
-    kootaEntity.set(asKootaTrait(traitValue).native, EMPTY_TRACKED_PATCH, true)
+    if (!this.isAlive(entity)) throw new Error(`Stale entity handle ${entity}`)
+    const nativeTrait = asKootaTrait(traitValue).native
+    if (!kootaEntity.has(nativeTrait)) throw new Error('Cannot touch a missing trait')
+    kootaEntity.changed(nativeTrait)
   }
 
   store<TSchema extends NumericSchema>(traitValue: NumericTrait<TSchema>): NumericStore<TSchema> {
