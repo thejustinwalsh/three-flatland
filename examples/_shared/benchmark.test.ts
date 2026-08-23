@@ -1,6 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { createBenchmarkSimulationGate, rendererGpuAdapterInfo, type BenchmarkTarget } from './benchmark'
+import {
+  createBenchmarkSimulationGate,
+  isBenchmarkSceneReady,
+  rendererGpuAdapterInfo,
+  type BenchmarkTarget,
+} from './benchmark'
 import { benchmarkBuildMetadata, benchmarkFixtureSourceFiles, benchmarkFixtureSourceSha256 } from './benchmark-vite'
 
 const FIXTURE_DIRECTORIES = [
@@ -59,6 +64,29 @@ describe('benchmark simulation gate', () => {
     expect(gate.advance()).toBe(true)
     expect(gate.frame()).toBe(0)
     expect(target).toEqual({})
+  })
+
+  it('waits for a complete sprite, batch, and optional light snapshot', () => {
+    expect(isBenchmarkSceneReady({ requestedSprites: 50_000, actualSprites: 0, actualBatches: 0 })).toBe(false)
+    expect(isBenchmarkSceneReady({ requestedSprites: 50_000, actualSprites: 50_000, actualBatches: 4 })).toBe(true)
+    expect(
+      isBenchmarkSceneReady({
+        requestedSprites: 40_000,
+        actualSprites: 40_000,
+        actualBatches: 4,
+        requestedLights: 256,
+        actualLights: 0,
+      })
+    ).toBe(false)
+    expect(
+      isBenchmarkSceneReady({
+        requestedSprites: 40_000,
+        actualSprites: 40_000,
+        actualBatches: 4,
+        requestedLights: 256,
+        actualLights: 256,
+      })
+    ).toBe(true)
   })
 
   it('reads adapter identity from the renderer device instead of requesting another adapter', () => {

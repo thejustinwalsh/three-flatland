@@ -132,7 +132,24 @@ export function createSeededRandom(seed: number): () => number {
   }
 }
 
-/** Publish once after the first completed render so automation can reject fixture drift. */
+/**
+ * Reject a render-phase snapshot until React/passive setup has populated the
+ * requested fixture. R3F can run its first frame before a component's passive
+ * spawn effect, so publishing the first frame unconditionally can freeze a
+ * transient zero-sprite readiness payload.
+ */
+export function isBenchmarkSceneReady(
+  detail: Pick<
+    BenchmarkReadyDetail,
+    'requestedSprites' | 'actualSprites' | 'actualBatches' | 'requestedLights' | 'actualLights'
+  >
+): boolean {
+  if (detail.actualSprites !== detail.requestedSprites || detail.actualBatches <= 0) return false
+  if (detail.requestedLights !== undefined && detail.actualLights !== detail.requestedLights) return false
+  return true
+}
+
+/** Publish once after the first complete render so automation can reject fixture drift. */
 export function publishBenchmarkReady(
   detail: Omit<
     BenchmarkReadyDetail,
@@ -140,7 +157,7 @@ export function publishBenchmarkReady(
   >
 ): void {
   const target = window as BenchmarkWindow
-  if (target.__THREE_FLATLAND_BENCHMARK__) return
+  if (target.__THREE_FLATLAND_BENCHMARK__ || !isBenchmarkSceneReady(detail)) return
   const published = {
     ...detail,
     buildRevision: import.meta.env.VITE_FLATLAND_BENCHMARK_REVISION ?? 'development',
