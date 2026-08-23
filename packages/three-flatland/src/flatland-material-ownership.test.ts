@@ -341,6 +341,31 @@ describe('Flatland material ownership', () => {
     destination.dispose()
   })
 
+  it('detaches a disposed tilemap canonically and rejects later untracked rebuilds', () => {
+    const flatland = new Flatland()
+    flatland.setLighting(new OwnershipLight())
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    flatland.add(tileMap)
+    const context = lightingContext(flatland)
+
+    tileMap.dispose()
+
+    expect(flatland.scene.children).toEqual([flatland.spriteGroup])
+    expect(trackedMaterials(flatland).size).toBe(0)
+    expect(materialRefCounts(flatland).size).toBe(0)
+    expect(context.materials.size).toBe(0)
+    expect((Reflect.get(flatland, '_tileMapOwnedMaterials') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_tileMapMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_tileMapDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect(tileMap.data).toBeNull()
+    expect(() => {
+      tileMap.data = makeMapData()
+    }).toThrow(/after dispose/)
+    expect(tileMap.getLayers()).toEqual([])
+
+    flatland.dispose()
+  })
+
   it('clears every coupled registry and remains bounded across refill cycles', () => {
     const flatland = new Flatland()
     flatland.setLighting(new OwnershipLight())

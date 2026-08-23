@@ -449,6 +449,7 @@ export class Flatland extends Group implements WorldProvider {
   private _spriteDisposeSubscriptions = new Map<Sprite2D, () => void>()
   private _spriteOwnedMaterials = new Map<Sprite2D, Sprite2DMaterial>()
   private _tileMapMaterialSubscriptions = new Map<TileMap2D, () => void>()
+  private _tileMapDisposeSubscriptions = new Map<TileMap2D, () => void>()
   private _tileMapOwnedMaterials = new Map<TileMap2D, readonly Sprite2DMaterial[]>()
 
   /** Whether lighting systems are registered on the schedule */
@@ -949,12 +950,20 @@ export class Flatland extends Group implements WorldProvider {
       })
       this._tileMapMaterialSubscriptions.set(tileMap, unsubscribe)
     }
+    if (!this._tileMapDisposeSubscriptions.has(tileMap)) {
+      const unsubscribe = tileMap._subscribeDispose(() => {
+        if (_flatlandTileMapOwners.get(tileMap) === this) this.remove(tileMap)
+      })
+      this._tileMapDisposeSubscriptions.set(tileMap, unsubscribe)
+    }
     _flatlandTileMapOwners.set(tileMap, this)
   }
 
   private _untrackTileMap(tileMap: TileMap2D): void {
     this._tileMapMaterialSubscriptions.get(tileMap)?.()
     this._tileMapMaterialSubscriptions.delete(tileMap)
+    this._tileMapDisposeSubscriptions.get(tileMap)?.()
+    this._tileMapDisposeSubscriptions.delete(tileMap)
     const materials = this._tileMapOwnedMaterials.get(tileMap)
     this._tileMapOwnedMaterials.delete(tileMap)
     if (materials) for (const material of materials) this._releaseSpriteMaterial(material)
@@ -1094,6 +1103,7 @@ export class Flatland extends Group implements WorldProvider {
     for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._spriteDisposeSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._tileMapMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const unsubscribe of this._tileMapDisposeSubscriptions.values()) runCleanup(unsubscribe)
     for (const sprite of this._spriteOwnedMaterials.keys()) {
       if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
     }
@@ -1107,6 +1117,7 @@ export class Flatland extends Group implements WorldProvider {
     this._spriteDisposeSubscriptions.clear()
     this._spriteOwnedMaterials.clear()
     this._tileMapMaterialSubscriptions.clear()
+    this._tileMapDisposeSubscriptions.clear()
     this._tileMapOwnedMaterials.clear()
     this._spriteMaterialRefCounts.clear()
     this._spriteMaterials.clear()
@@ -2555,6 +2566,7 @@ export class Flatland extends Group implements WorldProvider {
     for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._spriteDisposeSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._tileMapMaterialSubscriptions.values()) runCleanup(unsubscribe)
+    for (const unsubscribe of this._tileMapDisposeSubscriptions.values()) runCleanup(unsubscribe)
     for (const sprite of this._spriteOwnedMaterials.keys()) {
       if (_flatlandSpriteOwners.get(sprite) === this) _flatlandSpriteOwners.delete(sprite)
     }
@@ -2568,6 +2580,7 @@ export class Flatland extends Group implements WorldProvider {
     this._spriteDisposeSubscriptions.clear()
     this._spriteOwnedMaterials.clear()
     this._tileMapMaterialSubscriptions.clear()
+    this._tileMapDisposeSubscriptions.clear()
     this._tileMapOwnedMaterials.clear()
     this._spriteMaterialRefCounts.clear()
     this._spriteMaterials.clear()

@@ -296,21 +296,31 @@ export class TileLayer extends Group {
     // `type` stays `'Sprite2DMaterial'` (they share a class); `name`
     // carries the layer-specific hint.
     this._material.name = `tilemap:${data.name}`
-    for (const effect of effects) {
-      const EffectClass = effect.constructor as typeof MaterialEffect
-      this._material.registerEffect(EffectClass, effect._constants)
-    }
+    try {
+      for (const effect of effects) {
+        const EffectClass = effect.constructor as typeof MaterialEffect
+        this._material.registerEffect(EffectClass, effect._constants)
+      }
 
-    // Register chunk meshes with the devtools sink so the batch
-    // inspector sees tile-chunk draws alongside ECS sprite batches.
-    // No-op in prod (tree-shaken by the devtools build gate).
-    if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
-      this._batchMeshSource = () => this._iterChunkMeshes()
-      _registerMeshBatchSource(this._batchMeshSource)
-    }
+      // Register chunk meshes with the devtools sink so the batch
+      // inspector sees tile-chunk draws alongside ECS sprite batches.
+      // No-op in prod (tree-shaken by the devtools build gate).
+      if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
+        this._batchMeshSource = () => this._iterChunkMeshes()
+        _registerMeshBatchSource(this._batchMeshSource)
+      }
 
-    // Build chunked instanced meshes from tile data
-    this.buildInstances()
+      // Build chunked instanced meshes from tile data
+      this.buildInstances()
+    } catch (error) {
+      try {
+        this.dispose()
+      } catch {
+        // Preserve the construction failure; cleanup is best-effort for an
+        // instance that was never published.
+      }
+      throw error
+    }
   }
 
   /** Build a replacement material without publishing it to the layer. @internal */

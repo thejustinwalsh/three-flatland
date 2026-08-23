@@ -94,6 +94,12 @@ export class TileMap2D extends Group {
     (previous: readonly Sprite2DMaterial[], current: readonly Sprite2DMaterial[]) => void
   >()
 
+  /** Flatland observes terminal disposal so scene and material ownership retire canonically. */
+  private readonly _disposeListeners = new Set<() => void>()
+
+  /** Disposal is terminal; a disposed map cannot rebuild untracked projection resources. */
+  private _disposed = false
+
   /** Object layers (for reference) */
   private objectLayers: ObjectLayerData[] = []
 
@@ -135,17 +141,9 @@ export class TileMap2D extends Group {
    * Set the tilemap data and rebuild the map.
    */
   set data(value: TileMapData | null) {
+    if (this._disposed) throw new Error('TileMap2D.data cannot be set after dispose()')
     if (this._data === value) return
-
-    const previousMaterials = this._layerMaterials()
-    this.disposeInternal(false)
-
-    this._data = value
-
-    if (value) {
-      this.buildMap(value)
-    }
-    this._notifyMaterialReplacement(previousMaterials)
+    this._rebuildProjection(value, this._chunkSize, true)
   }
 
   /**
@@ -158,15 +156,10 @@ export class TileMap2D extends Group {
   }
 
   set chunkSize(value: number) {
+    if (this._disposed) throw new Error('TileMap2D.chunkSize cannot be set after dispose()')
     if (this._chunkSize === value) return
-    this._chunkSize = value
-    // Rebuild if data exists
-    if (this._data) {
-      const previousMaterials = this._layerMaterials()
-      this.disposeInternal(false, false)
-      this.buildMap(this._data)
-      this._notifyMaterialReplacement(previousMaterials)
-    }
+    if (this._data) this._rebuildProjection(this._data, value, false)
+    else this._chunkSize = value
   }
 
   /**
@@ -510,6 +503,12 @@ export class TileMap2D extends Group {
     return () => this._materialListeners.delete(listener)
   }
 
+  /** Observe terminal disposal while this map is owned by a Flatland. @internal */
+  _subscribeDispose(listener: () => void): () => void {
+    this._disposeListeners.add(listener)
+    return () => this._disposeListeners.delete(listener)
+  }
+
   private _layerMaterials(): Sprite2DMaterial[] {
     return this.tileLayers.map((layer) => layer.material)
   }
@@ -518,6 +517,67 @@ export class TileMap2D extends Group {
     if (this._materialListeners.size === 0) return
     const current = this._layerMaterials()
     for (const listener of this._materialListeners) listener(previous, current)
+  }
+
+  /** Build a replacement projection before retiring the currently published one. */
+  private _rebuildProjection(data: TileMapData | null, chunkSize: number, disposePreviousTilesets: boolean): void {
+    const previous = {
+      bounds: this._bounds,
+      chunkSize: this._chunkSize,
+      collisionShapes: this.collisionShapes,
+      data: this._data,
+      heightInPixels: this._heightInPixels,
+      heightInTiles: this._heightInTiles,
+      objectLayers: this.objectLayers,
+      tileHeight: this._tileHeight,
+      tileLayers: this.tileLayers,
+      tileWidth: this._tileWidth,
+      tilesets: this.tilesets,
+      widthInPixels: this._widthInPixels,
+      widthInTiles: this._widthInTiles,
+    }
+    const previousMaterials = previous.tileLayers.map((layer) => layer.material)
+
+    for (const layer of previous.tileLayers) this.remove(layer)
+    this.tileLayers = []
+    this.tilesets = []
+    this.objectLayers = []
+    this.collisionShapes = []
+    this._chunkSize = chunkSize
+
+    try {
+      if (data) this.buildMap(data)
+    } catch (error) {
+      this.disposeInternal(false, disposePreviousTilesets, new Set(previous.tilesets.map((tileset) => tileset.texture)))
+      this._bounds = previous.bounds
+      this._chunkSize = previous.chunkSize
+      this.collisionShapes = previous.collisionShapes
+      this._data = previous.data
+      this._heightInPixels = previous.heightInPixels
+      this._heightInTiles = previous.heightInTiles
+      this.objectLayers = previous.objectLayers
+      this._tileHeight = previous.tileHeight
+      this.tileLayers = previous.tileLayers
+      this._tileWidth = previous.tileWidth
+      this.tilesets = previous.tilesets
+      this._widthInPixels = previous.widthInPixels
+      this._widthInTiles = previous.widthInTiles
+      for (const layer of previous.tileLayers) this.add(layer)
+      throw error
+    }
+
+    this._data = data
+    try {
+      this._notifyMaterialReplacement(previousMaterials)
+    } finally {
+      for (const layer of previous.tileLayers) layer.dispose()
+      if (disposePreviousTilesets) {
+        const retainedTextures = new Set(this.tilesets.map((tileset) => tileset.texture))
+        for (const tileset of previous.tilesets) {
+          if (!retainedTextures.has(tileset.texture)) tileset.dispose()
+        }
+      }
+    }
   }
 
   private _reconcileEffects(effects: readonly MaterialEffect[]): void {
@@ -786,14 +846,20 @@ export class TileMap2D extends Group {
   /**
    * Dispose internal resources (without clearing external references).
    */
-  private disposeInternal(notify = true, disposeTilesets = true): void {
+  private disposeInternal(
+    notify = true,
+    disposeTilesets = true,
+    protectedTextures: ReadonlySet<unknown> = new Set()
+  ): void {
     const previousMaterials = notify ? this._layerMaterials() : []
     for (const layer of this.tileLayers) {
       this.remove(layer)
       layer.dispose()
     }
     if (disposeTilesets) {
-      for (const tileset of this.tilesets) tileset.dispose()
+      for (const tileset of this.tilesets) {
+        if (!protectedTextures.has(tileset.texture)) tileset.dispose()
+      }
     }
     this.tileLayers = []
     this.tilesets = []
@@ -806,7 +872,11 @@ export class TileMap2D extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
-    this.disposeInternal()
+    if (this._disposed) return
+    this._disposed = true
+    for (const listener of this._disposeListeners) listener()
+    this._disposeListeners.clear()
+    this.disposeInternal(false)
     for (const effect of this._effects) effect._detachTileMap()
     this._effects.length = 0
     this._materialListeners.clear()

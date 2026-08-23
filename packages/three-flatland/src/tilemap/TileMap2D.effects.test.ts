@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { InstancedMesh, Texture, type InstancedBufferAttribute } from 'three'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { Flatland } from '../Flatland'
 import { attachEffect } from '../react/attach'
 import { TileMap2D } from './TileMap2D'
 import type { TileMapData } from './types'
@@ -106,6 +107,56 @@ describe('TileMap2D retained material effects', () => {
 
     map.dispose()
   })
+
+  it.each(['data', 'chunkSize'] as const)(
+    'rolls back a failed %s projection build without disposing Flatland-owned material state',
+    (mode) => {
+      const originalData = makeMapData()
+      const map = new TileMap2D({ data: originalData })
+      const effect = new ThrowingTileEffect()
+      map.addEffect(effect)
+      const flatland = new Flatland()
+      flatland.add(map)
+      const previousLayers = [...map.getLayers()]
+      const previousMaterial = map.getLayerMaterialAt(0)!
+      const dispose = vi.spyOn(previousMaterial, 'dispose')
+      const texture = originalData.tilesets[0]!.texture!
+      const disposeTexture = vi.spyOn(texture, 'dispose')
+      const registerEffect = Sprite2DMaterial.prototype.registerEffect
+      const registration = vi.spyOn(Sprite2DMaterial.prototype, 'registerEffect').mockImplementation(function (
+        this: Sprite2DMaterial,
+        ...args: Parameters<typeof registerEffect>
+      ) {
+        throw new Error('forced projection registration failure')
+      })
+
+      try {
+        expect(() => {
+          if (mode === 'data') {
+            const replacement = makeMapData()
+            replacement.tilesets[0]!.texture = texture
+            map.data = replacement
+          } else map.chunkSize = 1
+        }).toThrow('forced projection registration failure')
+      } finally {
+        registration.mockRestore()
+      }
+
+      expect(map.data).toBe(originalData)
+      expect(map.chunkSize).toBe(512)
+      expect(map.getLayers()).toEqual(previousLayers)
+      expect(map.getLayerMaterialAt(0)).toBe(previousMaterial)
+      expect(previousMaterial.hasEffect(ThrowingTileEffect)).toBe(true)
+      expect(dispose).not.toHaveBeenCalled()
+      expect(disposeTexture).not.toHaveBeenCalled()
+      expect(Reflect.get(flatland, '_spriteMaterials')).toEqual(new Set([previousMaterial]))
+      expect(Reflect.get(flatland, '_spriteMaterialRefCounts')).toEqual(new Map([[previousMaterial, 1]]))
+
+      map.dispose()
+      expect(disposeTexture).toHaveBeenCalledTimes(1)
+      flatland.dispose()
+    }
+  )
 
   it('does not dispose a retained tileset texture during a chunk-size-only rebuild', () => {
     const data = makeMapData()
