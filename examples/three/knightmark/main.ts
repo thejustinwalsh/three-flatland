@@ -547,6 +547,8 @@ async function main() {
         example: 'knightmark',
         variant: 'three',
         seed,
+        fixedDeltaMs: fixedDeltaMs ?? null,
+        collisionsEnabled,
         requestedSprites,
         actualSprites: knights.length,
         actualBatches: s.batchCount,

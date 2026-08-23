@@ -3,7 +3,19 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import process from 'node:process'
-import { chromium } from '@playwright/test'
+import { chromium, type CDPSession } from '@playwright/test'
+import {
+  MISSED_VSYNC_THRESHOLD_MS,
+  SIXTY_HZ_FRAME_BUDGET_MS,
+  assertNoUnexpectedDiagnostics,
+  longTaskDurations,
+  missedVsyncCount,
+  validateEcsMarkers,
+  validateFixtureReadiness,
+  type BrowserDiagnostic,
+  type BrowserReadiness,
+  type LongTaskEntry,
+} from './browser-validation'
 
 interface Target {
   label: string
@@ -24,6 +36,7 @@ interface Options {
   seed: number
   collisions: boolean
   fixedDeltaMs: number
+  profile: boolean
   headed: boolean
   output?: string
 }
@@ -39,15 +52,12 @@ interface BrowserCapture {
   intervals: number[]
   longTasks: number[]
   measures: Record<string, number[]>
-  readiness: {
-    example: string
-    variant: string
-    seed: number
-    requestedSprites: number
-    actualSprites: number
-    actualBatches: number
-    requestedLights?: number
-    actualLights?: number
+  readiness: BrowserReadiness
+  diagnostics: BrowserDiagnostic[]
+  heapUsedBytes: {
+    afterWarmup: number
+    afterSample: number
+    delta: number
   }
 }
 
@@ -64,11 +74,13 @@ interface Observation {
   missedVsyncFrames: number
   missedVsyncRate: number
   longTaskMs: Summary | null
+  heapUsedBytes: BrowserCapture['heapUsedBytes']
   markers: Record<string, Summary & { count: number }>
   raw: BrowserCapture
 }
 
 const sourcePath = new URL(import.meta.url)
+const harnessSources = [sourcePath, new URL('./browser-validation.ts', import.meta.url)] as const
 const CAPTURE_TIMEOUT_MS = 180_000
 
 function usage(message?: string, exitCode = 1): never {
@@ -79,11 +91,13 @@ Usage:
     --target=base=http://127.0.0.1:4173@<sha> \
     --target=head=http://127.0.0.1:4174@<sha> \
     --example=knightmark --variant=three --counts=1000,40000 \
-    --output=results/knightmark.json'
+    --profile=0 --output=results/knightmark.json'
 
 The target URL must serve a production Vite preview of the selected example.
 Each observation launches a fresh Chromium process. Two targets run in the
 interleaved order A/B, B/A, A/B to reduce order and thermal bias.
+Use --profile=0 for ordinary production artifacts or --profile=1 when every
+target was built with FL_PROFILE=true.
 `)
   process.exit(exitCode)
 }
@@ -100,6 +114,13 @@ function positiveNumber(value: string | undefined, fallback: number, name: strin
   const parsed = Number.parseFloat(value)
   if (!Number.isFinite(parsed) || parsed <= 0) usage(`Invalid --${name}: ${value}`)
   return parsed
+}
+
+function binaryFlag(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (value === undefined) return fallback
+  if (value === '0') return false
+  if (value === '1') return true
+  usage(`Invalid --${name}: ${value}; expected 0 or 1`)
 }
 
 function revisionAt(url: string): { url: string; revision: string } {
@@ -147,9 +168,10 @@ function parseOptions(argv: string[]): Options {
     warmupFrames: integer(values.get('warmup')?.at(-1), 180, 'warmup'),
     sampleFrames: integer(values.get('frames')?.at(-1), 600, 'frames'),
     seed: integer(values.get('seed')?.at(-1), 0xc0ffee, 'seed'),
-    collisions: (values.get('collisions')?.at(-1) ?? '0') !== '0',
+    collisions: binaryFlag(values.get('collisions')?.at(-1), false, 'collisions'),
     fixedDeltaMs: positiveNumber(values.get('fixed-delta')?.at(-1), 16.6667, 'fixed-delta'),
-    headed: (values.get('headed')?.at(-1) ?? '0') !== '0',
+    profile: binaryFlag(values.get('profile')?.at(-1), false, 'profile'),
+    headed: binaryFlag(values.get('headed')?.at(-1), false, 'headed'),
     output: values.get('output')?.at(-1),
   }
 }
@@ -185,6 +207,34 @@ function fixtureUrl(options: Options, target: Target, count: number): string {
   return url.href
 }
 
+async function withCaptureTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  let captureTimeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        captureTimeout = setTimeout(
+          () => reject(new Error(`Timed out after ${CAPTURE_TIMEOUT_MS} ms while ${label}`)),
+          CAPTURE_TIMEOUT_MS
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(captureTimeout)
+  }
+}
+
+async function readHeapUsedBytes(session: CDPSession): Promise<number> {
+  const result = (await session.send('Performance.getMetrics')) as {
+    metrics: Array<{ name: string; value: number }>
+  }
+  const value = result.metrics.find((metric) => metric.name === 'JSHeapUsedSize')?.value
+  if (value === undefined || !Number.isFinite(value)) {
+    throw new Error('Chromium did not expose Performance.JSHeapUsedSize')
+  }
+  return value
+}
+
 async function capture(options: Options, target: Target, count: number): Promise<BrowserCapture> {
   const browser = await chromium.launch({
     channel: 'chrome',
@@ -194,24 +244,47 @@ async function capture(options: Options, target: Target, count: number): Promise
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 })
     const page = await context.newPage()
+    const performanceSession = await context.newCDPSession(page)
+    await performanceSession.send('Performance.enable')
+    const diagnostics: BrowserDiagnostic[] = []
     page.on('console', (message) => {
-      if (message.type() === 'error' || message.type() === 'warning') {
-        console.error(`[${target.label}] browser ${message.type()}: ${message.text()}`)
+      const level = message.type()
+      if (level === 'error' || level === 'warning') {
+        diagnostics.push({
+          kind: 'console',
+          level,
+          text: message.text(),
+          url: page.url(),
+          location: message.location(),
+        })
       }
     })
-    page.on('pageerror', (error) => console.error(`[${target.label}] page error: ${error.message}`))
-    page.on('crash', () => console.error(`[${target.label}] page crashed at ${page.url()}`))
+    page.on('pageerror', (error) => {
+      diagnostics.push({
+        kind: 'pageerror',
+        level: 'error',
+        text: error.stack ?? error.message,
+        url: page.url(),
+      })
+    })
+    page.on('crash', () => {
+      diagnostics.push({ kind: 'crash', level: 'error', text: 'Page crashed', url: page.url() })
+    })
     // tsx/esbuild annotates nested functions with this helper before Playwright
     // serializes them into the page. Provide the identity form in the browser.
     await page.addInitScript('globalThis.__name = (target) => target')
     await page.addInitScript(() => {
-      const durations: number[] = []
-      Object.defineProperty(window, '__THREE_FLATLAND_LONG_TASKS__', { value: durations })
+      const entries: LongTaskEntry[] = []
+      Object.defineProperty(window, '__THREE_FLATLAND_LONG_TASKS__', { value: entries })
       if ('PerformanceObserver' in window) {
         try {
-          new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) durations.push(entry.duration)
-          }).observe({ type: 'longtask', buffered: true })
+          const observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              entries.push({ startTime: entry.startTime, duration: entry.duration })
+            }
+          })
+          observer.observe({ type: 'longtask', buffered: true })
+          Object.defineProperty(window, '__THREE_FLATLAND_LONG_TASK_OBSERVER__', { value: observer })
         } catch {
           // Long-task observation is not supported by every Chromium mode.
         }
@@ -224,23 +297,18 @@ async function capture(options: Options, target: Target, count: number): Promise
       return (window as unknown as Window & { __THREE_FLATLAND_BENCHMARK__: BrowserCapture['readiness'] })
         .__THREE_FLATLAND_BENCHMARK__
     })
-    if (
-      readiness.example !== options.example ||
-      readiness.variant !== options.variant ||
-      readiness.requestedSprites !== count ||
-      readiness.actualSprites !== count
-    ) {
-      throw new Error(`Fixture mismatch at ${page.url()}: ${JSON.stringify(readiness)}`)
-    }
-    if (
-      options.example === 'lighting' &&
-      (readiness.requestedLights !== options.lights || readiness.actualLights !== Math.min(options.lights, count))
-    ) {
-      throw new Error(`Lighting fixture mismatch at ${page.url()}: ${JSON.stringify(readiness)}`)
-    }
+    validateFixtureReadiness(readiness, {
+      example: options.example,
+      variant: options.variant,
+      seed: options.seed,
+      collisions: options.collisions,
+      fixedDeltaMs: options.fixedDeltaMs,
+      sprites: count,
+      lights: options.lights,
+    })
 
-    const browserCapture = page.evaluate(
-      async ({ warmupFrames, sampleFrames, readiness }) => {
+    await withCaptureTimeout(
+      page.evaluate(async (warmupFrames) => {
         await new Promise<void>((resolveFrames) => {
           let remaining = warmupFrames
           requestAnimationFrame(function frame() {
@@ -248,10 +316,28 @@ async function capture(options: Options, target: Target, count: number): Promise
             else requestAnimationFrame(frame)
           })
         })
+      }, options.warmupFrames),
+      `warming ${page.url()}`
+    )
+    const heapAfterWarmup = await readHeapUsedBytes(performanceSession)
+
+    const sample = await withCaptureTimeout(
+      page.evaluate(async (sampleFrames) => {
         performance.clearMarks()
         performance.clearMeasures()
-        const targetWindow = window as Window & { __THREE_FLATLAND_LONG_TASKS__?: number[] }
-        targetWindow.__THREE_FLATLAND_LONG_TASKS__?.splice(0)
+        const targetWindow = window as Window & {
+          __THREE_FLATLAND_LONG_TASKS__?: LongTaskEntry[]
+          __THREE_FLATLAND_LONG_TASK_OBSERVER__?: PerformanceObserver
+        }
+        const longTaskEntries = targetWindow.__THREE_FLATLAND_LONG_TASKS__
+        const longTaskObserver = targetWindow.__THREE_FLATLAND_LONG_TASK_OBSERVER__
+        if (longTaskEntries) {
+          for (const entry of longTaskObserver?.takeRecords() ?? []) {
+            longTaskEntries.push({ startTime: entry.startTime, duration: entry.duration })
+          }
+          longTaskEntries.splice(0)
+        }
+        const sampleStart = performance.now()
 
         const timestamps = await new Promise<number[]>((resolveFrames) => {
           const values: number[] = []
@@ -261,6 +347,10 @@ async function capture(options: Options, target: Target, count: number): Promise
             else requestAnimationFrame(frame)
           })
         })
+        const sampleEnd = performance.now()
+        for (const entry of longTaskObserver?.takeRecords() ?? []) {
+          longTaskEntries?.push({ startTime: entry.startTime, duration: entry.duration })
+        }
         const intervals = timestamps.slice(1).map((timestamp, index) => timestamp - timestamps[index]!)
         const measures: Record<string, number[]> = {}
         for (const entry of performance.getEntriesByType('measure')) {
@@ -274,25 +364,25 @@ async function capture(options: Options, target: Target, count: number): Promise
         return {
           intervals,
           measures,
-          longTasks: [...(targetWindow.__THREE_FLATLAND_LONG_TASKS__ ?? [])],
-          readiness,
+          longTaskEntries: [...(longTaskEntries ?? [])],
+          sampleStart,
+          sampleEnd,
         }
-      },
-      { warmupFrames: options.warmupFrames, sampleFrames: options.sampleFrames, readiness }
+      }, options.sampleFrames),
+      `sampling ${page.url()}`
     )
-    let captureTimeout: ReturnType<typeof setTimeout> | undefined
-    try {
-      return await Promise.race([
-        browserCapture,
-        new Promise<never>((_resolve, reject) => {
-          captureTimeout = setTimeout(
-            () => reject(new Error(`Timed out after ${CAPTURE_TIMEOUT_MS} ms while sampling ${page.url()}`)),
-            CAPTURE_TIMEOUT_MS
-          )
-        }),
-      ])
-    } finally {
-      clearTimeout(captureTimeout)
+    const heapAfterSample = await readHeapUsedBytes(performanceSession)
+    return {
+      intervals: sample.intervals,
+      measures: sample.measures,
+      longTasks: longTaskDurations(sample.longTaskEntries, sample.sampleStart, sample.sampleEnd),
+      readiness,
+      diagnostics: [...diagnostics],
+      heapUsedBytes: {
+        afterWarmup: heapAfterWarmup,
+        afterSample: heapAfterSample,
+        delta: heapAfterSample - heapAfterWarmup,
+      },
     }
   } finally {
     await browser.close()
@@ -305,8 +395,7 @@ function observation(
   count: number,
   sample: number,
   order: number,
-  url: string,
-  nominalInterval: number
+  url: string
 ): Observation {
   const markerSummaries = Object.fromEntries(
     Object.entries(captureResult.measures).map(([name, durations]) => [
@@ -318,7 +407,7 @@ function observation(
   if (ecsRuns && Math.abs(ecsRuns.length - captureResult.intervals.length) > 1) {
     throw new Error(`Expected one ecs:run per frame for ${target.label}/${count}, saw ${ecsRuns.length}`)
   }
-  const missedVsyncFrames = captureResult.intervals.filter((value) => value > nominalInterval * 1.5).length
+  const missedVsyncFrames = missedVsyncCount(captureResult.intervals)
   return {
     target: target.label,
     revision: target.revision,
@@ -332,6 +421,7 @@ function observation(
     missedVsyncFrames,
     missedVsyncRate: missedVsyncFrames / captureResult.intervals.length,
     longTaskMs: captureResult.longTasks.length > 0 ? summarize(captureResult.longTasks) : null,
+    heapUsedBytes: captureResult.heapUsedBytes,
     markers: markerSummaries,
     raw: captureResult,
   }
@@ -349,15 +439,19 @@ function writeReport(
   options: Options,
   browserVersion: string,
   controls: Map<string, number>,
+  controlCaptures: Map<string, BrowserCapture>,
   observations: Observation[],
   complete: boolean
 ): void {
-  const harnessSha256 = createHash('sha256').update(readFileSync(sourcePath)).digest('hex')
+  const harnessHash = createHash('sha256')
+  for (const source of harnessSources) harnessHash.update(readFileSync(source))
+  const harnessSha256 = harnessHash.digest('hex')
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     capturedAt: new Date().toISOString(),
     complete,
     harnessSha256,
+    harnessSources: harnessSources.map((source) => source.pathname.slice(source.pathname.lastIndexOf('/') + 1)),
     sourceRevision: gitRevision(),
     environment: {
       platform: process.platform,
@@ -371,6 +465,10 @@ function writeReport(
       freshBrowserPerObservation: true,
       headed: options.headed,
       gpuArgs: ['--enable-unsafe-webgpu', '--use-angle=metal'],
+      sixtyHzFrameBudgetMs: SIXTY_HZ_FRAME_BUDGET_MS,
+      missedVsyncThresholdMs: MISSED_VSYNC_THRESHOLD_MS,
+      heapMetric: 'Chromium Performance.JSHeapUsedSize; no forced GC',
+      profileMarkersRequired: options.profile,
     },
     fixture: {
       example: options.example,
@@ -384,6 +482,7 @@ function writeReport(
     },
     targets: options.targets,
     controls: Object.fromEntries(controls),
+    controlCaptures: Object.fromEntries(controlCaptures),
     observations,
   }
   const output = JSON.stringify(report, null, 2) + '\n'
@@ -409,9 +508,18 @@ async function main(): Promise<void> {
       }
     })
   const controls = new Map<string, number>()
+  const controlCaptures = new Map<string, BrowserCapture>()
   for (const target of options.targets) {
     const result = await capture(options, target, options.control)
+    controlCaptures.set(target.label, result)
     controls.set(target.label, summarize(result.intervals).median)
+    writeReport(options, browserVersion, controls, controlCaptures, [], false)
+    assertNoUnexpectedDiagnostics(result.diagnostics, fixtureUrl(options, target, options.control))
+    validateEcsMarkers(result.measures, {
+      example: options.example,
+      profile: options.profile,
+      sampledFrames: result.intervals.length,
+    })
     console.log(`${target.label} control: ${controls.get(target.label)!.toFixed(3)} ms`)
   }
 
@@ -423,9 +531,15 @@ async function main(): Promise<void> {
         const target = orderedTargets[order]!
         const url = fixtureUrl(options, target, count)
         const result = await capture(options, target, count)
-        const record = observation(result, target, count, sample, order, url, controls.get(target.label)!)
+        const record = observation(result, target, count, sample, order, url)
         observations.push(record)
-        writeReport(options, browserVersion, controls, observations, false)
+        writeReport(options, browserVersion, controls, controlCaptures, observations, false)
+        assertNoUnexpectedDiagnostics(result.diagnostics, url)
+        validateEcsMarkers(result.measures, {
+          example: options.example,
+          profile: options.profile,
+          sampledFrames: result.intervals.length,
+        })
         console.log(
           `${target.label} ${count} sample ${sample + 1}: ${record.fps.median.toFixed(2)} fps, ` +
             `${(record.missedVsyncRate * 100).toFixed(1)}% missed`
@@ -434,7 +548,7 @@ async function main(): Promise<void> {
     }
   }
 
-  writeReport(options, browserVersion, controls, observations, true)
+  writeReport(options, browserVersion, controls, controlCaptures, observations, true)
 }
 
 await main()

@@ -503,18 +503,28 @@ function KnightmarkScene({
       const s = spriteGroupRef.current.stats
       knightStatsRef.current.knights = knights.length
       knightStatsRef.current.batches = s.batchCount
-      if (benchmarkEnabled) {
-        publishBenchmarkReady({
-          example: 'knightmark',
-          variant: 'react',
-          seed: benchmarkSeed,
-          requestedSprites,
-          actualSprites: knights.length,
-          actualBatches: s.batchCount,
-        })
-      }
     }
   })
+
+  useFrame(
+    () => {
+      const renderedGroup = spriteGroupRef.current
+      if (!benchmarkEnabled || !renderedGroup) return
+      // R3F's finish phase runs after its render phase. Publishing here proves
+      // the first readiness payload observes a completed batching/render pass.
+      publishBenchmarkReady({
+        example: 'knightmark',
+        variant: 'react',
+        seed: benchmarkSeed,
+        fixedDeltaMs: fixedDeltaMs ?? null,
+        collisionsEnabled,
+        requestedSprites,
+        actualSprites: knightsRef.current.length,
+        actualBatches: renderedGroup.stats.batchCount,
+      })
+    },
+    { phase: 'finish' }
+  )
 
   return (
     <>

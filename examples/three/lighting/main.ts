@@ -886,6 +886,7 @@ async function main() {
         example: 'lighting',
         variant: 'three',
         seed,
+        fixedDeltaMs: fixedDeltaMs ?? null,
         requestedSprites: requestedSlimes,
         actualSprites: slimes.length,
         actualBatches: flatland.spriteGroup.batchCount,

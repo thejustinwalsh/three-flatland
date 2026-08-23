@@ -5,9 +5,11 @@ export interface BenchmarkReadyDetail {
   example: 'knightmark' | 'lighting'
   variant: 'three' | 'react'
   seed: number
+  fixedDeltaMs: number | null
   requestedSprites: number
   actualSprites: number
   actualBatches: number
+  collisionsEnabled?: boolean
   requestedLights?: number
   actualLights?: number
 }

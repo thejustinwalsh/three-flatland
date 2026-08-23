@@ -11,9 +11,11 @@
  *   - **Entry name**: a `category:detail` slug used to group like-spans
  *     within a track (`bus:data`, `flush`, `pass:occlusion`).
  *
- * No-op when devtools isn't bundled (gated via the devtools build
- * gate). Older Chromes silently ignore the `detail`
- * payload and the spans show up on the default Timings track.
+ * Development builds emit spans by default. Ordinary production builds
+ * (`NODE_ENV=production`) are allocation-free unless the separately built
+ * artifact defines `FL_PROFILE=true`. This is independent of the devtools
+ * build gate. Older Chromes silently ignore the `detail` payload and the
+ * spans show up on the default Timings track.
  */
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).

@@ -785,10 +785,13 @@ function FlatlandScene(props: SceneProps) {
       flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
       const flatland = flatlandRef.current
       if (benchmarkEnabled && flatland) {
+        // This render-phase callback owns Flatland.render(), so readiness is
+        // published only after batching and the renderer pass have completed.
         publishBenchmarkReady({
           example: 'lighting',
           variant: 'react',
           seed: benchmarkSeed,
+          fixedDeltaMs: benchmarkFixedDeltaMs ?? null,
           requestedSprites: benchmarkSlimes,
           actualSprites: slimesRef.current.length,
           actualBatches: flatland.spriteGroup.batchCount,
