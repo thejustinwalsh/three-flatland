@@ -25,10 +25,12 @@ import {
   DEFAULT_BENCHMARK_SEED,
   benchmarkParams,
   booleanParam,
+  createBenchmarkSimulationGate,
   createSeededRandom,
   integerParam,
   numberParam,
   publishBenchmarkReady,
+  rendererGpuAdapterInfo,
 } from '../../_shared/benchmark'
 
 // ============================================
@@ -218,6 +220,7 @@ async function main() {
   const seed = integerParam(query, 'seed', DEFAULT_BENCHMARK_SEED)
   const collisionsEnabled = booleanParam(query, 'collisions', true)
   const fixedDeltaMs = numberParam(query, 'fixedDelta')
+  const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
   const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
 
   // WebGPU renderer
@@ -433,6 +436,33 @@ async function main() {
 
   // --- Animation loop ---
   let lastTime = performance.now()
+  function renderFrame(): void {
+    // Systems run automatically in updateMatrixWorld.
+    devtools.beginFrame(performance.now(), renderer)
+    renderer.render(scene, camera)
+    devtools.endFrame(renderer)
+    updateDevtools()
+
+    const stats = spriteGroup.stats
+    knightStats.knights = knights.length
+    knightStats.batches = stats.batchCount
+    if (benchmarkEnabled) {
+      publishBenchmarkReady({
+        example: 'knightmark',
+        variant: 'three',
+        seed,
+        fixedDeltaMs: fixedDeltaMs ?? null,
+        collisionsEnabled,
+        requestedSprites,
+        actualSprites: knights.length,
+        actualBatches: stats.batchCount,
+        simulationGated: benchmarkEnabled,
+        simulationFrame: simulationGate.frame(),
+        gpuAdapter: rendererGpuAdapterInfo(renderer),
+      })
+    }
+  }
+
   function animate() {
     rafId = requestAnimationFrame(animate)
     const now = performance.now()
@@ -440,6 +470,10 @@ async function main() {
     lastTime = now
     const dt = deltaMs / 1000
 
+    if (!simulationGate.advance()) {
+      renderFrame()
+      return
+    }
     // Derive cell size from current hitRadius
     const cellSize = sim.hitRadius * 4
 
@@ -531,29 +565,7 @@ async function main() {
         spatialHash.forEachNeighbor(knight, visitor)
       }
     }
-
-    // Render — systems run automatically in updateMatrixWorld
-    devtools.beginFrame(performance.now(), renderer)
-    renderer.render(scene, camera)
-    devtools.endFrame(renderer)
-    updateDevtools()
-
-    // Knight batch monitors
-    const s = spriteGroup.stats
-    knightStats.knights = knights.length
-    knightStats.batches = s.batchCount
-    if (benchmarkEnabled) {
-      publishBenchmarkReady({
-        example: 'knightmark',
-        variant: 'three',
-        seed,
-        fixedDeltaMs: fixedDeltaMs ?? null,
-        collisionsEnabled,
-        requestedSprites,
-        actualSprites: knights.length,
-        actualBatches: s.batchCount,
-      })
-    }
+    renderFrame()
   }
   animate()
 }

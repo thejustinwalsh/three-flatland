@@ -19,10 +19,12 @@ import { createPane } from '@three-flatland/devtools'
 import {
   DEFAULT_BENCHMARK_SEED,
   benchmarkParams,
+  createBenchmarkSimulationGate,
   createSeededRandom,
   integerParam,
   numberParam,
   publishBenchmarkReady,
+  rendererGpuAdapterInfo,
 } from '../../_shared/benchmark'
 
 // ============================================
@@ -185,6 +187,7 @@ async function main() {
   const requestedSlimeLights = integerParam(query, 'lights', requestedSlimes)
   const seed = integerParam(query, 'seed', DEFAULT_BENCHMARK_SEED)
   const fixedDeltaMs = numberParam(query, 'fixedDelta')
+  const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
   const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
   const slimeLightLimit = benchmarkEnabled ? requestedSlimeLights : Number.POSITIVE_INFINITY
 
@@ -673,10 +676,35 @@ async function main() {
   let lastTime = performance.now()
   let flickerT = 0
 
+  function renderFrame(): void {
+    flatland.render(renderer)
+    if (benchmarkEnabled) {
+      publishBenchmarkReady({
+        example: 'lighting',
+        variant: 'three',
+        seed,
+        fixedDeltaMs: fixedDeltaMs ?? null,
+        requestedSprites: requestedSlimes,
+        actualSprites: slimes.length,
+        actualBatches: flatland.spriteGroup.batchCount,
+        simulationGated: benchmarkEnabled,
+        simulationFrame: simulationGate.frame(),
+        gpuAdapter: rendererGpuAdapterInfo(renderer),
+        requestedLights: requestedSlimeLights,
+        actualLights: slimes.reduce((count, slime) => count + (slime.light ? 1 : 0), 0),
+      })
+    }
+    updateDevtools()
+  }
+
   function animate(): void {
     const now = performance.now()
     const rawDelta = fixedDeltaMs === undefined ? Math.min(0.1, (now - lastTime) / 1000) : fixedDeltaMs / 1000
     lastTime = now
+    if (!simulationGate.advance()) {
+      renderFrame()
+      return
+    }
     // Two deltas:
     //   `animDelta` — sprite animation cursors + torch flicker. Zero only
     //                 when paused.
@@ -879,22 +907,7 @@ async function main() {
         s.light.intensity = s.state === 'excited' ? 0.35 : s.state === 'rest' ? 0.2 : 0.28
       }
     }
-
-    flatland.render(renderer)
-    if (benchmarkEnabled) {
-      publishBenchmarkReady({
-        example: 'lighting',
-        variant: 'three',
-        seed,
-        fixedDeltaMs: fixedDeltaMs ?? null,
-        requestedSprites: requestedSlimes,
-        actualSprites: slimes.length,
-        actualBatches: flatland.spriteGroup.batchCount,
-        requestedLights: requestedSlimeLights,
-        actualLights: slimes.reduce((count, slime) => count + (slime.light ? 1 : 0), 0),
-      })
-    }
-    updateDevtools()
+    renderFrame()
   }
 
   void renderer.setAnimationLoop(animate)

@@ -24,10 +24,12 @@ import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/r
 import {
   DEFAULT_BENCHMARK_SEED,
   benchmarkParams,
+  createBenchmarkSimulationGate,
   createSeededRandom,
   integerParam,
   numberParam,
   publishBenchmarkReady,
+  rendererGpuAdapterInfo,
 } from '../../_shared/benchmark'
 
 extend({
@@ -74,6 +76,7 @@ const benchmarkSlimes = integerParam(benchmarkQuery, 'slimes', 5)
 const benchmarkLights = integerParam(benchmarkQuery, 'lights', benchmarkSlimes)
 const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
 const benchmarkFixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
+const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
 
 // Hero movement speed (world u/s) + click-to-walk tuning.
 const HERO_SPEED = 70
@@ -527,6 +530,7 @@ function FlatlandScene(props: SceneProps) {
     // canvas continues to update — useful for capturing comparison
     // screenshots on identical entity positions.
     if (props.paused) return
+    if (!simulationGate.advance()) return
     const delta = benchmarkFixedDeltaMs === undefined ? rawDelta : benchmarkFixedDeltaMs / 1000
     flickerTimer.current += delta
     const t = flickerTimer.current
@@ -795,6 +799,9 @@ function FlatlandScene(props: SceneProps) {
           requestedSprites: benchmarkSlimes,
           actualSprites: slimesRef.current.length,
           actualBatches: flatland.spriteGroup.batchCount,
+          simulationGated: benchmarkEnabled,
+          simulationFrame: simulationGate.frame(),
+          gpuAdapter: rendererGpuAdapterInfo(renderer),
           requestedLights: benchmarkLights,
           actualLights: slimesRef.current.reduce((count, slime) => count + (slime.light ? 1 : 0), 0),
         })

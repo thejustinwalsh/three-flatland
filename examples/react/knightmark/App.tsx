@@ -23,10 +23,12 @@ import {
   DEFAULT_BENCHMARK_SEED,
   benchmarkParams,
   booleanParam,
+  createBenchmarkSimulationGate,
   createSeededRandom,
   integerParam,
   numberParam,
   publishBenchmarkReady,
+  rendererGpuAdapterInfo,
 } from '../../_shared/benchmark'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during
@@ -56,6 +58,7 @@ const requestedSprites = integerParam(benchmarkQuery, 'sprites', integerParam(be
 const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
 const collisionsEnabled = booleanParam(benchmarkQuery, 'collisions', true)
 const fixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
+const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
 
 // Tilemap
 const TILE_PX = 16
@@ -284,7 +287,7 @@ function KnightmarkScene({
   knightScale,
   knightStatsRef,
 }: KnightmarkSceneProps) {
-  const { camera, size } = useThree()
+  const { camera, gl: renderer, size } = useThree()
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
@@ -399,6 +402,7 @@ function KnightmarkScene({
 
   // Game loop
   useFrame((_, delta) => {
+    if (!simulationGate.advance()) return
     const deltaMs = fixedDeltaMs ?? delta * 1000
     const dt = deltaMs / 1000
     const knights = knightsRef.current
@@ -521,6 +525,9 @@ function KnightmarkScene({
         requestedSprites,
         actualSprites: knightsRef.current.length,
         actualBatches: renderedGroup.stats.batchCount,
+        simulationGated: benchmarkEnabled,
+        simulationFrame: simulationGate.frame(),
+        gpuAdapter: rendererGpuAdapterInfo(renderer),
       })
     },
     { phase: 'finish' }
