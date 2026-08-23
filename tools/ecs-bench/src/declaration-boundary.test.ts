@@ -29,7 +29,29 @@ function fixture(relativeRuntimeImport: string): string {
   return fixtureSource(`export type { PrivateWorld } from '${relativeRuntimeImport}'\n`)
 }
 
+function nestedWildcardFixture(): string {
+  const root = mkdtempSync(join(tmpdir(), 'flatland-declaration-boundary-'))
+  fixtures.push(root)
+  mkdirSync(join(root, 'dist/nested/ecs/runtime'), { recursive: true })
+  writeFileSync(
+    join(root, 'package.json'),
+    `${JSON.stringify({ publishConfig: { exports: { './*': { types: './dist/*.d.ts' } } } }, null, 2)}\n`
+  )
+  writeFileSync(join(root, 'dist/nested/world.d.ts'), "export * from './ecs/runtime/index.js'\n")
+  writeFileSync(join(root, 'dist/nested/ecs/runtime/index.d.ts'), 'export interface PrivateWorld {}\n')
+  return root
+}
+
 describe('public declaration boundary verifier', () => {
+  it('accepts a public declaration graph that never reaches the private runtime', () => {
+    const root = fixtureSource('export interface PublicWorld {}\n')
+    const output = execFileSync(process.execPath, [verifier, root, 'ecs/runtime'], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    })
+    expect(output).toMatch(/reachable public declaration files exclude ecs\/runtime/)
+  })
+
   it.each(['./runtime', './runtime/index', './runtime/index.js', '../ecs/runtime'])(
     'rejects a reachable private runtime through %s',
     (relativeRuntimeImport) => {
@@ -81,5 +103,15 @@ describe('public declaration boundary verifier', () => {
         stdio: 'pipe',
       })
     ).toThrow(/resolves inside dist\/ecs\/runtime/)
+  })
+
+  it('checks nested declaration roots exposed through wildcard exports', () => {
+    const root = nestedWildcardFixture()
+    expect(() =>
+      execFileSync(process.execPath, [verifier, root, 'ecs/runtime'], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    ).toThrow(/private declaration leak/)
   })
 })

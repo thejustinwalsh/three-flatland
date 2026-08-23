@@ -513,36 +513,41 @@ function checkCorePrivatePaths(root) {
   ).join('\n')
   const sourcePath = join(root, 'flatland-private-imports.mts')
   const configPath = join(root, 'tsconfig.flatland-private-imports.json')
-  writeFileSync(sourcePath, `${source}\n`)
-  writeFileSync(
-    configPath,
-    `${JSON.stringify(
-      {
-        compilerOptions: {
-          module: 'NodeNext',
-          moduleResolution: 'NodeNext',
-          noEmit: true,
-          skipLibCheck: true,
-          target: 'ES2022',
-        },
-        files: ['./flatland-private-imports.mts'],
-      },
-      null,
-      2
-    )}\n`
-  )
-
   try {
-    run(resolve(ROOT, 'node_modules/.bin/tsc'), ['--pretty', 'false', '--project', configPath], root)
-    assertFail('private ECS paths unexpectedly resolved for a TypeScript consumer')
-  } catch (error) {
-    const message = `${error.stdout ?? ''}${error.stderr ?? ''}${error.message ?? ''}`
-    const missing = PRIVATE_CORE_PATHS.filter((specifier) => !message.includes(`'${specifier}'`))
-    if (missing.length === 0 && message.includes('TS2307')) {
-      assertOk('private ECS paths are unresolvable from packed TypeScript declarations')
-    } else {
-      assertFail(`private ECS TypeScript probe failed for the wrong reason: ${message.slice(-600)}`)
+    writeFileSync(sourcePath, `${source}\n`)
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            module: 'NodeNext',
+            moduleResolution: 'NodeNext',
+            noEmit: true,
+            skipLibCheck: true,
+            target: 'ES2022',
+          },
+          files: ['./flatland-private-imports.mts'],
+        },
+        null,
+        2
+      )}\n`
+    )
+
+    try {
+      run(resolve(ROOT, 'node_modules/.bin/tsc'), ['--pretty', 'false', '--project', configPath], root)
+      assertFail('private ECS paths unexpectedly resolved for a TypeScript consumer')
+    } catch (error) {
+      const message = `${error.stdout ?? ''}${error.stderr ?? ''}${error.message ?? ''}`
+      const missing = PRIVATE_CORE_PATHS.filter((specifier) => !message.includes(`'${specifier}'`))
+      if (missing.length === 0 && message.includes('TS2307')) {
+        assertOk('private ECS paths are unresolvable from packed TypeScript declarations')
+      } else {
+        assertFail(`private ECS TypeScript probe failed for the wrong reason: ${message.slice(-600)}`)
+      }
     }
+  } finally {
+    rmSync(sourcePath, { force: true })
+    rmSync(configPath, { force: true })
   }
 }
 

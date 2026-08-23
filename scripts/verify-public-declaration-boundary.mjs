@@ -16,9 +16,13 @@ if (exportKeys.some((key) => key === './ecs' || key.startsWith('./ecs/'))) {
   throw new Error('three-flatland: private ECS has a package export')
 }
 
-const allFiles = readdirSync(packageDirectory, { recursive: true })
-  .filter((entry) => typeof entry === 'string')
-  .map((entry) => entry.split(sep).join('/'))
+let cachedAllFiles
+
+function allFiles() {
+  return (cachedAllFiles ??= readdirSync(packageDirectory, { recursive: true })
+    .filter((entry) => typeof entry === 'string')
+    .map((entry) => entry.split(sep).join('/')))
+}
 
 function typeTargets(value) {
   if (typeof value === 'string') return value.endsWith('.d.ts') ? [value] : []
@@ -28,14 +32,14 @@ function typeTargets(value) {
 
 function patternRegex(pattern) {
   const escaped = pattern.replace(/^\.\//, '').replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`^${escaped.replaceAll('*', '[^/]+')}$`)
+  return new RegExp(`^${escaped.replaceAll('*', '.+')}$`)
 }
 
 const roots = new Set()
 for (const target of Object.values(exportsMap).flatMap(typeTargets)) {
   if (target.includes('*')) {
     const matcher = patternRegex(target)
-    for (const file of allFiles) {
+    for (const file of allFiles()) {
       if (matcher.test(file)) roots.add(resolve(packageDirectory, file))
     }
   } else {
