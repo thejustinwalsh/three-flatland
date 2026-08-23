@@ -1,6 +1,6 @@
 # Baseline and kernel decision
 
-Status: initial kernel direction selected; expanded evidence and production implementation remain gated
+Status: private production runtime validated; core migration and renderer gates remain pending
 
 Date: 2026-08-22
 
@@ -12,13 +12,14 @@ runtime direction.
 It is the best current balance for Flatland's bounded trait surface:
 
 - 68.5% less active heap than Koota at 60,000 entities,
-- 44.6% less active heap than the sparse-persistent candidate,
-- 59.3% lower median for the 60,000-entity lifecycle workload than Koota,
-- 99.8% lower median for repeated stable-query retrieval,
-- 57.5% lower median when actually iterating 16.384 million stable-query entities,
-- 61.3% lower median for 12,000 routing changes,
-- 87.3% lower median for 12,000 dynamic structural changes, and
-- 76.3% lower median for exclusive assignment lookup.
+- the production runtime uses 44.6% less active heap than the sparse-persistent candidate,
+- 48.3% lower median for the 60,000-entity lifecycle workload than Koota,
+- 51.4% lower median for the 60,000-entity, 256-dynamic-effect-trait lifecycle,
+- 99.9% lower median for repeated stable-query retrieval,
+- 47.1% lower median when actually iterating 16.384 million stable-query entities,
+- 65.8% lower median for 12,000 routing changes,
+- 80.9% lower median for 12,000 dynamic structural changes, and
+- 58.2% lower median for full-handle numeric batch assignment.
 
 The production runtime still has to pass the full `SystemSchedule`, allocation, representative
 consumer bundle, declaration, and live WebGPU gates. This decision chooses the implementation
@@ -28,11 +29,13 @@ direction; it does not waive any shipping threshold.
 
 | Input                 | Value                                      |
 | --------------------- | ------------------------------------------ |
-| Merge base            | `4824c47555a822b532ab8497c30c8e8d881529a2` |
+| Kernel merge base     | `93c7d9cc9a5c35844ea2f08daf090c3bc06080e5` |
+| Storage merge base    | `4824c47555a822b532ab8497c30c8e8d881529a2` |
 | Node                  | 26.5.0                                     |
 | pnpm                  | 10.28.1                                    |
 | OS                    | Darwin 25.5.0 arm64                        |
 | Koota                 | 0.6.5                                      |
+| tsx                   | 4.21.0                                     |
 | esbuild               | 0.28.1                                     |
 | Browser bundle target | ES2022 ESM                                 |
 | CPU                   | Apple M4                                   |
@@ -55,7 +58,7 @@ Raw evidence:
 
 ## Behavioral baseline
 
-The independent reference model and Koota adapter exposed nine intentional differences between
+The independent reference model and Koota adapter exposed ten intentional differences between
 Koota 0.6.5 and the Flatland contract:
 
 1. Passing a partial initializer to a Koota object-backed trait replaces the factory result, so
@@ -77,44 +80,61 @@ Koota 0.6.5 and the Flatland contract:
    all-entities query and should not maintain a global membership index for an unused feature.
 9. Koota's 12-bit generation wraps and aliases the original handle on the 4,096th recycle. Flatland
    uses the safe-integer generation range and permanently retires an index before it could wrap.
+10. Removing an exclusive relation from a destroyed source silently no-ops in Koota. Flatland
+    rejects stale-source unassignment consistently with every other structural mutation.
 
-All three candidates exactly match the intended reference snapshot. The Koota deltas have explicit
-tests so they cannot be mistaken for accidental incompatibilities during migration.
+All three candidates and the specialized private production runtime exactly match the intended
+reference snapshot. The Koota deltas have explicit tests so they cannot be mistaken for accidental
+incompatibilities during migration.
 
 ## Size baseline
 
 | Artifact                                  | Minified |     Gzip |  Brotli |
 | ----------------------------------------- | -------: | -------: | ------: |
 | Koota seven-import kernel                 | 34,910 B | 10,584 B | 9,362 B |
-| Shared candidate superset, signature mode |  8,488 B |  3,179 B | 2,891 B |
+| Shared candidate superset, signature mode |  8,637 B |  3,209 B | 2,940 B |
+| Private production runtime                | 11,647 B |  3,824 B | 3,427 B |
 
 The prototype result is conservative: the candidate artifact still contains the shared
-benchmark-adapter shell and branches for all three query modes. Even that superset is 26,422 bytes
-smaller minified, 7,405 bytes smaller gzip, and 6,471 bytes smaller Brotli than the exact Koota
+benchmark-adapter shell and branches for all three query modes. Even that superset is 26,273 bytes
+smaller minified, 7,375 bytes smaller gzip, and 6,422 bytes smaller Brotli than the exact Koota
 import surface. It is below the isolated kernel caps of 12,000 / 4,000 / 3,800 bytes.
 
-The specialized production kernel must be measured again. This isolated result does not substitute
-for the required basic Three.js, basic React, stress, and dynamic-effect consumer attribution.
+The specialized private runtime now measures 23,263 bytes smaller minified, 6,760 bytes smaller
+gzip, and 5,935 bytes smaller Brotli than the exact Koota import surface. Its additional entity
+safety, nominal types, explicit per-world event activation, and release paths remain below the
+12,000 / 4,000 / 3,800 byte caps. This isolated result does not substitute for the required basic
+Three.js, basic React, stress, and dynamic-effect consumer attribution after the core migration.
 
 ## Full microbenchmark summary
 
 Times are milliseconds per sample. Lower is better.
 
-| Workload                              | Koota median / p95 | Signature median / p95 | Median change |
-| ------------------------------------- | -----------------: | ---------------------: | ------------: |
-| Lifecycle, 1,000                      |      1.779 / 2.224 |          0.930 / 1.323 |        -47.7% |
-| Lifecycle, 16,384                     |    32.895 / 34.724 |        13.441 / 13.625 |        -59.1% |
-| Lifecycle, 60,000                     |  123.840 / 128.359 |        50.402 / 52.747 |        -59.3% |
-| Stable view retrieval, 1,000 calls    |      8.678 / 8.943 |          0.015 / 0.024 |        -99.8% |
-| Stable view iteration, 16.384M visits |    15.832 / 16.241 |          6.724 / 6.750 |        -57.5% |
-| Dynamic add/remove, 12,000            |    12.117 / 13.282 |          1.534 / 1.841 |        -87.3% |
-| Three routing writes, 12,000          |      4.189 / 4.609 |          1.620 / 1.704 |        -61.3% |
-| Exclusive assign/read/remove, 12,000  |      3.178 / 4.105 |          0.754 / 0.896 |        -76.3% |
+| Workload                              | Koota median / p95 | Production median / p95 | Median change |
+| ------------------------------------- | -----------------: | ----------------------: | ------------: |
+| Lifecycle, 1,000                      |      1.809 / 2.234 |           1.316 / 1.928 |        -27.2% |
+| Lifecycle, 16,384                     |    33.442 / 35.400 |         17.174 / 17.732 |        -48.6% |
+| Lifecycle, 60,000                     |  125.074 / 130.579 |         64.675 / 67.889 |        -48.3% |
+| 256-effect-trait lifecycle, 12,000    |    58.411 / 61.294 |         45.496 / 52.397 |        -22.1% |
+| 256-effect-trait lifecycle, 60,000    |  253.709 / 261.141 |       123.362 / 143.071 |        -51.4% |
+| Stable view retrieval, 1,000 calls    |      8.817 / 9.041 |           0.013 / 0.028 |        -99.9% |
+| Stable view iteration, 16.384M visits |    16.047 / 16.497 |           8.494 / 8.908 |        -47.1% |
+| Dynamic add/remove, 12,000            |    13.054 / 14.006 |           2.499 / 2.704 |        -80.9% |
+| Three routing writes, 12,000          |      5.049 / 5.190 |           1.729 / 1.930 |        -65.8% |
+| Exclusive assign/read/remove, 12,000  |      3.577 / 4.660 |           1.494 / 1.652 |        -58.2% |
 
-The direct-store loop showed a 3.0% faster signature median at 0.177 ms versus 0.183 ms. After setup,
-that loop performs only identical cached index and `number[]` operations—no adapter operation is in
-the timed region—so the disagreement is classified as sub-millisecond process/JIT noise rather
-than a kernel result. The end-to-end schedule gate remains authoritative.
+The production stable-iteration observations include two 86–87 ms timing outliers;
+the other 43 observations cluster between 8.42 and 8.91 ms. The aggregate p95 remains 8.908 ms, and
+the raw result intentionally retains that timing variance instead of filtering it
+from the evidence.
+
+The direct-store loop measured 0.172 ms for the production runtime versus 0.174 ms for Koota, an
+absolute difference of 0.002 ms. After setup, that loop performs only identical cached index and
+`number[]` operations—no adapter operation is in the timed region—so the disagreement is classified
+as sub-millisecond process/JIT noise rather than a kernel result. The end-to-end schedule and
+batch-local traversal gates remain authoritative. The assignment row uses a full packed handle in a
+numeric field with `0` as the unassigned sentinel, matching the planned `BatchSlot.batchEntity`
+storage rather than a general relation or `Map` shim.
 
 ## Numeric storage decision
 
@@ -137,11 +157,13 @@ strategies.
 
 ### Selected: signatures plus persistent views
 
-The signature candidate is 15.5% faster than sparse-persistent at the 60,000-entity lifecycle,
-6.8% faster for routing events, 8.2% faster for structural churn, and uses 44.6% less active heap.
-Sparse-persistent is 2.7% faster for exclusive assignment in this run, but signatures retain the
-stronger result across the broader renderer-shaped workload. Multiple 32-bit words support dynamic
-effect traits without a fixed 32-trait ceiling.
+The signature candidate is 9.6% faster than sparse-persistent at the 60,000-entity lifecycle,
+10.0% faster for structural churn, 53.9% faster for the 256-effect-trait lifecycle, 11.5% faster for
+exclusive assignment, 0.8% slower for routing, and uses 44.5% less active heap. Multiple 32-bit
+words support dynamic effect traits without a fixed 32-trait ceiling. The specialized production
+runtime's dense active-signature-word scan with present-bit traversal improves another 16.1% over
+the shared signature prototype on the 60,000-entity base lifecycle and 66.2% on the dynamic-effect
+lifecycle.
 
 ### Rejected: sparse membership plus persistent views
 
@@ -152,13 +174,13 @@ paths make it the weaker overall kernel.
 ### Rejected: anchored scans
 
 Anchored scans are small and fast under structural churn, but the unchanged 16,384-entity query
-retrieval workload took 165.6 ms versus Koota's 8.7 ms, and full iteration took 172.3 ms versus
-15.8 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
+retrieval workload took 362.0 ms versus Koota's 8.8 ms, and full iteration took 369.2 ms versus
+16.0 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
 
 ## Next gate
 
-First expand the kernel matrix called out in the validation plan, including raw-index comparison,
-randomized lifecycle/recycle passes, match densities, and allocation checks. Then implement the
-selected private runtime without a production consumer and run the same behavior contract,
-compile-time inference tests, isolated production bundle budget, stale-handle tests, and
-world-disposal tests. Only after that gate passes should core call sites move off Koota.
+Finish the private-runtime PR review with behavior, compile-time inference, isolated production
+bundle, packed-package boundary, stale-handle, and disposal gates green. Then migrate core call
+sites, enforce allocation-free hot numeric access and batch-local physical-slot iteration, and run
+the full schedule, representative consumer, declaration, and live WebGPU gates before removing
+Koota.

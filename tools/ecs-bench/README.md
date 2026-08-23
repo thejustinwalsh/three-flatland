@@ -32,9 +32,9 @@ pnpm nx run @three-flatland/ecs-bench:benchmark
 pnpm nx run @three-flatland/ecs-bench:benchmark:storage
 ```
 
-Use `--adapter=koota`, `--adapter=sparse-persistent`, `--adapter=signature-persistent`, or
-`--adapter=anchored-scan` to isolate one implementation. Both benchmark commands accept
-`--output=<path>` to preserve the raw JSON report.
+Use `--adapter=koota`, `--adapter=flatland-runtime`, `--adapter=sparse-persistent`,
+`--adapter=signature-persistent`, or `--adapter=anchored-scan` to isolate one implementation. Both
+benchmark commands accept `--output=<path>` to preserve the raw JSON report.
 
 Wall-clock results are comparative evidence, not a deterministic CI test. The scenario suite,
 type checks, and later bundle budgets are deterministic gates.

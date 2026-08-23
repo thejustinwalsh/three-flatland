@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
@@ -9,6 +10,7 @@ interface EvidenceReport {
   readonly environment?: {
     readonly harnessSha256: string
     readonly harnessSources: readonly string[]
+    readonly tsx?: string
   }
   readonly harnessSha256?: string
   readonly harnessSources?: readonly string[]
@@ -23,6 +25,7 @@ interface EvidenceReport {
 
 const resultDirectory = resolve(import.meta.dirname, '../../../planning/internal-ecs/results')
 const require = createRequire(import.meta.url)
+const sizeHarness = resolve(import.meta.dirname, 'measure-kernels-size.ts')
 
 function readReport(name: string): EvidenceReport {
   return JSON.parse(readFileSync(resolve(resultDirectory, name), 'utf8')) as EvidenceReport
@@ -61,6 +64,17 @@ function packageVersion(name: string): string {
   return packageJson.version
 }
 
+function measureCurrentKernelSizes(): EvidenceReport {
+  return JSON.parse(
+    execFileSync(process.execPath, ['--experimental-strip-types', sizeHarness], {
+      cwd: import.meta.dirname,
+      encoding: 'utf8',
+    })
+  ) as EvidenceReport
+}
+
+const currentSizeReport = measureCurrentKernelSizes()
+
 describe('checked-in ECS evidence', () => {
   it.each(['kernel-baseline.json', 'kernel-size.json', 'numeric-storage.json'])(
     '%s matches the current harness source',
@@ -71,17 +85,33 @@ describe('checked-in ECS evidence', () => {
   )
 
   it('keeps the selected signature kernel under the isolated size caps', () => {
-    const report = readReport('kernel-size.json')
-    const signature = report.measurements?.find(({ artifact }) => artifact.startsWith('Signature membership'))
+    const signature = currentSizeReport.measurements?.find(({ artifact }) =>
+      artifact.startsWith('Signature membership')
+    )
     expect(signature).toBeDefined()
     expect(signature!.minifiedBytes).toBeLessThanOrEqual(12_000)
     expect(signature!.gzipBytes).toBeLessThanOrEqual(4_000)
     expect(signature!.brotliBytes).toBeLessThanOrEqual(3_800)
   })
 
+  it('keeps the private production runtime under the isolated size caps', () => {
+    const runtime = currentSizeReport.measurements?.find(
+      ({ artifact }) => artifact === 'Flatland private production runtime'
+    )
+    expect(runtime).toBeDefined()
+    expect(runtime!.minifiedBytes).toBeLessThanOrEqual(12_000)
+    expect(runtime!.gzipBytes).toBeLessThanOrEqual(4_000)
+    expect(runtime!.brotliBytes).toBeLessThanOrEqual(3_800)
+  })
+
   it('matches the resolved bundle-tool dependency versions', () => {
     const report = readReport('kernel-size.json')
     expect(report.koota).toBe(packageVersion('koota'))
     expect(report.esbuild).toBe(packageVersion('esbuild'))
+    expect(readReport('kernel-baseline.json').environment?.tsx).toBe(packageVersion('tsx'))
+  })
+
+  it('matches the checked-in size measurements to a live isolated bundle', () => {
+    expect(currentSizeReport.measurements).toEqual(readReport('kernel-size.json').measurements)
   })
 })

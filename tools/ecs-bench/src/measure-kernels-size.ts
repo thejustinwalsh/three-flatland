@@ -16,11 +16,18 @@ const harnessSources = [
   'candidates/signature-persistent.ts',
   'candidates/sparse-persistent.ts',
   'fixtures/anchored-scan-size-entry.ts',
+  'fixtures/flatland-runtime-size-entry.ts',
   'fixtures/koota-size-entry.ts',
   'fixtures/signature-persistent-size-entry.ts',
   'fixtures/sparse-persistent-size-entry.ts',
   'provenance.ts',
   'measure-kernels-size.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/entity.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/index.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/selector.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/trait.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/world.ts',
 ] as const
 
 const harnessHash = createHash('sha256')
@@ -38,6 +45,10 @@ function packageVersion(name: string): string {
 }
 
 const artifacts = [
+  {
+    entry: fileURLToPath(new URL('./fixtures/flatland-runtime-size-entry.ts', import.meta.url)),
+    name: 'Flatland private production runtime',
+  },
   {
     entry: fileURLToPath(new URL('./fixtures/koota-size-entry.ts', import.meta.url)),
     name: 'Koota seven-import tree-shaken browser kernel',

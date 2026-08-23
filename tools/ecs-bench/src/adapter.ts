@@ -73,6 +73,7 @@ export interface AdapterWorld {
   read<TValue>(entity: Entity, trait: Trait<TValue>): TValue | undefined
   patch<TValue extends object>(entity: Entity, trait: Trait<TValue>, value: Partial<TValue>, tracked?: boolean): void
   store<TSchema extends NumericSchema>(trait: NumericTrait<TSchema>): NumericStore<TSchema>
+  touch(entity: Entity, trait: AnyTrait): void
 
   /**
    * Borrowed internal view, valid until the next world mutation or the next

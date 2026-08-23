@@ -488,6 +488,69 @@ function checkScaffoldedTree(root, template) {
   if (clean) assertOk(`${template}: no workspace-only wiring in the scaffolded tree`)
 }
 
+const PRIVATE_CORE_PATHS = ['three-flatland/ecs', 'three-flatland/ecs/runtime', 'three-flatland/ecs/runtime/world']
+let checkedCorePrivatePaths = false
+
+/** Prove the packed package keeps its private ECS inaccessible to JS and TypeScript consumers. */
+function checkCorePrivatePaths(root) {
+  for (const specifier of PRIVATE_CORE_PATHS) {
+    try {
+      run(process.execPath, ['--input-type=module', '--eval', `await import(${JSON.stringify(specifier)})`], root)
+      assertFail(`${specifier} unexpectedly resolved from the packed package`)
+    } catch (error) {
+      const message = `${error.stdout ?? ''}${error.stderr ?? ''}${error.message ?? ''}`
+      if (message.includes('ERR_PACKAGE_PATH_NOT_EXPORTED')) {
+        assertOk(`${specifier} is not exported to JavaScript consumers`)
+      } else {
+        assertFail(`${specifier} failed for the wrong reason: ${message.slice(-300)}`)
+      }
+    }
+  }
+
+  const source = PRIVATE_CORE_PATHS.map(
+    (specifier, index) =>
+      `import { __flatlandPrivateProbe as privateProbe${index} } from ${JSON.stringify(specifier)}\nvoid privateProbe${index}`
+  ).join('\n')
+  const sourcePath = join(root, 'flatland-private-imports.mts')
+  const configPath = join(root, 'tsconfig.flatland-private-imports.json')
+  try {
+    writeFileSync(sourcePath, `${source}\n`)
+    writeFileSync(
+      configPath,
+      `${JSON.stringify(
+        {
+          compilerOptions: {
+            module: 'NodeNext',
+            moduleResolution: 'NodeNext',
+            noEmit: true,
+            skipLibCheck: true,
+            target: 'ES2022',
+          },
+          files: ['./flatland-private-imports.mts'],
+        },
+        null,
+        2
+      )}\n`
+    )
+
+    try {
+      run(resolve(ROOT, 'node_modules/.bin/tsc'), ['--pretty', 'false', '--project', configPath], root)
+      assertFail('private ECS paths unexpectedly resolved for a TypeScript consumer')
+    } catch (error) {
+      const message = `${error.stdout ?? ''}${error.stderr ?? ''}${error.message ?? ''}`
+      const missing = PRIVATE_CORE_PATHS.filter((specifier) => !message.includes(`'${specifier}'`))
+      if (missing.length === 0 && message.includes('TS2307')) {
+        assertOk('private ECS paths are unresolvable from packed TypeScript declarations')
+      } else {
+        assertFail(`private ECS TypeScript probe failed for the wrong reason: ${message.slice(-600)}`)
+      }
+    }
+  } finally {
+    rmSync(sourcePath, { force: true })
+    rmSync(configPath, { force: true })
+  }
+}
+
 if (WANTS_SCAFFOLD) {
   console.log('\n• inspecting the published CLI tarball…')
   checkCliTarball()
@@ -548,6 +611,11 @@ for (const ex of CONSUMERS) {
     // beats env. The @three-flatland scope is pinned in the .npmrc (no env
     // competes for a scoped key); third-party scopes use the default → npmjs uplink.
     run('npm', ['install', '--no-audit', '--no-fund', '--loglevel', 'error', '--registry', `${REG_URL}/`], dest)
+    if (!checkedCorePrivatePaths && existsSync(join(dest, 'node_modules', 'three-flatland', 'package.json'))) {
+      failureStage = 'private package boundary'
+      checkCorePrivatePaths(dest)
+      checkedCorePrivatePaths = true
+    }
     failureStage = 'build'
     console.log(`• [${id}] npm run build…`)
     run('npm', ['run', 'build'], dest)

@@ -5,9 +5,19 @@
   "description": "Private differential, size, and performance harness for Flatland's entity runtime",
   "type": "module",
   "nx": {
+    "implicitDependencies": [
+      "three-flatland"
+    ],
     "targets": {
       "test": {
         "executor": "nx:run-commands",
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/ecs/runtime/**/*.ts",
+          "{workspaceRoot}/planning/internal-ecs/results/*.json",
+          "{workspaceRoot}/scripts/verify-public-declaration-boundary.mjs"
+        ],
         "options": {
           "command": "vitest run",
           "cwd": "{projectRoot}"
@@ -24,7 +34,7 @@
         "executor": "nx:run-commands",
         "cache": false,
         "options": {
-          "command": "node --expose-gc --experimental-strip-types src/benchmark.ts",
+          "command": "node --disable-warning=DEP0205 --import tsx --expose-gc src/benchmark.ts",
           "cwd": "{projectRoot}"
         }
       },
@@ -48,7 +58,7 @@
   },
   "scripts": {
     "baseline:size": "node --experimental-strip-types src/measure-kernels-size.ts",
-    "benchmark": "node --expose-gc --experimental-strip-types src/benchmark.ts",
+    "benchmark": "node --disable-warning=DEP0205 --import tsx --expose-gc src/benchmark.ts",
     "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",
     "lint": "oxlint --type-aware .",
     "test": "vitest run",
@@ -60,6 +70,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "esbuild": "0.28.1",
+    "tsx": "^4.19.2",
     "typescript": "catalog:",
     "vitest": "^3.2.6"
   }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "605dcc094e02b0a536c364b081d832883d487e4def144bc47d20dd1118260f72",
+  "harnessSha256": "9f3798570565f130d127f92dcb9613f48899f8684ae21ff1fa1ab0364929f0bb",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -9,14 +9,27 @@
     "candidates/signature-persistent.ts",
     "candidates/sparse-persistent.ts",
     "fixtures/anchored-scan-size-entry.ts",
+    "fixtures/flatland-runtime-size-entry.ts",
     "fixtures/koota-size-entry.ts",
     "fixtures/signature-persistent-size-entry.ts",
     "fixtures/sparse-persistent-size-entry.ts",
     "provenance.ts",
-    "measure-kernels-size.ts"
+    "measure-kernels-size.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/entity.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/index.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/selector.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/trait.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/world.ts"
   ],
   "koota": "0.6.5",
   "measurements": [
+    {
+      "artifact": "Flatland private production runtime",
+      "brotliBytes": 3427,
+      "gzipBytes": 3824,
+      "minifiedBytes": 11647
+    },
     {
       "artifact": "Koota seven-import tree-shaken browser kernel",
       "brotliBytes": 9362,
@@ -25,24 +38,24 @@
     },
     {
       "artifact": "Sparse membership with persistent selector views",
-      "brotliBytes": 2895,
-      "gzipBytes": 3182,
-      "minifiedBytes": 8482
+      "brotliBytes": 2926,
+      "gzipBytes": 3212,
+      "minifiedBytes": 8631
     },
     {
       "artifact": "Signature membership with persistent selector views",
-      "brotliBytes": 2891,
-      "gzipBytes": 3179,
-      "minifiedBytes": 8488
+      "brotliBytes": 2940,
+      "gzipBytes": 3209,
+      "minifiedBytes": 8637
     },
     {
       "artifact": "Sparse membership with anchored selector scans",
-      "brotliBytes": 2889,
-      "gzipBytes": 3177,
-      "minifiedBytes": 8474
+      "brotliBytes": 2935,
+      "gzipBytes": 3208,
+      "minifiedBytes": 8623
     }
   ],
-  "mergeBase": "4824c47555a822b532ab8497c30c8e8d881529a2",
+  "mergeBase": "93c7d9cc9a5c35844ea2f08daf090c3bc06080e5",
   "methodology": {
     "brotli": "node:zlib brotliCompressSync defaults",
     "bundle": "esbuild browser ESM bundle with minification and tree shaking",

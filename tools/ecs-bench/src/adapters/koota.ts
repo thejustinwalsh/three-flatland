@@ -133,6 +133,14 @@ class KootaWorld implements AdapterWorld {
     kootaEntity.set(asKootaTrait(traitValue).native, value, tracked)
   }
 
+  touch(entity: Entity, traitValue: AnyTrait): void {
+    const kootaEntity = entity as KootaEntity
+    if (!this.isAlive(entity)) throw new Error(`Stale entity handle ${entity}`)
+    const nativeTrait = asKootaTrait(traitValue).native
+    if (!kootaEntity.has(nativeTrait)) throw new Error('Cannot touch a missing trait')
+    kootaEntity.changed(nativeTrait)
+  }
+
   store<TSchema extends NumericSchema>(traitValue: NumericTrait<TSchema>): NumericStore<TSchema> {
     return getStore(this.#world, asKootaTrait(traitValue).native) as NumericStore<TSchema>
   }
