@@ -18,11 +18,25 @@
         }
       ],
       "executor": "nx:run-commands",
-      "options": { "command": "vitest run", "cwd": "{projectRoot}" }
+      "options": {
+        "command": "vitest run && node verify-no-koota-publication.mjs",
+        "cwd": "{projectRoot}"
+      }
     },
     "lint": {
       "executor": "nx:run-commands",
       "options": { "command": "oxlint --type-aware .", "cwd": "{projectRoot}" }
+    },
+    "verify-koota-free": {
+      "description": "Packs three-flatland and proves the published artifact has no required or reachable Koota edge.",
+      "dependsOn": [
+        {
+          "projects": ["three-flatland"],
+          "target": "build"
+        }
+      ],
+      "executor": "nx:run-commands",
+      "options": { "command": "node verify-no-koota-publication.mjs", "cwd": "{projectRoot}" }
     }
   }
 }
