@@ -9,3 +9,4 @@ After installing the package they live at `node_modules/three-flatland/codemods/
 | Codemod | First version | What it migrates |
 |---|---|---|
 | [layers-to-sort-layers.md](./layers-to-sort-layers.md) | 0.1.0-alpha.8 | Render-order API rename: `layer`/`Layers`/`LayerManager` → `sortLayer`/`SortLayers`/`SortLayerManager` (camera layer masks and tile layers intentionally keep their names) |
+| [effect-vector-whole-tuple.md](./effect-vector-whole-tuple.md) | 0.1.0-alpha.11 | Direct component writes to Material, Light, and Pass effect vector fields → whole-tuple assignment; dynamic and aliased mutations are flagged for review |
