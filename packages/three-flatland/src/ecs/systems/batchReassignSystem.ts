@@ -96,21 +96,33 @@ export function createBatchReassignSystem(
       if (!newBatchMesh?.mesh) continue
       const newSlot = newBatchMesh.mesh.reserveSlot()
       if (newSlot < 0) continue
+      let destinationCommitted = false
+      let newBatchIdx = -1
       try {
         syncAllBuffers(world, entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
+        // Revalidate the source after preparation, which can call user-owned
+        // Object3D/material code, before publishing either side of the move.
+        oldBatchMesh.mesh.assertSlotOwner(oldSlot, entity)
+        newBatchMesh.mesh.commitSlot(newSlot, entity, sprite)
+        destinationCommitted = true
+
+        const newMeta = world.read(newBatchEntity, BatchMeta)
+        newBatchIdx = newMeta?.batchIdx ?? -1
+        world.patch(entity, BatchSlot, { batchEntity: newBatchEntity, batchIdx: newBatchIdx, slot: newSlot }, false)
       } catch (error) {
         newBatchMesh.mesh.grid.remove(sprite)
-        newBatchMesh.mesh.rollbackSlot(newSlot)
+        unproxyPickFromBatch(sprite, newBatchMesh.mesh)
+        if (destinationCommitted) newBatchMesh.mesh.releaseSlot(newSlot, entity)
+        else newBatchMesh.mesh.rollbackSlot(newSlot)
         newBatchMesh.mesh.syncCount()
         recycleBatchIfEmpty(world, registry, newBatchEntity, run)
         throw error
       }
 
-      const newMeta = world.read(newBatchEntity, BatchMeta)
-      const newBatchIdx = newMeta?.batchIdx ?? -1
-      world.patch(entity, BatchSlot, { batchEntity: newBatchEntity, batchIdx: newBatchIdx, slot: newSlot }, false)
-      newBatchMesh.mesh.commitSlot(newSlot, entity, sprite)
-
+      // Source ownership was fully preflighted immediately before the
+      // destination publish. Nothing between that check and this release can
+      // mutate its physical/stable rows, so release is the no-throw half of
+      // the transaction.
       oldBatchMesh.mesh.releaseSlot(oldSlot, entity)
       oldBatchMesh.mesh.syncCount()
 
@@ -119,6 +131,20 @@ export function createBatchReassignSystem(
       // The R3F pick proxy moves with it (re-proxied after insertion).
       oldBatchMesh.mesh.grid.remove(sprite)
       unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
+
+      registry.materialRefs.set(newMatRef.materialId, {
+        material,
+        version: material._effectSchemaVersion,
+      })
+
+      // Update the sprite's cached batch references — the invariant is
+      // that these match BatchSlot for the lifetime of the assignment.
+      sprite._batchMesh = newBatchMesh.mesh
+      sprite._batchSlot = newSlot
+      sprite._batchIdx = newBatchIdx
+
+      // Re-route R3F picking through the new batch.
+      proxyPickToBatch(sprite, newBatchMesh.mesh)
 
       // Recycle old batch if empty
       if (oldBatchMesh.mesh.isEmpty) {
@@ -146,21 +172,6 @@ export function createBatchReassignSystem(
           registry.materialRefs.delete(oldMeta.materialId)
         }
       }
-
-      // Commit the destination assignment after the source is released.
-      registry.materialRefs.set(newMatRef.materialId, {
-        material,
-        version: material._effectSchemaVersion,
-      })
-
-      // Update the sprite's cached batch references — the invariant is
-      // that these match BatchSlot for the lifetime of the assignment.
-      sprite._batchMesh = newBatchMesh.mesh
-      sprite._batchSlot = newSlot
-      sprite._batchIdx = newBatchIdx
-
-      // Re-route R3F picking through the new batch.
-      proxyPickToBatch(sprite, newBatchMesh.mesh)
 
       // The new slot is seeded below from the sprite's local matrix, but a
       // hierarchy/auto-managed sprite may need an ancestor-composed matrix or

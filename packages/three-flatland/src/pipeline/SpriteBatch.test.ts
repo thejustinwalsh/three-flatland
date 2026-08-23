@@ -83,7 +83,7 @@ describe('SpriteBatch', () => {
 
     expect(slot).toBe(0)
     expect(batch.slotEntities[slot]).toBe(1 << 20)
-    expect(batch.slotSprites[slot]).toBeInstanceOf(Sprite2D)
+    expect(batch.spriteAtSlot(slot)).toBeInstanceOf(Sprite2D)
   })
 
   it('keeps holes explicit without disturbing later owners', () => {
@@ -91,14 +91,14 @@ describe('SpriteBatch', () => {
     const first = claimSlot(batch)
     const second = claimSlot(batch)
     const secondEntity = batch.slotEntities[second]
-    const secondSprite = batch.slotSprites[second]
+    const secondSprite = batch.spriteAtSlot(second)
 
     releaseOwnedSlot(batch, first)
 
     expect(batch.slotEntities[first]).toBe(0)
-    expect(batch.slotSprites[first]).toBeNull()
+    expect(batch.spriteAtSlot(first)).toBeNull()
     expect(batch.slotEntities[second]).toBe(secondEntity)
-    expect(batch.slotSprites[second]).toBe(secondSprite)
+    expect(batch.spriteAtSlot(second)).toBe(secondSprite)
     expect(batch.slotSpan).toBe(2)
   })
 
@@ -116,16 +116,45 @@ describe('SpriteBatch', () => {
     expect(batch.activeCount).toBe(0)
   })
 
+  it('keeps reservations reusable when a commit fails before publication', () => {
+    const batch = new SpriteBatch(material)
+    const slot = batch.reserveSlot()
+    const sprite = new Sprite2D({ material })
+
+    expect(() => batch.commitSlot(slot, 0, sprite)).toThrow('Entity handle 0')
+    expect(batch.activeCount).toBe(0)
+    expect(batch.slotEntities[slot]).toBe(0)
+    expect(batch.spriteAtSlot(slot)).toBeNull()
+
+    batch.commitSlot(slot, nextEntity++, sprite)
+    expect(batch.activeCount).toBe(1)
+    expect(batch.spriteAtSlot(slot)).toBe(sprite)
+  })
+
+  it('rejects hole and out-of-range swaps without changing ownership', () => {
+    const batch = new SpriteBatch(material)
+    const occupied = claimSlot(batch)
+    const hole = claimSlot(batch)
+    const owner = batch.slotEntities[occupied]!
+    releaseOwnedSlot(batch, hole)
+
+    expect(() => batch.swapSlots(occupied, hole)).toThrow('stable membership')
+    expect(() => batch.swapSlots(occupied, batch.slotSpan)).toThrow('outside the active span')
+    expect(batch.slotEntities[occupied]).toBe(owner)
+    expect(batch.slotEntities[hole]).toBe(0)
+  })
+
   it('reset clears every owner and sprite reference', () => {
     const batch = new SpriteBatch(material)
     claimSlot(batch)
     claimSlot(batch)
-    const retainedSprites = batch.slotSprites.slice(0, 2)
+    const retainedSprites = batch.memberSprites.slice(0, 2)
 
     batch.resetSlots()
 
     expect(batch.slotEntities.slice(0, 2)).toEqual([0, 0])
-    expect(batch.slotSprites.slice(0, 2)).toEqual([null, null])
+    expect(batch.spriteAtSlot(0)).toBeNull()
+    expect(batch.spriteAtSlot(1)).toBeNull()
     expect(batch.activeCount).toBe(0)
     expect(retainedSprites.every((sprite) => sprite !== null)).toBe(true)
   })
@@ -136,15 +165,39 @@ describe('SpriteBatch', () => {
     const second = claimSlot(batch)
     const firstEntity = batch.slotEntities[first]
     const secondEntity = batch.slotEntities[second]
-    const firstSprite = batch.slotSprites[first]
-    const secondSprite = batch.slotSprites[second]
+    const firstSprite = batch.spriteAtSlot(first)
+    const secondSprite = batch.spriteAtSlot(second)
+    const stableSprites = batch.memberSprites.slice(0, 2)
 
     batch.swapSlots(first, second)
 
     expect(batch.slotEntities[first]).toBe(secondEntity)
     expect(batch.slotEntities[second]).toBe(firstEntity)
-    expect(batch.slotSprites[first]).toBe(secondSprite)
-    expect(batch.slotSprites[second]).toBe(firstSprite)
+    expect(batch.spriteAtSlot(first)).toBe(secondSprite)
+    expect(batch.spriteAtSlot(second)).toBe(firstSprite)
+    expect(batch.memberSprites.slice(0, 2)).toEqual(stableSprites)
+    expect(Array.from(batch.memberSlots.slice(0, 2))).toEqual([second, first])
+  })
+
+  it('releases and reuses stable traversal rows independently of sorted physical slots', () => {
+    const batch = new SpriteBatch(material)
+    const first = claimSlot(batch)
+    const second = claimSlot(batch)
+    const firstEntity = batch.slotEntities[first]!
+    const firstSprite = batch.spriteAtSlot(first)!
+
+    batch.swapSlots(first, second)
+    batch.releaseSlot(second, firstEntity)
+
+    expect(batch.memberSpan).toBe(1)
+    expect(batch.memberSprites[0]).not.toBe(firstSprite)
+    expect(batch.memberSlots[0]).toBe(first)
+
+    const reusedPhysical = claimSlot(batch)
+    expect(reusedPhysical).toBe(second)
+    expect(batch.memberSprites[0]).not.toBe(firstSprite)
+    expect(Array.from(batch.memberSlots.slice(0, 2))).toEqual([first, second])
+    expect(batch.memberSprites[1]).not.toBeNull()
   })
 
   it('should set alpha to 0 when freeing a slot', () => {

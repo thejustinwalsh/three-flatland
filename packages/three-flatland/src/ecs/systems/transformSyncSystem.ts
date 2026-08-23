@@ -156,17 +156,19 @@ export function transformSyncSystem(world: World): void {
 
   // Traverse one batch's physical rows to completion before advancing to
   // the next GPU buffer. The owner arrays are parallel to those rows, so
-  // this path stays cache-local and skips holes with one sentinel check.
+  // this path stays batch-local while preserving stable assignment order.
+  // The stable table is packed, so historical holes add no traversal cost.
   for (const mesh of meshSlots) {
     if (!mesh) continue
-    const owners = mesh.slotEntities
-    const sprites = mesh.slotSprites
-    for (let slot = 0; slot < mesh.slotSpan; slot++) {
-      if (owners[slot] === 0) continue
-      const sprite = sprites[slot]
+    const sprites = mesh.memberSprites
+    const slots = mesh.memberSlots
+    const memberSpan = mesh.memberSpan
+    const buf = mesh.instanceMatrix.array as Float32Array
+    for (let member = 0; member < memberSpan; member++) {
+      const sprite = sprites[member]
       if (!sprite) continue
+      const slot = slots[member]!
 
-      const buf = mesh.instanceMatrix.array as Float32Array
       const o = slot * 16
       const directRoot = !sprite._autoRegistry && !sprite._hierarchyManaged
       const sourceParent = sprite._autoRegistry || sprite._hierarchyManaged ? sprite.parent : group

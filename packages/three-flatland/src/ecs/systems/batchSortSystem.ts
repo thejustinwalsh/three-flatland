@@ -43,7 +43,6 @@ export function createBatchSortSystem(): (world: World) => void {
       sortedEntities.length = 0
       occupiedSlots.length = 0
       const owners = mesh.slotEntities
-      const sprites = mesh.slotSprites
       for (let slot = 0; slot < mesh.slotSpan; slot++) {
         const owner = owners[slot] ?? 0
         if (owner === 0) continue
@@ -56,7 +55,7 @@ export function createBatchSortSystem(): (world: World) => void {
           slotByEntity[index] !== slot ||
           !world.isAlive(batchEntity) ||
           world.read(batchEntity, BatchMesh)?.mesh !== mesh ||
-          sprites[slot] !== registry.spriteArr[index]
+          mesh.spriteAtSlot(slot) !== registry.spriteArr[index]
         ) {
           throw new Error(`three-flatland: Batch slot ${slot} ownership is inconsistent`)
         }

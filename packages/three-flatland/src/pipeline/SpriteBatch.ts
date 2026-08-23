@@ -166,8 +166,14 @@ export class SpriteBatch extends InstancedMesh {
   /** Full packed entity handle occupying each physical row; 0 marks a hole. */
   private _slotEntities: number[]
 
-  /** Sprite reference parallel to `_slotEntities`; null marks a hole. */
-  private _slotSprites: (Sprite2D | null)[]
+  /** Stable traversal row parallel to each physical slot; -1 marks a hole. */
+  private _slotMembers: Int32Array
+
+  /** Packed stable assignment-order sprite references. */
+  private _memberSprites: (Sprite2D | null)[]
+
+  /** Current physical slot for each packed stable member row. */
+  private _memberSlots: Int32Array
 
   /**
    * Interleaved core buffer (UV + color + system + extras).
@@ -322,7 +328,9 @@ export class SpriteBatch extends InstancedMesh {
     this._extrasAttribute = extrasAttr
     this._customAttributes = customAttributes
     this._slotEntities = Array<number>(maxSize).fill(0)
-    this._slotSprites = Array<Sprite2D | null>(maxSize).fill(null)
+    this._slotMembers = new Int32Array(maxSize).fill(-1)
+    this._memberSprites = Array<Sprite2D | null>(maxSize).fill(null)
+    this._memberSlots = new Int32Array(maxSize).fill(-1)
     this.spriteMaterial = material
     this.maxSize = maxSize
     this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
@@ -481,6 +489,14 @@ export class SpriteBatch extends InstancedMesh {
    */
   swapSlots(a: number, b: number): void {
     if (a === b) return
+    if (a < 0 || a >= this._nextIndex || b < 0 || b >= this._nextIndex) {
+      throw new Error(`three-flatland: Cannot swap batch slots ${a} and ${b} outside the active span`)
+    }
+
+    const entityA = this._slotEntities[a] ?? 0
+    const entityB = this._slotEntities[b] ?? 0
+    const memberA = this._assertStableMember(a, entityA)
+    const memberB = this._assertStableMember(b, entityB)
 
     // instanceMatrix (16 floats)
     const m = this.instanceMatrix.array as Float32Array
@@ -521,12 +537,12 @@ export class SpriteBatch extends InstancedMesh {
       custom.tracker.markDirty(b)
     }
 
-    const entity = this._slotEntities[a]!
-    this._slotEntities[a] = this._slotEntities[b]!
-    this._slotEntities[b] = entity
-    const sprite = this._slotSprites[a]
-    this._slotSprites[a] = this._slotSprites[b] ?? null
-    this._slotSprites[b] = sprite ?? null
+    this._slotEntities[a] = entityB
+    this._slotEntities[b] = entityA
+    this._slotMembers[a] = memberB
+    this._slotMembers[b] = memberA
+    this._memberSlots[memberA] = b
+    this._memberSlots[memberB] = a
   }
 
   // ============================================
@@ -555,9 +571,39 @@ export class SpriteBatch extends InstancedMesh {
     return this._slotEntities
   }
 
-  /** Sprite references parallel to physical instance rows; null marks a hole. */
-  get slotSprites(): readonly (Sprite2D | null)[] {
-    return this._slotSprites
+  /** Sprite reference owning a physical row, or null for a hole. */
+  spriteAtSlot(slot: number): Sprite2D | null {
+    const member = this._slotMembers[slot] ?? -1
+    return member >= 0 && member < this._activeCount ? (this._memberSprites[member] ?? null) : null
+  }
+
+  /** Stable assignment-order span used by transform traversal. */
+  get memberSpan(): number {
+    return this._activeCount
+  }
+
+  /** Sprite references in stable assignment order; null marks a hole. */
+  get memberSprites(): readonly (Sprite2D | null)[] {
+    return this._memberSprites
+  }
+
+  /** Current physical slot parallel to the stable member arrays. */
+  get memberSlots(): Int32Array {
+    return this._memberSlots
+  }
+
+  private _assertStableMember(slot: number, entity: number): number {
+    const member = this._slotMembers[slot] ?? -1
+    if (
+      entity === 0 ||
+      member < 0 ||
+      member >= this._activeCount ||
+      !this._memberSprites[member] ||
+      this._memberSlots[member] !== slot
+    ) {
+      throw new Error(`three-flatland: Batch slot ${slot} has inconsistent stable membership`)
+    }
+    return member
   }
 
   /** Assert full packed-handle ownership before a multi-structure commit. */
@@ -565,6 +611,7 @@ export class SpriteBatch extends InstancedMesh {
     if (index < 0 || index >= this._nextIndex || this._slotEntities[index] !== expectedEntity) {
       throw new Error(`three-flatland: Batch slot ${index} is not owned by entity ${expectedEntity}`)
     }
+    this._assertStableMember(index, expectedEntity)
   }
 
   /** Reserve a physical row without publishing ownership. */
@@ -586,11 +633,17 @@ export class SpriteBatch extends InstancedMesh {
   /** Publish ownership after every buffer and forward-reference write succeeds. */
   commitSlot(index: number, entity: number, sprite: Sprite2D): void {
     if (entity === 0) throw new Error('three-flatland: Entity handle 0 cannot own a batch slot')
-    if (index < 0 || index >= this._nextIndex || this._slotEntities[index] !== 0) {
+    if (index < 0 || index >= this._nextIndex || this._slotEntities[index] !== 0 || this._slotMembers[index] !== -1) {
       throw new Error(`three-flatland: Cannot commit occupied or unreserved batch slot ${index}`)
     }
+    const member = this._activeCount
+    if (member >= this.maxSize || this._memberSprites[member] !== null || this._memberSlots[member] !== -1) {
+      throw new Error(`three-flatland: Cannot commit occupied stable batch member ${member}`)
+    }
     this._slotEntities[index] = entity
-    this._slotSprites[index] = sprite
+    this._slotMembers[index] = member
+    this._memberSprites[member] = sprite
+    this._memberSlots[member] = index
     this._activeCount++
   }
 
@@ -611,6 +664,13 @@ export class SpriteBatch extends InstancedMesh {
    */
   releaseSlot(index: number, expectedEntity: number): void {
     this.assertSlotOwner(index, expectedEntity)
+    const member = this._slotMembers[index] ?? -1
+    const lastMember = this._activeCount - 1
+    const movedSprite = member !== lastMember ? this._memberSprites[lastMember] : null
+    const movedSlot = member !== lastMember ? this._memberSlots[lastMember]! : -1
+    if (member !== lastMember && (!movedSprite || movedSlot < 0 || this._slotMembers[movedSlot] !== lastMember)) {
+      throw new Error('three-flatland: Last stable batch member is inconsistent')
+    }
 
     const m = this.instanceMatrix.array as Float32Array
     m.fill(0, index * 16, index * 16 + 16)
@@ -620,7 +680,14 @@ export class SpriteBatch extends InstancedMesh {
     this._interleavedTracker.markDirty(index)
 
     this._slotEntities[index] = 0
-    this._slotSprites[index] = null
+    this._slotMembers[index] = -1
+    if (member !== lastMember) {
+      this._memberSprites[member] = movedSprite!
+      this._memberSlots[member] = movedSlot
+      this._slotMembers[movedSlot] = member
+    }
+    this._memberSprites[lastMember] = null
+    this._memberSlots[lastMember] = -1
     this._freeList.push(index)
     this._activeCount--
   }
@@ -631,7 +698,9 @@ export class SpriteBatch extends InstancedMesh {
    */
   resetSlots(): void {
     this._slotEntities.fill(0, 0, this._nextIndex)
-    this._slotSprites.fill(null, 0, this._nextIndex)
+    this._slotMembers.fill(-1, 0, this._nextIndex)
+    this._memberSprites.fill(null, 0, this._activeCount)
+    this._memberSlots.fill(-1, 0, this._activeCount)
     this._activeCount = 0
     this._freeList.length = 0
     this._nextIndex = 0
