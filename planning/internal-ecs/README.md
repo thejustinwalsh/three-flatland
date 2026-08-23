@@ -1,6 +1,6 @@
 # Internal ECS design gate
 
-Status: **approved — initial kernel evidence captured, full production validation pending**
+Status: **approved — core migration validated locally, deterministic renderer A/B pending**
 
 Date: 2026-08-22
 
@@ -10,7 +10,9 @@ Approve or revise the proposal to replace Koota inside `three-flatland` with a p
 
 The recommendation is **not** to publish another general ECS and **not** to recreate Koota. The proposed runtime keeps the useful part of Koota's model—typed trait schemas with tag, structure-of-arrays, and object-backed forms—while removing the general features Flatland does not use.
 
-The replacement must prove all of the following before Koota is removed:
+The replacement must prove all of the following before Koota is removed. The private runtime and
+core migration now satisfy the first four gates locally; the deterministic renderer A/B is the final
+performance confirmation before dependency cleanup:
 
 1. It is behaviorally equivalent for Flatland's entity lifecycle, batching, effect traits, and change events.
 2. It is faster in the representative structural and steady-state workloads.

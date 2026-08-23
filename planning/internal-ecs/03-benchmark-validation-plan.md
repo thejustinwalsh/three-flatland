@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: kernel and private-runtime evidence captured; consumer schedule and live renderer gates pending
+Status: kernel, private-runtime, and package gates captured; deterministic renderer A/B pending
 
 Date: 2026-08-22
 
@@ -29,7 +29,7 @@ The merge-base size baseline is:
 | Brotli                          |           9,362 B |
 
 These numbers remained unchanged when the kernel and production artifacts were recaptured from
-merge base `93c7d9cc` with esbuild 0.28.1. Raw results are in
+merge base `bd19dd50` with esbuild 0.28.1. Raw results are in
 [`results/kernel-size.json`](./results/kernel-size.json).
 
 ## Kernel microbenchmarks
@@ -118,6 +118,20 @@ reference, `BatchSlot`, and GPU row must still identify the same owner.
 
 ### Live WebGPU probes
 
+The deterministic browser harness is `tools/ecs-bench/src/browser-benchmark.ts`. It loads built
+production examples in a system Chromium browser at 1280×720 and DPR 1, starts a fresh browser for
+every observation, waits for an explicit fixture-readiness payload, warms for 180 frames, and samples
+600 presented frames. Base/head observations run in interleaved A/B, B/A, A/B order.
+
+Canonical fixture URLs are:
+
+- Knightmark: `?bench=1&sprites=N&seed=12648430&collisions=0|1&fixedDelta=16.6667`
+- Lighting: `?bench=1&slimes=N&lights=M&seed=12648430&fixedDelta=16.6667`
+
+The harness rejects requested/actual count mismatches. Knightmark must report both collision-disabled
+ECS isolation and collision-enabled representative behavior. Lighting controls actual light creation
+independently so 40,000 slimes need not create 40,000 lights.
+
 Run both Three.js and React variants for:
 
 - Knightmark or the current sprite swarm stress example,
@@ -136,6 +150,17 @@ For each:
 - verify no stale batch rows or picking proxies remain after churn.
 
 GPU time is expected to be unchanged; CPU schedule, garbage collection, and bundle transfer are the affected axes.
+
+Use two build modes. Ordinary production is the merge gate and contains no timing-marker overhead.
+Production-profile defines `FL_PROFILE` and emits `ecs:run` plus per-system User Timing spans for
+diagnosis. Never compare an instrumented head against an uninstrumented base. The harness verifies
+approximately one `ecs:run` span per sampled render frame and records each system median and p95.
+
+The Knightmark sweep is 1k, 5k, 10k, 15k, 20k, 25k, 30k, 35k, 40k, 50k, and 60k sprites, followed by
+1k refinement around the first failing band. The presented-frame 60 Hz crossover is the largest load
+with at most 5% missed vsync intervals, using the low-load control to infer the display period. Always
+report the 40,000-sprite result. The separate diagnostic ECS crossover is the largest load whose
+profile-build `ecs:run` p95 remains at or below 16.667 ms.
 
 ## Memory and allocation checks
 
