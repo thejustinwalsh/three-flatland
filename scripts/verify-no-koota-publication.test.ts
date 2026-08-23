@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   collectPublicationViolations,
@@ -93,6 +93,14 @@ describe('manifestKootaViolations', () => {
         devDependencies: { koota: '^0.6.5' },
       })
     ).toEqual([])
+  })
+})
+
+describe('size-limit Koota accounting', () => {
+  it('never externalizes Koota from a measured bundle', () => {
+    const config = readFileSync(resolve(import.meta.dirname, '..', '.size-limit.cjs'), 'utf8')
+
+    expect(config).not.toMatch(/['"]koota(?:\/[^'"]*)?['"]/)
   })
 })
 

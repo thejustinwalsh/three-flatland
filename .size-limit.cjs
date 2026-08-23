@@ -93,7 +93,7 @@ const resolveSkia = {
   },
 }
 
-const corePeerDeps = ['three', 'react', '@react-three/fiber', 'koota']
+const corePeerDeps = ['three', 'react', '@react-three/fiber']
 
 // three-flatland gates its dev-only devtools subsystem behind `DEVTOOLS_BUNDLED`
 // (`process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true'`).
