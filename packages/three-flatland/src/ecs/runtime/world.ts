@@ -1,8 +1,9 @@
-import { EntityPool, entityGeneration, entityIndex, reserveEntityPool } from './entity'
+import { EntityPool, ENTITY_INDEX_STRIDE, entityGeneration, entityIndex } from './entity'
 import type { Entity } from './entity'
+import { fail } from './error'
 import type { WorldHandle } from '../../internal/ecs-handles'
 import type { EventKind, EventSelector, Selector } from './selector'
-import { reserveSparseSet, SparseSet } from './sparse-set'
+import { SparseSet } from './sparse-set'
 import { reserveIndexedArray } from '../../internal/capacity'
 import {
   inputTrait,
@@ -18,18 +19,18 @@ import {
   type TraitInput,
 } from './trait'
 
-export interface TraitState {
+interface TraitState {
   readonly trait: AnyTrait
   readonly numeric?: Record<string, number[]>
   readonly objects?: Array<object | undefined>
 }
 
-export interface SelectorState {
+interface SelectorState {
   readonly members: SparseSet
   readonly view: Entity[]
 }
 
-export interface EventState {
+interface EventState {
   readonly queue: HandleQueue
   readonly drained: Entity[]
 }
@@ -45,7 +46,7 @@ interface ValidatedNumericFields {
   readonly snapshot: Record<string, number>
 }
 
-export class HandleQueue {
+class HandleQueue {
   readonly dense: Entity[] = []
   readonly positions: Array<number | undefined> = []
 
@@ -76,36 +77,9 @@ export class HandleQueue {
   }
 }
 
-export const WORLD_CAPACITY_ACCESS = Symbol('three-flatland.world-capacity')
-export type WorldCapacityAccess = readonly [
-  entities: EntityPool,
-  signatures: number[][],
-  activeSignatureWords: number[],
-  activeTraitStates: TraitState[],
-  activeSelectorStates: SelectorState[],
-  activeEventStates: EventState[],
-]
-
-/** @internal Optional capacity extension; not exported from the runtime entrypoint. */
-export function reserveWorldState(access: WorldCapacityAccess, capacity: number): void {
-  const [entities, signatures, signatureWords, traits, selectors, events] = access
-  reserveEntityPool(entities, capacity)
-  for (const word of signatureWords) reserveIndexedArray(signatures[word]!, capacity, 0)
-  for (const state of traits) {
-    if (state.numeric !== undefined) {
-      const trait = state.trait as NumericTrait<NumericSchema>
-      for (const field of trait.fields) reserveIndexedArray(state.numeric[field]!, capacity, trait.defaults[field]!)
-    }
-    if (state.objects !== undefined) reserveIndexedArray(state.objects, capacity, undefined)
-  }
-  for (const state of selectors) reserveSparseSet(state.members, capacity)
-  for (const state of events) reserveIndexedArray(state.queue.positions, capacity, undefined)
-}
-
 export interface World extends WorldHandle {
   readonly capacity: number
   readonly disposed: boolean
-  readonly [WORLD_CAPACITY_ACCESS]: WorldCapacityAccess
 
   spawn(...inputs: readonly TraitInput[]): Entity
   add(entity: Entity, input: TraitInput): void
@@ -140,6 +114,8 @@ export interface World extends WorldHandle {
   isAlive(entity: Entity): boolean
   index(entity: Entity): number
   generation(entity: Entity): number
+  /** @internal Constructor-time advisory reservation. */
+  reserve(capacity: number): void
   dispose(): void
 }
 
@@ -158,12 +134,30 @@ export function createWorld(): World {
   let spawnMark = 0
   let disposed = false
   let inputPreparationDepth = 0
+  let reservedCapacity = 0
   const entities = new EntityPool()
 
+  function reserve(capacity: number): void {
+    if (capacity <= reservedCapacity) return
+    reservedCapacity = capacity
+    reserveIndexedArray(entities.generations, capacity, 1)
+    reserveIndexedArray(entities.alive.sparse, capacity, undefined)
+    for (const word of activeSignatureWords) reserveIndexedArray(signatures[word]!, capacity, 0)
+    for (const state of activeTraitStates) {
+      if (state.numeric !== undefined) {
+        const trait = state.trait as NumericTrait<NumericSchema>
+        for (const field of trait.fields) reserveIndexedArray(state.numeric[field]!, capacity, trait.defaults[field]!)
+      }
+      if (state.objects !== undefined) reserveIndexedArray(state.objects, capacity, undefined)
+    }
+    for (const state of activeSelectorStates) reserveIndexedArray(state.members.sparse, capacity, undefined)
+    for (const state of activeEventStates) reserveIndexedArray(state.queue.positions, capacity, undefined)
+  }
+
   function assertUsable(): void {
-    if (disposed) throw new Error('three-flatland: World has been disposed')
+    if (disposed) fail('World disposed')
     if (inputPreparationDepth > 0) {
-      throw new Error('three-flatland: Trait inputs cannot access mutable world state')
+      fail('Trait inputs cannot access mutable world state')
     }
   }
 
@@ -182,7 +176,7 @@ export function createWorld(): World {
 
   function assertAlive(entity: Entity): number {
     assertUsable()
-    if (!isAlive(entity)) throw new Error(`three-flatland: Stale entity handle ${entity}`)
+    if (!isAlive(entity)) fail(`Stale entity handle ${entity}`)
     return entityIndex(entity)
   }
 
@@ -201,6 +195,7 @@ export function createWorld(): World {
     let values = signatures[word]
     if (values === undefined) {
       values = []
+      reserveIndexedArray(values, reservedCapacity, 0)
       signatures[word] = values
       activeSignatureWords.push(word)
     }
@@ -227,6 +222,7 @@ export function createWorld(): World {
       const numericTrait = trait as NumericTrait<NumericSchema>
       for (const field of numericTrait.fields) {
         const values: number[] = []
+        reserveIndexedArray(values, reservedCapacity, numericTrait.defaults[field]!)
         Object.defineProperty(numeric, field, {
           enumerable: true,
           value: values,
@@ -234,6 +230,7 @@ export function createWorld(): World {
       }
     }
     const objects: Array<object | undefined> | undefined = trait.kind === 'object' ? [] : undefined
+    if (objects !== undefined) reserveIndexedArray(objects, reservedCapacity, undefined)
     state = {
       trait,
       numeric,
@@ -247,12 +244,12 @@ export function createWorld(): World {
   function validatedNumericFields(trait: NumericTrait<NumericSchema>, value: object): ValidatedNumericFields {
     const snapshot = numericDataSnapshot(value)
     if (snapshot === undefined) {
-      throw new TypeError('three-flatland: Invalid numeric initializer object')
+      fail('Invalid numeric initializer', TypeError)
     }
     const fields = Object.keys(snapshot)
     for (const field of fields) {
       if (!Object.hasOwn(trait.defaults, field)) {
-        throw new TypeError(`three-flatland: Invalid numeric initializer field ${field}`)
+        fail(`Invalid numeric initializer: ${field}`, TypeError)
       }
     }
     return { fields, snapshot }
@@ -268,11 +265,11 @@ export function createWorld(): World {
   function prepareObjectValue(trait: ObjectTrait<object>, initial: object | undefined): object {
     const value = trait.factory()
     if (typeof value !== 'object' || value === null) {
-      throw new TypeError('three-flatland: Object trait factories must return an object')
+      fail('Factory must return object', TypeError)
     }
     const prototype = Object.getPrototypeOf(value)
     if (prototype !== Object.prototype && prototype !== null) {
-      throw new TypeError('three-flatland: Object trait factories must return plain records')
+      fail('Factory must return plain records', TypeError)
     }
     if (initial !== undefined) applyObjectPatch(value, snapshotObjectPatch(value, initial))
     return value
@@ -281,7 +278,7 @@ export function createWorld(): World {
   function snapshotObjectPatch(target: object, patch: object): object {
     const targetPrototype = Object.getPrototypeOf(target)
     if (targetPrototype !== Object.prototype && targetPrototype !== null) {
-      throw new TypeError('three-flatland: Object traits support only plain record values')
+      fail('Trait requires plain records', TypeError)
     }
     const snapshot = Object.create(null) as object
     for (const field of Reflect.ownKeys(patch)) {
@@ -289,7 +286,7 @@ export function createWorld(): World {
       if (sourceDescriptor?.enumerable !== true) continue
       const targetDescriptor = Object.getOwnPropertyDescriptor(target, field)
       if (targetDescriptor === undefined || !('value' in targetDescriptor) || targetDescriptor.writable !== true) {
-        throw new TypeError('three-flatland: Object trait patches require existing writable data fields')
+        fail('Needs existing writable data fields', TypeError)
       }
       Object.defineProperty(snapshot, field, {
         enumerable: true,
@@ -342,6 +339,7 @@ export function createWorld(): World {
     let state = selectorStates[selector.id]
     if (state !== undefined) return state
     state = { members: new SparseSet(), view: [] }
+    reserveIndexedArray(state.members.sparse, reservedCapacity, undefined)
     selectorStates[selector.id] = state
     activeSelectorStates.push(state)
     for (const trait of selector.required) {
@@ -386,6 +384,7 @@ export function createWorld(): World {
       drained: [],
       queue: new HandleQueue(),
     }
+    reserveIndexedArray(state.queue.positions, reservedCapacity, undefined)
     eventStates[selector.id] = state
     activeEventStates.push(state)
     for (const trait of selector.observed) {
@@ -413,13 +412,13 @@ export function createWorld(): World {
     for (const input of inputs) {
       const trait = inputTrait(input)
       if (spawnTraitMarks[trait.id] === spawnMark) {
-        throw new Error(`three-flatland: Spawn contains duplicate trait ${trait.id}`)
+        fail(`Spawn duplicate trait ${trait.id}`)
       }
       spawnTraitMarks[trait.id] = spawnMark
       const initial = isInitializer(input) ? input.initial : undefined
       initialValues.push(initial)
       if (trait.kind === 'tag' && initial !== undefined) {
-        throw new TypeError('three-flatland: Tag traits do not accept initial values')
+        fail('Tag has a value', TypeError)
       }
       if (trait.kind === 'numeric') {
         prepared.push({
@@ -449,6 +448,9 @@ export function createWorld(): World {
 
     const entity = entities.allocate()
     const index = entityIndex(entity)
+    if (reservedCapacity > 0 && index >= reservedCapacity) {
+      reserve(Math.min(ENTITY_INDEX_STRIDE, reservedCapacity * 2))
+    }
 
     for (const input of prepared) {
       writeTrait(index, input.trait, input.numericInitial, input.objectValue)
@@ -464,12 +466,12 @@ export function createWorld(): World {
     const prepared = withInputPreparation((): PreparedInput => {
       const trait = inputTrait(input)
       if (hasIndex(index, trait)) {
-        throw new Error(`three-flatland: Entity ${entity} already has trait ${trait.id}`)
+        fail(`${entity} already has trait ${trait.id}`)
       }
 
       const initial = isInitializer(input) ? input.initial : undefined
       if (trait.kind === 'tag' && initial !== undefined) {
-        throw new TypeError('three-flatland: Tag traits do not accept initial values')
+        fail('Tag has a value', TypeError)
       }
       return {
         numericInitial:
@@ -531,7 +533,7 @@ export function createWorld(): World {
     const index = assertAlive(entity)
     withInputPreparation(() => {
       if (!hasIndex(index, trait)) {
-        throw new Error(`three-flatland: Entity ${entity} does not have trait ${trait.id}`)
+        fail(`${entity} does not have trait ${trait.id}`)
       }
       const state = traitStates[trait.id]!
       if (trait.kind === 'numeric') {
@@ -543,7 +545,7 @@ export function createWorld(): World {
         applyObjectPatch(target, snapshotObjectPatch(target, value))
         return
       }
-      throw new TypeError('three-flatland: Tag traits cannot be patched')
+      fail('Cannot patch tag', TypeError)
     })
     assertAlive(entity)
     if (tracked) emit('changed', trait, index)
@@ -552,7 +554,7 @@ export function createWorld(): World {
   function touch(entity: Entity, trait: AnyTrait): void {
     const index = assertAlive(entity)
     if (!hasIndex(index, trait)) {
-      throw new Error(`three-flatland: Entity ${entity} does not have trait ${trait.id}`)
+      fail(`${entity} does not have trait ${trait.id}`)
     }
     emit('changed', trait, index)
   }
@@ -576,7 +578,7 @@ export function createWorld(): World {
     assertUsable()
     const state = eventStates[selector.id]
     if (state === undefined) {
-      throw new Error('three-flatland: Event selector must be activated before it can be drained')
+      fail('Selector not activated')
     }
     state.drained.length = 0
     for (const entity of state.queue.dense) state.drained.push(entity)
@@ -607,7 +609,7 @@ export function createWorld(): World {
   function dispose(): void {
     if (disposed) return
     if (inputPreparationDepth > 0) {
-      throw new Error('three-flatland: Trait inputs cannot access mutable world state')
+      fail('Trait inputs cannot access mutable world state')
     }
     for (const state of activeTraitStates) {
       if (state.objects !== undefined) state.objects.length = 0
@@ -635,6 +637,7 @@ export function createWorld(): World {
     eventStates.length = 0
     selectorSubscriptions.length = 0
     eventSubscriptions.length = 0
+    reservedCapacity = 0
     disposed = true
   }
 
@@ -657,17 +660,10 @@ export function createWorld(): World {
     patch,
     read,
     remove,
+    reserve,
     spawn,
     store,
     touch,
     view,
-    [WORLD_CAPACITY_ACCESS]: [
-      entities,
-      signatures,
-      activeSignatureWords,
-      activeTraitStates,
-      activeSelectorStates,
-      activeEventStates,
-    ],
   } as unknown as World
 }

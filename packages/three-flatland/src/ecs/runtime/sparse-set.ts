@@ -41,11 +41,3 @@ export class SparseSet {
     this.sparse.length = 0
   }
 }
-
-/** @internal Optional capacity extension; not exported from the runtime entrypoint. */
-export function reserveSparseSet(set: SparseSet, capacity: number): void {
-  if (capacity <= set.sparse.length) return
-  const start = set.sparse.length
-  set.sparse.length = capacity
-  set.sparse.fill(undefined, start)
-}

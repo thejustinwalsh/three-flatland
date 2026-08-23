@@ -1,9 +1,10 @@
 import { ENTITY_INDEX_STRIDE } from '../ecs/runtime/entity'
+import { fail } from '../ecs/runtime/error'
 
 export function validateExpectedSprites(value: number | undefined): number {
   const expectedSprites = value ?? 0
   if (!Number.isSafeInteger(expectedSprites) || expectedSprites < 0) {
-    throw new RangeError('three-flatland: expectedSprites must be a non-negative safe integer')
+    fail('expectedSprites must be a non-negative safe integer', RangeError)
   }
   return expectedSprites
 }
@@ -15,7 +16,7 @@ export function clampEntityReservation(value: number): number {
 
 /** Grow geometrically, or directly to a larger required capacity. */
 export function nextCapacity(current: number, required: number, maximum = Number.MAX_SAFE_INTEGER): number {
-  if (required > maximum) throw new RangeError('three-flatland: Required capacity exceeds its intrinsic maximum')
+  if (required > maximum) fail('Required capacity exceeds intrinsic maximum', RangeError)
   if (required <= current) return current
   return Math.min(maximum, Math.max(required, current === 0 ? 16 : current * 2))
 }
@@ -26,8 +27,5 @@ export function nextCapacity(current: number, required: number, maximum = Number
  * index has a harmless absence/default value.
  */
 export function reserveIndexedArray<T>(values: T[], capacity: number, fill: T): void {
-  if (capacity <= values.length) return
-  const start = values.length
-  values.length = capacity
-  values.fill(fill, start)
+  if (capacity > values.length) values.fill(fill, values.length, (values.length = capacity))
 }

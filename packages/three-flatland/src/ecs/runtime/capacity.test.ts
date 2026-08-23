@@ -19,6 +19,7 @@ describe('private ECS advisory capacity', () => {
 
   it('reserves hot index structures, grows geometrically, and preserves stable stores', () => {
     const Position = trait({ x: 0, y: 0 })
+    const LateState = trait({ value: 1 })
     const Inventory = trait(() => ({ items: [] as number[] }))
     const Renderable = trait()
     const Renderables = select(Renderable, Position)
@@ -30,6 +31,8 @@ describe('private ECS advisory capacity', () => {
     world.view(Renderables)
     world.activate(AddedRenderable)
     reserveWorld(world, 4)
+    const lateValues = world.store(LateState).value
+    expect(lateValues).toHaveLength(4)
     const entities: Entity[] = []
     for (let index = 0; index < 4; index++) {
       entities.push(world.spawn(Position({ x: index }), Inventory, Renderable))
@@ -44,11 +47,13 @@ describe('private ECS advisory capacity', () => {
     entities.push(world.spawn(Position({ x: 4 }), Inventory, Renderable))
     expect(world.capacity).toBe(8)
     expect(x).toHaveLength(8)
+    expect(lateValues).toHaveLength(8)
 
     for (let index = 5; index < 12; index++) {
       entities.push(world.spawn(Position({ x: index }), Inventory, Renderable))
     }
     expect(world.capacity).toBe(16)
+    expect(lateValues).toHaveLength(16)
     expect(world.view(Renderables)).toHaveLength(12)
 
     for (const entity of entities) world.destroy(entity)
@@ -59,5 +64,6 @@ describe('private ECS advisory capacity', () => {
     world.dispose()
     expect(world.capacity).toBe(0)
     expect(x).toHaveLength(0)
+    expect(lateValues).toHaveLength(0)
   })
 })

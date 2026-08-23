@@ -18,6 +18,7 @@ const harnessSources = [
   'fixtures/anchored-scan-size-entry.ts',
   'fixtures/flatland-capacity-size-entry.ts',
   'fixtures/flatland-runtime-size-entry.ts',
+  'fixtures/flatland-shipped-runtime-size-entry.ts',
   'fixtures/koota-size-entry.ts',
   'fixtures/signature-persistent-size-entry.ts',
   'fixtures/sparse-persistent-size-entry.ts',
@@ -26,6 +27,7 @@ const harnessSources = [
   '../../../packages/three-flatland/src/internal/capacity.ts',
   '../../../packages/three-flatland/src/internal/reserved-world.ts',
   '../../../packages/three-flatland/src/ecs/runtime/entity.ts',
+  '../../../packages/three-flatland/src/ecs/runtime/error.ts',
   '../../../packages/three-flatland/src/ecs/runtime/index.ts',
   '../../../packages/three-flatland/src/ecs/runtime/selector.ts',
   '../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts',
@@ -55,6 +57,10 @@ const artifacts = [
   {
     entry: fileURLToPath(new URL('./fixtures/flatland-capacity-size-entry.ts', import.meta.url)),
     name: 'Flatland optional capacity extension',
+  },
+  {
+    entry: fileURLToPath(new URL('./fixtures/flatland-shipped-runtime-size-entry.ts', import.meta.url)),
+    name: 'Flatland shipped runtime with capacity',
   },
   {
     entry: fileURLToPath(new URL('./fixtures/koota-size-entry.ts', import.meta.url)),

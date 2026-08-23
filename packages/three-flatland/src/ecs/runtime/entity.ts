@@ -1,4 +1,5 @@
-import { reserveSparseSet, SparseSet } from './sparse-set'
+import { SparseSet } from './sparse-set'
+import { fail } from './error'
 import type { EntityHandle } from '../../internal/ecs-handles'
 
 export type { EntityHandle } from '../../internal/ecs-handles'
@@ -19,14 +20,14 @@ export function entityGeneration(entity: Entity): number {
 
 export function packEntity(index: number, generation: number): Entity {
   if (!Number.isSafeInteger(index) || index < 0 || index > ENTITY_INDEX_MASK) {
-    throw new RangeError('three-flatland: Entity index is outside the 20-bit handle range')
+    fail('Index range', RangeError)
   }
   if (!Number.isSafeInteger(generation) || generation < 1 || generation > MAX_ENTITY_GENERATION) {
-    throw new RangeError('three-flatland: Entity generation is outside the safe handle range')
+    fail('generation outside safe handle range', RangeError)
   }
   const entity = generation * ENTITY_INDEX_STRIDE + index
   if (!Number.isSafeInteger(entity)) {
-    throw new RangeError('three-flatland: Entity generation exhausted safe numeric handles')
+    fail('generation exhausted', RangeError)
   }
   return entity as Entity
 }
@@ -47,10 +48,10 @@ export class EntityPool {
 
   constructor({ maxGeneration = MAX_ENTITY_GENERATION, maxIndex = ENTITY_INDEX_MASK }: EntityPoolLimits = {}) {
     if (!Number.isSafeInteger(maxIndex) || maxIndex < 0 || maxIndex > ENTITY_INDEX_MASK) {
-      throw new RangeError('three-flatland: Entity-pool maxIndex is outside the 20-bit handle range')
+      fail('Invalid maxIndex', RangeError)
     }
     if (!Number.isSafeInteger(maxGeneration) || maxGeneration < 1 || maxGeneration > MAX_ENTITY_GENERATION) {
-      throw new RangeError('three-flatland: Entity-pool maxGeneration is outside the safe handle range')
+      fail('Invalid maxGeneration', RangeError)
     }
     this.maxGeneration = maxGeneration
     this.maxIndex = maxIndex
@@ -58,7 +59,7 @@ export class EntityPool {
 
   assertCanAllocate(): void {
     if (this.freeIndices.length === 0 && this.nextIndex > this.maxIndex) {
-      throw new RangeError('three-flatland: World exhausted its 20-bit entity index capacity')
+      fail('Exhausted index capacity', RangeError)
     }
   }
 
@@ -78,12 +79,12 @@ export class EntityPool {
   }
 
   handle(index: number): Entity {
-    if (!this.alive.has(index)) throw new Error(`three-flatland: Entity index ${index} is not alive`)
+    if (!this.alive.has(index)) fail(`Dead index ${index}`)
     return packEntity(index, this.generations[index] ?? 1)
   }
 
   destroy(entity: Entity): void {
-    if (!this.isAlive(entity)) throw new Error(`three-flatland: Stale entity handle ${entity}`)
+    if (!this.isAlive(entity)) fail(`Stale entity handle ${entity}`)
     const index = entityIndex(entity)
     this.alive.delete(index)
     const nextGeneration = (this.generations[index] ?? 1) + 1
@@ -96,13 +97,4 @@ export class EntityPool {
     this.freeIndices.length = 0
     this.generations.length = 0
   }
-}
-
-/** @internal Optional capacity extension; not exported from the runtime entrypoint. */
-export function reserveEntityPool(pool: EntityPool, capacity: number): void {
-  if (capacity <= pool.generations.length) return
-  const start = pool.generations.length
-  pool.generations.length = capacity
-  pool.generations.fill(1, start)
-  reserveSparseSet(pool.alive, capacity)
 }

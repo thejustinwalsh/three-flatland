@@ -1,4 +1,5 @@
 import type { TraitHandle } from '../../internal/ecs-handles'
+import { fail } from './error'
 
 export type NumericSchema = Readonly<Record<string, number>>
 
@@ -107,7 +108,7 @@ export function trait<TValue extends object>(
 
   const defaults = numericDataSnapshot(definition)
   if (defaults === undefined) {
-    throw new TypeError('three-flatland: Numeric traits accept only flat number fields')
+    fail('Numeric trait needs flat number fields', TypeError)
   }
 
   Object.freeze(defaults)

@@ -94,9 +94,9 @@ describe('checked-in ECS evidence', () => {
     expect(signature!.brotliBytes).toBeLessThanOrEqual(3_800)
   })
 
-  it('keeps the private production runtime under the isolated size caps', () => {
+  it('keeps the statically shipped private runtime under the isolated size caps', () => {
     const runtime = currentSizeReport.measurements?.find(
-      ({ artifact }) => artifact === 'Flatland private production runtime'
+      ({ artifact }) => artifact === 'Flatland shipped runtime with capacity'
     )
     expect(runtime).toBeDefined()
     expect(runtime!.minifiedBytes).toBeLessThanOrEqual(12_000)
