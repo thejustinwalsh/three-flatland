@@ -51,6 +51,7 @@ import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
 import type { Registry } from '../orchestration/registry'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
+import { reserveIndexedArray } from '../internal/capacity'
 
 let nextEffectConstantIdentity = 1
 const effectConstantObjectIdentities = new WeakMap<object, number>()
@@ -2576,7 +2577,10 @@ export class Sprite2D extends Mesh {
 
     // Register in the spriteArr for O(1) lookup by entity SoA index.
     const registry = this._registryData()
-    if (registry) registry.spriteArr[eid] = this
+    if (registry) {
+      reserveIndexedArray(registry.spriteArr, w.capacity, null)
+      registry.spriteArr[eid] = this
+    }
 
     // Add effect traits for active effects
     for (const effect of this._effects) {

@@ -73,8 +73,9 @@ export interface SpriteGroupOptions {
   /**
    * Advisory sprite count used to reserve hot CPU-side storage during
    * construction. It does not cap enrollment or pre-create GPU batches.
-   * React Three Fiber users pass this through `args` and reconstruct the
-   * group to change it; it is intentionally not a mutable JSX property.
+   * React Three Fiber users pass a stable options object through `args`
+   * (for example, one created with `useMemo`) and reconstruct the group to
+   * change it; it is intentionally not a mutable JSX property.
    */
   expectedSprites?: number
   /**

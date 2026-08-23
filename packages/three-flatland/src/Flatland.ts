@@ -111,8 +111,9 @@ export interface FlatlandOptions {
   /**
    * Advisory sprite count used to reserve the internal SpriteGroup's hot
    * CPU-side storage. It never limits enrollment or pre-creates GPU batches.
-   * React Three Fiber users pass it through `args` and reconstruct Flatland
-   * to change it; it is intentionally not a mutable JSX property.
+   * React Three Fiber users pass a stable options object through `args`
+   * (for example, one created with `useMemo`) and reconstruct Flatland to
+   * change it; it is intentionally not a mutable JSX property.
    */
   expectedSprites?: number
   /**

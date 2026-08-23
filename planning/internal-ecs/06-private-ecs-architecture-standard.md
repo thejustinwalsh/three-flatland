@@ -62,9 +62,9 @@ Tilemap material effects follow the same retained-configuration rule. An attache
 
 ## Capacity is a construction plan
 
-Capacity configuration describes expected topology; it is not a live tuning control. The target API has an `expectedSprites` hint that selects initial batch tiers and pool warmup, plus an advanced `maxBatchSize` ceiling. Both are accepted in constructor options and through R3F's initial property application, then freeze when the group first materializes its world or batches. A later assignment either throws atomically or requires a new group; it never silently changes only future batches while old batches retain another plan.
+Capacity configuration describes expected topology; it is not a live tuning control. The target API has an `expectedSprites` hint that reserves hot CPU-side world and registry storage, plus an advanced `maxBatchSize` ceiling. `expectedSprites` is constructor-only. React Three Fiber consumers pass a stable or memoized options object through `args` and intentionally reconstruct the group when the hint changes; there is no mutable JSX-property path for the hint. `maxBatchSize` retains its separately documented Three.js-style property behavior.
 
-The hint must not eagerly allocate the full expected population. It chooses tier and reserve strategy from measured workloads. Automatic growth remains safe and bounded, and ordinary users do not need to coordinate multiple flags.
+The hint eagerly initializes only the active CPU index-addressed structures whose absence/default values are safe to materialize, together with batch-index topology. It does not pre-create sprites, GPU batches or buffers, cold trait columns, or synthetic dense selector/event rows. This moves a measured amount of work into construction while avoiding cold-memory and GPU over-allocation. Automatic growth remains safe and bounded, and ordinary users do not need to coordinate multiple flags.
 
 This target differs from today's mutable `SpriteGroup.maxBatchSize` setter, which only affects future batches. Converging it is a breaking public behavior change and therefore belongs in a dedicated reviewed migration, not a hidden refactor.
 

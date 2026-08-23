@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "899684bdf422ff31a68c03c0d3ceb24c611b78775fbfc36fb0daeaf0957f261f",
+  "harnessSha256": "3b28e7ff973f5a5f9344fc41e98eaf58243e04819b8998a7564a405d672cde4e",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -9,12 +9,15 @@
     "candidates/signature-persistent.ts",
     "candidates/sparse-persistent.ts",
     "fixtures/anchored-scan-size-entry.ts",
+    "fixtures/flatland-capacity-size-entry.ts",
     "fixtures/flatland-runtime-size-entry.ts",
     "fixtures/koota-size-entry.ts",
     "fixtures/signature-persistent-size-entry.ts",
     "fixtures/sparse-persistent-size-entry.ts",
     "provenance.ts",
     "measure-kernels-size.ts",
+    "../../../packages/three-flatland/src/internal/capacity.ts",
+    "../../../packages/three-flatland/src/internal/reserved-world.ts",
     "../../../packages/three-flatland/src/ecs/runtime/entity.ts",
     "../../../packages/three-flatland/src/ecs/runtime/index.ts",
     "../../../packages/three-flatland/src/ecs/runtime/selector.ts",
@@ -26,9 +29,15 @@
   "measurements": [
     {
       "artifact": "Flatland private production runtime",
-      "brotliBytes": 3432,
-      "gzipBytes": 3828,
-      "minifiedBytes": 11681
+      "brotliBytes": 3485,
+      "gzipBytes": 3879,
+      "minifiedBytes": 11803
+    },
+    {
+      "artifact": "Flatland optional capacity extension",
+      "brotliBytes": 549,
+      "gzipBytes": 629,
+      "minifiedBytes": 1232
     },
     {
       "artifact": "Koota seven-import tree-shaken browser kernel",

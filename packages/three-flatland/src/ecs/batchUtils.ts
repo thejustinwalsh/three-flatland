@@ -26,7 +26,7 @@ import {
 import type { SystemSchedule } from './SystemSchedule'
 import { entitySlot, liveStoredEntity } from './snapshot'
 import { getSpriteBatchOwnership } from '../internal/sprite-batch-ownership'
-import { emitCapacityGrowth, nextCapacity, reserveIndexedArray } from '../internal/capacity'
+import { nextCapacity, reserveIndexedArray } from '../internal/capacity'
 
 /** Shape of the BatchRegistry trait data, used for parameter typing. */
 export interface RegistryData {
@@ -57,10 +57,6 @@ export interface RegistryData {
   effectVariants: WeakMap<Texture, Map<string, Sprite2DMaterial>>
   batchSlots: (SpriteBatch | null)[]
   batchSlotFreeList: number[]
-  /** Constructor-time batch-index reservation; advisory and never a cap. */
-  expectedBatchCapacity: number
-  /** Owner for the private dev/test capacity observer. */
-  capacityOwner: object | null
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: (Sprite2D | null)[]
@@ -181,12 +177,6 @@ export function allocateBatchIdx(registry: RegistryData, mesh: SpriteBatch): num
     const next = nextCapacity(previous, previous + 1)
     reserveIndexedArray(registry.batchSlots, next, null)
     for (let index = next - 1; index >= previous; index--) registry.batchSlotFreeList.push(index)
-    emitCapacityGrowth(registry.capacityOwner ?? undefined, {
-      subsystem: 'registry.batch-index',
-      previous,
-      next,
-      reason: 'growth',
-    })
   }
   const idx = registry.batchSlotFreeList.pop()!
   registry.batchSlots[idx] = mesh

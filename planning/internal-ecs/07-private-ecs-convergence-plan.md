@@ -72,11 +72,11 @@ Exit condition: one authoritative graph, atomic add/remove/reorder/enable/lighti
 
 ### P0 — introduce a frozen capacity plan
 
-Add `expectedSprites` as the ordinary planning hint and retain `maxBatchSize` only as an advanced ceiling. Accept both during Three.js construction or R3F initial property application, freeze them before the first world/batch materialization, and reject later changes atomically. Derive initial tier and pool warmup from measured Knightmark populations without allocating the full hint.
+Add `expectedSprites` as the ordinary constructor-only planning hint and retain `maxBatchSize` as an advanced ceiling with its existing property contract. React Three Fiber consumers pass a stable or memoized options object through `args`; changing the hint means intentionally reconstructing the group, not applying a mutable JSX property. Reserve the active CPU index-addressed world and registry structures during construction, but do not pre-create sprites, GPU batches or buffers, cold trait columns, or synthetic dense selector/event rows.
 
 The migration must explicitly replace today's behavior where the `SpriteGroup.maxBatchSize` setter changes only future batches (`packages/three-flatland/src/pipeline/SpriteGroup.ts:101-153`). Because that setter is public and R3F-compatible, this is a breaking change and needs paired Three/R3F fixtures plus release documentation.
 
-Exit condition: constructor/no-arg property parity, late-write rejection with unchanged registry and live batches, bounded growth tests, and renderer evidence for under-estimate, exact-estimate, and over-estimate cases.
+Exit condition: constructor and R3F `args` type coverage, direct JSX-property rejection, bounded growth tests, dispose/reuse coverage, and renderer evidence for under-estimate, exact-estimate, and over-estimate cases.
 
 ### P1 — schedule dense animated-sprite playback
 

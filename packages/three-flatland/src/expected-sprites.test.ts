@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { Flatland } from './Flatland'
-import type { World } from './ecs/runtime'
-import { observeCapacityGrowth, type CapacityGrowthEvent } from './internal/capacity'
+import { select, type World } from './ecs/runtime'
+import { BatchRegistry } from './ecs/traits'
+
+const BatchRegistries = select(BatchRegistry)
 
 describe('Flatland expectedSprites', () => {
   it.each([-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])(
@@ -13,25 +15,17 @@ describe('Flatland expectedSprites', () => {
 
   it('forwards the constructor hint into its SpriteGroup and private world', () => {
     const flatland = new Flatland({ expectedSprites: 32 })
-    const events: CapacityGrowthEvent[] = []
-    const stop = observeCapacityGrowth(flatland.spriteGroup, (event) => events.push(event))
     const world = flatland.world as World
+    const registryEntity = world.view(BatchRegistries)[0]!
+    const registry = world.read(registryEntity, BatchRegistry)!
 
     expect(world.capacity).toBeGreaterThanOrEqual(32)
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        subsystem: 'ecs.entity-index',
-        reason: 'hint',
-      })
-    )
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        subsystem: 'registry.sprite-index',
-        reason: 'hint',
-      })
-    )
+    expect(registry.spriteArr).toHaveLength(world.capacity)
+    expect(registry.batchSlots).toHaveLength(1)
 
-    stop()
     flatland.dispose()
+    expect(world.capacity).toBe(0)
+    expect(registry.spriteArr).toHaveLength(0)
+    expect(registry.batchSlots).toHaveLength(0)
   })
 })

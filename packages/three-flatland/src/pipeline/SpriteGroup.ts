@@ -35,14 +35,8 @@ import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransf
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
 import { releaseLightEffectRuntimeContext } from '../ecs/systems/lightEffectSystem'
 import { validateMaxBatchSize } from '../internal/max-batch-size'
-import {
-  clampEntityReservation,
-  emitCapacityGrowth,
-  primeDenseArray,
-  reserveIndexedArray,
-  validateExpectedSprites,
-  type CapacityGrowthReason,
-} from '../internal/capacity'
+import { clampEntityReservation, reserveIndexedArray, validateExpectedSprites } from '../internal/capacity'
+import { reserveWorld } from '../internal/reserved-world'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -231,7 +225,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
     this._expectedBatchCapacity = expectedBatchCapacity
     this._expectedEntityCapacity = expectedEntityCapacity
-    primeDenseArray(this._pendingDestroy, expectedEntityCapacity, 0 as Entity)
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
@@ -293,11 +286,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    */
   get world(): WorldHandle {
     if (!this._world) {
-      this._world = createWorld({
-        capacityOwner: this,
-        expectedEntities: this._expectedEntityCapacity,
-        onCapacityChange: (capacity, reason) => this._reserveRegistryEntityCapacity(capacity, reason),
-      })
+      this._world = createWorld()
       this._batchAssignSystem = createBatchAssignSystem(this._world)
       this._batchReassignSystem = createBatchReassignSystem(this._world)
       this._batchRemoveSystem = createBatchRemoveSystem(this._world)
@@ -374,14 +363,13 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
         const registry = this._getRegistry()
         if (registry) flushUnusedMaterials(w, registry)
       })
+      reserveWorld(this._world, this._expectedEntityCapacity)
 
       const activeBatches: Entity[] = []
       const batchPool: Entity[] = []
       const batchSlots: Array<SpriteBatch | null> = []
       const batchSlotFreeList: number[] = []
       const spriteArr: Array<Sprite2D | null> = []
-      primeDenseArray(activeBatches, this._expectedBatchCapacity, 0 as Entity)
-      primeDenseArray(batchPool, this._expectedBatchCapacity, 0 as Entity)
       reserveIndexedArray(batchSlots, this._expectedBatchCapacity, null)
       for (let index = this._expectedBatchCapacity - 1; index >= 0; index--) batchSlotFreeList.push(index)
       reserveIndexedArray(spriteArr, this._world.capacity, null)
@@ -402,8 +390,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
         effectVariants: new WeakMap(),
         batchSlots,
         batchSlotFreeList,
-        expectedBatchCapacity: this._expectedBatchCapacity,
-        capacityOwner: this,
         spriteArr,
         // Share the SpriteGroup's own pending-destroy array so schedule
         // closures and registry consumers operate on the same queue.
@@ -419,23 +405,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       }
       this._registryEntity = this._world.spawn(BatchRegistry(registryData))
       this._registryData = registryData
-      this._reserveRegistryEntityCapacity(this._world.capacity, this._expectedEntityCapacity > 0 ? 'hint' : 'growth')
-      if (this._expectedEntityCapacity > 0) {
-        emitCapacityGrowth(this, {
-          subsystem: 'registry.sprite-index',
-          previous: 0,
-          next: this._expectedEntityCapacity,
-          reason: 'hint',
-        })
-      }
-      if (this._expectedBatchCapacity > 0) {
-        emitCapacityGrowth(this, {
-          subsystem: 'registry.batch-index',
-          previous: 0,
-          next: this._expectedBatchCapacity,
-          reason: 'hint',
-        })
-      }
 
       // Publish to the devtools sink only after the registry transaction is
       // complete so a failed eager reservation cannot strand a source.
@@ -445,14 +414,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       }
     }
     return this._world
-  }
-
-  private _reserveRegistryEntityCapacity(capacity: number, reason: CapacityGrowthReason): void {
-    const registry = this._registryData
-    if (!registry || capacity <= registry.spriteArr.length) return
-    const previous = registry.spriteArr.length
-    reserveIndexedArray(registry.spriteArr, capacity, null)
-    emitCapacityGrowth(this, { subsystem: 'registry.sprite-index', previous, next: capacity, reason })
   }
 
   /** Resolve the private runtime world behind the public opaque handle. */

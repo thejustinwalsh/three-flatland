@@ -23,4 +23,4 @@ export {
   type TraitInput,
   type WidenNumericSchema,
 } from './trait'
-export { createWorld, type World, type WorldOptions } from './world'
+export { createWorld, type World } from './world'
