@@ -103,6 +103,38 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     expect(internal.interaction).toEqual([s])
   })
 
+  it('uses the captured interaction list when the external store later throws', () => {
+    let storeAvailable = true
+    const throwingStore: FakeStore = {
+      getState: () => {
+        if (!storeAvailable) throw new Error('store unavailable')
+        return { internal }
+      },
+    }
+    const s = makeManagedSprite(throwingStore)
+    internal.interaction.push(s)
+    proxyPickToBatch(s, batch)
+    storeAvailable = false
+
+    expect(() => unproxyPickFromBatch(s, batch)).not.toThrow()
+    expect(s._pickProxied).toBe(false)
+    expect(typeof s.raycast).toBe('function')
+    expect(internal.interaction).toEqual([s])
+  })
+
+  it('leaves picking untouched when the external store cannot be resolved', () => {
+    const throwingStore: FakeStore = {
+      getState: () => {
+        throw new Error('store unavailable')
+      },
+    }
+    const s = makeManagedSprite(throwingStore)
+
+    expect(() => proxyPickToBatch(s, batch)).not.toThrow()
+    expect(s._pickProxied).toBe(false)
+    expect(typeof s.raycast).toBe('function')
+  })
+
   it('retire with LIVE members restores them instead of stranding them', () => {
     const a = makeManagedSprite(store)
     const b = makeManagedSprite(store)

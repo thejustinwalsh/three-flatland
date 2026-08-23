@@ -74,6 +74,10 @@ function r3f(object: Sprite2D | SpriteBatch): R3FInstanceSlice | undefined {
 /** Live registration of a batch in an R3F interaction list. */
 interface BatchPickRegistration {
   root: R3FStore
+  /** Interaction list captured while the store is known-good. */
+  interaction: Object3D[]
+  /** Internal state object captured with the interaction list. */
+  internal: R3FInternal
   /** R3F-managed member sprites whose picking is proxied through the batch. */
   sprites: Set<Sprite2D>
 }
@@ -125,7 +129,7 @@ function createMissedForwarder(
   filterInitialHits: boolean
 ): (event: unknown) => void {
   return (event: unknown): void => {
-    const initialHits = filterInitialHits ? reg.root.getState()?.internal?.initialHits : undefined
+    const initialHits = filterInitialHits ? reg.internal.initialHits : undefined
     for (const sprite of reg.sprites) {
       const inst = r3f(sprite)
       if (!inst?.eventCount) continue
@@ -155,7 +159,14 @@ export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
   // Our own proxy installs an own null too, so this doubles as the
   // idempotency guard: a re-proxied sprite already has one.
   if (Object.hasOwn(sprite, 'raycast')) return
-  const state = inst.root.getState()
+  let state: R3FRootState
+  try {
+    state = inst.root.getState()
+  } catch {
+    // Picking integration is auxiliary to batch ownership. A transient or
+    // tearing-down external store must never abort an ECS/GPU transaction.
+    return
+  }
   const interaction = state?.internal?.interaction
   if (!interaction) return
 
@@ -170,7 +181,7 @@ export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
   // Register the batch once per tenancy.
   let reg = registrations.get(batch)
   if (!reg) {
-    reg = { root: inst.root, sprites: new Set() }
+    reg = { root: inst.root, interaction, internal: state.internal, sprites: new Set() }
     registrations.set(batch, reg)
     ;(batch as WithR3F).__r3f = {
       root: inst.root,
@@ -201,7 +212,7 @@ export function unproxyPickFromBatch(sprite: Sprite2D, batch: SpriteBatch): void
   if (reg && reg.sprites.delete(sprite) && reg.sprites.size === 0) {
     retireBatchPicking(batch)
   }
-  restoreProxiedSprite(sprite)
+  restoreProxiedSprite(sprite, reg?.interaction)
 }
 
 /**
@@ -210,7 +221,7 @@ export function unproxyPickFromBatch(sprite: Sprite2D, batch: SpriteBatch): void
  * interaction list if it still has handlers. Idempotent — a no-op for a
  * sprite that isn't proxied.
  */
-function restoreProxiedSprite(sprite: Sprite2D): void {
+function restoreProxiedSprite(sprite: Sprite2D, knownInteraction?: Object3D[]): void {
   if (!sprite._pickProxied) return
   sprite._pickProxied = false
   if (sprite.hitTestMode !== 'none') {
@@ -223,7 +234,14 @@ function restoreProxiedSprite(sprite: Sprite2D): void {
   // is transient: removeInteractivity filters the sprite right back out.
   const inst = r3f(sprite)
   if (inst?.eventCount && sprite.raycast !== null) {
-    const interaction = inst.root.getState()?.internal?.interaction
+    let interaction = knownInteraction
+    if (!interaction) {
+      try {
+        interaction = inst.root.getState()?.internal?.interaction
+      } catch {
+        return
+      }
+    }
     if (interaction && !interaction.includes(sprite)) interaction.push(sprite)
   }
 }
@@ -243,9 +261,7 @@ export function retireBatchPicking(batch: SpriteBatch): void {
   // a dead raycast target (unpickable, and un-re-proxyable while their
   // `raycast` stays null). Normally the last member's unproxy already
   // emptied the set; this covers dispose()/recycle with live members.
-  for (const sprite of reg.sprites) restoreProxiedSprite(sprite)
-  const interaction = reg.root.getState()?.internal?.interaction
-  if (!interaction) return
-  const idx = interaction.indexOf(batch)
-  if (idx > -1) interaction.splice(idx, 1)
+  for (const sprite of reg.sprites) restoreProxiedSprite(sprite, reg.interaction)
+  const idx = reg.interaction.indexOf(batch)
+  if (idx > -1) reg.interaction.splice(idx, 1)
 }

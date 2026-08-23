@@ -201,6 +201,47 @@ describe('auto batching preserves the source hierarchy', () => {
     spriteGroup.dispose()
   })
 
+  it('keeps ownership coherent when the R3F store fails during picking handoff', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const sprite = makeSprite()
+    const interaction: object[] = [sprite]
+    let storeAvailable = true
+    const root = {
+      getState: () => {
+        if (!storeAvailable) throw new Error('store unavailable')
+        return { internal: { interaction, initialHits: [] } }
+      },
+    }
+    ;(sprite as unknown as { __r3f: unknown }).__r3f = {
+      root,
+      eventCount: 1,
+      handlers: { onClick() {} },
+    }
+
+    spriteGroup.add(sprite)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+    const oldBatch = sprite._batchMesh!
+    const oldSlot = sprite._batchSlot
+
+    storeAvailable = false
+    sprite.texture = new Texture()
+    expect(() => scene.updateMatrixWorld(true)).not.toThrow()
+
+    const newBatch = sprite._batchMesh!
+    const newSlot = sprite._batchSlot
+    expect(newBatch).not.toBe(oldBatch)
+    expect(oldBatch.slotEntities[oldSlot]).toBe(0)
+    expect(newBatch.slotEntities[newSlot]).not.toBe(0)
+    expect(newBatch.spriteAtSlot(newSlot)).toBe(sprite)
+    expect(interaction).not.toContain(oldBatch)
+    expect(interaction).toContain(sprite)
+    expect(sprite._pickProxied).toBe(false)
+
+    spriteGroup.dispose()
+  })
+
   it('recomposes an auto-batched sprite after same-world remove and re-add', () => {
     const renderer = {}
     const scene = new Scene()
