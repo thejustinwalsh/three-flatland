@@ -366,6 +366,48 @@ describe('Flatland material ownership', () => {
     flatland.dispose()
   })
 
+  it('finishes tilemap resource and Flatland ownership cleanup when an earlier removed listener throws 0', () => {
+    const flatland = new Flatland()
+    flatland.setLighting(new OwnershipLight())
+    const data = makeMapData()
+    const tileMap = new TileMap2D({ data })
+    const material = tileMap.getLayerMaterialAt(0)!
+    const disposeMaterial = vi.spyOn(material, 'dispose')
+    const disposeTexture = vi.spyOn(data.tilesets[0]!.texture!, 'dispose')
+    tileMap.addEventListener('removed', () => {
+      throw 0
+    })
+    flatland.add(tileMap)
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      tileMap.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(tileMap.data).toBeNull()
+    expect(tileMap.getLayers()).toEqual([])
+    expect(disposeMaterial).toHaveBeenCalledTimes(1)
+    expect(disposeTexture).toHaveBeenCalledTimes(1)
+    expect(flatland.scene.children).toEqual([flatland.spriteGroup])
+    expect(trackedMaterials(flatland).size).toBe(0)
+    expect(materialRefCounts(flatland).size).toBe(0)
+    expect(lightingContext(flatland).materials.size).toBe(0)
+    expect((Reflect.get(flatland, '_tileMapOwnedMaterials') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_tileMapMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(flatland, '_tileMapDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+
+    // Terminal cleanup is idempotent even though the first call rethrew the
+    // exact user value after completing every owned resource release.
+    expect(() => tileMap.dispose()).not.toThrow()
+    flatland.dispose()
+  })
+
   it('clears every coupled registry and remains bounded across refill cycles', () => {
     const flatland = new Flatland()
     flatland.setLighting(new OwnershipLight())

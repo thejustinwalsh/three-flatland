@@ -141,7 +141,7 @@ export class TileMap2D extends Group {
    * Set the tilemap data and rebuild the map.
    */
   set data(value: TileMapData | null) {
-    if (this._disposed) throw new Error('TileMap2D.data cannot be set after dispose()')
+    this._assertMutable('data')
     if (this._data === value) return
     this._rebuildProjection(value, this._chunkSize, true)
   }
@@ -156,7 +156,7 @@ export class TileMap2D extends Group {
   }
 
   set chunkSize(value: number) {
-    if (this._disposed) throw new Error('TileMap2D.chunkSize cannot be set after dispose()')
+    this._assertMutable('chunkSize')
     if (this._chunkSize === value) return
     if (this._data) this._rebuildProjection(this._data, value, false)
     else this._chunkSize = value
@@ -170,6 +170,7 @@ export class TileMap2D extends Group {
   }
 
   set enableCollision(value: boolean) {
+    this._assertMutable('enableCollision')
     if (this._enableCollision === value) return
     this._enableCollision = value
     if (this._data && value) {
@@ -185,6 +186,7 @@ export class TileMap2D extends Group {
   }
 
   set pixelPerfect(value: boolean) {
+    this._assertMutable('pixelPerfect')
     if (value === this._pixelPerfect) return
     this._pixelPerfect = value
     for (const layer of this.tileLayers) layer.pixelPerfect = value
@@ -429,6 +431,7 @@ export class TileMap2D extends Group {
   }
 
   set lit(value: boolean) {
+    this._assertMutable('lit')
     for (const layer of this.tileLayers) {
       layer.lit = value
     }
@@ -439,6 +442,7 @@ export class TileMap2D extends Group {
   }
 
   set receiveShadows(value: boolean) {
+    this._assertMutable('receiveShadows')
     for (const layer of this.tileLayers) {
       layer.receiveShadows = value
     }
@@ -457,6 +461,7 @@ export class TileMap2D extends Group {
    * ```
    */
   addEffect(effect: MaterialEffect): this {
+    this._assertMutable('addEffect')
     if (this._effects.includes(effect)) return this
     if (effect._sprite) {
       throw new Error(
@@ -486,6 +491,7 @@ export class TileMap2D extends Group {
   }
 
   removeEffect(effect: MaterialEffect): this {
+    this._assertMutable('removeEffect')
     const index = this._effects.indexOf(effect)
     if (index === -1) return this
     const nextEffects = this._effects.filter((attached) => attached !== effect)
@@ -513,6 +519,10 @@ export class TileMap2D extends Group {
     return this.tileLayers.map((layer) => layer.material)
   }
 
+  private _assertMutable(member: string): void {
+    if (this._disposed) throw new Error(`TileMap2D.${member} cannot be used after dispose()`)
+  }
+
   private _notifyMaterialReplacement(previous: readonly Sprite2DMaterial[]): void {
     if (this._materialListeners.size === 0) return
     const current = this._layerMaterials()
@@ -538,17 +548,30 @@ export class TileMap2D extends Group {
     }
     const previousMaterials = previous.tileLayers.map((layer) => layer.material)
 
-    for (const layer of previous.tileLayers) this.remove(layer)
-    this.tileLayers = []
-    this.tilesets = []
-    this.objectLayers = []
-    this.collisionShapes = []
-    this._chunkSize = chunkSize
-
     try {
+      // Object3D.remove() mutates the hierarchy before dispatching `removed`.
+      // Keep retirement inside the transaction so a throwing user listener
+      // can restore every old layer instead of stranding a partial projection.
+      for (const layer of previous.tileLayers) this.remove(layer)
+      this.tileLayers = []
+      this.tilesets = []
+      this.objectLayers = []
+      this.collisionShapes = []
+      this._chunkSize = chunkSize
       if (data) this.buildMap(data)
     } catch (error) {
-      this.disposeInternal(false, disposePreviousTilesets, new Set(previous.tilesets.map((tileset) => tileset.texture)))
+      if (this.tileLayers !== previous.tileLayers) {
+        try {
+          this.disposeInternal(
+            false,
+            disposePreviousTilesets,
+            new Set(previous.tilesets.map((tileset) => tileset.texture))
+          )
+        } catch {
+          // Preserve the exact transaction failure. disposeInternal remains
+          // first-error-safe and has already retired every prepared resource.
+        }
+      }
       this._bounds = previous.bounds
       this._chunkSize = previous.chunkSize
       this.collisionShapes = previous.collisionShapes
@@ -562,7 +585,15 @@ export class TileMap2D extends Group {
       this.tilesets = previous.tilesets
       this._widthInPixels = previous.widthInPixels
       this._widthInTiles = previous.widthInTiles
-      for (const layer of previous.tileLayers) this.add(layer)
+      for (const layer of previous.tileLayers) {
+        if (layer.parent === this) continue
+        try {
+          this.add(layer)
+        } catch {
+          // Object3D.add() publishes parent/children before user `added`
+          // listeners run. Preserve the original retirement failure.
+        }
+      }
       throw error
     }
 
@@ -619,6 +650,7 @@ export class TileMap2D extends Group {
    * @param layerIndex - Which tile layer to mark (default: 0)
    */
   markOccluders(types: string[], layerIndex = 0): void {
+    this._assertMutable('markOccluders')
     const layer = this.tileLayers[layerIndex]
     if (!layer || !this._data) return
     const typeSet = new Set(types)
@@ -637,6 +669,7 @@ export class TileMap2D extends Group {
    * Call this in your animation loop with delta time in milliseconds.
    */
   update(deltaMs: number): void {
+    this._assertMutable('update')
     for (const layer of this.tileLayers) {
       layer.update(deltaMs)
     }
@@ -851,21 +884,34 @@ export class TileMap2D extends Group {
     disposeTilesets = true,
     protectedTextures: ReadonlySet<unknown> = new Set()
   ): void {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
     const previousMaterials = notify ? this._layerMaterials() : []
     for (const layer of this.tileLayers) {
-      this.remove(layer)
-      layer.dispose()
+      runCleanup(() => this.remove(layer))
+      runCleanup(() => layer.dispose())
     }
     if (disposeTilesets) {
       for (const tileset of this.tilesets) {
-        if (!protectedTextures.has(tileset.texture)) tileset.dispose()
+        if (!protectedTextures.has(tileset.texture)) runCleanup(() => tileset.dispose())
       }
     }
     this.tileLayers = []
     this.tilesets = []
     this.objectLayers = []
     this.collisionShapes = []
-    if (notify) this._notifyMaterialReplacement(previousMaterials)
+    if (notify) runCleanup(() => this._notifyMaterialReplacement(previousMaterials))
+    if (didError) throw firstError
   }
 
   /**
@@ -874,12 +920,26 @@ export class TileMap2D extends Group {
   dispose(): void {
     if (this._disposed) return
     this._disposed = true
-    for (const listener of this._disposeListeners) listener()
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    const disposeListeners = new Set(this._disposeListeners)
+    for (const listener of disposeListeners) runCleanup(listener)
     this._disposeListeners.clear()
-    this.disposeInternal(false)
-    for (const effect of this._effects) effect._detachTileMap()
+    runCleanup(() => this.disposeInternal(false))
+    for (const effect of this._effects) runCleanup(() => effect._detachTileMap())
     this._effects.length = 0
     this._materialListeners.clear()
     this._data = null
+    if (didError) throw firstError
   }
 }

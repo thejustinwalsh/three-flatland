@@ -158,6 +158,39 @@ describe('TileMap2D retained material effects', () => {
     }
   )
 
+  it('restores every old layer when a falsy removed-listener failure interrupts projection retirement', () => {
+    const originalData = makeMapData(2)
+    const map = new TileMap2D({ data: originalData })
+    const previousLayers = [...map.getLayers()]
+    const previousMaterials = previousLayers.map((layer) => layer.material)
+    const disposals = previousMaterials.map((material) => vi.spyOn(material, 'dispose'))
+    const throwOnRemoved = (): void => {
+      throw 0
+    }
+    previousLayers[1]!.addEventListener('removed', throwOnRemoved)
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      map.data = makeMapData(2)
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(map.data).toBe(originalData)
+    expect(map.getLayers()).toEqual(previousLayers)
+    expect(map.children).toEqual(previousLayers)
+    expect(previousLayers.every((layer) => layer.parent === map)).toBe(true)
+    expect(map.getLayers().map((layer) => layer.material)).toEqual(previousMaterials)
+    expect(disposals.every((dispose) => dispose.mock.calls.length === 0)).toBe(true)
+
+    previousLayers[1]!.removeEventListener('removed', throwOnRemoved)
+    map.dispose()
+  })
+
   it('does not dispose a retained tileset texture during a chunk-size-only rebuild', () => {
     const data = makeMapData()
     const texture = data.tilesets[0]!.texture!
@@ -237,5 +270,35 @@ describe('TileMap2D retained material effects', () => {
     expect(effect._tileMap).toBeNull()
 
     map.dispose()
+  })
+
+  it('rejects public state mutations after terminal disposal without retaining an effect', () => {
+    const map = new TileMap2D({ data: makeMapData() })
+    const effect = new WideTileEffect()
+    map.dispose()
+
+    const mutations = [
+      () => map.addEffect(effect),
+      () => map.removeEffect(effect),
+      () => {
+        map.enableCollision = false
+      },
+      () => {
+        map.pixelPerfect = true
+      },
+      () => {
+        map.lit = false
+      },
+      () => {
+        map.receiveShadows = false
+      },
+      () => map.markOccluders(['solid']),
+      () => map.update(16),
+    ]
+    for (const mutate of mutations) expect(mutate).toThrow(/after dispose/)
+
+    expect(effect._tileMap).toBeNull()
+    expect(map.getLayers()).toEqual([])
+    expect(map.data).toBeNull()
   })
 })
