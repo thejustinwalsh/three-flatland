@@ -8,6 +8,7 @@ import {
   Matrix4,
   Vector3,
 } from 'three'
+import type { BufferGeometry } from 'three'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
@@ -21,6 +22,10 @@ import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, PIXEL_PERFECT_MA
 import type { Tileset } from './Tileset'
 import type { TileLayerData } from './types'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
+import { registerTileLayerOperations } from '../internal/tile-layer-operations'
+import { copyFlatlandMaterialState } from '../internal/flatland-material-state'
+import { resolveTileEffectComponent } from '../internal/tile-effect-overrides'
+import { notifyTileLayerDataChanged, releaseTileLayerOwner } from '../internal/tile-layer-ownership'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -33,6 +38,15 @@ interface ChunkData {
   instanceData: Float32Array
   effectBufs: Map<string, Float32Array>
   instanceCount: number
+}
+
+interface CleanupResult {
+  didError: boolean
+  error?: unknown
+}
+
+interface MaterialReplacement extends CleanupResult {
+  previous: Sprite2DMaterial
 }
 
 /**
@@ -56,9 +70,12 @@ interface ChunkData {
  * // In update loop
  * layer.update(deltaMs)
  *
- * // Access material for effects
- * layer.material.colorNode = myCustomEffect
+ * // Standard three.js material state is supported on the live layer material.
+ * layer.material.opacity = 0.8
  * ```
+ *
+ * Register shader effects through {@link TileMap2D.addEffect}; direct
+ * `colorNode` assignments are replaced when the tile projection rebuilds.
  */
 export class TileLayer extends Group {
   /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
@@ -74,7 +91,7 @@ export class TileLayer extends Group {
   /** Chunk size in tiles (e.g., 256 means 256×256 tiles per chunk) */
   readonly chunkSize: number
 
-  /** The Sprite2DMaterial used for rendering (apply effects here) */
+  /** Material for standard three.js render state; use TileMap2D.addEffect for shader effects. */
   private _material: Sprite2DMaterial
 
   get material(): Sprite2DMaterial {
@@ -97,6 +114,15 @@ export class TileLayer extends Group {
 
   /** Terminal disposal latch. */
   private _disposed = false
+
+  /** Reject nested projection mutation while user-extensible cleanup runs. */
+  private _projectionTransition = false
+
+  /** Invalidates an in-flight projection when disposal runs reentrantly. */
+  private _lifecycleRevision = 0
+
+  /** Retained effect instances provide live per-layer baseline values. */
+  private _effects: readonly MaterialEffect[]
 
   /** Total instance count across all chunks */
   private _totalInstanceCount: number = 0
@@ -128,6 +154,20 @@ export class TileLayer extends Group {
   private readonly _changedAnimationGids = new Set<number>()
   private readonly _dirtyAnimationChunks = new Set<string>()
 
+  /** Internal retirement is idempotent across reentrant disposal callbacks. */
+  private readonly _retiredChunkGeometries = new WeakSet<BufferGeometry>()
+
+  /** Reused two-phase projection scratch keeps live effect updates atomic and allocation-free. */
+  private _effectSyncCount = 0
+  private _effectSyncSize = 0
+  private _effectSyncBufferName = ''
+  private readonly _effectSyncBuffers: Float32Array[] = []
+  private readonly _effectSyncOffsets: number[] = []
+  private readonly _effectSync0: number[] = []
+  private readonly _effectSync1: number[] = []
+  private readonly _effectSync2: number[] = []
+  private readonly _effectSync3: number[] = []
+
   /** System flags bitmask (lit/receiveShadows/castsShadow) — same semantics as Sprite2D._systemFlags */
   private _systemFlags: number = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK
 
@@ -143,6 +183,7 @@ export class TileLayer extends Group {
   }
 
   set lit(value: boolean) {
+    this._assertMutable('lit')
     const was = (this._systemFlags & LIT_FLAG_MASK) !== 0
     if (was === value) return
     if (value) {
@@ -158,6 +199,7 @@ export class TileLayer extends Group {
   }
 
   set receiveShadows(value: boolean) {
+    this._assertMutable('receiveShadows')
     const was = (this._systemFlags & RECEIVE_SHADOWS_MASK) !== 0
     if (was === value) return
     if (value) {
@@ -173,6 +215,7 @@ export class TileLayer extends Group {
   }
 
   set pixelPerfect(value: boolean) {
+    this._assertMutable('pixelPerfect')
     const was = (this._systemFlags & PIXEL_PERFECT_MASK) !== 0
     if (was === value) return
     if (value) {
@@ -188,6 +231,7 @@ export class TileLayer extends Group {
    * Use with IntGrid data to mark wall tiles as shadow casters.
    */
   setCastsShadowAt(tileX: number, tileY: number, value: boolean): void {
+    this._assertMutable('setCastsShadowAt')
     const index = tileY * this.data.width + tileX
     const mapping = this.tileIndexMap.get(index)
     if (!mapping) return
@@ -277,6 +321,15 @@ export class TileLayer extends Group {
     this.tileWidth = tileWidth
     this.tileHeight = tileHeight
     this.chunkSize = chunkSize
+    this._effects = [...effects]
+    registerTileLayerOperations(this, {
+      commitEffectValues: () => this.#commitEffectValues(),
+      copyMaterialState: (source) => this.#copyMaterialState(source),
+      dispose: (disposeMaterial, notifyOwner) => this.#dispose(disposeMaterial, notifyOwner),
+      prepareEffectMaterial: (nextEffects) => this.#prepareEffectMaterial(nextEffects),
+      prepareEffectValues: (effect, fieldName) => this.#prepareEffectValues(effect, fieldName),
+      replaceMaterial: (current, nextEffects) => this.#replaceMaterial(current, nextEffects),
+    })
 
     this.name = data.name
     this.visible = data.visible ?? true
@@ -314,7 +367,8 @@ export class TileLayer extends Group {
       }
 
       // Build chunked instanced meshes from tile data
-      this.buildInstances()
+      const cleanup = this.buildInstances()
+      if (cleanup.didError) throw cleanup.error
     } catch (error) {
       try {
         this.dispose()
@@ -327,7 +381,8 @@ export class TileLayer extends Group {
   }
 
   /** Build a replacement material without publishing it to the layer. @internal */
-  _prepareEffectMaterial(effects: readonly MaterialEffect[]): Sprite2DMaterial {
+  #prepareEffectMaterial(effects: readonly MaterialEffect[]): Sprite2DMaterial {
+    this._assertMutable('_prepareEffectMaterial')
     const previous = this._material
     const current = new Sprite2DMaterial({
       map: this.tileset.texture ?? undefined,
@@ -337,14 +392,15 @@ export class TileLayer extends Group {
       colorTransform: previous.colorTransform ?? undefined,
       globalUniforms: previous.globalUniforms ?? undefined,
     })
-    current.depthWrite = previous.depthWrite
-    current.requiredChannels = previous.requiredChannels
-    current.name = previous.name
     try {
+      this.#copyPublicMaterialState(current, previous)
       for (const effect of effects) {
         const EffectClass = effect.constructor as typeof MaterialEffect
         current.registerEffect(EffectClass, effect._constants)
       }
+      // NodeMaterial.copy carries the old shader graph. Rebuild it only after
+      // the replacement has its complete effect schema.
+      current.setTexture(this.tileset.texture ?? null)
     } catch (error) {
       current.dispose()
       throw error
@@ -353,19 +409,136 @@ export class TileLayer extends Group {
     return current
   }
 
-  /** Publish a prepared material and rebuild its chunk projection. @internal */
-  _replaceMaterial(current: Sprite2DMaterial): Sprite2DMaterial {
-    const previous = this._material
-    this._material = current
+  /** Carry authored three.js material state into a newly built layer. @internal */
+  #copyMaterialState(source: Sprite2DMaterial): void {
+    this._assertMutable('_copyMaterialState')
+    const initial = this._material
+    const current = new Sprite2DMaterial({
+      map: this.tileset.texture ?? undefined,
+      transparent: source.transparent,
+      alphaTest: source.alphaTest,
+      premultipliedAlpha: source.variantOptions.premultipliedAlpha,
+      colorTransform: source.colorTransform ?? undefined,
+      globalUniforms: source.globalUniforms ?? undefined,
+    })
     try {
-      this.buildInstances()
+      this.#copyPublicMaterialState(current, source)
+      for (const effectClass of initial.getEffects()) {
+        current.registerEffect(effectClass, initial._effectConstants.get(effectClass.effectName))
+      }
+      current.setTexture(this.tileset.texture ?? null)
     } catch (error) {
-      this._material = previous
       current.dispose()
-      this.buildInstances()
       throw error
     }
-    return previous
+    const replacement = this.#replaceMaterial(current, this._effects)
+    let firstError = replacement.error
+    let didError = replacement.didError
+    try {
+      initial.dispose()
+    } catch (error) {
+      if (!didError) {
+        firstError = error
+        didError = true
+      }
+    }
+    if (didError) throw firstError
+  }
+
+  /** Publish a prepared material and rebuild its chunk projection. @internal */
+  #replaceMaterial(current: Sprite2DMaterial, effects: readonly MaterialEffect[]): MaterialReplacement {
+    this._assertMutable('_replaceMaterial')
+    const previous = this._material
+    const previousEffects = this._effects
+    this._material = current
+    this._effects = [...effects]
+    try {
+      const cleanup = this.buildInstances()
+      return { previous, ...cleanup }
+    } catch (error) {
+      if (this._disposed) throw error
+      this._material = previous
+      this._effects = previousEffects
+      try {
+        current.dispose()
+      } catch {
+        // Preserve the projection-build failure. The old projection was never
+        // retired and buildInstances restored it before throwing.
+      }
+      throw error
+    }
+  }
+
+  /** Prepare every row before publishing any live effect value. */
+  #prepareEffectValues(effect: MaterialEffect, fieldName: string): void {
+    this._assertMutable('effect value update')
+    if (!this._effects.includes(effect)) {
+      throw new Error('TileLayer effect value update requires an attached effect')
+    }
+    const effectClass = effect.constructor as typeof MaterialEffect
+    const field = effectClass._fieldMap.get(fieldName)!
+    const location = this.material.getEffectFieldLocation(effectClass.effectName, field.name)
+    this._effectSyncCount = 0
+    this._effectSyncSize = field.size
+    this._effectSyncBufferName = location?.bufferName ?? ''
+    if (!location) return
+    for (const [dataIndex, mapping] of this.tileIndexMap) {
+      const chunk = this.chunks.get(mapping.chunkKey)
+      if (!chunk) continue
+      const gid = (this.data.data[dataIndex] ?? 0) & 0x1fffffff
+      const properties = this.tileset.getTile(gid)?.properties
+      const buffer = chunk.effectBufs.get(location.bufferName)
+      if (!buffer) continue
+      const offset = mapping.instanceIndex * 4 + location.componentIndex
+      const value = effect._defaults[field.name]!
+      const tuple = typeof value === 'number' ? undefined : value
+      const index = this._effectSyncCount++
+      this._effectSyncBuffers[index] = buffer
+      this._effectSyncOffsets[index] = offset
+      this._effectSync0[index] = resolveTileEffectComponent(
+        properties,
+        field.name,
+        field.size,
+        0,
+        typeof value === 'number' ? value : (tuple?.[0] ?? 0)
+      )
+      if (field.size >= 2) {
+        this._effectSync1[index] = resolveTileEffectComponent(properties, field.name, field.size, 1, tuple?.[1] ?? 0)
+      }
+      if (field.size >= 3) {
+        this._effectSync2[index] = resolveTileEffectComponent(properties, field.name, field.size, 2, tuple?.[2] ?? 0)
+      }
+      if (field.size >= 4) {
+        this._effectSync3[index] = resolveTileEffectComponent(properties, field.name, field.size, 3, tuple?.[3] ?? 0)
+      }
+    }
+  }
+
+  /** Commit a fully prepared projection; no user-owned data is read here. */
+  #commitEffectValues(): void {
+    this._assertMutable('effect value update')
+    for (let index = 0; index < this._effectSyncCount; index++) {
+      const buffer = this._effectSyncBuffers[index]!
+      const offset = this._effectSyncOffsets[index]!
+      buffer[offset] = this._effectSync0[index]!
+      if (this._effectSyncSize >= 2) buffer[offset + 1] = this._effectSync1[index]!
+      if (this._effectSyncSize >= 3) buffer[offset + 2] = this._effectSync2[index]!
+      if (this._effectSyncSize >= 4) buffer[offset + 3] = this._effectSync3[index]!
+    }
+    for (const chunk of this.chunks.values()) {
+      const attribute = chunk.mesh.geometry.getAttribute(this._effectSyncBufferName) as
+        | InstancedBufferAttribute
+        | undefined
+      if (attribute) attribute.needsUpdate = true
+    }
+  }
+
+  #copyPublicMaterialState(target: Sprite2DMaterial, source: Sprite2DMaterial): void {
+    target.copy(source)
+    copyFlatlandMaterialState(target, source)
+    target.colorTransform = source.colorTransform
+    target.globalUniforms = source.globalUniforms
+    target.requiredChannels = source.requiredChannels
   }
 
   /**
@@ -400,18 +573,82 @@ export class TileLayer extends Group {
   /**
    * Build chunked instanced meshes from tile data.
    */
-  private buildInstances(): void {
-    // Dispose existing chunks
-    for (const chunk of this.chunks.values()) {
-      this.remove(chunk.mesh)
-      chunk.mesh.geometry.dispose()
+  private buildInstances(): CleanupResult {
+    this._assertMutable('buildInstances')
+    if (this._projectionTransition) {
+      throw new Error('TileLayer projection cannot be changed reentrantly')
     }
-    this.chunks.clear()
-    this.tileIndexMap.clear()
-    this.animatedTilePositions.clear()
-    this.animationTimers.clear()
+    this._projectionTransition = true
+    const revision = this._lifecycleRevision
+    try {
+      return this._buildInstancesTransaction(revision)
+    } finally {
+      this._projectionTransition = false
+    }
+  }
+
+  private _buildInstancesTransaction(revision: number): CleanupResult {
+    const previous = {
+      animatedTilePositions: this.animatedTilePositions,
+      animationTimers: this.animationTimers,
+      children: [...this.children],
+      chunks: this.chunks,
+      tileIndexMap: this.tileIndexMap,
+      totalInstanceCount: this._totalInstanceCount,
+    }
+
+    this.chunks = new Map()
+    this.tileIndexMap = new Map()
+    this.animatedTilePositions = new Map()
+    this.animationTimers = new Map()
     this._totalInstanceCount = 0
 
+    try {
+      this._buildInstancesIntoPublishedState()
+    } catch (error) {
+      this._retireChunks(this.chunks)
+      if (this._disposed || this._lifecycleRevision !== revision) {
+        this._retireChunks(previous.chunks)
+        throw error
+      }
+      this.chunks = previous.chunks
+      this.tileIndexMap = previous.tileIndexMap
+      this.animatedTilePositions = previous.animatedTilePositions
+      this.animationTimers = previous.animationTimers
+      this._totalInstanceCount = previous.totalInstanceCount
+      this._restoreChildren(previous.children)
+      throw error
+    }
+
+    const newMeshes = [...this.chunks.values()].map((chunk) => chunk.mesh)
+    const oldMeshes = new Set([...previous.chunks.values()].map((chunk) => chunk.mesh))
+    const publishedChildren: (typeof this.children)[number][] = []
+    let nextMesh = 0
+    let lastOldSlot = -1
+    for (const child of previous.children) {
+      if (oldMeshes.has(child as InstancedMesh)) {
+        lastOldSlot = publishedChildren.length
+        const replacement = newMeshes[nextMesh++]
+        if (replacement) publishedChildren.push(replacement)
+      } else {
+        publishedChildren.push(child)
+      }
+    }
+    if (nextMesh < newMeshes.length) {
+      publishedChildren.splice(lastOldSlot + 1, 0, ...newMeshes.slice(nextMesh))
+    }
+
+    const cleanup = this._retireChunks(previous.chunks)
+    if (this._disposed || this._lifecycleRevision !== revision) {
+      if (cleanup.didError) throw cleanup.error
+      throw new Error('TileLayer projection was terminated during cleanup')
+    }
+    this._restoreChildren(publishedChildren)
+    return cleanup
+  }
+
+  /** Populate the current empty projection while the previous one stays live. */
+  private _buildInstancesIntoPublishedState(): void {
     const { width, height, data } = this.data
 
     // Group tiles by chunk
@@ -552,6 +789,9 @@ export class TileLayer extends Group {
       }
       const fieldWriters: FieldWriter[] = []
       for (const effectClass of this.material.getEffects()) {
+        const effect = this._effects.find(
+          (attached) => (attached.constructor as typeof MaterialEffect).effectName === effectClass.effectName
+        )
         for (const field of effectClass._fields) {
           const loc = this.material.getEffectFieldLocation(effectClass.effectName, field.name)
           if (!loc) continue
@@ -561,7 +801,10 @@ export class TileLayer extends Group {
             bufferName: loc.bufferName,
             componentIndex: loc.componentIndex,
             size: loc.size,
-            defaultValue: field.default,
+            defaultValue: (() => {
+              const value = effect?._defaults[field.name]
+              return typeof value === 'number' ? [value] : (value ?? field.default)
+            })(),
           })
         }
       }
@@ -595,16 +838,14 @@ export class TileLayer extends Group {
           const base = i * 4 + writer.componentIndex
           for (let c = 0; c < writer.size; c++) buf[base + c] = writer.defaultValue[c] ?? 0
 
-          if (props) {
-            const value = props[writer.fieldName]
-            if (value === undefined) continue
-            if (writer.size === 1 && typeof value === 'number') {
-              buf[base] = value
-            } else if (Array.isArray(value)) {
-              for (let c = 0; c < Math.min(writer.size, value.length); c++) {
-                buf[base + c] = Number(value[c])
-              }
-            }
+          for (let component = 0; component < writer.size; component++) {
+            buf[base + component] = resolveTileEffectComponent(
+              props,
+              writer.fieldName,
+              writer.size,
+              component,
+              buf[base + component]!
+            )
           }
         }
 
@@ -666,6 +907,7 @@ export class TileLayer extends Group {
    * Update animated tiles.
    */
   update(deltaMs: number): void {
+    this._assertMutable('update')
     if (this.animatedTilePositions.size === 0) return
 
     // Update animation timers
@@ -740,6 +982,7 @@ export class TileLayer extends Group {
    * For add/remove (0 <-> non-zero), rebuilds the entire layer.
    */
   setTileAt(tileX: number, tileY: number, gid: number): void {
+    this._assertMutable('setTileAt')
     const { width, height, data } = this.data
     if (tileX < 0 || tileX >= width || tileY < 0 || tileY >= height) {
       return
@@ -749,32 +992,93 @@ export class TileLayer extends Group {
     const oldRawGid = data[index] ?? 0
     const oldGid = oldRawGid & 0x1fffffff
 
-    // Update the data array
-    data[index] = gid
-
     const mapping = this.tileIndexMap.get(index)
 
-    if (oldGid !== 0 && gid !== 0 && mapping) {
+    const nextGid = gid & 0x1fffffff
+    const needsProjectionRebuild = this._requiresTileProjectionRebuild(oldGid, nextGid)
+    let preparedUv: { x: number; y: number; width: number; height: number } | undefined
+    if (oldGid !== 0 && nextGid !== 0 && mapping && !needsProjectionRebuild) {
+      const uv = this.tileset.getUV(nextGid)
+      // Snapshot user-supplied TileDefinition accessors before publishing the
+      // logical GID so a throwing component getter cannot split CPU/GPU state.
+      preparedUv = { x: uv.x, y: uv.y, width: uv.width, height: uv.height }
+    }
+
+    // Publish logical data only after projection validation succeeds.
+    data[index] = gid
+
+    if (mapping && preparedUv) {
       // Non-zero -> non-zero: update UV in-place within the chunk
       const chunk = this.chunks.get(mapping.chunkKey)
       if (!chunk) return
 
       const i = mapping.instanceIndex
-      const uv = this.tileset.getUV(gid)
       const base = i * 16
-      this.writeUV(chunk.instanceData, base + 0, uv)
-      // Reset flip for newly set tiles (offset 8..9 within the stride).
-      chunk.instanceData[base + 8] = 1
-      chunk.instanceData[base + 9] = 1
+      this.writeUV(chunk.instanceData, base + 0, preparedUv)
+      chunk.instanceData[base + 8] = (gid & 0x80000000) !== 0 ? -1 : 1
+      chunk.instanceData[base + 9] = (gid & 0x40000000) !== 0 ? -1 : 1
 
       const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
       if (uvAttr && (uvAttr.data as { needsUpdate?: boolean })) {
         ;(uvAttr.data as { needsUpdate: boolean }).needsUpdate = true
       }
+      notifyTileLayerDataChanged(this)
     } else {
       // Tile added or removed — rebuild the entire layer
-      this.buildInstances()
+      let cleanup: CleanupResult
+      try {
+        cleanup = this.buildInstances()
+      } catch (error) {
+        data[index] = oldRawGid
+        throw error
+      }
+      let firstError = cleanup.error
+      let didError = cleanup.didError
+      try {
+        notifyTileLayerDataChanged(this)
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+      if (didError) throw firstError
     }
+  }
+
+  private _requiresTileProjectionRebuild(previousGid: number, currentGid: number): boolean {
+    if (previousGid === currentGid) return false
+    if (this.tileset.isAnimated(previousGid) || this.tileset.isAnimated(currentGid)) return true
+    const previousProperties = this.tileset.getTile(previousGid)?.properties
+    const currentProperties = this.tileset.getTile(currentGid)?.properties
+    for (const effectClass of this.material.getEffects()) {
+      const effect = this._effects.find(
+        (attached) => (attached.constructor as typeof MaterialEffect).effectName === effectClass.effectName
+      )
+      for (const field of effectClass._fields) {
+        const baseline = effect?._defaults[field.name]
+        for (let component = 0; component < field.size; component++) {
+          const fallback =
+            typeof baseline === 'number' ? baseline : (baseline?.[component] ?? field.default[component] ?? 0)
+          const previousValue = resolveTileEffectComponent(
+            previousProperties,
+            field.name,
+            field.size,
+            component,
+            fallback
+          )
+          const currentValue = resolveTileEffectComponent(
+            currentProperties,
+            field.name,
+            field.size,
+            component,
+            fallback
+          )
+          if (!Object.is(previousValue, currentValue)) return true
+        }
+      }
+    }
+    return false
   }
 
   /**
@@ -816,8 +1120,13 @@ export class TileLayer extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
+    this.#dispose(true, true)
+  }
+
+  #dispose(disposeMaterial: boolean, notifyOwner: boolean): void {
     if (this._disposed) return
     this._disposed = true
+    this._lifecycleRevision++
     let firstError: unknown
     let didError = false
     const runCleanup = (cleanup: () => void): void => {
@@ -830,6 +1139,19 @@ export class TileLayer extends Group {
         }
       }
     }
+    if (notifyOwner) {
+      try {
+        const release = releaseTileLayerOwner(this)
+        disposeMaterial &&= !release.retainMaterial
+        if (release.didError) {
+          firstError = release.error
+          didError = true
+        }
+      } catch (error) {
+        firstError = error
+        didError = true
+      }
+    }
     if (
       (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') &&
       this._batchMeshSource !== null
@@ -837,16 +1159,85 @@ export class TileLayer extends Group {
       runCleanup(() => _unregisterMeshBatchSource(this._batchMeshSource!))
       this._batchMeshSource = null
     }
-    for (const chunk of this.chunks.values()) {
+    for (const chunk of Array.from(this.chunks.values())) {
       runCleanup(() => this.remove(chunk.mesh))
-      runCleanup(() => chunk.mesh.geometry.dispose())
+      this._forceDetach(chunk.mesh)
+      runCleanup(() => this._disposeChunkGeometry(chunk.mesh.geometry))
     }
     this.chunks.clear()
-    runCleanup(() => this._material.dispose())
+    if (disposeMaterial) runCleanup(() => this._material.dispose())
     this.tileIndexMap.clear()
     this.animatedTilePositions.clear()
     this.animationTimers.clear()
     this._totalInstanceCount = 0
     if (didError) throw firstError
+  }
+
+  private _assertMutable(member: string): void {
+    if (this._disposed) throw new Error(`TileLayer.${member} cannot be used after dispose()`)
+    if (this._projectionTransition) {
+      throw new Error(`TileLayer.${member} cannot run during a projection transition`)
+    }
+  }
+
+  private _forceDetach(child: InstancedMesh): void {
+    const parent = child.parent
+    if (parent) {
+      const index = parent.children.indexOf(child)
+      if (index !== -1) parent.children.splice(index, 1)
+      child.parent = null
+    }
+  }
+
+  private _restoreChildren(children: readonly (typeof this.children)[number][]): void {
+    const retained = new Set(children)
+    const currentChildren = this.children.slice()
+    for (const child of currentChildren) {
+      if (!retained.has(child)) {
+        const parent = child.parent
+        if (parent) {
+          const index = parent.children.indexOf(child)
+          if (index !== -1) parent.children.splice(index, 1)
+        }
+        child.parent = null
+      }
+    }
+    for (const child of children) {
+      const parent = child.parent
+      if (parent && parent !== this) {
+        const index = parent.children.indexOf(child)
+        if (index !== -1) parent.children.splice(index, 1)
+      }
+      child.parent = this
+    }
+    this.children.length = 0
+    this.children.push(...children)
+  }
+
+  private _retireChunks(chunks: ReadonlyMap<string, ChunkData>): CleanupResult {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    for (const chunk of Array.from(chunks.values())) {
+      runCleanup(() => this.remove(chunk.mesh))
+      this._forceDetach(chunk.mesh)
+      runCleanup(() => this._disposeChunkGeometry(chunk.mesh.geometry))
+    }
+    return didError ? { didError, error: firstError } : { didError }
+  }
+
+  private _disposeChunkGeometry(geometry: BufferGeometry): void {
+    if (this._retiredChunkGeometries.has(geometry)) return
+    this._retiredChunkGeometries.add(geometry)
+    geometry.dispose()
   }
 }

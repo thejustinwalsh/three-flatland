@@ -6,15 +6,23 @@ import { LightingContext } from './ecs/traits'
 import { select, type World } from './ecs/runtime'
 import { Light2D } from './lights/Light2D'
 import { createLightEffect } from './lights/LightEffect'
+import { createMaterialEffect } from './materials/MaterialEffect'
 import { Sprite2DMaterial } from './materials/Sprite2DMaterial'
 import { Sprite2D } from './sprites/Sprite2D'
 import { TileMap2D } from './tilemap/TileMap2D'
 import type { TileMapData } from './tilemap/types'
+import { subscribeSpriteMaterialChanges } from './internal/ownership-observers'
 
 const OwnershipLight = createLightEffect({
   name: 'material_ownership_light',
   schema: { ambient: 1 },
   light: () => (context) => vec4(context.color.rgb, context.color.a),
+})
+
+const OwnershipTileEffect = createMaterialEffect({
+  name: 'material_ownership_tile',
+  schema: { amount: 1 },
+  node: ({ inputColor }) => inputColor,
 })
 
 function makeTexture(): Texture {
@@ -83,6 +91,67 @@ function materialRefCounts(flatland: Flatland): Map<Sprite2DMaterial, number> {
 }
 
 describe('Flatland material ownership', () => {
+  it('rolls back one internal material notification without recursive setter reentry', () => {
+    const flatland = new Flatland()
+    const previous = makeMaterial()
+    const replacement = makeMaterial()
+    const sprite = makeSprite(previous)
+    flatland.add(sprite)
+    const previousEntity = sprite.entity
+    const previousGeometry = sprite.geometry
+    let calls = 0
+    const unsubscribe = subscribeSpriteMaterialChanges(sprite, () => {
+      calls++
+      throw 0
+    })
+
+    let thrown: unknown
+    try {
+      sprite.material = replacement
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(calls).toBe(1)
+    expect(sprite.material).toBe(previous)
+    expect(sprite.entity).toBe(previousEntity)
+    expect(sprite.geometry).toBe(previousGeometry)
+    expect(trackedMaterials(flatland)).toEqual(new Set([previous]))
+    expect(materialRefCounts(flatland)).toEqual(new Map([[previous, 1]]))
+
+    unsubscribe()
+    flatland.remove(sprite)
+    sprite.dispose()
+    flatland.dispose()
+  })
+
+  it('finishes sprite cleanup before rethrowing an exact geometry-disposal error', () => {
+    const flatland = new Flatland()
+    const sprite = makeSprite()
+    const geometryDispose = vi.spyOn(sprite.geometry, 'dispose')
+    sprite.geometry.addEventListener('dispose', () => {
+      throw 0
+    })
+    flatland.add(sprite)
+
+    let thrown: unknown
+    try {
+      sprite.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(sprite.entity).toBeNull()
+    expect(geometryDispose).toHaveBeenCalledTimes(1)
+    expect(flatland.spriteGroup.spriteCount).toBe(0)
+    expect(trackedMaterials(flatland).size).toBe(0)
+    expect(materialRefCounts(flatland).size).toBe(0)
+    expect(() => sprite.dispose()).not.toThrow()
+    flatland.dispose()
+  })
+
   it('moves lighting/global ownership when a live sprite replaces its material', () => {
     const flatland = new Flatland()
     flatland.setLighting(new OwnershipLight())
@@ -107,6 +176,217 @@ describe('Flatland material ownership', () => {
     expect(context.materials.size).toBe(0)
     expect(materialRefCounts(flatland).size).toBe(0)
     flatland.dispose()
+  })
+
+  it('defers replaced tile material disposal while a live sprite shares it', () => {
+    const flatland = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const dispose = vi.spyOn(shared, 'dispose')
+    flatland.add(tileMap, sprite)
+
+    tileMap.addEffect(new OwnershipTileEffect())
+
+    expect(dispose).not.toHaveBeenCalled()
+    expect(sprite.material).toBe(shared)
+    expect(trackedMaterials(flatland).has(shared)).toBe(true)
+    flatland.remove(sprite)
+    expect(dispose).toHaveBeenCalledTimes(1)
+
+    sprite.dispose()
+    tileMap.dispose()
+    flatland.dispose()
+  })
+
+  it('defers data-rebuild material and texture disposal while a live sprite shares them', () => {
+    const flatland = new Flatland()
+    const original = makeMapData()
+    const tileMap = new TileMap2D({ data: original })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const disposeMaterial = vi.spyOn(shared, 'dispose')
+    const disposeTexture = vi.spyOn(original.tilesets[0]!.texture!, 'dispose')
+    flatland.add(tileMap, sprite)
+
+    tileMap.data = makeMapData()
+
+    expect(disposeMaterial).not.toHaveBeenCalled()
+    expect(disposeTexture).not.toHaveBeenCalled()
+    flatland.remove(sprite)
+    expect(disposeMaterial).toHaveBeenCalledTimes(1)
+    expect(disposeTexture).toHaveBeenCalledTimes(1)
+
+    sprite.dispose()
+    tileMap.dispose()
+    flatland.dispose()
+  })
+
+  it('defers terminal tile material and texture disposal while a live sprite shares them', () => {
+    const flatland = new Flatland()
+    const data = makeMapData()
+    const tileMap = new TileMap2D({ data })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const disposeMaterial = vi.spyOn(shared, 'dispose')
+    const disposeTexture = vi.spyOn(data.tilesets[0]!.texture!, 'dispose')
+    flatland.add(tileMap, sprite)
+
+    tileMap.dispose()
+
+    expect(disposeMaterial).not.toHaveBeenCalled()
+    expect(disposeTexture).not.toHaveBeenCalled()
+    expect(sprite.material).toBe(shared)
+    flatland.remove(sprite)
+    expect(disposeMaterial).toHaveBeenCalledTimes(1)
+    expect(disposeTexture).toHaveBeenCalledTimes(1)
+
+    sprite.dispose()
+    flatland.dispose()
+  })
+
+  it('drains pending generated materials first-error-safe during terminal Flatland disposal', () => {
+    const flatland = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const dispose = vi.spyOn(shared, 'dispose')
+    shared.addEventListener('dispose', () => {
+      throw 0
+    })
+    flatland.add(tileMap, sprite)
+    tileMap.addEffect(new OwnershipTileEffect())
+
+    let thrown: unknown
+    try {
+      flatland.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(trackedMaterials(flatland).size).toBe(0)
+    expect(materialRefCounts(flatland).size).toBe(0)
+    sprite.dispose()
+    tileMap.dispose()
+  })
+
+  it('holds a pending generated material across cross-Flatland sprite transfer', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const dispose = vi.spyOn(shared, 'dispose')
+    source.add(tileMap, sprite)
+    tileMap.addEffect(new OwnershipTileEffect())
+
+    destination.add(sprite)
+
+    expect(dispose).not.toHaveBeenCalled()
+    expect(sprite.material).toBe(shared)
+    expect(trackedMaterials(source).has(shared)).toBe(false)
+    expect(trackedMaterials(destination).has(shared)).toBe(true)
+    destination.remove(sprite)
+    expect(dispose).toHaveBeenCalledTimes(1)
+
+    sprite.dispose()
+    tileMap.dispose()
+    source.dispose()
+    destination.dispose()
+  })
+
+  it('commits material ownership before rethrowing pending-retirement cleanup errors', () => {
+    const flatland = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const replacement = makeMaterial()
+    const dispose = vi.spyOn(shared, 'dispose')
+    shared.addEventListener('dispose', () => {
+      throw false
+    })
+    flatland.add(tileMap, sprite)
+    tileMap.addEffect(new OwnershipTileEffect())
+
+    let thrown: unknown
+    try {
+      sprite.material = replacement
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(false)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(sprite.material).toBe(replacement)
+    expect(trackedMaterials(flatland).has(shared)).toBe(false)
+    expect(trackedMaterials(flatland).has(replacement)).toBe(true)
+    expect(materialRefCounts(flatland).get(replacement)).toBe(1)
+
+    flatland.remove(sprite)
+    sprite.dispose()
+    tileMap.dispose()
+    flatland.dispose()
+  })
+
+  it('always finalizes pending retirement after a post-notification material setup failure', () => {
+    const flatland = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const sprite = makeSprite(shared)
+    const replacement = makeMaterial()
+    const dispose = vi.spyOn(shared, 'dispose')
+    flatland.add(tileMap, sprite)
+    tileMap.addEffect(new OwnershipTileEffect())
+    const setAttribute = vi.spyOn(sprite.geometry, 'setAttribute').mockImplementation(() => {
+      throw 0
+    })
+
+    let thrown: unknown
+    try {
+      sprite.material = replacement
+    } catch (error) {
+      thrown = error
+    }
+
+    setAttribute.mockRestore()
+    expect(thrown).toBe(0)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    expect(sprite.material).toBe(replacement)
+    expect(trackedMaterials(flatland).has(shared)).toBe(false)
+    expect(trackedMaterials(flatland).has(replacement)).toBe(true)
+    flatland.remove(sprite)
+    expect(dispose).toHaveBeenCalledTimes(1)
+    sprite.dispose()
+    tileMap.dispose()
+    flatland.dispose()
+  })
+
+  it('releases transfer holds after a throwing tilemap removal rolls back', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const dispose = vi.spyOn(shared, 'dispose')
+    const throwOnRemoved = (): void => {
+      throw 0
+    }
+    tileMap.addEventListener('removed', throwOnRemoved)
+    source.add(tileMap)
+
+    expect(() => destination.add(tileMap)).toThrow()
+    tileMap.removeEventListener('removed', throwOnRemoved)
+    const sprite = makeSprite(shared)
+    source.add(sprite)
+    tileMap.addEffect(new OwnershipTileEffect())
+    source.remove(sprite)
+
+    expect(dispose).toHaveBeenCalledTimes(1)
+    sprite.dispose()
+    tileMap.dispose()
+    source.dispose()
+    destination.dispose()
   })
 
   it('keeps a shared material until its final sprite owner leaves', () => {
@@ -149,7 +429,9 @@ describe('Flatland material ownership', () => {
     expect((Reflect.get(flatland, '_spriteMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
     expect((Reflect.get(flatland, '_spriteDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
     expect((Reflect.get(flatland, '_pendingChannelValidation') as Set<unknown>).size).toBe(0)
-    expect(material.globalUniforms).toBe(flatland.globals)
+    expect(material.globalUniforms).toBeNull()
+    expect(material.colorTransform).toBeNull()
+    expect(material.requiredChannels.size).toBe(0)
 
     const next = new Flatland()
     const nextSprite = makeSprite(material)
@@ -199,6 +481,66 @@ describe('Flatland material ownership', () => {
     destination.remove(sprite)
     source.dispose()
     destination.dispose()
+  })
+
+  it('restores authored Sprite material state across lit-A, lit-B, and unlit ownership', () => {
+    const litA = new Flatland()
+    const litB = new Flatland()
+    const unlit = new Flatland()
+    litA.setLighting(new OwnershipLight())
+    litB.setLighting(new OwnershipLight())
+    const material = makeMaterial()
+    const authoredTransform: NonNullable<Sprite2DMaterial['colorTransform']> = (context) =>
+      vec4(context.color.rgb, context.color.a)
+    const authoredChannels = new Set(['authored'])
+    material.colorTransform = authoredTransform
+    material.requiredChannels = authoredChannels
+    const sprite = makeSprite(material)
+
+    litA.add(sprite)
+    expect(material.colorTransform).toBe(lightingContext(litA).wrappedLightFn)
+    litB.add(sprite)
+    expect(material.colorTransform).toBe(lightingContext(litB).wrappedLightFn)
+    unlit.add(sprite)
+    expect(material.colorTransform).toBe(authoredTransform)
+    expect(material.requiredChannels).toBe(authoredChannels)
+    expect(material.globalUniforms).toBe(unlit.globals)
+
+    unlit.remove(sprite)
+    sprite.dispose()
+    litA.dispose()
+    litB.dispose()
+    unlit.dispose()
+  })
+
+  it('restores authored TileMap material state across lit-A, lit-B, and unlit ownership', () => {
+    const litA = new Flatland()
+    const litB = new Flatland()
+    const unlit = new Flatland()
+    litA.setLighting(new OwnershipLight())
+    litB.setLighting(new OwnershipLight())
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const material = tileMap.getLayerMaterialAt(0)!
+    const authoredTransform: NonNullable<Sprite2DMaterial['colorTransform']> = (context) =>
+      vec4(context.color.rgb, context.color.a)
+    const authoredChannels = new Set(['authored'])
+    material.colorTransform = authoredTransform
+    material.requiredChannels = authoredChannels
+
+    litA.add(tileMap)
+    expect(material.colorTransform).toBe(lightingContext(litA).wrappedLightFn)
+    litB.add(tileMap)
+    expect(material.colorTransform).toBe(lightingContext(litB).wrappedLightFn)
+    unlit.add(tileMap)
+    expect(material.colorTransform).toBe(authoredTransform)
+    expect(material.requiredChannels).toBe(authoredChannels)
+    expect(material.globalUniforms).toBe(unlit.globals)
+
+    unlit.remove(tileMap)
+    tileMap.dispose()
+    litA.dispose()
+    litB.dispose()
+    unlit.dispose()
   })
 
   it('rejects simultaneous cross-Flatland material sharing without changing either owner', () => {

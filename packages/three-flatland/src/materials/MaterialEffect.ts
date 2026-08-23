@@ -14,6 +14,7 @@ import type { TileMap2D } from '../tilemap/TileMap2D'
 import type { ChannelName, ChannelNodeMap } from './channels'
 import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
+import { syncTileMapEffectProjection } from '../internal/tile-map-effect-projection'
 
 // ============================================
 // Schema Types
@@ -470,6 +471,12 @@ export abstract class MaterialEffect {
     let c1 = 0
     let c2 = 0
     let c3 = 0
+    const previous = this._defaults[name]!
+    const previousScalar = typeof previous === 'number' ? previous : 0
+    const previous0 = typeof previous === 'number' ? 0 : previous[0]!
+    const previous1 = typeof previous === 'number' ? 0 : previous[1]!
+    const previous2 = typeof previous === 'number' ? 0 : (previous[2] ?? 0)
+    const previous3 = typeof previous === 'number' ? 0 : (previous[3] ?? 0)
     if (field.size === 1) {
       if (typeof value !== 'number') throw new TypeError(`MaterialEffect.${field.name} must be a number`)
       scalar = value
@@ -491,6 +498,15 @@ export abstract class MaterialEffect {
       }
     }
 
+    const unchanged =
+      field.size === 1
+        ? Object.is(previousScalar, scalar)
+        : Object.is(previous0, c0) &&
+          Object.is(previous1, c1) &&
+          (field.size < 3 || Object.is(previous2, c2)) &&
+          (field.size < 4 || Object.is(previous3, c3))
+    if (unchanged) return
+
     // Keep the detach/re-attach snapshot current even while ECS owns the live
     // value. removeEffect() deletes the numeric trait; addEffect() rebuilds it
     // from this snapshot, so an enrolled-only write must not be lost there.
@@ -502,6 +518,23 @@ export abstract class MaterialEffect {
       defaults[1] = c1
       if (field.size >= 3) defaults[2] = c2
       if (field.size >= 4) defaults[3] = c3
+    }
+
+    if (this._tileMap) {
+      try {
+        syncTileMapEffectProjection(this._tileMap, this, name)
+      } catch (error) {
+        if (field.size === 1) {
+          this._defaults[name] = previousScalar
+        } else {
+          const defaults = this._defaults[name] as number[]
+          defaults[0] = previous0
+          defaults[1] = previous1
+          if (field.size >= 3) defaults[2] = previous2
+          if (field.size >= 4) defaults[3] = previous3
+        }
+        throw error
+      }
     }
 
     const world = this._sprite?._flatlandWorld as World | null | undefined

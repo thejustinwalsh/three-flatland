@@ -52,6 +52,8 @@ import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestr
 import type { Registry } from '../orchestration/registry'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 import { reserveIndexedArray } from '../internal/capacity'
+import { markTerminalObject } from '../internal/terminal-object'
+import { notifySpriteDispose, notifySpriteMaterialChange } from '../internal/ownership-observers'
 
 let nextEffectConstantIdentity = 1
 const effectConstantObjectIdentities = new WeakMap<object, number>()
@@ -194,35 +196,6 @@ export class Sprite2D extends Mesh {
    */
   declare _materialRef: Sprite2DMaterial
 
-  /** Flatland observers share one material ownership path with tilemap rebuilds. */
-  private readonly _materialChangeListeners = new Set<(previous: Sprite2DMaterial, current: Sprite2DMaterial) => void>()
-
-  /** Flatland observes terminal disposal so every ownership registry retires through its canonical remove path. */
-  private readonly _disposeListeners = new Set<() => void>()
-
-  /** Observe live material replacement while this sprite is owned by a Flatland. @internal */
-  _subscribeMaterialChanges(listener: (previous: Sprite2DMaterial, current: Sprite2DMaterial) => void): () => void {
-    this._materialChangeListeners.add(listener)
-    return () => this._materialChangeListeners.delete(listener)
-  }
-
-  /** Observe terminal disposal while this sprite is owned by a Flatland. @internal */
-  _subscribeDispose(listener: () => void): () => void {
-    this._disposeListeners.add(listener)
-    return () => this._disposeListeners.delete(listener)
-  }
-
-  /** Whether this sprite has crossed its terminal disposal boundary. @internal */
-  _isDisposed(): boolean {
-    return this._disposed
-  }
-
-  /** Publish a completed material replacement to active owners. @internal */
-  _notifyMaterialChange(previous: Sprite2DMaterial, current: Sprite2DMaterial): void {
-    if (previous === current) return
-    for (const listener of this._materialChangeListeners) listener(previous, current)
-  }
-
   /**
    * Internal-only material write that preserves bootstrap/registry-default
    * bookkeeping — used by the `texture` setter's same-status default swap
@@ -234,18 +207,10 @@ export class Sprite2D extends Mesh {
    */
   private _setMaterialInternal(value: Sprite2DMaterial): void {
     const previous = this._materialRef
-    const previousBlockedMaterial = this._batchEnrollmentBlockedMaterial
+    const finalizeOwnership = previous ? notifySpriteMaterialChange(this, previous, value) : undefined
     this._materialRef = value
     this._batchEnrollmentBlockedMaterial = null
-    if (previous) {
-      try {
-        this._notifyMaterialChange(previous, value)
-      } catch (error) {
-        this._materialRef = previous
-        this._batchEnrollmentBlockedMaterial = previousBlockedMaterial
-        throw error
-      }
-    }
+    finalizeOwnership?.()
   }
 
   /**
@@ -2724,42 +2689,54 @@ export class Sprite2D extends Mesh {
   dispose() {
     if (this._disposed) return
     this._disposed = true
+    markTerminalObject(this)
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
 
     // Flatland owns registries beyond SpriteGroup enrollment (material
     // references, lighting materials, pending validation, and owner
     // subscriptions). Notify it before the fallback release below so a
     // direct Flatland child retires through Flatland.remove().
-    for (const listener of this._disposeListeners) listener()
-    this._disposeListeners.clear()
+    runCleanup(() => notifySpriteDispose(this))
 
     // Release through the owning path so hierarchy/auto/direct bookkeeping
     // and sprite counts stay coherent. A disposed source may remain in the
     // authored Object3D tree, so the terminal latch above also prevents the
     // next reconciliation or orchestration sweep from resurrecting it.
     if (this._hierarchyOwner) {
-      this._hierarchyOwner._releaseHierarchySprite?.(this)
+      runCleanup(() => this._hierarchyOwner?._releaseHierarchySprite?.(this))
     } else if (this._autoRegistry) {
-      flatlandUnregister(this)
+      runCleanup(() => flatlandUnregister(this))
     } else {
       const owner = this._registryData()?.parentGroup as FlatlandClipAncestor | undefined
-      if (owner?._releaseDirectEnrollment) owner._releaseDirectEnrollment(this)
-      else this._unenrollFromWorld()
+      if (owner?._releaseDirectEnrollment) runCleanup(() => owner._releaseDirectEnrollment!(this))
+      else runCleanup(() => this._unenrollFromWorld())
     }
-    if (this._pendingPrimeScene) flatlandUnregister(this)
-    this._setContentReady(false)
+    if (this._pendingPrimeScene) runCleanup(() => flatlandUnregister(this))
+    runCleanup(() => this._setContentReady(false))
 
     // Detach effects
     for (const effect of this._effects) {
-      effect._detach()
+      runCleanup(() => effect._detach())
     }
     this._effects.length = 0
 
     // Dispose owned geometry (each sprite has its own)
-    if (this._geometry) {
-      this._geometry.dispose()
-    }
+    const geometry = this._geometry
+    if (geometry) runCleanup(() => geometry.dispose())
     // Material is NOT disposed here — materials are shared resources.
     // Users/frameworks manage material lifecycle separately.
+    if (didError) throw firstError
   }
 
   /**
@@ -2908,57 +2885,62 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
         }))
       )
     }
-    this._materialRef = value
-    this._materialIsBootstrapDefault = false
-    this._materialWasRegistryDefault = false
-    this._batchEnrollmentBlockedMaterial = null
-    const world = this._flatlandWorld as World | null
-    const entity = this._entity
-    if (world && entity && world.isAlive(entity) && world.has(entity, SpriteMaterialRef)) {
-      const registryEntity = world.view(BatchRegistries)[0]
-      const batchRegistry = registryEntity
-        ? (world.read(registryEntity, BatchRegistry) as RegistryData | undefined)
-        : undefined
-      if (batchRegistry) {
-        batchRegistry.materialRefs.set(value.batchId, {
-          material: value,
-          version: value._effectSchemaVersion,
-        })
-        ensureMaterialDisposeHook(world, batchRegistry, value)
-      }
-      world.patch(entity, SpriteMaterialRef, { materialId: value.batchId })
-      if (batchRegistry && previousMaterial && previousMaterial !== value) {
-        releaseMaterialIfUnused(world, batchRegistry, previousMaterial)
-      }
-    }
-    // Mesh invokes this setter during super(), before Sprite2D has geometry or
-    // instance buffers. Every later public assignment must rebuild the source
-    // geometry's material-dependent effect attributes, including for a
-    // currently batched sprite that may later be demoted to its own Mesh.
-    if (interceptionArmed) {
-      this._setupInstanceAttributes()
-      // This is a cold material-change path. Refresh even while batched so a
-      // later demotion has the current ECS-backed effect values immediately.
-      this._writeEffectDataOwn()
-    }
-    const registry = this._autoRegistry as Registry | null
-    if (registry) {
-      registry.standalone.add(this)
-      registry._autoEvalDirty = true
-    }
-    if (interceptionArmed && previousMaterial) {
-      try {
-        this._notifyMaterialChange(previousMaterial, value)
-      } catch (error) {
-        try {
-          this.material = previousMaterial
-        } catch {
-          // Preserve the first ownership failure; the previous material was
-          // already valid for this sprite before the attempted replacement.
+    const finalizeOwnership =
+      interceptionArmed && previousMaterial ? notifySpriteMaterialChange(this, previousMaterial, value) : undefined
+    let firstError: unknown
+    let didError = false
+    try {
+      this._materialRef = value
+      this._materialIsBootstrapDefault = false
+      this._materialWasRegistryDefault = false
+      this._batchEnrollmentBlockedMaterial = null
+      const world = this._flatlandWorld as World | null
+      const entity = this._entity
+      if (world && entity && world.isAlive(entity) && world.has(entity, SpriteMaterialRef)) {
+        const registryEntity = world.view(BatchRegistries)[0]
+        const batchRegistry = registryEntity
+          ? (world.read(registryEntity, BatchRegistry) as RegistryData | undefined)
+          : undefined
+        if (batchRegistry) {
+          batchRegistry.materialRefs.set(value.batchId, {
+            material: value,
+            version: value._effectSchemaVersion,
+          })
+          ensureMaterialDisposeHook(world, batchRegistry, value)
         }
-        throw error
+        world.patch(entity, SpriteMaterialRef, { materialId: value.batchId })
+        if (batchRegistry && previousMaterial && previousMaterial !== value) {
+          releaseMaterialIfUnused(world, batchRegistry, previousMaterial)
+        }
+      }
+      // Mesh invokes this setter during super(), before Sprite2D has geometry or
+      // instance buffers. Every later public assignment must rebuild the source
+      // geometry's material-dependent effect attributes, including for a
+      // currently batched sprite that may later be demoted to its own Mesh.
+      if (interceptionArmed) {
+        this._setupInstanceAttributes()
+        // This is a cold material-change path. Refresh even while batched so a
+        // later demotion has the current ECS-backed effect values immediately.
+        this._writeEffectDataOwn()
+      }
+      const registry = this._autoRegistry as Registry | null
+      if (registry) {
+        registry.standalone.add(this)
+        registry._autoEvalDirty = true
+      }
+    } catch (error) {
+      firstError = error
+      didError = true
+    }
+    try {
+      finalizeOwnership?.()
+    } catch (error) {
+      if (!didError) {
+        firstError = error
+        didError = true
       }
     }
+    if (didError) throw firstError
   },
   configurable: true,
 })

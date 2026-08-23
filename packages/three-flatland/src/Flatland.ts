@@ -65,6 +65,16 @@ import { PixelPerfectCamera } from './cameras/PixelPerfectCamera'
 import { getRendererViewportDepthRange, setRendererViewport } from './cameras/rendererViewport'
 import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 import { validateExpectedSprites } from './internal/capacity'
+import { isTerminalObject } from './internal/terminal-object'
+import {
+  subscribeSpriteDispose,
+  subscribeSpriteMaterialChanges,
+  subscribeTileMapDispose,
+  subscribeTileMapMaterialRetention,
+  subscribeTileMapMaterials,
+} from './internal/ownership-observers'
+import { disposeRetiredTileMaterialIfPending, holdTileMaterialRetirement } from './internal/tile-material-retirement'
+import { restoreFlatlandMaterialState, retainFlatlandMaterialState } from './internal/flatland-material-state'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -839,6 +849,7 @@ export class Flatland extends Group implements WorldProvider {
       )
     }
 
+    retainFlatlandMaterialState(material)
     material.globalUniforms = this.globals
     const lctx = this._getLightingContext()
     if (lctx?.wrappedLightFn) {
@@ -852,17 +863,21 @@ export class Flatland extends Group implements WorldProvider {
     lctx?.materials.add(material)
   }
 
-  private _releaseSpriteMaterial(material: Sprite2DMaterial): void {
+  private _releaseSpriteMaterial(material: Sprite2DMaterial, deferRetirement = false): (() => void) | undefined {
     const count = this._spriteMaterialRefCounts.get(material)
     if (count === undefined) return
     if (count > 1) {
       this._spriteMaterialRefCounts.set(material, count - 1)
-      return
+      return undefined
     }
     this._spriteMaterialRefCounts.delete(material)
     if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
     this._spriteMaterials.delete(material)
     this._getLightingContext()?.materials.delete(material)
+    restoreFlatlandMaterialState(material)
+    if (deferRetirement) return () => disposeRetiredTileMaterialIfPending(material)
+    disposeRetiredTileMaterialIfPending(material)
+    return undefined
   }
 
   private _assertCanAdoptMaterials(materials: readonly Sprite2DMaterial[], previousOwner?: Flatland): void {
@@ -878,6 +893,39 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
+  private _withMaterialTransferHolds<T>(
+    materials: readonly Sprite2DMaterial[],
+    enabled: boolean,
+    transfer: () => T
+  ): T {
+    if (!enabled) return transfer()
+    const unique = [...new Set(materials)]
+    const releases = unique.map((material) => holdTileMaterialRetirement(material))
+    let result: T | undefined
+    let firstError: unknown
+    let didError = false
+    try {
+      result = transfer()
+    } catch (error) {
+      firstError = error
+      didError = true
+    }
+    for (const release of releases) release()
+    for (const material of unique) {
+      if (_flatlandMaterialOwners.has(material)) continue
+      try {
+        disposeRetiredTileMaterialIfPending(material)
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    if (didError) throw firstError
+    return result as T
+  }
+
   private _trackSprite(sprite: Sprite2D): void {
     const tracked = this._spriteOwnedMaterials.get(sprite)
     if (tracked !== sprite.material) {
@@ -886,17 +934,25 @@ export class Flatland extends Group implements WorldProvider {
       if (tracked) this._releaseSpriteMaterial(tracked)
     }
     if (!this._spriteMaterialSubscriptions.has(sprite)) {
-      const unsubscribe = sprite._subscribeMaterialChanges((_previous, current) => {
+      const unsubscribe = subscribeSpriteMaterialChanges(sprite, (_previous, current) => {
         const owned = this._spriteOwnedMaterials.get(sprite)
         if (!owned || owned === current) return
         this._retainSpriteMaterial(current)
         this._spriteOwnedMaterials.set(sprite, current)
-        this._releaseSpriteMaterial(owned)
+        const finalize = this._releaseSpriteMaterial(owned, true)
+        return {
+          finalize,
+          rollback: () => {
+            this._retainSpriteMaterial(owned)
+            this._spriteOwnedMaterials.set(sprite, owned)
+            this._releaseSpriteMaterial(current)
+          },
+        }
       })
       this._spriteMaterialSubscriptions.set(sprite, unsubscribe)
     }
     if (!this._spriteDisposeSubscriptions.has(sprite)) {
-      const unsubscribe = sprite._subscribeDispose(() => {
+      const unsubscribe = subscribeSpriteDispose(sprite, () => {
         if (_flatlandSpriteOwners.get(sprite) === this) this.remove(sprite)
       })
       this._spriteDisposeSubscriptions.set(sprite, unsubscribe)
@@ -932,7 +988,7 @@ export class Flatland extends Group implements WorldProvider {
     for (const material of previous) this._releaseSpriteMaterial(material)
 
     if (!this._tileMapMaterialSubscriptions.has(tileMap)) {
-      const unsubscribe = tileMap._subscribeLayerMaterials((_retired, current) => {
+      const unsubscribe = subscribeTileMapMaterials(tileMap, (_retired, current) => {
         const owned = this._tileMapOwnedMaterials.get(tileMap)
         if (!owned) return
         const retained: Sprite2DMaterial[] = []
@@ -947,11 +1003,18 @@ export class Flatland extends Group implements WorldProvider {
         }
         this._tileMapOwnedMaterials.set(tileMap, current)
         for (const material of owned) this._releaseSpriteMaterial(material)
+        return new Set(owned.filter((material) => this._spriteMaterialRefCounts.has(material)))
       })
-      this._tileMapMaterialSubscriptions.set(tileMap, unsubscribe)
+      const unsubscribeRetention = subscribeTileMapMaterialRetention(tileMap, (materials) => {
+        return new Set(materials.filter((material) => (this._spriteMaterialRefCounts.get(material) ?? 0) > 1))
+      })
+      this._tileMapMaterialSubscriptions.set(tileMap, () => {
+        unsubscribe()
+        unsubscribeRetention()
+      })
     }
     if (!this._tileMapDisposeSubscriptions.has(tileMap)) {
-      const unsubscribe = tileMap._subscribeDispose(() => {
+      const unsubscribe = subscribeTileMapDispose(tileMap, () => {
         if (_flatlandTileMapOwners.get(tileMap) === this) this.remove(tileMap)
       })
       this._tileMapDisposeSubscriptions.set(tileMap, unsubscribe)
@@ -981,22 +1044,30 @@ export class Flatland extends Group implements WorldProvider {
   add(...objects: Object3D[]): this {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
-        if (child._isDisposed()) {
+        if (isTerminalObject(child)) {
           throw new Error('Flatland.add: cannot add a disposed Sprite2D')
         }
         const previousOwner = _flatlandSpriteOwners.get(child)
         const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
         this._assertCanAdoptMaterials([child.material], transferring)
-        if (transferring) transferring.remove(child)
-        try {
-          this.spriteGroup.add(child)
-          this._trackSprite(child)
-        } catch (error) {
-          this.spriteGroup.remove(child)
-          this._untrackSprite(child)
-          if (transferring) transferring.add(child)
-          throw error
-        }
+        this._withMaterialTransferHolds([child.material], transferring !== undefined, () => {
+          try {
+            if (transferring) transferring.remove(child)
+            this.spriteGroup.add(child)
+            this._trackSprite(child)
+          } catch (error) {
+            this.spriteGroup.remove(child)
+            this._untrackSprite(child)
+            if (transferring) {
+              try {
+                transferring.add(child)
+              } catch {
+                // Preserve the exact transfer failure after best-effort rollback.
+              }
+            }
+            throw error
+          }
+        })
         // Defer validation to `render()` — by the time that runs, R3F has
         // mounted any MaterialEffect children (NormalMapProvider, etc.)
         // and imperative callers have finished their `addEffect` chain, so
@@ -1005,25 +1076,31 @@ export class Flatland extends Group implements WorldProvider {
         // belongs to the user.
         this._pendingChannelValidation.add(child)
       } else if (child instanceof TileMap2D) {
-        if (child._isDisposed()) {
+        if (isTerminalObject(child)) {
           throw new Error('Flatland.add: cannot add a disposed TileMap2D')
         }
         const previousOwner = _flatlandTileMapOwners.get(child)
         const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
-        this._assertCanAdoptMaterials(
-          child.getLayers().map((layer) => layer.material),
-          transferring
-        )
-        if (transferring) transferring.remove(child)
-        try {
-          this.scene.add(child)
-          this._trackTileMap(child)
-        } catch (error) {
-          this.scene.remove(child)
-          this._untrackTileMap(child)
-          if (transferring) transferring.add(child)
-          throw error
-        }
+        const transferringMaterials = child.getLayers().map((layer) => layer.material)
+        this._assertCanAdoptMaterials(transferringMaterials, transferring)
+        this._withMaterialTransferHolds(transferringMaterials, transferring !== undefined, () => {
+          try {
+            if (transferring) transferring.remove(child)
+            this.scene.add(child)
+            this._trackTileMap(child)
+          } catch (error) {
+            this.scene.remove(child)
+            this._untrackTileMap(child)
+            if (transferring) {
+              try {
+                transferring.add(child)
+              } catch {
+                // Preserve the exact transfer failure after best-effort rollback.
+              }
+            }
+            throw error
+          }
+        })
       } else if (child instanceof Light2D) {
         // Track lights separately for the lighting system
         if (!this._lights.includes(child)) {
@@ -1122,8 +1199,12 @@ export class Flatland extends Group implements WorldProvider {
     for (const tileMap of this._tileMapOwnedMaterials.keys()) {
       if (_flatlandTileMapOwners.get(tileMap) === this) _flatlandTileMapOwners.delete(tileMap)
     }
-    for (const material of this._spriteMaterialRefCounts.keys()) {
-      if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
+    // Drain every logical owner through the canonical release path before
+    // clearing registries. Pending generated tile materials (and their
+    // textures) retire here even when user cleanup throws.
+    for (const material of Array.from(this._spriteMaterialRefCounts.keys())) {
+      this._spriteMaterialRefCounts.set(material, 1)
+      runCleanup(() => this._releaseSpriteMaterial(material))
     }
     this._spriteMaterialSubscriptions.clear()
     this._spriteDisposeSubscriptions.clear()
@@ -2585,21 +2666,26 @@ export class Flatland extends Group implements WorldProvider {
     for (const tileMap of this._tileMapOwnedMaterials.keys()) {
       if (_flatlandTileMapOwners.get(tileMap) === this) _flatlandTileMapOwners.delete(tileMap)
     }
-    for (const material of this._spriteMaterialRefCounts.keys()) {
-      if (_flatlandMaterialOwners.get(material) === this) _flatlandMaterialOwners.delete(material)
-    }
     this._spriteMaterialSubscriptions.clear()
     this._spriteDisposeSubscriptions.clear()
     this._spriteOwnedMaterials.clear()
     this._tileMapMaterialSubscriptions.clear()
     this._tileMapDisposeSubscriptions.clear()
     this._tileMapOwnedMaterials.clear()
-    this._spriteMaterialRefCounts.clear()
-    this._spriteMaterials.clear()
     this._pendingChannelValidation.clear()
     this._lightingSystemsRegistered = false
 
     runCleanup(() => this.spriteGroup.dispose())
+
+    // The batches no longer reference their materials. Retire every logical
+    // owner through the canonical path so pending generated tile materials
+    // and textures are drained even when one disposal hook throws.
+    for (const material of Array.from(this._spriteMaterialRefCounts.keys())) {
+      this._spriteMaterialRefCounts.set(material, 1)
+      runCleanup(() => this._releaseSpriteMaterial(material))
+    }
+    this._spriteMaterialRefCounts.clear()
+    this._spriteMaterials.clear()
 
     // Dispose render pipeline
     const renderPipeline = this._renderPipeline
