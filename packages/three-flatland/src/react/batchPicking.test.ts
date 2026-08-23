@@ -14,14 +14,15 @@ import { proxyPickToBatch, unproxyPickFromBatch, retireBatchPicking } from './ba
 
 interface FakeInternal {
   interaction: object[]
-  initialHits: object[]
+  pointerMap: Map<number, { initialHits: object[] }>
+  initialHits?: object[]
 }
 interface FakeStore {
   getState(): { internal: FakeInternal }
 }
 
 function makeStore(): { store: FakeStore; internal: FakeInternal } {
-  const internal: FakeInternal = { interaction: [], initialHits: [] }
+  const internal: FakeInternal = { interaction: [], pointerMap: new Map() }
   return { store: { getState: () => ({ internal }) }, internal }
 }
 
@@ -194,7 +195,7 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     expect(missed.sort()).toEqual(['a', 'b'])
   })
 
-  it('onPointerMissed skips a member that was an initial hit', () => {
+  it('onPointerMissed uses the active pointer state and skips its initial hit', () => {
     const missed: string[] = []
     const a = makeManagedSprite(store, { onClick() {}, onPointerMissed: () => missed.push('a') })
     const b = makeManagedSprite(store, { onClick() {}, onPointerMissed: () => missed.push('b') })
@@ -203,11 +204,16 @@ describe('batchPicking — R3F interaction-list proxy', () => {
     proxyPickToBatch(b, batch)
 
     // `a` was the pointerdown's hit → a click is not "missed" for it.
-    internal.initialHits.push(a)
+    internal.pointerMap.set(7, { initialHits: [a] })
+    internal.pointerMap.set(9, { initialHits: [b] })
     const batchHandlers = (batch as unknown as { __r3f: { handlers: Record<string, (e: unknown) => void> } }).__r3f
       .handlers
-    batchHandlers.onPointerMissed({})
+    batchHandlers.onPointerMissed({ pointerId: 7 })
     expect(missed).toEqual(['b'])
+
+    missed.length = 0
+    batchHandlers.onPointerMissed({ nativeEvent: { pointerId: 9 } })
+    expect(missed).toEqual(['a'])
   })
 
   it('no-ops for a vanilla (non-R3F) sprite', () => {

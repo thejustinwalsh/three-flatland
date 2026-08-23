@@ -43,7 +43,9 @@ import type { SpriteBatch } from '../pipeline/SpriteBatch'
 /** Structural slice of R3F's `RootState.internal` that this module touches. */
 interface R3FInternal {
   interaction: Object3D[]
-  initialHits: Object3D[]
+  pointerMap?: Map<number, { initialHits: Object3D[] }>
+  /** @deprecated R3F v9 fallback. */
+  initialHits?: Object3D[]
 }
 
 interface R3FRootState {
@@ -129,7 +131,12 @@ function createMissedForwarder(
   filterInitialHits: boolean
 ): (event: unknown) => void {
   return (event: unknown): void => {
-    const initialHits = filterInitialHits ? reg.internal.initialHits : undefined
+    const pointerEvent = event as { pointerId?: number; nativeEvent?: { pointerId?: number } }
+    const pointerId = pointerEvent.pointerId ?? pointerEvent.nativeEvent?.pointerId
+    const initialHits = filterInitialHits
+      ? ((pointerId === undefined ? undefined : reg.internal.pointerMap?.get(pointerId)?.initialHits) ??
+        reg.internal.initialHits)
+      : undefined
     for (const sprite of reg.sprites) {
       const inst = r3f(sprite)
       if (!inst?.eventCount) continue
