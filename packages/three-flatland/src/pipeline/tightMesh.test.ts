@@ -1,3 +1,4 @@
+import { worldFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
@@ -157,7 +158,7 @@ describe('tight-mesh batch routing', () => {
     const mesh = data.batchSlots.find((m) => m !== null)!
     expect(mesh.geometry.getAttribute('position')).toBeDefined()
     expect(mesh.geometry.getAttribute('position').count).toBe(4) // diamond hull
-    expect(readRequired(group.world, data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('tight-mesh')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('tight-mesh')
   })
 
   it('alphaTest materials stay on the synth quad even with atlas polygons', () => {
@@ -177,7 +178,7 @@ describe('tight-mesh batch routing', () => {
     // envelope hull is fan-triangulated from its own hull point count.
     expect(mesh.geometryKind).toBe('synth-quad')
     expect(mesh.geometry.getIndex()!.count).toBe(6)
-    expect(readRequired(group.world, data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
   })
 
   it('transparent material without atlas polygons falls back to synth quad', () => {
@@ -194,7 +195,7 @@ describe('tight-mesh batch routing', () => {
     // strategy now that synth-quad geometry ships real attributes.
     expect(mesh.geometryKind).toBe('synth-quad')
     expect(mesh.geometry.getIndex()!.count).toBe(6)
-    expect(readRequired(group.world, data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
   })
 
   it('a strategy flip bumps the schema version so existing batches rebuild', () => {
@@ -238,7 +239,7 @@ describe('tight-mesh batch routing', () => {
     group.add(new Sprite2D({ texture, material }))
     group.update()
     const data = registryData()
-    expect(readRequired(group.world, data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
 
     // Loader finishes AFTER the sprites batched
     registerDiamondAtlas(texture)
@@ -247,7 +248,7 @@ describe('tight-mesh batch routing', () => {
     expect(material._tightMesh).toBe(true)
     const mesh = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     expect(mesh.geometry.getAttribute('position')).toBeDefined()
-    expect(readRequired(group.world, data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('tight-mesh')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('tight-mesh')
   })
 
   it('tight-mesh strategy shrinks the effect-float budget to 16', () => {
@@ -369,7 +370,7 @@ describe('tight-mesh batch routing', () => {
     const data = registryData()
     const mesh = data.batchSlots.find((m) => m !== null)!
     expect(mesh.geometryKind).toBe('synth-quad')
-    expect(readRequired(group.world, data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
   })
 })
 

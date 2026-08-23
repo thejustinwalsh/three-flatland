@@ -1,3 +1,4 @@
+import { worldFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -28,11 +29,11 @@ function makeTexture(): Texture {
 }
 
 function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch {
-  return batchFor(group.world, sprite)
+  return batchFor(worldFor(group), sprite)
 }
 
 function slotFor(group: SpriteGroup, sprite: Sprite2D): number {
-  return readRequired(group.world, requiredEntity(sprite), BatchSlot).slot
+  return readRequired(worldFor(group), requiredEntity(sprite), BatchSlot).slot
 }
 
 /**

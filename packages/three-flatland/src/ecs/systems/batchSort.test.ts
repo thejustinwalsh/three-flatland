@@ -1,3 +1,4 @@
+import { worldFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -15,7 +16,7 @@ import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 // ============================================
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  return registryFor(group.world)
+  return registryFor(worldFor(group))
 }
 
 function runSystems(group: SpriteGroup): void {
@@ -29,11 +30,11 @@ function makeTexture(): Texture {
 }
 
 function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch {
-  return batchFor(group.world, sprite)
+  return batchFor(worldFor(group), sprite)
 }
 
 function slotFor(group: SpriteGroup, sprite: Sprite2D): number {
-  return readRequired(group.world, requiredEntity(sprite), BatchSlot).slot
+  return readRequired(worldFor(group), requiredEntity(sprite), BatchSlot).slot
 }
 
 function readMatrixZ(batch: SpriteBatch, slot: number): number {
@@ -76,9 +77,9 @@ describe('batchSortSystem (Option B — transparent path)', () => {
 
     // After initial assignment + sort, slots in ascending order should
     // correspond to zIndex ascending: slot[0] = zIndex 5, slot[1] = 7, slot[2] = 10.
-    const bs = readRequired(group.world, requiredEntity(a), BatchSlot)
-    const bsB = readRequired(group.world, requiredEntity(b), BatchSlot)
-    const bsC = readRequired(group.world, requiredEntity(c), BatchSlot)
+    const bs = readRequired(worldFor(group), requiredEntity(a), BatchSlot)
+    const bsB = readRequired(worldFor(group), requiredEntity(b), BatchSlot)
+    const bsC = readRequired(worldFor(group), requiredEntity(c), BatchSlot)
 
     // b (z=5) should have the lowest slot, c (z=7) next, a (z=10) last.
     expect(bsB.slot).toBeLessThan(bsC.slot)
@@ -94,9 +95,9 @@ describe('batchSortSystem (Option B — transparent path)', () => {
     a.zIndex = 0
     runSystems(group)
 
-    const bs2 = readRequired(group.world, requiredEntity(a), BatchSlot)
-    const bsB2 = readRequired(group.world, requiredEntity(b), BatchSlot)
-    const bsC2 = readRequired(group.world, requiredEntity(c), BatchSlot)
+    const bs2 = readRequired(worldFor(group), requiredEntity(a), BatchSlot)
+    const bsB2 = readRequired(worldFor(group), requiredEntity(b), BatchSlot)
+    const bsC2 = readRequired(worldFor(group), requiredEntity(c), BatchSlot)
 
     // a (z=0) now has the lowest slot.
     expect(bs2.slot).toBeLessThan(bsB2.slot)

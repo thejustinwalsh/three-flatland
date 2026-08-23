@@ -5,6 +5,7 @@ import type { RegistryData } from '../batchUtils'
 import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { HierarchyStateTracker } from '../HierarchyStateTracker'
 import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
+import { spriteEntity } from '../../internal/sprite-runtime'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -194,8 +195,11 @@ export function transformSyncSystem(world: World): void {
       const owner = ownership.slotEntities[slot] ?? 0
 
       const o = slot * 16
-      const directRoot = !sprite._autoRegistry && !sprite._hierarchyManaged
-      const sourceParent = sprite._autoRegistry || sprite._hierarchyManaged ? sprite.parent : group
+      const directRoot = !(sprite as unknown as { _autoRegistry: object | null })._autoRegistry && !sprite._hierarchyManaged
+      const sourceParent =
+        (sprite as unknown as { _autoRegistry: object | null })._autoRegistry || sprite._hierarchyManaged
+          ? sprite.parent
+          : group
       if (sourceParent && sourceParent !== group && !scratch.updatedParents.has(sourceParent)) {
         sourceParent.updateWorldMatrix(true, false)
         scratch.updatedParents.add(sourceParent)
@@ -208,7 +212,7 @@ export function transformSyncSystem(world: World): void {
       const rowStillOwned = ownership.slotEntities[slot] === owner && ownership.spriteAtSlot(slot) === sprite
       if (
         owner === 0 ||
-        sprite.entity !== owner ||
+        spriteEntity(sprite) !== owner ||
         sprite._batchMesh !== mesh ||
         sprite._batchSlot !== slot ||
         !rowStillOwned
@@ -224,7 +228,9 @@ export function transformSyncSystem(world: World): void {
       const sourceVisible = sprite._batchVisibilityState()
       const pathChanged = tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
       if (!pathChanged && !rootChanged) {
-        if (sprite._hierarchyManaged || sprite._autoRegistry) sprite._batchWorldFresh = true
+        if (sprite._hierarchyManaged || (sprite as unknown as { _autoRegistry: object | null })._autoRegistry) {
+          sprite._batchWorldFresh = true
+        }
         continue
       }
 
@@ -236,7 +242,9 @@ export function transformSyncSystem(world: World): void {
         sprite.matrixWorld.copy(sprite.matrix)
       } else sprite.matrixWorld.multiplyMatrices(sourceParent.matrixWorld, sprite.matrix)
       sprite.matrixWorldNeedsUpdate = false
-      if (sprite._hierarchyManaged || sprite._autoRegistry) sprite._batchWorldFresh = true
+      if (sprite._hierarchyManaged || (sprite as unknown as { _autoRegistry: object | null })._autoRegistry) {
+        sprite._batchWorldFresh = true
+      }
       const worldMatrix = rootIsIdentity && directRoot ? sprite.matrix.elements : sprite.matrixWorld.elements
       const hierarchyVisible = directRoot ? rootVisible && sourceVisible : sprite._isHierarchyVisible(sourceParent)
 

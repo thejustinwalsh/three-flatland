@@ -24,7 +24,7 @@ export {
 } from './traits'
 
 // World management
-export { getGlobalWorld, resetGlobalWorld, assignWorld, type WorldProvider } from './world'
+export { getGlobalWorld, resetGlobalWorld, assignWorld } from './world'
 
 // Snapshot utilities
 export { resolveStore } from './snapshot'

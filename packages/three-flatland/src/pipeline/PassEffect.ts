@@ -1,12 +1,9 @@
 import {
   trait,
-  type Entity,
   type NumericSchema,
   type NumericStore,
-  type NumericTrait,
   type World,
 } from '../ecs/runtime'
-import type { EntityHandle, TraitHandle } from '../internal/ecs-handles'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -22,6 +19,9 @@ import type {
 } from '../materials/MaterialEffect'
 import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
+import type { SpriteGroup } from './SpriteGroup'
+import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
+import { getEffectEntity, getEffectTrait, setEffectEntity, setEffectTrait } from '../internal/effect-runtime'
 
 // Re-export schema types for PassEffect consumers
 export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
@@ -52,6 +52,7 @@ export interface PassEffectContext<S extends EffectSchema = EffectSchema> {
 
 // Forward-declare Flatland to avoid circular import
 interface FlatlandLike {
+  readonly spriteGroup: SpriteGroup
   _markPostPassDirty(): void
 }
 
@@ -110,8 +111,6 @@ export abstract class PassEffect {
   /** Per-pass data schema with default values. Must be overridden by subclass. */
   static readonly passSchema: EffectSchema
 
-  /** @internal Auto-generated numeric trait from the effect schema. */
-  static _trait: TraitHandle
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
   /** @internal Precomputed flattened SoA keys for each field. */
@@ -191,7 +190,7 @@ export abstract class PassEffect {
       }
     }
 
-    this._trait = trait(traitSchema)
+    setEffectTrait(this, trait(traitSchema))
     this._initialized = true
   }
 
@@ -204,9 +203,6 @@ export abstract class PassEffect {
 
   /** @internal The Flatland instance this pass is attached to. */
   _flatland: FlatlandLike | null = null
-
-  /** @internal The ECS entity for this pass. */
-  _entity: EntityHandle | null = null
 
   /** Cached numeric SoA for allocation-free enrolled property access. */
   private _numericStore: NumericStore<NumericSchema> | null = null
@@ -313,8 +309,7 @@ export abstract class PassEffect {
    */
   _attach(flatland: FlatlandLike): void {
     this._flatland = flatland
-    const world = (flatland as { world?: World }).world
-    if (world) this._cacheStore(world)
+    this._cacheStore(getSpriteGroupWorld(flatland.spriteGroup))
   }
 
   /**
@@ -323,7 +318,7 @@ export abstract class PassEffect {
    */
   _detach(): void {
     this._flatland = null
-    this._entity = null
+    setEffectEntity(this, null)
     this._numericStore = null
     this._storeWorld = null
     this._passFn = null
@@ -332,7 +327,7 @@ export abstract class PassEffect {
   private _cacheStore(world: World): NumericStore<NumericSchema> {
     if (this._storeWorld !== world || !this._numericStore) {
       const ctor = passEffectClassOf(this)
-      this._numericStore = world.store(ctor._trait as NumericTrait<NumericSchema>)
+      this._numericStore = world.store(getEffectTrait(ctor))
       this._storeWorld = world
     }
     return this._numericStore
@@ -358,9 +353,9 @@ export abstract class PassEffect {
    */
   _getField(name: string): number | number[] {
     const ctor = passEffectClassOf(this)
-    const world = (this._flatland as { world?: World } | null)?.world
-    const entity = this._entity as Entity | null
-    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
     if (entity && world?.has(entity, runtimeTrait)) {
       const field = ctor._fieldMap.get(name)!
       const keys = ctor._fieldKeys[name]!
@@ -427,9 +422,9 @@ export abstract class PassEffect {
     }
 
     // Write to ECS trait if enrolled
-    const world = (this._flatland as { world?: World } | null)?.world
-    const entity = this._entity as Entity | null
-    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
     if (entity && world?.has(entity, runtimeTrait)) {
       const keys = ctor._fieldKeys[name]!
       const store = this._cacheStore(world)
@@ -485,7 +480,6 @@ export type PassEffectClass<S extends EffectSchema> = {
   new (): PassEffect & EffectValues<S> & EffectConstants<S>
   readonly passName: string
   readonly passSchema: S
-  readonly _trait: TraitHandle
   readonly _fields: EffectField[]
   readonly _fieldKeys: Readonly<Record<string, readonly string[]>>
   readonly _fieldMap: ReadonlyMap<string, EffectField>

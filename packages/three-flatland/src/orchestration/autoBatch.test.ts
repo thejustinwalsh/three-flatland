@@ -1,3 +1,4 @@
+import { autoRegistryFor, entityFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { PerspectiveCamera, Scene, Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
@@ -72,7 +73,7 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     fireSceneHook(scene, renderer)
 
     const registry = peekRegistry(renderer, scene)!
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
     expect(a.visible).toBe(true) // draws as its own Mesh
     expect(registry.standalone.has(a)).toBe(true)
     expect(registryData(registry).activeBatches.length).toBe(0)
@@ -81,8 +82,8 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     scene.add(b)
     fireSceneHook(scene, renderer)
 
-    expect(a.entity).not.toBeNull()
-    expect(b.entity).not.toBeNull()
+    expect(entityFor(a)).not.toBeNull()
+    expect(entityFor(b)).not.toBeNull()
     expect(a.visible).toBe(true)
     expect(b.visible).toBe(true)
     expect(a.isMesh).toBe(false)
@@ -101,16 +102,16 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
 
     a.dispose()
 
-    expect(a.entity).toBeNull()
-    expect(a._autoRegistry).toBeNull()
+    expect(entityFor(a)).toBeNull()
+    expect(autoRegistryFor(a)).toBeNull()
     expect(a.isMesh).toBe(false)
     expect(registry.sprites.has(a)).toBe(false)
     expect(registry.standalone.has(a)).toBe(false)
     expect(registry.group.spriteCount).toBe(1)
 
     fireSceneHook(scene, renderer)
-    expect(a.entity).toBeNull()
-    expect(a._autoRegistry).toBeNull()
+    expect(entityFor(a)).toBeNull()
+    expect(autoRegistryFor(a)).toBeNull()
     expect(registry.group.spriteCount).toBe(1)
   })
 
@@ -124,7 +125,7 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     fireSceneHook(scene, renderer)
 
     const registry = peekRegistry(renderer, scene)!
-    expect(c.entity).not.toBeNull()
+    expect(entityFor(c)).not.toBeNull()
     const data = registryData(registry)
     expect(data.activeBatches.length).toBe(1)
     const mesh = data.batchSlots.find((m) => m !== null)!
@@ -198,7 +199,7 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
 
     a.renderOrder = 999
 
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
     expect(a.visible).toBe(true)
     expect(a.isMesh).toBe(true)
     expect(a.parent).toBe(scene) // never reparented — it was already in the tree
@@ -206,10 +207,10 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
 
     // Not re-promoted on later sweeps
     fireSceneHook(scene, renderer)
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
 
     // The sibling is unaffected
-    expect(b.entity).not.toBeNull()
+    expect(entityFor(b)).not.toBeNull()
     expect(b.visible).toBe(true)
     expect(b.isMesh).toBe(false)
   })
@@ -244,14 +245,14 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     scene.add(a)
     scene.add(b)
     fireSceneHook(scene, renderer)
-    expect(a.entity).toBeNull()
-    expect(b.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
+    expect(entityFor(b)).toBeNull()
 
     b.layers.set(0) // back to default mask — now shares a's run
     fireSceneHook(scene, renderer)
 
-    expect(a.entity).not.toBeNull()
-    expect(b.entity).not.toBeNull()
+    expect(entityFor(a)).not.toBeNull()
+    expect(entityFor(b)).not.toBeNull()
     expect(a._batchMesh).toBe(b._batchMesh)
   })
 

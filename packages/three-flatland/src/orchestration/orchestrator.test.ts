@@ -1,3 +1,4 @@
+import { autoRegistryFor, entityFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Group, PerspectiveCamera, Scene, Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
@@ -52,7 +53,7 @@ describe('lazy materialization — dual-signal registration', () => {
     const registry = peekRegistry(renderer, scene)
     expect(registry).not.toBeNull()
     expect(registry!.sprites.has(sprite)).toBe(true)
-    expect(sprite._autoRegistry).toBe(registry)
+    expect(autoRegistryFor(sprite)).toBe(registry)
     // Orchestrator group materialized into the scene
     expect(scene.children.includes(registry!.group)).toBe(true)
   })
@@ -63,7 +64,7 @@ describe('lazy materialization — dual-signal registration', () => {
     subtree.add(sprite) // 'added' fires — but no scene in the parent chain
 
     scene.add(subtree) // 'added' fires on subtree only, NOT the sprite (three gotcha)
-    expect(sprite._autoRegistry).toBeNull()
+    expect(autoRegistryFor(sprite)).toBeNull()
 
     // Signal B: three calls object.onBeforeRender during the sprite's own draw
     sprite.onBeforeRender(
@@ -142,7 +143,7 @@ describe('lazy materialization — dual-signal registration', () => {
 
     scene.remove(sprite)
     expect(registry.sprites.has(sprite)).toBe(false)
-    expect(sprite._autoRegistry).toBeNull()
+    expect(autoRegistryFor(sprite)).toBeNull()
   })
 
   it('sprite removed before any render call clears its pending prime', () => {
@@ -154,7 +155,7 @@ describe('lazy materialization — dual-signal registration', () => {
     // Hook ran but nothing registered — the pending entry was cleared
     const registry = peekRegistry(renderer, scene)
     expect(registry?.sprites.size ?? 0).toBe(0)
-    expect(sprite._autoRegistry).toBeNull()
+    expect(autoRegistryFor(sprite)).toBeNull()
   })
 
   it('sprite disposed before any render call clears its pending prime permanently', () => {
@@ -165,15 +166,15 @@ describe('lazy materialization — dual-signal registration', () => {
     fireSceneHook(scene, renderer)
     const registry = peekRegistry(renderer, scene)
     expect(registry?.sprites.size ?? 0).toBe(0)
-    expect(sprite._autoRegistry).toBeNull()
-    expect(sprite.entity).toBeNull()
+    expect(autoRegistryFor(sprite)).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite.isMesh).toBe(false)
 
     scene.remove(sprite)
     scene.add(sprite)
     fireSceneHook(scene, renderer)
     expect(peekRegistry(renderer, scene)?.sprites.size ?? 0).toBe(0)
-    expect(sprite._autoRegistry).toBeNull()
+    expect(autoRegistryFor(sprite)).toBeNull()
   })
 
   it('SpriteGroup-managed sprites are never auto-registered', () => {
@@ -188,7 +189,7 @@ describe('lazy materialization — dual-signal registration', () => {
 
     const registry = peekRegistry(renderer, scene)
     expect(registry?.sprites.has(sprite) ?? false).toBe(false)
-    expect(sprite._autoRegistry).toBeNull()
+    expect(autoRegistryFor(sprite)).toBeNull()
 
     group.dispose()
   })

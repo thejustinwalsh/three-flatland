@@ -1,8 +1,5 @@
-import { select, type Selector, type World } from '../ecs/runtime'
-import type { EntityHandle, WorldHandle } from '../internal/ecs-handles'
 import type { SpriteBatch } from './SpriteBatch'
 import {
-  BatchMesh,
   IsAlphaBlendedBatch as _IsAlphaBlendedBatch,
   IsAlphaTestedBatch as _IsAlphaTestedBatch,
   IsLitBatch as _IsLitBatch,
@@ -17,6 +14,8 @@ export interface BatchQueryTag {
   readonly __flBatchTag?: true
 }
 
+type QueryResolver = (tag: BatchQueryTag) => SpriteBatch[]
+
 /** Batch classification: material alpha-blends (`transparent`, no alphaTest). */
 export const IsAlphaBlendedBatch: BatchQueryTag = _IsAlphaBlendedBatch as unknown as BatchQueryTag
 
@@ -28,19 +27,6 @@ export const IsLitBatch: BatchQueryTag = _IsLitBatch as unknown as BatchQueryTag
 
 /** Batch classification: material is unlit. */
 export const IsUnlitBatch: BatchQueryTag = _IsUnlitBatch as unknown as BatchQueryTag
-
-const AlphaBlendedBatches = select(_IsAlphaBlendedBatch, BatchMesh)
-const AlphaTestedBatches = select(_IsAlphaTestedBatch, BatchMesh)
-const LitBatches = select(_IsLitBatch, BatchMesh)
-const UnlitBatches = select(_IsUnlitBatch, BatchMesh)
-
-function selectorFor(tag: BatchQueryTag): Selector {
-  if (tag === IsAlphaBlendedBatch) return AlphaBlendedBatches
-  if (tag === IsAlphaTestedBatch) return AlphaTestedBatches
-  if (tag === IsLitBatch) return LitBatches
-  if (tag === IsUnlitBatch) return UnlitBatches
-  throw new TypeError('three-flatland: unsupported batch classification token')
-}
 
 /**
  * Read-only view over a world's batches: a `Map<RunKey, SpriteBatch[]>`
@@ -55,49 +41,16 @@ function selectorFor(tag: BatchQueryTag): Selector {
  * breaking this surface.
  */
 export class BatchQueryView extends Map<string, SpriteBatch[]> {
-  private _world: WorldHandle | null
+  readonly #query: QueryResolver | null
 
-  constructor(world: WorldHandle | null, entries?: Iterable<readonly [string, SpriteBatch[]]>) {
+  constructor(entries?: Iterable<readonly [string, SpriteBatch[]]>)
+  constructor(entries?: Iterable<readonly [string, SpriteBatch[]]>, query?: QueryResolver) {
     super(entries)
-    this._world = world
+    this.#query = query ?? null
   }
 
   /** All batches currently tagged with the given classification. */
   where(tag: BatchQueryTag): SpriteBatch[] {
-    if (!this._world) return []
-    const world = this._world as World
-    const result: SpriteBatch[] = []
-    for (const entity of world.view(selectorFor(tag))) {
-      const mesh = world.read(entity, BatchMesh)?.mesh
-      if (mesh) result.push(mesh)
-    }
-    return result
+    return this.#query?.(tag) ?? []
   }
-}
-
-interface BatchQueryRegistry {
-  readonly runs: ReadonlyMap<string, { readonly batches: readonly EntityHandle[] }>
-}
-
-/**
- * Build a {@link BatchQueryView} from a world's registry data, keyed by
- * run key. Shared by `SpriteGroup.batches` and `Registry.batches` so the
- * run → mesh-list traversal has exactly one implementation.
- */
-export function buildBatchQueryView(
-  world: WorldHandle | null,
-  registryData: BatchQueryRegistry | null
-): BatchQueryView {
-  const runtimeWorld = world as World | null
-  const view = new BatchQueryView(world)
-  if (!registryData) return view
-  for (const [key, run] of registryData.runs) {
-    const meshes: SpriteBatch[] = []
-    for (const batchEntity of run.batches) {
-      const mesh = runtimeWorld?.read(batchEntity, BatchMesh)?.mesh
-      if (mesh) meshes.push(mesh)
-    }
-    view.set(key, meshes)
-  }
-  return view
 }

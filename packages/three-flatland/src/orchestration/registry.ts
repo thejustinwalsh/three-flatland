@@ -1,12 +1,13 @@
 import type { Scene, Texture } from 'three'
 import { select, type World } from '../ecs/runtime'
-import type { WorldHandle } from '../internal/ecs-handles'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial, Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchRegistry } from '../ecs/traits'
 import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
-import { buildBatchQueryView, type BatchQueryView } from '../pipeline/batchQuery'
+import type { BatchQueryView } from '../pipeline/batchQuery'
+import { buildBatchQueryView } from '../internal/batch-query-builder'
+import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -92,14 +93,8 @@ export class Registry {
     this.group.name = 'FlatlandOrchestrator'
   }
 
-  /** The private ECS world backing this registry (owned by the hidden group). */
-  get world(): WorldHandle {
-    return this.group.world
-  }
-
-  /** Concrete private runtime view used only by Flatland internals. */
   private get _runtimeWorld(): World {
-    return this.group.world as World
+    return getSpriteGroupWorld(this.group)
   }
 
   /**
@@ -132,7 +127,7 @@ export class Registry {
    * bookkeeping to drift.
    */
   get batches(): BatchQueryView {
-    return buildBatchQueryView(this.group.world, this._registryData())
+    return buildBatchQueryView(this._runtimeWorld, this._registryData())
   }
 
   /** @internal */

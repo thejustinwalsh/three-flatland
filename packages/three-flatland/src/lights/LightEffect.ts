@@ -1,12 +1,9 @@
 import {
   trait,
-  type Entity,
   type NumericSchema,
   type NumericStore,
-  type NumericTrait,
   type World,
 } from '../ecs/runtime'
-import type { EntityHandle, TraitHandle } from '../internal/ecs-handles'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type { OrthographicCamera, Texture } from 'three'
@@ -30,6 +27,9 @@ import type { SDFGenerator } from './SDFGenerator'
 import type { Light2D } from './Light2D'
 import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
+import type { SpriteGroup } from '../pipeline/SpriteGroup'
+import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
+import { getEffectEntity, getEffectTrait, setEffectEntity, setEffectTrait } from '../internal/effect-runtime'
 
 // Re-export schema types for LightEffect consumers
 export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
@@ -97,6 +97,7 @@ export interface LightEffectRuntimeContext {
 
 // Forward-declare Flatland to avoid circular import
 interface FlatlandLike {
+  readonly spriteGroup: SpriteGroup
   _markLightingDirty(): void
   _markLightingResizeDirty?(): void
   /**
@@ -168,8 +169,6 @@ export abstract class LightEffect {
   /** Per-fragment channels this effect requires (e.g., ['normal']). */
   static readonly requires: readonly ChannelName[] = []
 
-  /** @internal Auto-generated numeric trait from the effect schema. */
-  static _trait: TraitHandle
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
   /** @internal Precomputed flattened SoA keys for each field. */
@@ -247,7 +246,7 @@ export abstract class LightEffect {
       }
     }
 
-    this._trait = trait(traitSchema)
+    setEffectTrait(this, trait(traitSchema))
     this._initialized = true
   }
 
@@ -260,9 +259,6 @@ export abstract class LightEffect {
 
   /** @internal The Flatland instance this effect is attached to. */
   _flatland: FlatlandLike | null = null
-
-  /** @internal The ECS entity for this effect. */
-  _entity: EntityHandle | null = null
 
   /** Cached numeric SoA for allocation-free enrolled property access. */
   private _numericStore: NumericStore<NumericSchema> | null = null
@@ -472,8 +468,7 @@ export abstract class LightEffect {
   _attach(flatland: FlatlandLike, onDirty?: () => void): void {
     this._flatland = flatland
     this._onDirty = onDirty ?? null
-    const world = (flatland as { world?: World }).world
-    if (world) this._cacheStore(world)
+    this._cacheStore(getSpriteGroupWorld(flatland.spriteGroup))
   }
 
   /**
@@ -482,7 +477,7 @@ export abstract class LightEffect {
    */
   _detach(): void {
     this._flatland = null
-    this._entity = null
+    setEffectEntity(this, null)
     this._numericStore = null
     this._storeWorld = null
     this._lightFn = null
@@ -494,7 +489,7 @@ export abstract class LightEffect {
   private _cacheStore(world: World): NumericStore<NumericSchema> {
     if (this._storeWorld !== world || !this._numericStore) {
       const ctor = lightEffectClassOf(this)
-      this._numericStore = world.store(ctor._trait as NumericTrait<NumericSchema>)
+      this._numericStore = world.store(getEffectTrait(ctor))
       this._storeWorld = world
     }
     return this._numericStore
@@ -564,9 +559,9 @@ export abstract class LightEffect {
    */
   _getField(name: string): number | number[] {
     const ctor = lightEffectClassOf(this)
-    const world = (this._flatland as { world?: World } | null)?.world
-    const entity = this._entity as Entity | null
-    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
     if (entity && world?.has(entity, runtimeTrait)) {
       const field = ctor._fieldMap.get(name)!
       const keys = ctor._fieldKeys[name]!
@@ -631,9 +626,9 @@ export abstract class LightEffect {
     }
 
     // Write to ECS trait if enrolled
-    const world = (this._flatland as { world?: World } | null)?.world
-    const entity = this._entity as Entity | null
-    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
     if (entity && world?.has(entity, runtimeTrait)) {
       const keys = ctor._fieldKeys[name]!
       const store = this._cacheStore(world)
@@ -712,7 +707,6 @@ export type LightEffectClass<S extends EffectSchema> = {
   readonly lightSchema: S
   readonly needsShadows: boolean
   readonly requires: readonly ChannelName[]
-  readonly _trait: TraitHandle
   readonly _fields: EffectField[]
   readonly _fieldKeys: Readonly<Record<string, readonly string[]>>
   readonly _fieldMap: ReadonlyMap<string, EffectField>

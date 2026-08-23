@@ -1,3 +1,4 @@
+import { worldFor, entityFor } from './ecs/testUtils.type-test'
 import { describe, expect, it, vi } from 'vitest'
 import { Texture } from 'three'
 import { vec4 } from 'three/tsl'
@@ -77,7 +78,7 @@ function makeMapData(): TileMapData {
 }
 
 function lightingContext(flatland: Flatland) {
-  const world = flatland.world as World
+  const world = worldFor(flatland) as World
   const entity = world.view(select(LightingContext))[0]!
   return world.read(entity, LightingContext)!
 }
@@ -97,7 +98,7 @@ describe('Flatland material ownership', () => {
     const replacement = makeMaterial()
     const sprite = makeSprite(previous)
     flatland.add(sprite)
-    const previousEntity = sprite.entity
+    const previousEntity = entityFor(sprite)
     const previousGeometry = sprite.geometry
     let calls = 0
     const unsubscribe = subscribeSpriteMaterialChanges(sprite, () => {
@@ -115,7 +116,7 @@ describe('Flatland material ownership', () => {
     expect(thrown).toBe(0)
     expect(calls).toBe(1)
     expect(sprite.material).toBe(previous)
-    expect(sprite.entity).toBe(previousEntity)
+    expect(entityFor(sprite)).toBe(previousEntity)
     expect(sprite.geometry).toBe(previousGeometry)
     expect(trackedMaterials(flatland)).toEqual(new Set([previous]))
     expect(materialRefCounts(flatland)).toEqual(new Map([[previous, 1]]))
@@ -143,7 +144,7 @@ describe('Flatland material ownership', () => {
     }
 
     expect(thrown).toBe(0)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(geometryDispose).toHaveBeenCalledTimes(1)
     expect(flatland.spriteGroup.spriteCount).toBe(0)
     expect(trackedMaterials(flatland).size).toBe(0)
@@ -807,7 +808,7 @@ describe('Flatland material ownership', () => {
     expect((Reflect.get(destination, '_spriteMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
     expect((Reflect.get(destination, '_spriteDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
     expect((Reflect.get(destination, '_pendingChannelValidation') as Set<unknown>).size).toBe(0)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
 
     source.dispose()
     destination.dispose()

@@ -15,8 +15,7 @@ import {
 import { RenderPipeline } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { pass, uv as uvNode, convertToTexture, uniform } from 'three/tsl'
-import { select, type Entity, type NumericSchema, type NumericTrait, type World } from './ecs/runtime'
-import type { WorldHandle } from './internal/ecs-handles'
+import { select, type Entity, type World } from './ecs/runtime'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import {
   declareSortLayer,
@@ -32,7 +31,6 @@ import type { Sprite2DMaterial, ColorTransformFn } from './materials/Sprite2DMat
 import type { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
-import type { WorldProvider } from './ecs/world'
 import {
   PostPassTrait,
   PostPassRegistry,
@@ -66,6 +64,8 @@ import { getRendererViewportDepthRange, setRendererViewport } from './cameras/re
 import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 import { validateExpectedSprites } from './internal/capacity'
 import { isTerminalObject } from './internal/terminal-object'
+import { getSpriteGroupWorld } from './internal/sprite-group-runtime'
+import { getEffectEntity, getEffectTrait, setEffectEntity } from './internal/effect-runtime'
 import {
   subscribeSpriteDispose,
   subscribeSpriteMaterialChanges,
@@ -199,8 +199,8 @@ export interface FlatlandOptions {
  * Flatland - Unified 2D rendering pipeline for Three.js WebGPU.
  *
  * Combines sprite batching, post-processing, render targets, and global uniforms
- * into a single high-level API. Implements WorldProvider — one ECS world per Flatland
- * instance, shared between sprite batching and post-processing passes.
+ * into a single high-level API. Each instance privately owns the runtime shared
+ * between sprite batching and post-processing passes.
  *
  * @example
  * ```typescript
@@ -256,7 +256,7 @@ export interface FlatlandOptions {
  * }
  * ```
  */
-export class Flatland extends Group implements WorldProvider {
+export class Flatland extends Group {
   /** Class-level rendering defaults, resolved before {@link RenderingConfig}. */
   static options: RenderingSetting | undefined = undefined
 
@@ -550,17 +550,8 @@ export class Flatland extends Group implements WorldProvider {
     }
   }
 
-  /**
-   * The ECS world for this Flatland instance.
-   * Delegates to SpriteGroup's lazy-initialized world.
-   */
-  get world(): WorldHandle {
-    return this.spriteGroup.world
-  }
-
-  /** Private typed view of the public opaque world handle. */
   private get _runtimeWorld(): World {
-    return this.spriteGroup.world as World
+    return getSpriteGroupWorld(this.spriteGroup)
   }
 
   /**
@@ -1348,7 +1339,7 @@ export class Flatland extends Group implements WorldProvider {
       passEffect._passFn = previousPassFn
       throw new Error('three-flatland: dispose() cannot run reentrantly during addPass()')
     }
-    if (this._passes.includes(passEffect) || passEffect._flatland !== null || passEffect._entity !== null) {
+    if (this._passes.includes(passEffect) || passEffect._flatland !== null || getEffectEntity(passEffect) !== null) {
       passEffect._passFn = previousPassFn
       throw new Error('three-flatland: PassEffect ownership changed during pass preparation')
     }
@@ -1383,7 +1374,7 @@ export class Flatland extends Group implements WorldProvider {
       // Fully populate a provisional entity before publishing ownership/order.
       entity = world.spawn(PostPassTrait({ fn, order: resolvedOrder, enabled: passEffect.enabled }))
       if (traitValues) {
-        const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+        const runtimeTrait = getEffectTrait(ctor)
         world.add(entity, runtimeTrait(traitValues))
       }
       if (!registryEntity) {
@@ -1394,7 +1385,7 @@ export class Flatland extends Group implements WorldProvider {
       passEffect._attach(this)
       attached = true
       passEffect._order = resolvedOrder
-      passEffect._entity = entity
+      setEffectEntity(passEffect, entity)
       this._postPassRegistryEntity = registryEntity
       world.patch(registryEntity, PostPassRegistry, { dirty: true })
       this._passes.push(passEffect)
@@ -1412,7 +1403,7 @@ export class Flatland extends Group implements WorldProvider {
         } catch {}
       }
       passEffect._order = previousOrder
-      passEffect._entity = null
+      setEffectEntity(passEffect, null)
       passEffect._passFn = previousPassFn
       if (entity && world.isAlive(entity)) {
         try {
@@ -1440,8 +1431,9 @@ export class Flatland extends Group implements WorldProvider {
     const idx = this._passes.indexOf(passEffect)
     if (idx === -1) return this
 
-    if (passEffect._entity) {
-      this._runtimeWorld.destroy(passEffect._entity)
+    const passEntity = getEffectEntity(passEffect)
+    if (passEntity) {
+      this._runtimeWorld.destroy(passEntity)
     }
     passEffect._detach()
     this._passes.splice(idx, 1)
@@ -1460,8 +1452,9 @@ export class Flatland extends Group implements WorldProvider {
    */
   clearPasses(): this {
     for (const passEffect of this._passes) {
-      if (passEffect._entity) {
-        this._runtimeWorld.destroy(passEffect._entity)
+      const passEntity = getEffectEntity(passEffect)
+      if (passEntity) {
+        this._runtimeWorld.destroy(passEntity)
       }
       passEffect._detach()
     }
@@ -1563,7 +1556,8 @@ export class Flatland extends Group implements WorldProvider {
       const previous = this._lightEffect
       if (previous) {
         previous.dispose()
-        if (previous._entity) this._runtimeWorld.destroy(previous._entity)
+        const previousEntity = getEffectEntity(previous)
+        if (previousEntity) this._runtimeWorld.destroy(previousEntity)
         previous._detach()
       }
       this._lightEffect = null
@@ -1672,7 +1666,7 @@ export class Flatland extends Group implements WorldProvider {
       // Every entity is provisional until the previous effect has disposed.
       effectEntity = world.spawn(LightEffectTrait({ fn, enabled: lightEffect.enabled }))
       if (traitValues) {
-        const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+        const runtimeTrait = getEffectTrait(ctor)
         world.add(effectEntity, runtimeTrait(traitValues))
       }
       if (!shadowEntity) {
@@ -1702,14 +1696,14 @@ export class Flatland extends Group implements WorldProvider {
         contextCreated = true
       }
 
-      if (this._lightEffect !== previous || lightEffect._flatland !== null || lightEffect._entity !== null) {
+      if (this._lightEffect !== previous || lightEffect._flatland !== null || getEffectEntity(lightEffect) !== null) {
         throw new Error('three-flatland: lighting ownership changed during effect preparation')
       }
 
       // User disposal remains pre-publication. A throw rolls every candidate
       // allocation/cache back and leaves the current owner/context authoritative.
       previous?.dispose()
-      if (this._lightEffect !== previous || lightEffect._flatland !== null || lightEffect._entity !== null) {
+      if (this._lightEffect !== previous || lightEffect._flatland !== null || getEffectEntity(lightEffect) !== null) {
         throw new Error('three-flatland: lighting ownership changed during previous-effect disposal')
       }
     } catch (error) {
@@ -1717,7 +1711,8 @@ export class Flatland extends Group implements WorldProvider {
       throw error
     }
 
-    if (previous?._entity) world.destroy(previous._entity)
+    const previousEntity = previous ? getEffectEntity(previous) : null
+    if (previousEntity) world.destroy(previousEntity)
     previous?._detach()
 
     const pipeline = world.read(shadowEntity!, ShadowPipeline)
@@ -1729,7 +1724,7 @@ export class Flatland extends Group implements WorldProvider {
     lightEffect._attach(this, () => {
       this._markLightingDirty()
     })
-    lightEffect._entity = effectEntity
+    setEffectEntity(lightEffect, effectEntity)
     this._lightStore = preparedLightStore
     this._shadowPipelineEntity = shadowEntity
     this._lightingContextEntity = contextEntity
@@ -2611,7 +2606,7 @@ export class Flatland extends Group implements WorldProvider {
     // Clear every pass independently. One hostile destroy/detach hook must not
     // retain later effects or prevent the world from reaching terminal state.
     for (const passEffect of this._passes) {
-      const entity = passEffect._entity
+      const entity = getEffectEntity(passEffect)
       if (entity) runCleanup(() => this._runtimeWorld.destroy(entity))
       runCleanup(() => passEffect._detach())
     }
@@ -2627,7 +2622,7 @@ export class Flatland extends Group implements WorldProvider {
     const lightEffect = this._lightEffect
     this._lightEffect = null
     if (lightEffect) {
-      const entity = lightEffect._entity
+      const entity = getEffectEntity(lightEffect)
       runCleanup(() => lightEffect.dispose())
       if (entity) runCleanup(() => this._runtimeWorld.destroy(entity))
       runCleanup(() => lightEffect._detach())

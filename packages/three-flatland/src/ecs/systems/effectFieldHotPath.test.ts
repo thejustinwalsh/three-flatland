@@ -1,3 +1,7 @@
+import { traitFor } from '../testUtils.type-test'
+import { registerSpriteGroupRuntime } from '../../internal/sprite-group-runtime'
+import { setEffectEntity } from '../../internal/effect-runtime'
+import type { SpriteGroup } from '../../pipeline/SpriteGroup'
 import { describe, expect, it, vi } from 'vitest'
 import { createLightEffect } from '../../lights/LightEffect'
 import { PassEffect, createPassEffect, type PassEffectFn } from '../../pipeline/PassEffect'
@@ -123,7 +127,7 @@ describe('global effect field SoA access', () => {
     expect(ParentEffect._fields.map(({ name }) => name)).toEqual(['parentValue'])
     expect(ChildEffect._fields.map(({ name }) => name)).toEqual(['childValue'])
     expect(Object.hasOwn(ChildEffect, '_initialized')).toBe(true)
-    expect(ChildEffect._trait).not.toBe(ParentEffect._trait)
+    expect(traitFor(ChildEffect)).not.toBe(traitFor(ParentEffect))
   })
 
   it('uses null-prototype PassEffect schema records without changing uniform behavior', () => {
@@ -152,10 +156,12 @@ describe('global effect field SoA access', () => {
     })
     const world = createWorld()
     const effect = new Effect()
-    const trait = Effect._trait as NumericTrait<NumericSchema>
+    const trait = traitFor(Effect) as NumericTrait<NumericSchema>
     const entity = world.spawn(trait({ scalar: 1, vector_0: 2, vector_1: 3, vector_2: 4 }))
-    effect._attach({ world, _markLightingDirty: () => {} } as never)
-    effect._entity = entity
+    const spriteGroup = {} as SpriteGroup
+    registerSpriteGroupRuntime(spriteGroup, () => world)
+    effect._attach({ spriteGroup, _markLightingDirty: () => {} })
+    setEffectEntity(effect, entity)
     const readSpy = vi.spyOn(world, 'read')
     const patchSpy = vi.spyOn(world, 'patch')
     const touchSpy = vi.spyOn(world, 'touch')
@@ -212,10 +218,12 @@ describe('global effect field SoA access', () => {
     const baseClass: typeof PassEffect = Effect
     expect(baseClass._fieldKeys.vector).toEqual(['vector_0', 'vector_1', 'vector_2', 'vector_3'])
     expect(baseClass._fieldMap.get('vector')?.size).toBe(4)
-    const trait = Effect._trait as NumericTrait<NumericSchema>
+    const trait = traitFor(Effect) as NumericTrait<NumericSchema>
     const entity = world.spawn(trait({ scalar: 1, vector_0: 2, vector_1: 3, vector_2: 4, vector_3: 5 }))
-    effect._attach({ world, _markPostPassDirty: () => {} } as never)
-    effect._entity = entity
+    const spriteGroup = {} as SpriteGroup
+    registerSpriteGroupRuntime(spriteGroup, () => world)
+    effect._attach({ spriteGroup, _markPostPassDirty: () => {} })
+    setEffectEntity(effect, entity)
     const readSpy = vi.spyOn(world, 'read')
     const patchSpy = vi.spyOn(world, 'patch')
     const touchSpy = vi.spyOn(world, 'touch')

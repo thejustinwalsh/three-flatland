@@ -1,3 +1,4 @@
+import { worldFor, entityFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
@@ -12,7 +13,7 @@ import { batchEntityFor, readRequired, registryFor, requiredEntity } from '../te
 import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  return registryFor(group.world)
+  return registryFor(worldFor(group))
 }
 
 function runSystems(group: SpriteGroup): void {
@@ -68,7 +69,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     expect(registry.activeBatches.length).toBe(3)
 
     const masks = registry.activeBatches
-      .map((entity) => readRequired(group.world, entity, BatchMeta).layersMask)
+      .map((entity) => readRequired(worldFor(group), entity, BatchMeta).layersMask)
       .sort((x, y) => x - y)
     expect(masks).toEqual([1, 4, 8]) // Layers.set(n) = 1 << n
 
@@ -92,12 +93,12 @@ describe('sortLayer + layers.mask run-key routing', () => {
     const originalMesh = a._batchMesh
 
     a.layers.enable(5)
-    expect(readRequired(group.world, requiredEntity(a), CameraLayersMask).mask).toBe(1 | (1 << 5))
+    expect(readRequired(worldFor(group), requiredEntity(a), CameraLayersMask).mask).toBe(1 | (1 << 5))
 
     runSystems(group)
 
     // Still batched — but in a new batch with the new mask
-    expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(a), IsBatched)).toBe(true)
     expect(a._batchMesh).not.toBe(originalMesh)
     expect(a._batchMesh!.layers.mask).toBe(1 | (1 << 5))
     expect(registry.activeBatches.length).toBe(2)
@@ -121,12 +122,12 @@ describe('sortLayer + layers.mask run-key routing', () => {
     // a distinct write path through the Layers instance that must still
     // funnel through the same Proxy `set` trap.
     a.layers.set(5)
-    expect(readRequired(group.world, requiredEntity(a), CameraLayersMask).mask).toBe(1 << 5)
+    expect(readRequired(worldFor(group), requiredEntity(a), CameraLayersMask).mask).toBe(1 << 5)
 
     runSystems(group)
 
     // Still batched — but in a new batch with the new mask
-    expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(a), IsBatched)).toBe(true)
     expect(a._batchMesh).not.toBe(originalMesh)
     expect(a._batchMesh!.layers.mask).toBe(1 << 5)
     expect(registry.activeBatches.length).toBe(2)
@@ -147,7 +148,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     const registry = getRegistry(group)
-    const meta = readRequired(group.world, registry.activeBatches[0]!, BatchMeta)
+    const meta = readRequired(worldFor(group), registry.activeBatches[0]!, BatchMeta)
     expect(meta.sortLayer).toBe(6)
   })
 
@@ -165,7 +166,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     expect(registry.activeBatches.length).toBe(2)
-    expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(a), IsBatched)).toBe(true)
   })
 
   it('captures a route mutation made reentrantly by updateMatrix in the same frame', () => {
@@ -186,9 +187,9 @@ describe('sortLayer + layers.mask run-key routing', () => {
     sprite.sortLayer = 'ui'
     runSystems(group)
 
-    const meta = readRequired(group.world, batchEntityFor(group.world, sprite), BatchMeta)
+    const meta = readRequired(worldFor(group), batchEntityFor(worldFor(group), sprite), BatchMeta)
     expect(sprite.layers.mask).toBe(1 << 3)
-    expect(readRequired(group.world, requiredEntity(sprite), CameraLayersMask).mask).toBe(1 << 3)
+    expect(readRequired(worldFor(group), requiredEntity(sprite), CameraLayersMask).mask).toBe(1 << 3)
     expect(meta.layersMask).toBe(1 << 3)
   })
 
@@ -216,8 +217,8 @@ describe('sortLayer + layers.mask run-key routing', () => {
     // committed before this update returns.
     runSystems(group)
 
-    const batchEntity = batchEntityFor(group.world, sprite)
-    const meta = readRequired(group.world, batchEntity, BatchMeta)
+    const batchEntity = batchEntityFor(worldFor(group), sprite)
+    const meta = readRequired(worldFor(group), batchEntity, BatchMeta)
     expect(sprite._batchMesh).not.toBe(originalMesh)
     expect(survivor._batchMesh).toBe(originalMesh)
     expect(meta.materialId).toBe(replacement.batchId)
@@ -225,7 +226,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     expect(meta.layersMask).toBe(1 << 4)
     expect(sprite._batchMesh!.layers.mask).toBe(1 << 4)
     expect(group.children).toContain(sprite._batchMesh)
-    expect(readRequired(group.world, requiredEntity(sprite), BatchSlot).batchEntity).toBe(batchEntity)
+    expect(readRequired(worldFor(group), requiredEntity(sprite), BatchSlot).batchEntity).toBe(batchEntity)
   })
 
   it('does not publish a reassignment after updateMatrix removes the sprite', () => {
@@ -248,7 +249,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
 
     sprite.sortLayer = 'ui'
     runSystems(group)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite._batchMesh).toBeNull()
 
     runSystems(group)
@@ -271,7 +272,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     const destinationBatch = destinationFirst._batchMesh!
     const interior = destinationRemoved._batchSlot
     const sourceBatch = source._batchMesh!
-    const sourceAssignment = { ...readRequired(group.world, requiredEntity(source), BatchSlot) }
+    const sourceAssignment = { ...readRequired(worldFor(group), requiredEntity(source), BatchSlot) }
     group.remove(destinationRemoved)
     runSystems(group)
     expect(getSpriteBatchOwnership(destinationBatch).slotEntities[interior]).toBe(0)
@@ -284,7 +285,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
 
     expect(() => runSystems(group)).toThrow('late reassignment projection failed')
     expect(source._batchMesh).toBe(sourceBatch)
-    expect(readRequired(group.world, requiredEntity(source), BatchSlot)).toEqual(sourceAssignment)
+    expect(readRequired(worldFor(group), requiredEntity(source), BatchSlot)).toEqual(sourceAssignment)
     expect(getSpriteBatchOwnership(destinationBatch).slotEntities[interior]).toBe(0)
     expect(
       Array.from((destinationBatch.instanceMatrix.array as Float32Array).slice(interior * 16, interior * 16 + 16))
@@ -316,7 +317,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     for (const sprite of sprites) sprite.material = replacement
 
     expect(() => runSystems(group)).toThrow('middle reassignment failed')
-    expect(readRequired(group.world, batchEntityFor(group.world, sprites[0]!), BatchMeta).materialId).toBe(
+    expect(readRequired(worldFor(group), batchEntityFor(worldFor(group), sprites[0]!), BatchMeta).materialId).toBe(
       replacement.batchId
     )
     expect(sprites[1]!._batchMesh).toBe(sprites[2]!._batchMesh)
@@ -324,7 +325,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     updateMatrix.mockRestore()
     runSystems(group)
     for (const sprite of sprites) {
-      expect(readRequired(group.world, batchEntityFor(group.world, sprite), BatchMeta).materialId).toBe(
+      expect(readRequired(worldFor(group), batchEntityFor(worldFor(group), sprite), BatchMeta).materialId).toBe(
         replacement.batchId
       )
     }
@@ -337,14 +338,14 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     const registry = getRegistry(group)
-    const oldAssignment = { ...readRequired(group.world, requiredEntity(sprite), BatchSlot) }
+    const oldAssignment = { ...readRequired(worldFor(group), requiredEntity(sprite), BatchSlot) }
     const oldBatch = sprite._batchMesh
     const replacement = new Sprite2DMaterial({ map: texture })
     registry.maxBatchSize = 0
     sprite.material = replacement
 
     expect(() => runSystems(group)).toThrow(/positive safe integer/)
-    expect(readRequired(group.world, requiredEntity(sprite), BatchSlot)).toEqual(oldAssignment)
+    expect(readRequired(worldFor(group), requiredEntity(sprite), BatchSlot)).toEqual(oldAssignment)
     expect(sprite._batchMesh).toBe(oldBatch)
     expect(registry.runs.size).toBe(1)
     expect(registry.sortedRunKeys).toHaveLength(1)
@@ -352,7 +353,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     registry.maxBatchSize = 1
     runSystems(group)
     expect(sprite._batchMesh).not.toBe(oldBatch)
-    expect(readRequired(group.world, batchEntityFor(group.world, sprite), BatchMeta).materialId).toBe(
+    expect(readRequired(worldFor(group), batchEntityFor(worldFor(group), sprite), BatchMeta).materialId).toBe(
       replacement.batchId
     )
   })
@@ -366,17 +367,17 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     sprite.material = replacement
-    expect(readRequired(group.world, requiredEntity(sprite), SpriteMaterialRef).materialId).toBe(replacement.batchId)
+    expect(readRequired(worldFor(group), requiredEntity(sprite), SpriteMaterialRef).materialId).toBe(replacement.batchId)
     runSystems(group)
 
     const registry = getRegistry(group)
-    const meta = readRequired(group.world, batchEntityFor(group.world, sprite), BatchMeta)
+    const meta = readRequired(worldFor(group), batchEntityFor(worldFor(group), sprite), BatchMeta)
     expect(meta.materialId).toBe(replacement.batchId)
     expect(sprite._batchMesh?.spriteMaterial).toBe(replacement)
     expect(registry.materialRefs.get(replacement.batchId)?.material).toBe(replacement)
 
     replacement.dispose()
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
     expect(removeHook).toHaveBeenCalledWith(expect.any(Function))
 
@@ -454,7 +455,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
     enrolled.renderOrder = 999
 
-    expect(enrolled.entity).toBeNull()
+    expect(entityFor(enrolled)).toBeNull()
     expect(enrolled.geometry.hasAttribute('effectBuf0')).toBe(true)
     const buffer = enrolled.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
     expect(buffer.array[0]).toBeCloseTo(0.7)
@@ -514,7 +515,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     const originalSlot = enrolled._batchSlot
     const registry = getRegistry(group)
     assertRejectedAtomically(enrolled, enrolledReplacement)
-    expect(readRequired(group.world, entity, SpriteMaterialRef).materialId).toBe(enrolledMaterial.batchId)
+    expect(readRequired(worldFor(group), entity, SpriteMaterialRef).materialId).toBe(enrolledMaterial.batchId)
     expect(enrolled._batchMesh).toBe(originalBatch)
     expect(enrolled._batchSlot).toBe(originalSlot)
     expect(getSpriteBatchOwnership(originalBatch!).slotEntities[originalSlot]).toBe(entity)
@@ -535,7 +536,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     a.renderOrder = 999
 
     expect(a.renderOrder).toBe(999)
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
     expect(a._renderOrderOverridden).toBe(true)
     expect(a.visible).toBe(true)
     // Re-parented under the group so its own Mesh draw resumes
@@ -545,7 +546,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
 
     // Slot freed; the other member is unaffected
     expect(batchMesh.activeCount).toBe(1)
-    expect(b.entity).not.toBeNull()
+    expect(entityFor(b)).not.toBeNull()
     expect(b._batchMesh).toBe(batchMesh)
   })
 
@@ -573,14 +574,14 @@ describe('sortLayer + layers.mask run-key routing', () => {
     group.add(a)
     group.add(b)
     runSystems(group)
-    expect(a.entity).not.toBeNull()
+    expect(entityFor(a)).not.toBeNull()
 
     a.renderOrder = 6 // matches the layer-derived value → no escape
-    expect(a.entity).not.toBeNull()
+    expect(entityFor(a)).not.toBeNull()
     expect(a._renderOrderOverridden).toBe(false)
 
     a.renderOrder = 999 // a real override still escapes
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
   })
 
   it('renderOrder is installed as a prototype accessor, not an own instance property', () => {
@@ -605,7 +606,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     a.renderOrder = 999 // first write: a real override, demotes to standalone
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
     expect(a._renderOrderOverridden).toBe(true)
     expect(group.children.includes(a)).toBe(true)
     const childCountAfterDemotion = group.children.length
@@ -614,7 +615,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     // override/demotion machinery re-runs — no duplicate re-parenting.
     a.renderOrder = 999
     expect(a.renderOrder).toBe(999)
-    expect(a.entity).toBeNull()
+    expect(entityFor(a)).toBeNull()
     expect(group.children.length).toBe(childCountAfterDemotion)
   })
 

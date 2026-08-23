@@ -1,3 +1,4 @@
+import { entityFor, traitFor, enrollInWorld } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { BufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Texture } from 'three'
 import { getCurrentStack, setCurrentStack, stack } from 'three/tsl'
@@ -137,7 +138,7 @@ describe('createMaterialEffect', () => {
 
     // Initialize to create the trait
     Dissolve._initialize()
-    expect(typeof Dissolve._trait).toBe('function')
+    expect(typeof traitFor(Dissolve)).toBe('function')
   })
 
   it('should compute field metadata from schema', () => {
@@ -311,7 +312,7 @@ describe('class-based MaterialEffect', () => {
     expect(ParentEffect._fields.map(({ name }) => name)).toEqual(['parentValue'])
     expect(ChildEffect._fields.map(({ name }) => name)).toEqual(['childValue'])
     expect(Object.hasOwn(ChildEffect, '_initialized')).toBe(true)
-    expect(ChildEffect._trait).not.toBe(ParentEffect._trait)
+    expect(traitFor(ChildEffect)).not.toBe(traitFor(ParentEffect))
   })
 })
 
@@ -392,21 +393,21 @@ describe('MaterialEffect instances', () => {
     expect(sprite._effects).toEqual([first])
     expect(sprite._effectFlags).toBe(E0)
     expect(rejected._sprite).toBeNull()
-    expect(rejected._entity).toBeNull()
+    expect(entityFor(rejected)).toBeNull()
 
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
     const entity = requiredEntity(sprite)
     const routeBefore = world.read(entity, SpriteMaterialRef)
-    const traitBefore = world.read(entity, Effect._trait)
+    const traitBefore = world.read(entity, traitFor(Effect))
 
     expect(() => sprite.addEffect(rejected)).toThrow(/only one 'single_instance_per_class' instance/)
     expect(sprite._effects).toEqual([first])
     expect(sprite._effectFlags).toBe(E0)
     expect(world.read(entity, SpriteMaterialRef)).toEqual(routeBefore)
-    expect(world.read(entity, Effect._trait)).toEqual(traitBefore)
+    expect(world.read(entity, traitFor(Effect))).toEqual(traitBefore)
     expect(rejected._sprite).toBeNull()
-    expect(rejected._entity).toBeNull()
+    expect(entityFor(rejected)).toBeNull()
     world.dispose()
   })
 
@@ -429,11 +430,11 @@ describe('MaterialEffect instances', () => {
     spriteA.addEffect(effect)
 
     const world = createWorld()
-    spriteA._enrollInWorld(world)
-    spriteB._enrollInWorld(world)
+    enrollInWorld(spriteA, world)
+    enrollInWorld(spriteB, world)
     const entityA = requiredEntity(spriteA)
     const entityB = requiredEntity(spriteB)
-    const traitA = world.read(entityA, Effect._trait)
+    const traitA = world.read(entityA, traitFor(Effect))
     const routeA = world.read(entityA, SpriteMaterialRef)
     const routeB = world.read(entityB, SpriteMaterialRef)
 
@@ -446,10 +447,10 @@ describe('MaterialEffect instances', () => {
     expect(spriteB.material).toBe(materialB)
     expect(world.read(entityA, SpriteMaterialRef)).toEqual(routeA)
     expect(world.read(entityB, SpriteMaterialRef)).toEqual(routeB)
-    expect(world.read(entityA, Effect._trait)).toEqual(traitA)
-    expect(world.has(entityB, Effect._trait)).toBe(false)
+    expect(world.read(entityA, traitFor(Effect))).toEqual(traitA)
+    expect(world.has(entityB, traitFor(Effect))).toBe(false)
     expect(effect._sprite).toBe(spriteA)
-    expect(effect._entity).toBe(entityA)
+    expect(entityFor(effect)).toBe(entityA)
     world.dispose()
   })
 
@@ -656,7 +657,7 @@ describe('EffectMaterial.registerEffect', () => {
     for (const Effect of Effects.slice(0, MAX_MATERIAL_EFFECTS)) sprite.addEffect(new Effect())
 
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
     const entity = requiredEntity(sprite)
     const RejectedEffect = Effects[MAX_MATERIAL_EFFECTS]!
     const rejected = new RejectedEffect()
@@ -674,7 +675,7 @@ describe('EffectMaterial.registerEffect', () => {
     expect(sprite._effectFlags).toBe(flagsBefore)
     expect(world.read(entity, SpriteMaterialRef)).toEqual(routeBefore)
     expect(rejected._sprite).toBeNull()
-    expect(rejected._entity).toBeNull()
+    expect(entityFor(rejected)).toBeNull()
     expect(materialBefore.getEffects()).toHaveLength(MAX_MATERIAL_EFFECTS)
     expect(materialBefore.hasEffect(RejectedEffect)).toBe(false)
     world.dispose()
@@ -1347,7 +1348,7 @@ describe('_setField ECS integration', () => {
 
     // Enroll in world
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Get initial own buffer value — progress is now at slot 0
     // (effectBuf0.x) since system flags/enable bits moved off effectBuf0.
@@ -1467,15 +1468,15 @@ describe('addEffect publishes traits for enrolled sprites', () => {
 
     // Enroll first, then add effect (simulates conditional rendering)
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     const dissolve = new DissolveChanged()
     dissolve.progress = 0.6
     sprite.addEffect(dissolve)
 
     // Trait should exist with correct value
-    expect(world.has(requiredEntity(sprite), DissolveChanged._trait)).toBe(true)
-    const traitData = world.read(requiredEntity(sprite), DissolveChanged._trait) as Record<string, number>
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveChanged))).toBe(true)
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveChanged)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.6)
 
     world.dispose()
@@ -1488,7 +1489,7 @@ describe('addEffect publishes traits for enrolled sprites', () => {
 
     // Enroll first
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Create effect, set props, then add (simulates R3F applyProps before attach)
     const dissolve = new DissolveChanged()
@@ -1497,7 +1498,7 @@ describe('addEffect publishes traits for enrolled sprites', () => {
     sprite.addEffect(dissolve)
 
     // Trait should have value from _defaults (set before attachment)
-    const traitData = world.read(requiredEntity(sprite), DissolveChanged._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveChanged)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.42)
 
     world.dispose()
@@ -1566,16 +1567,16 @@ describe('Effect remove + add cycle', () => {
 
     // Enroll
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Verify initial state
-    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(true)
 
     // Simulate R3F detach
     sprite.removeEffect(d1)
 
-    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(false)
-    expect(d1._entity).toBeNull()
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(false)
+    expect(entityFor(d1)).toBeNull()
     expect(d1._sprite).toBeNull()
 
     // Simulate R3F attach with new instance
@@ -1585,12 +1586,12 @@ describe('Effect remove + add cycle', () => {
 
     // New effect should be attached with correct entity
     expect(d2._sprite).toBe(sprite)
-    expect(d2._entity).toBe(sprite.entity)
-    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(true)
+    expect(entityFor(d2)).toBe(entityFor(sprite))
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(true)
 
     // Property updates should write to trait (enrolled path)
     d2.progress = 0.95
-    const traitData = world.read(requiredEntity(sprite), DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveRA)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.95)
 
     world.dispose()
@@ -1607,10 +1608,10 @@ describe('Effect remove + add cycle', () => {
 
     // Enroll (simulates spriteGroup.add)
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Verify enrolled state
-    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(true)
 
     // Remove and re-add
     sprite.removeEffect(d1)
@@ -1620,7 +1621,7 @@ describe('Effect remove + add cycle', () => {
 
     // The critical test: can we update progress on the new instance?
     d2.progress = 0.85
-    const traitData = world.read(requiredEntity(sprite), DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveRA)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.85)
 
     // And does _effects contain the new instance?
@@ -1636,7 +1637,7 @@ describe('Effect remove + add cycle', () => {
 
     // Enroll first, then add effect (like conditional rendering)
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Cycle 1
     const d1 = new DissolveRA()
@@ -1655,7 +1656,7 @@ describe('Effect remove + add cycle', () => {
 
     // Update directly on effect ref — the actual game pattern
     d2.progress = 0.75
-    const traitData = world.read(requiredEntity(sprite), DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveRA)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.75)
 
     world.dispose()
@@ -1667,7 +1668,7 @@ describe('Effect remove + add cycle', () => {
     const sprite = new Sprite2D({ texture, material })
 
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     const d1 = new DissolveRA()
     sprite.addEffect(d1)

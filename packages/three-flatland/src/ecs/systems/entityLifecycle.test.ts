@@ -1,3 +1,4 @@
+import { worldFor, entityFor, traitFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Matrix4, Texture } from 'three'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
@@ -16,15 +17,15 @@ import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 // ============================================
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  return registryFor(group.world)
+  return registryFor(worldFor(group))
 }
 
 function has(group: SpriteGroup, sprite: Sprite2D, trait: typeof IsRenderable | typeof IsBatched): boolean {
-  return group.world.has(requiredEntity(sprite), trait)
+  return worldFor(group).has(requiredEntity(sprite), trait)
 }
 
 function slot(group: SpriteGroup, sprite: Sprite2D) {
-  return readRequired(group.world, requiredEntity(sprite), BatchSlot)
+  return readRequired(worldFor(group), requiredEntity(sprite), BatchSlot)
 }
 
 /** Run ECS systems (calls the deprecated but public update() method) */
@@ -65,7 +66,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     const sprite = makeSprite(texture, material)
     group.add(sprite)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsRenderable)).toBe(true)
   })
 
@@ -74,12 +75,12 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     group.add(sprite)
     runSystems(group)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsBatched)).toBe(true)
 
     const bs = slot(group, sprite)
     expect(bs.batchEntity).toBeGreaterThan(0)
-    expect(batchEntityFor(group.world, sprite)).toBe(bs.batchEntity)
+    expect(batchEntityFor(worldFor(group), sprite)).toBe(bs.batchEntity)
     expect(bs.batchIdx).toBeGreaterThanOrEqual(0)
     expect(bs.slot).toBeGreaterThanOrEqual(0)
   })
@@ -90,7 +91,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     runSystems(group)
 
     group.remove(sprite)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
   })
 
   it('destroys a sprite removed before its first batch assignment', () => {
@@ -102,7 +103,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     runSystems(group)
     runSystems(group)
 
-    expect(group.world.isAlive(removedEntity)).toBe(false)
+    expect(worldFor(group).isAlive(removedEntity)).toBe(false)
   })
 
   it('does not assign a sprite removed reentrantly by updateMatrix', () => {
@@ -120,14 +121,14 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     const removedEntity = requiredEntity(sprite)
 
     runSystems(group)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite._batchMesh).toBeNull()
     expect(getRegistry(group).activeBatches).toHaveLength(0)
 
     runSystems(group)
-    expect(group.world.isAlive(removedEntity)).toBe(true)
+    expect(worldFor(group).isAlive(removedEntity)).toBe(true)
     runSystems(group)
-    expect(group.world.isAlive(removedEntity)).toBe(false)
+    expect(worldFor(group).isAlive(removedEntity)).toBe(false)
   })
 
   it.each(['remove', 'dispose'] as const)(
@@ -154,7 +155,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
       sprite.position.x = 12
       runSystems(group)
 
-      expect(sprite.entity).toBeNull()
+      expect(entityFor(sprite)).toBeNull()
       expect(batchOwnership.slotEntities[batchSlot]).toBe(owner)
       expect(
         Array.from((batch.instanceMatrix.array as Float32Array).slice(batchSlot * 16, batchSlot * 16 + 16))
@@ -248,7 +249,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     }
 
     expect(registry.materialRefs.get(material.batchId)?.material).toBe(material)
-    expect(shared.entity).not.toBeNull()
+    expect(entityFor(shared)).not.toBeNull()
   })
 
   it('releases a superseded material that never reaches a batch', () => {
@@ -299,7 +300,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
 
     runSystems(group)
     expect(sprite._batchMesh).not.toBeNull()
-    expect(group.world.has(requiredEntity(sprite), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(sprite), IsBatched)).toBe(true)
 
     group.remove(sprite)
     runSystems(group)
@@ -353,13 +354,13 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     group.add(sprite)
 
     expect(() => runSystems(group)).toThrow('matrix projection failed')
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(sprite._batchMesh).toBeNull()
 
     updateMatrix.mockRestore()
     runSystems(group)
     expect(sprite._batchMesh).not.toBeNull()
-    expect(group.world.has(requiredEntity(sprite), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(sprite), IsBatched)).toBe(true)
   })
 
   it('requeues the untouched assignment tail after the first sprite throws transiently', () => {
@@ -376,7 +377,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     runSystems(group)
     for (const sprite of sprites) {
       expect(sprite._batchMesh).not.toBeNull()
-      expect(group.world.has(requiredEntity(sprite), IsBatched)).toBe(true)
+      expect(worldFor(group).has(requiredEntity(sprite), IsBatched)).toBe(true)
     }
   })
 
@@ -416,8 +417,8 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     expect(second._batchMesh!.material).toBe(secondMaterial)
     expect(second._batchMesh!.activeCount).toBe(1)
     expect(second._batchMesh!.count).toBe(1)
-    expect(group.world.has(requiredEntity(first), IsBatched)).toBe(true)
-    expect(group.world.has(requiredEntity(second), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(first), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(second), IsBatched)).toBe(true)
   })
 
   it('does not rerun transform, sort, or scene sync for a missing late assignment', () => {
@@ -457,9 +458,10 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
 
   it('requeues the current assignment once when batch lookup throws before its local transaction', () => {
     const sprites = [makeSprite(texture, material), makeSprite(texture, material)]
-    const originalRead = group.world.read.bind(group.world) as typeof group.world.read
+    const world = worldFor(group)!
+    const originalRead = world.read.bind(world) as World['read']
     let batchMeshReads = 0
-    const read = vi.spyOn(group.world, 'read').mockImplementation((entity, trait) => {
+    const read = vi.spyOn(world, 'read').mockImplementation((entity, trait) => {
       const value = originalRead(entity, trait)
       if (trait === BatchMesh && ++batchMeshReads === 2) return undefined
       return value
@@ -494,13 +496,13 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     expect(registry.activeBatches).toEqual([])
     expect(registry.batchPool).toEqual([])
     expect(registry.batchSlots).toEqual([])
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(sprite._batchMesh).toBeNull()
 
     registry.maxBatchSize = 4
     runSystems(group)
     expect(sprite._batchMesh).not.toBeNull()
-    expect(group.world.has(requiredEntity(sprite), IsBatched)).toBe(true)
+    expect(worldFor(group).has(requiredEntity(sprite), IsBatched)).toBe(true)
   })
 })
 
@@ -535,7 +537,7 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     // Run systems once — should handle the add/remove/re-add
     runSystems(group)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsRenderable)).toBe(true)
     expect(has(group, sprite, IsBatched)).toBe(true)
 
@@ -547,8 +549,8 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     // The removed generation is retired on the next deferred-destroy pass;
     // the replacement packed handle remains live.
     runSystems(group)
-    expect(group.world.isAlive(removedEntity)).toBe(false)
-    expect(group.world.isAlive(replacementEntity)).toBe(true)
+    expect(worldFor(group).isAlive(removedEntity)).toBe(false)
+    expect(worldFor(group).isAlive(replacementEntity)).toBe(true)
   })
 
   it('add, run, remove, re-add, run: sprite should be batched', () => {
@@ -567,7 +569,7 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     // Run systems — late assignment pass should catch the new entity
     runSystems(group)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsRenderable)).toBe(true)
     expect(has(group, sprite, IsBatched)).toBe(true)
 
@@ -589,7 +591,7 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     // Verify the entity has the updated alpha
-    const color = readRequired(group.world, requiredEntity(sprite), SpriteColor)
+    const color = readRequired(worldFor(group), requiredEntity(sprite), SpriteColor)
     expect(color.a).toBeCloseTo(0.75)
   })
 })
@@ -624,7 +626,7 @@ describe('Entity Lifecycle: Remove/Re-Add Single Frame', () => {
 
     runSystems(group)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsBatched)).toBe(true)
   })
 
@@ -646,7 +648,7 @@ describe('Entity Lifecycle: Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     // New entity should have the serialized values
-    const color = readRequired(group.world, requiredEntity(sprite), SpriteColor)
+    const color = readRequired(worldFor(group), requiredEntity(sprite), SpriteColor)
     expect(color.a).toBeCloseTo(0.3)
   })
 })
@@ -682,7 +684,7 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
 
     runSystems(group)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(1)
   })
@@ -698,13 +700,13 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
     // Frame 2: remove
     group.remove(sprite)
     runSystems(group)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(group.spriteCount).toBe(0)
 
     // Frame 3: re-add
     group.add(sprite)
     runSystems(group)
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(1)
   })
@@ -724,7 +726,7 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
     group.remove(spriteA)
     runSystems(group)
 
-    expect(spriteA.entity).toBeNull()
+    expect(entityFor(spriteA)).toBeNull()
     expect(has(group, spriteB, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(1)
 
@@ -774,7 +776,7 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     runSystems(group)
 
     // Effect should be in ECS trait
-    const traitData = group.world.read(requiredEntity(sprite), DissolveLifecycle._trait) as Record<string, number>
+    const traitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.7)
 
     // Remove sprite — effect values serialized to defaults
@@ -785,7 +787,7 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     group.add(sprite)
     runSystems(group)
 
-    const newTraitData = group.world.read(requiredEntity(sprite), DissolveLifecycle._trait) as Record<string, number>
+    const newTraitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<string, number>
     expect(newTraitData['progress']).toBeCloseTo(0.7)
   })
 
@@ -808,7 +810,7 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     runSystems(group)
 
     // New entity should have the updated value
-    const traitData = group.world.read(requiredEntity(sprite), DissolveLifecycle._trait) as Record<string, number>
+    const traitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.9)
   })
 
@@ -820,19 +822,19 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     group.add(sprite)
     runSystems(group)
 
-    const firstEntity = sprite.entity
-    expect(dissolve._entity).toBe(firstEntity)
+    const firstEntity = entityFor(sprite)
+    expect(entityFor(dissolve)).toBe(firstEntity)
 
     group.remove(sprite)
-    expect(dissolve._entity).toBeNull()
+    expect(entityFor(dissolve)).toBeNull()
 
     group.add(sprite)
     runSystems(group)
 
-    const secondEntity = sprite.entity
+    const secondEntity = entityFor(sprite)
     expect(secondEntity).not.toBeNull()
     expect(secondEntity).not.toBe(firstEntity) // New entity
-    expect(dissolve._entity).toBe(secondEntity)
+    expect(entityFor(dissolve)).toBe(secondEntity)
   })
 })
 
@@ -905,9 +907,9 @@ describe('Entity Lifecycle: Batch Slot Reuse', () => {
     expect(registry.batchPool).toEqual([])
     expect(registry.activeBatches).toEqual([pooledEntity])
     expect(registry.runs.size).toBe(1)
-    const publishedMesh = readRequired(group.world, pooledEntity, BatchMesh).mesh!
+    const publishedMesh = readRequired(worldFor(group), pooledEntity, BatchMesh).mesh!
     expect(publishedMesh).not.toBe(pooledMesh)
-    expect(group.world.isAlive(pooledEntity)).toBe(true)
+    expect(worldFor(group).isAlive(pooledEntity)).toBe(true)
 
     pooledMesh.geometry.removeEventListener('dispose', disposeListener)
     runSystems(group)
@@ -947,7 +949,7 @@ describe('Entity Lifecycle: Batch Slot Reuse', () => {
     expect(registry.activeBatches).toEqual([])
     expect(registry.runs.size).toBe(0)
     expect(registry.batchSlots.every((entry) => entry === null)).toBe(true)
-    expect(replacement.entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
   })
 
   it('freed slot reused by new sprite in same batch', () => {
@@ -1027,7 +1029,7 @@ describe('Entity Lifecycle: Material Tier Change', () => {
     // Run systems — should detect version change and rebuild batches
     runSystems(group)
 
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(has(group, sprite, IsBatched)).toBe(true)
 
     // Should still have a batch (rebuilt with correct tier)
@@ -1059,7 +1061,7 @@ describe('Entity Lifecycle: Material Tier Change', () => {
     runSystems(group)
 
     // Alpha should be preserved through the rebuild
-    const color = readRequired(group.world, requiredEntity(sprite), SpriteColor)
+    const color = readRequired(worldFor(group), requiredEntity(sprite), SpriteColor)
     expect(color.a).toBeCloseTo(0.5)
   })
 })

@@ -1,3 +1,4 @@
+import { worldFor } from './ecs/testUtils.type-test'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { RenderTarget, Vector2, type Color } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
@@ -25,14 +26,14 @@ const LitWithShadows = createLightEffect({
 
 /** Helper — read the singleton ShadowPipeline trait from a Flatland's world. */
 function getPipeline(flatland: Flatland) {
-  const entity = flatland.world.view(select(ShadowPipeline))[0]
-  return entity === undefined ? null : readRequired(flatland.world, entity, ShadowPipeline)
+  const entity = worldFor(flatland).view(select(ShadowPipeline))[0]
+  return entity === undefined ? null : readRequired(worldFor(flatland), entity, ShadowPipeline)
 }
 
 function getSingleton<TValue>(flatland: Flatland, trait: Trait<TValue>): TValue {
-  const entity = flatland.world.view(select(trait))[0]
+  const entity = worldFor(flatland).view(select(trait))[0]
   if (entity === undefined) throw new Error(`Expected singleton trait ${trait.id}`)
-  return readRequired(flatland.world, entity, trait)
+  return readRequired(worldFor(flatland), entity, trait)
 }
 
 /** Creates the minimal renderer surface needed to advance shadow systems. */
@@ -103,7 +104,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     lctx.surfaceSize.set(1920, 1080)
     lctx.camera = flatland.camera
     lctx.scene = null
-    shadowPipelineSystem(flatland.world)
+    shadowPipelineSystem(worldFor(flatland))
     expect(pipeline!.sdfGenerator).toBe(sdfBefore)
   })
 
@@ -152,12 +153,12 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     lctx.surfaceSize.set(256, 256)
     lctx.camera = flatland.camera
     lctx.scene = null
-    shadowPipelineSystem(flatland.world)
+    shadowPipelineSystem(worldFor(flatland))
     expect(getPipeline(flatland)!.sdfGenerator).not.toBeNull()
 
     // Swap to a non-shadow effect — teardown happens when the system runs.
     flatland.setLighting(new LitNoShadows())
-    shadowPipelineSystem(flatland.world)
+    shadowPipelineSystem(worldFor(flatland))
 
     const pipeline = getPipeline(flatland)
     expect(pipeline?.sdfGenerator ?? null).toBeNull()
@@ -187,7 +188,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     lctx.camera = flatland.camera
     lctx.scene = null
 
-    shadowPipelineSystem(flatland.world)
+    shadowPipelineSystem(worldFor(flatland))
     const pipeline = getPipeline(flatland)!
     expect(pipeline.sdfGenerator).not.toBeNull()
 
@@ -196,7 +197,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
 
     // Smoke: lightEffectSystem can still run without it (no throw) — the
     // runtime context it builds internally pulls from ShadowPipeline.
-    expect(() => lightEffectSystem(flatland.world)).not.toThrow()
+    expect(() => lightEffectSystem(worldFor(flatland))).not.toThrow()
   })
 
   it('Flatland.dispose() releases trait-owned GPU resources', () => {
@@ -214,7 +215,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     lctx.surfaceSize.set(256, 256)
     lctx.camera = flatland.camera
     lctx.scene = null
-    shadowPipelineSystem(flatland.world)
+    shadowPipelineSystem(worldFor(flatland))
     const sdf = getPipeline(flatland)!.sdfGenerator!
     const disposeSpy = vi.spyOn(sdf, 'dispose')
 

@@ -1,7 +1,11 @@
+import { entityFor, traitFor } from '../ecs/testUtils.type-test'
+import { createWorld } from '../ecs/runtime'
+import { registerSpriteGroupRuntime } from '../internal/sprite-group-runtime'
 import { describe, it, expect, vi } from 'vitest'
 import { LightEffect, createLightEffect } from './LightEffect'
 import type { LightEffectBuildContext } from './LightEffect'
 import type { ColorTransformFn } from '../materials/Sprite2DMaterial'
+import type { SpriteGroup } from '../pipeline/SpriteGroup'
 import type Node from 'three/src/nodes/core/Node.js'
 
 // Stub ColorTransformFn for tests
@@ -110,7 +114,7 @@ describe('createLightEffect', () => {
     })
 
     Simple._initialize()
-    expect(typeof Simple._trait).toBe('function')
+    expect(typeof traitFor(Simple)).toBe('function')
   })
 
   it('should compute field metadata from schema', () => {
@@ -220,7 +224,7 @@ describe('class-based LightEffect', () => {
     expect(ParentEffect._fields.map(({ name }) => name)).toEqual(['parentValue'])
     expect(ChildEffect._fields.map(({ name }) => name)).toEqual(['childValue'])
     expect(Object.hasOwn(ChildEffect, '_initialized')).toBe(true)
-    expect(ChildEffect._trait).not.toBe(ParentEffect._trait)
+    expect(traitFor(ChildEffect)).not.toBe(traitFor(ParentEffect))
   })
 
   it('should support needsShadows override', () => {
@@ -414,10 +418,14 @@ describe('LightEffect attach/detach', () => {
     })
 
     const instance = new Effect()
-    const mockFlatland = { _markLightingDirty: () => {} }
+    const world = createWorld()
+    const spriteGroup = {} as SpriteGroup
+    registerSpriteGroupRuntime(spriteGroup, () => world)
+    const mockFlatland = { spriteGroup, _markLightingDirty: () => {} }
 
     instance._attach(mockFlatland)
     expect(instance._flatland).toBe(mockFlatland)
+    world.dispose()
   })
 
   it('should detach and clear references', () => {
@@ -428,14 +436,18 @@ describe('LightEffect attach/detach', () => {
     })
 
     const instance = new Effect()
-    const mockFlatland = { _markLightingDirty: () => {} }
+    const world = createWorld()
+    const spriteGroup = {} as SpriteGroup
+    registerSpriteGroupRuntime(spriteGroup, () => world)
+    const mockFlatland = { spriteGroup, _markLightingDirty: () => {} }
 
     instance._attach(mockFlatland)
     instance._detach()
 
     expect(instance._flatland).toBeNull()
-    expect(instance._entity).toBeNull()
+    expect(entityFor(instance)).toBeNull()
     expect(instance._lightFn).toBeNull()
+    world.dispose()
   })
 
   it('should call _markLightingDirty when enabled changes', () => {
@@ -447,7 +459,11 @@ describe('LightEffect attach/detach', () => {
 
     const instance = new Effect()
     let dirtyCalled = false
+    const world = createWorld()
+    const spriteGroup = {} as SpriteGroup
+    registerSpriteGroupRuntime(spriteGroup, () => world)
     const mockFlatland = {
+      spriteGroup,
       _markLightingDirty: () => {
         dirtyCalled = true
       },
@@ -456,5 +472,6 @@ describe('LightEffect attach/detach', () => {
     instance._attach(mockFlatland)
     instance.enabled = false
     expect(dirtyCalled).toBe(true)
+    world.dispose()
   })
 })

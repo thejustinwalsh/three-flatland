@@ -1,3 +1,4 @@
+import { stagedWorldFor } from './testUtils.type-test'
 import { describe, it, expect, afterEach } from 'vitest'
 import { createWorld, type World } from './runtime'
 import { getGlobalWorld, resetGlobalWorld, assignWorld } from './world'
@@ -36,7 +37,7 @@ describe('world management', () => {
       const world = createWorld()
       const obj: { _flatlandWorld?: World | null } = {}
       assignWorld(obj, world)
-      expect(obj._flatlandWorld).toBe(world)
+      expect(stagedWorldFor(obj as never)).toBe(world)
       world.dispose()
     })
 
@@ -45,7 +46,7 @@ describe('world management', () => {
       const obj: { _flatlandWorld?: World | null } = {}
       assignWorld(obj, world)
       assignWorld(obj, world) // Should not throw
-      expect(obj._flatlandWorld).toBe(world)
+      expect(stagedWorldFor(obj as never)).toBe(world)
       world.dispose()
     })
 
@@ -63,7 +64,7 @@ describe('world management', () => {
       const world = createWorld()
       const obj: { _flatlandWorld?: World | null } = { _flatlandWorld: null }
       assignWorld(obj, world)
-      expect(obj._flatlandWorld).toBe(world)
+      expect(stagedWorldFor(obj as never)).toBe(world)
       world.dispose()
     })
   })

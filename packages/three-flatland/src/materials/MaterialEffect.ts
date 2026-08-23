@@ -1,12 +1,9 @@
 import {
   trait,
-  type Entity,
   type NumericSchema,
   type NumericStore,
-  type NumericTrait,
   type World,
 } from '../ecs/runtime'
-import type { EntityHandle, TraitHandle, WorldHandle } from '../internal/ecs-handles'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
@@ -15,6 +12,8 @@ import type { ChannelName, ChannelNodeMap } from './channels'
 import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
 import { syncTileMapEffectProjection } from '../internal/tile-map-effect-projection'
+import { getEffectEntity, getEffectTrait, setEffectEntity, setEffectTrait } from '../internal/effect-runtime'
+import { spriteEntity, spriteWorld } from '../internal/sprite-runtime'
 
 // ============================================
 // Schema Types
@@ -192,8 +191,6 @@ export abstract class MaterialEffect {
   /** Channel node builder — produces TSL nodes for declared channels. */
   static channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null = null
 
-  /** @internal Auto-generated numeric trait from the effect schema. */
-  static _trait: TraitHandle
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
   /** @internal Precomputed flattened SoA keys for each field. */
@@ -276,7 +273,7 @@ export abstract class MaterialEffect {
       }
     }
 
-    this._trait = trait(traitSchema)
+    setEffectTrait(this, trait(traitSchema))
 
     // Use buildNode as the node function
     this._node = this.buildNode.bind(this) as (context: EffectNodeContext) => Node<'vec4'>
@@ -301,9 +298,6 @@ export abstract class MaterialEffect {
 
   /** @internal The tilemap this effect configures when used as a layer provider. */
   _tileMap: TileMap2D | null = null
-
-  /** @internal The ECS entity for the parent sprite. */
-  _entity: EntityHandle | null = null
 
   /** Cached numeric SoA for allocation-free enrolled property access. */
   private _numericStore: NumericStore<NumericSchema> | null = null
@@ -386,8 +380,8 @@ export abstract class MaterialEffect {
    */
   _attach(sprite: Sprite2D): void {
     this._sprite = sprite
-    this._entity = sprite._entity
-    const world = sprite._flatlandWorld as World | null
+    setEffectEntity(this, spriteEntity(sprite))
+    const world = spriteWorld(sprite)
     if (world) this._cacheStore(world)
   }
 
@@ -402,7 +396,7 @@ export abstract class MaterialEffect {
    */
   _detach(): void {
     this._sprite = null
-    this._entity = null
+    setEffectEntity(this, null)
     this._numericStore = null
     this._storeWorld = null
   }
@@ -413,14 +407,15 @@ export abstract class MaterialEffect {
   }
 
   /** @internal Bind the stable SoA arrays after a pre-attached effect is enrolled. */
-  _bindStore(world: WorldHandle): void {
-    this._cacheStore(world as World)
+  _bindStore(): void {
+    const world = spriteWorld(this._sprite!)
+    if (world) this._cacheStore(world)
   }
 
   private _cacheStore(world: World): NumericStore<NumericSchema> {
     if (this._storeWorld !== world || !this._numericStore) {
       const ctor = materialEffectClassOf(this)
-      this._numericStore = world.store(ctor._trait as NumericTrait<NumericSchema>)
+      this._numericStore = world.store(getEffectTrait(ctor))
       this._storeWorld = world
     }
     return this._numericStore
@@ -434,9 +429,9 @@ export abstract class MaterialEffect {
    */
   _getField(name: string): number | number[] {
     const ctor = materialEffectClassOf(this)
-    const world = this._sprite?._flatlandWorld as World | null | undefined
-    const entity = this._entity as Entity | null
-    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
     if (entity && world?.has(entity, runtimeTrait)) {
       const field = ctor._fieldMap.get(name)!
       const keys = ctor._fieldKeys[name]!
@@ -537,9 +532,9 @@ export abstract class MaterialEffect {
       }
     }
 
-    const world = this._sprite?._flatlandWorld as World | null | undefined
-    const entity = this._entity as Entity | null
-    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    const world = this._sprite ? spriteWorld(this._sprite) : null
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
     if (entity && world?.has(entity, runtimeTrait)) {
       const keys = ctor._fieldKeys[name]!
       const store = this._cacheStore(world)
@@ -586,7 +581,7 @@ export abstract class MaterialEffect {
     }
 
     // Standalone only: immediate own-buffer write
-    if (this._sprite && !this._sprite._entity) {
+    if (this._sprite && !spriteEntity(this._sprite)) {
       this._sprite._writeEffectDataOwn()
     }
   }
@@ -638,7 +633,6 @@ export type MaterialEffectClass<S extends EffectSchema> = {
   readonly effectSchema: S
   readonly provides: readonly ChannelName[]
   readonly channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null
-  readonly _trait: TraitHandle
   readonly _fields: EffectField[]
   readonly _fieldKeys: Readonly<Record<string, readonly string[]>>
   readonly _fieldMap: ReadonlyMap<string, EffectField>

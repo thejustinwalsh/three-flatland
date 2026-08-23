@@ -1,3 +1,4 @@
+import { worldFor, entityFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Group, Scene, Texture, CustomBlending, OneFactor } from 'three'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
@@ -8,7 +9,7 @@ import type { RegistryData } from '../batchUtils'
 import { registryFor } from '../testUtils.type-test'
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  return registryFor(group.world)
+  return registryFor(worldFor(group))
 }
 
 function makeTexture(): Texture {
@@ -102,8 +103,8 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     expect(a.material).not.toBe(disposedMaterial)
     expect(a.material).toBe(b.material)
     expect(a._materialWasRegistryDefault).toBe(true)
-    expect(a.entity).not.toBeNull()
-    expect(b.entity).not.toBeNull()
+    expect(entityFor(a)).not.toBeNull()
+    expect(entityFor(b)).not.toBeNull()
 
     // Next system pass re-batches with the fresh material
     group.update()
@@ -130,7 +131,7 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     expect(sprite.visible).toBe(true)
     expect(sprite.isMesh).toBe(true)
-    expect(sprite.entity).toBeNull() // unenrolled — three's standard semantics apply
+    expect(entityFor(sprite)).toBeNull() // unenrolled — three's standard semantics apply
     expect(sprite.material).toBe(custom) // we never swap user materials
     expect(group.spriteCount).toBe(0)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
@@ -162,7 +163,7 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     expect(thrown).toBe(0)
     expect(sprite.material).toBe(custom)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite._batchMesh).toBeNull()
     expect(sprite.isMesh).toBe(true)
     expect(group.spriteCount).toBe(0)
@@ -187,8 +188,8 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     shared.dispose()
 
-    expect(spriteA.entity).toBeNull()
-    expect(spriteB.entity).toBeNull()
+    expect(entityFor(spriteA)).toBeNull()
+    expect(entityFor(spriteB)).toBeNull()
     expect(spriteA._batchMesh).toBeNull()
     expect(spriteB._batchMesh).toBeNull()
     expect(groupA.spriteCount).toBe(0)
@@ -209,11 +210,11 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     group.add(host)
     scene.add(group)
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
 
     custom.dispose()
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite.material).toBe(custom)
     expect(sprite.visible).toBe(true)
     expect(sprite.isMesh).toBe(true)
@@ -221,7 +222,7 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     sprite.material = new Sprite2DMaterial({ map: texture })
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(sprite._hierarchyOwner).toBe(group)
     expect(sprite.isMesh).toBe(false)
     expect(group.spriteCount).toBe(1)
@@ -429,7 +430,7 @@ describe('registry-scoped effect-variant materials + dispose resurrection', () =
     expect(spriteA.material).not.toBe(variantA)
     expect(spriteA._materialWasRegistryVariant).toBe(true)
     expect(spriteA.material.hasEffect(VariantMarker)).toBe(true)
-    expect(spriteA.entity).not.toBeNull()
+    expect(entityFor(spriteA)).not.toBeNull()
 
     expect(spriteB.material).toBe(variantB)
     expect(variantB.hasEffect(VariantMarker)).toBe(true)

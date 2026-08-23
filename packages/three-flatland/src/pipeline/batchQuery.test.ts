@@ -1,3 +1,4 @@
+import { worldFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
@@ -69,7 +70,7 @@ describe('batch classification traits + query facade', () => {
   it('reuses one persistent selector for repeated classification reads', () => {
     group.add(new Sprite2D({ texture }))
     group.update()
-    const world = group.world as World
+    const world = worldFor(group) as World
     const view = vi.spyOn(world, 'view')
 
     for (let index = 0; index < 100; index++) group.batches.where(IsUnlitBatch)
@@ -87,7 +88,7 @@ describe('batch classification traits + query facade', () => {
 
     const data = (group as unknown as { _getRegistry(): RegistryData | null })._getRegistry()!
     for (const batchEntity of data.activeBatches) {
-      expect(readRequired(group.world, batchEntity, BatchGeometryStrategy).kind).toBe('synth-quad')
+      expect(readRequired(worldFor(group), batchEntity, BatchGeometryStrategy).kind).toBe('synth-quad')
     }
     expect(data.activeBatches.length).toBeGreaterThan(0)
   })

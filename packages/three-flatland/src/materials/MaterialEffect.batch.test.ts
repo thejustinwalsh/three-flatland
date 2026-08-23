@@ -1,3 +1,4 @@
+import { worldFor, entityFor, traitFor } from '../ecs/testUtils.type-test'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Texture } from 'three'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
@@ -83,10 +84,12 @@ function expectSentinelRow(sprite: Sprite2D): void {
 
 describe('MaterialEffect batched field writes', () => {
   let group: SpriteGroup | null = null
+  const extraGroups: SpriteGroup[] = []
 
   afterEach(() => {
     group?.dispose()
     group = null
+    for (const extraGroup of extraGroups.splice(0)) extraGroup.dispose()
   })
 
   it('bounds standalone effect projection by declared tuple size', () => {
@@ -143,8 +146,8 @@ describe('MaterialEffect batched field writes', () => {
     group.update()
 
     // The initial sort moved `moving`; setters must target its new physical row.
-    const readSpy = vi.spyOn(group.world, 'read')
-    const patchSpy = vi.spyOn(group.world, 'patch')
+    const readSpy = vi.spyOn(worldFor(group), 'read')
+    const patchSpy = vi.spyOn(worldFor(group), 'patch')
     effect.scalar = 0.25
     effect.vector = [1, 2, 3, 4]
     expect(effect.scalar).toBe(0.25)
@@ -241,11 +244,43 @@ describe('MaterialEffect batched field writes', () => {
     sprite.removeEffect(effect)
     sprite.addEffect(effect)
 
-    const trait = group.world.read(sprite.entity!, PackedEffect._trait) as Record<string, number>
+    const trait = worldFor(group).read(entityFor(sprite)!, traitFor(PackedEffect)) as Record<string, number>
     expect(trait).toMatchObject({ scalar: 0.625, vector_0: 2, vector_1: 4, vector_2: 6, vector_3: 8 })
     expect(effect.scalar).toBeCloseTo(0.625)
     expect(effect.vector).toEqual([2, 4, 6, 8])
     expectPackedRow(sprite, 0.625, [2, 4, 6, 8])
+  })
+
+  it('rebinds an attached effect after moving from world A through standalone state into world B', () => {
+    const texture = makeTexture()
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(PackedEffect)
+    const groupA = new SpriteGroup()
+    const groupB = new SpriteGroup()
+    group = groupA
+    extraGroups.push(groupB)
+    const sprite = new Sprite2D({ texture, material })
+    const effect = new PackedEffect()
+    sprite.addEffect(effect)
+    groupA.add(sprite)
+
+    const worldA = worldFor(groupA)!
+    const entityA = entityFor(sprite)!
+    effect.scalar = 0.25
+    expect(worldA.read(entityA, traitFor(PackedEffect))).toMatchObject({ scalar: 0.25 })
+
+    // Leave A's deferred entity alive so an incorrect cached-store lookup can
+    // observe its old row after B assigns the same entity slot.
+    groupA.remove(sprite)
+    effect.scalar = 0.75
+    groupB.add(sprite)
+
+    const worldB = worldFor(groupB)!
+    const entityB = entityFor(sprite)!
+    expect(entityB).toBe(entityA)
+    expect(worldA.read(entityA, traitFor(PackedEffect))).toMatchObject({ scalar: 0.25 })
+    expect(worldB.read(entityB, traitFor(PackedEffect))).toMatchObject({ scalar: 0.75 })
+    expect(effect.scalar).toBeCloseTo(0.75)
   })
 
   it('immediately restores a cached constant-variant batch row on remove and re-add', () => {

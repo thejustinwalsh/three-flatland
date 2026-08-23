@@ -188,7 +188,9 @@ export function createBatchAssignSystem(ownerWorld: World): (world: World) => bo
           sprite._batchMesh = mesh
           sprite._batchSlot = slot
           sprite._batchIdx = batchIdx
-          if (sprite._autoRegistry || sprite._hierarchyManaged) sprite._setBatchSuppressed(true)
+          if ((sprite as unknown as { _autoRegistry: object | null })._autoRegistry || sprite._hierarchyManaged) {
+            sprite._setBatchSuppressed(true)
+          }
           world.add(entity, IsBatched)
           mesh.markSortDirty()
           dirtyMeshes.add(mesh)

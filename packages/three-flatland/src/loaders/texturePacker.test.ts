@@ -1,3 +1,4 @@
+import { worldFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { SpriteSheetLoader } from './SpriteSheetLoader'
@@ -113,8 +114,8 @@ describe('TexturePacker compatibility (#95)', () => {
     group.add(sprite)
     group.update() // assigns the batch slot (sprite._batchMesh / _batchSlot)
 
-    const bs = readRequired(group.world, requiredEntity(sprite), BatchSlot)
-    const batch = batchFor(group.world, sprite)
+    const bs = readRequired(worldFor(group), requiredEntity(sprite), BatchSlot)
+    const batch = batchFor(worldFor(group), sprite)
     const sysArr = batch.getSystemAttribute().array as Float32Array
     const flagsOffset = bs.slot * 16 + 8 + 2 // instanceSystem.z — see effectFlagBits.ts
 

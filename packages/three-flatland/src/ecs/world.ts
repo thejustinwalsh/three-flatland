@@ -1,5 +1,7 @@
 import { createWorld } from './runtime'
-import type { WorldHandle } from '../internal/ecs-handles'
+import type { World } from './runtime'
+import type { Sprite2D } from '../sprites/Sprite2D'
+import { stageSpriteWorld } from '../internal/sprite-runtime'
 
 type RuntimeWorld = ReturnType<typeof createWorld>
 
@@ -11,7 +13,7 @@ let _globalWorld: RuntimeWorld | null = null
  * Created lazily on first access. Used by sprites that aren't
  * inside a SpriteGroup or Flatland context.
  */
-export function getGlobalWorld(): WorldHandle {
+export function getGlobalWorld(): World {
   if (!_globalWorld) _globalWorld = createWorld()
   return _globalWorld
 }
@@ -28,14 +30,6 @@ export function resetGlobalWorld(): void {
 }
 
 /**
- * Interface for Three.js objects that provide ECS world context to children.
- * Implemented by SpriteGroup and Flatland.
- */
-export interface WorldProvider {
-  readonly world: WorldHandle
-}
-
-/**
  * Assign an ECS world to a child object.
  * Propagates world context down the Three.js scene graph.
  *
@@ -46,9 +40,6 @@ export interface WorldProvider {
  * @param child - Three.js object to assign world to
  * @param world - ECS world to assign
  */
-export function assignWorld(child: { _flatlandWorld?: WorldHandle | null }, world: WorldHandle): void {
-  if (child._flatlandWorld && child._flatlandWorld !== world) {
-    throw new Error('three-flatland: Cannot switch worlds after creation. Destroy and recreate the object.')
-  }
-  child._flatlandWorld = world
+export function assignWorld(child: Sprite2D, world: World): void {
+  stageSpriteWorld(child, world)
 }

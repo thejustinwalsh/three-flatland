@@ -1,3 +1,4 @@
+import { worldFor, entityFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture, type Group, type Object3D } from 'three'
 import { SpriteGroup } from './SpriteGroup'
@@ -77,7 +78,7 @@ describe('SpriteGroup', () => {
 
   it('reserves enrollment storage without capping growth and preserves it across clear', () => {
     renderer = new SpriteGroup({ expectedSprites: 4, maxBatchSize: 4 })
-    const world = renderer.world as World
+    const world = worldFor(renderer) as World
     const registry = registryFor(world)
     const hintedCapacity = world.capacity
 
@@ -119,7 +120,7 @@ describe('SpriteGroup', () => {
 
   it.each(INVALID_BATCH_SIZES)('atomically rejects React-style maxBatchSize property assignment %s', (maxBatchSize) => {
     renderer = new SpriteGroup()
-    const registry = registryFor(renderer.world as World)
+    const registry = registryFor(worldFor(renderer) as World)
     const previousMaxBatchSize = renderer.maxBatchSize
     const previousRegistryMaxBatchSize = registry.maxBatchSize
     const previousTierLadder = registry.tierLadder
@@ -182,13 +183,13 @@ describe('SpriteGroup', () => {
 
     sprite.dispose()
 
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite.isMesh).toBe(false)
     expect(renderer.spriteCount).toBe(0)
 
     renderer.add(sprite)
     renderer.update()
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(renderer.spriteCount).toBe(0)
   })
 
@@ -254,14 +255,14 @@ describe('SpriteGroup', () => {
 
     renderer.add(sprite)
     renderer.update()
-    const world = renderer.world as World
+    const world = worldFor(renderer) as World
     const batchEntity = registryFor(world).activeBatches[0]!
     renderer.clear()
 
     expect(renderer.isEmpty).toBe(true)
     expect(renderer.batchCount).toBe(0)
     expect(renderer.children.length).toBe(0)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite._batchMesh).toBeNull()
     expect(sprite.isMesh).toBe(true)
     expect(world.isAlive(batchEntity)).toBe(false)
@@ -279,7 +280,7 @@ describe('SpriteGroup', () => {
     renderer = new SpriteGroup()
     renderer.add(new Sprite2D({ texture, material }))
     renderer.update()
-    const world = renderer.world as World
+    const world = worldFor(renderer) as World
     const batchEntity = registryFor(world).activeBatches[0]!
     const mesh = world.read(batchEntity, BatchMesh)!.mesh!
     mesh.geometry.addEventListener('dispose', () => {
@@ -305,7 +306,7 @@ describe('SpriteGroup', () => {
     renderer.addSprites(activeSprite, pooledSprite)
     renderer.update()
 
-    const world = renderer.world as World
+    const world = worldFor(renderer) as World
     const registry = registryFor(world)
     renderer.remove(pooledSprite)
     renderer.update()
@@ -357,7 +358,7 @@ describe('SpriteGroup', () => {
     renderer = new SpriteGroup()
     renderer.add(new Sprite2D({ material }))
     renderer.update()
-    const world = renderer.world as World
+    const world = worldFor(renderer) as World
     expect(registryFor(world).renderOrderDirty).toBe(false)
 
     const readTraits: unknown[] = []
@@ -428,16 +429,16 @@ describe('SpriteGroup', () => {
     renderer.updateMatrixWorld()
 
     const entity = requiredEntity(sprite)
-    const batchEntity = batchEntityFor(renderer.world, sprite)
+    const batchEntity = batchEntityFor(worldFor(renderer), sprite)
     expect(batchEntity).toBeGreaterThan(0)
-    const mesh = batchFor(renderer.world, sprite)
-    const slot = readRequired(renderer.world, entity, BatchSlot).slot
+    const mesh = batchFor(worldFor(renderer), sprite)
+    const slot = readRequired(worldFor(renderer), entity, BatchSlot).slot
 
     // Change tint — writes to trait only (no immediate batch write)
     sprite.tint = [1, 0, 0]
 
     // Trait should have new value
-    const color = readRequired(renderer.world, entity, SpriteColor)
+    const color = readRequired(worldFor(renderer), entity, SpriteColor)
     expect(color.r).toBe(1)
     expect(color.g).toBe(0)
 
@@ -462,8 +463,8 @@ describe('SpriteGroup', () => {
     renderer.updateMatrixWorld()
 
     const entity = requiredEntity(sprite)
-    const mesh = batchFor(renderer.world, sprite)
-    const slot = readRequired(renderer.world, entity, BatchSlot).slot
+    const mesh = batchFor(worldFor(renderer), sprite)
+    const slot = readRequired(worldFor(renderer), entity, BatchSlot).slot
 
     // R3F sets nested props by mutating the returned Color in place
     // (`sprite.tint.set(...)`), NOT by reassigning `sprite.tint`. The
@@ -502,8 +503,8 @@ describe('SpriteGroup', () => {
     renderer.updateMatrixWorld()
 
     const entity = requiredEntity(sprite)
-    expect(renderer.world.has(entity, IsBatched)).toBe(true)
-    expect(batchEntityFor(renderer.world, sprite)).toBeGreaterThan(0)
+    expect(worldFor(renderer).has(entity, IsBatched)).toBe(true)
+    expect(batchEntityFor(worldFor(renderer), sprite)).toBeGreaterThan(0)
 
     // Change effect property — writes to trait only
     dissolve.progress = 0.8

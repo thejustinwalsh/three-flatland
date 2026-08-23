@@ -9,6 +9,8 @@ import { SpriteGroup } from '../../../packages/three-flatland/src/pipeline/Sprit
 import { Sprite2D } from '../../../packages/three-flatland/src/sprites/Sprite2D.ts'
 import type { Sprite2DOptions } from '../../../packages/three-flatland/src/sprites/types.ts'
 import type { World } from '../../../packages/three-flatland/src/ecs/runtime/index.ts'
+import { getSpriteGroupWorld } from '../../../packages/three-flatland/src/internal/sprite-group-runtime.ts'
+import { spriteEntity } from '../../../packages/three-flatland/src/internal/sprite-runtime.ts'
 import { timingSummary } from './benchmark-statistics.ts'
 import { gitMergeBase } from './provenance.ts'
 
@@ -100,13 +102,13 @@ function measure(expectedSprites: number | undefined): Observation {
 
   for (const sprite of sprites) group.add(sprite)
   const enrollmentEnd = performance.now()
-  const world = group.world as World
+  const world = getSpriteGroupWorld(group) as World
   const afterEnrollment = world.capacity
 
   group.update()
   const firstUpdateEnd = performance.now()
   const stats = group.stats
-  const checksum = sprites.reduce((sum, sprite) => sum + (sprite.entity ?? 0), 0)
+  const checksum = sprites.reduce((sum, sprite) => sum + (spriteEntity(sprite) ?? 0), 0)
   if (
     stats.spriteCount !== options.count ||
     stats.visibleSprites !== options.count ||
@@ -154,11 +156,11 @@ function validateLifecycle(): {
   const texture = new Texture()
   const material = new Sprite2DMaterial({ map: texture })
   const group = new SpriteGroup({ expectedSprites: options.count })
-  const initialCapacity = (group.world as World).capacity
+  const initialCapacity = (getSpriteGroupWorld(group) as World).capacity
 
   for (let index = 0; index < options.count; index++) group.add(new Sprite2D({ material }))
   group.update()
-  const world = group.world as World
+  const world = getSpriteGroupWorld(group) as World
   const capacityAtHint = world.capacity
   const stats = group.stats
 

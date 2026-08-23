@@ -1,3 +1,4 @@
+import { worldFor } from '../testUtils.type-test'
 import { OrthographicCamera, Vector2 } from 'three'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorld, type World } from '../runtime'
@@ -115,7 +116,7 @@ describe('lightEffectSystem runtime context', () => {
 
   it('releases renderer-bearing context when a SpriteGroup is disposed even if its world handle is retained', () => {
     const group = new SpriteGroup()
-    const world = group.world
+    const world = worldFor(group)
     const camera = new OrthographicCamera(-10, 10, 10, -10)
     const contexts: LightEffectRuntimeContext[] = []
     const effect = makeEffect({ update: (context) => contexts.push(context) })

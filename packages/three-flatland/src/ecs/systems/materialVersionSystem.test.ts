@@ -1,3 +1,4 @@
+import { worldFor } from '../testUtils.type-test'
 import { describe, it, expect, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2D } from '../../sprites/Sprite2D'
@@ -38,8 +39,8 @@ describe('materialVersionSystem', () => {
 
     const entityA = requiredEntity(a)
     const entityB = requiredEntity(b)
-    const slotABefore = readRequired(group.world, entityA, BatchSlot).slot
-    const slotBBefore = readRequired(group.world, entityB, BatchSlot).slot
+    const slotABefore = readRequired(worldFor(group), entityA, BatchSlot).slot
+    const slotBBefore = readRequired(worldFor(group), entityB, BatchSlot).slot
     expect(slotBBefore).toBeLessThan(slotABefore)
 
     // Flip zIndex so a sorts before b — batchSortSystem swaps their
@@ -47,12 +48,12 @@ describe('materialVersionSystem', () => {
     a.zIndex = 0
     group.update()
 
-    const slotAAfter = readRequired(group.world, entityA, BatchSlot).slot
-    const slotBAfter = readRequired(group.world, entityB, BatchSlot).slot
+    const slotAAfter = readRequired(worldFor(group), entityA, BatchSlot).slot
+    const slotBAfter = readRequired(worldFor(group), entityB, BatchSlot).slot
     expect(slotAAfter).toBe(slotBBefore) // proves the physical swap happened
     expect(slotBAfter).toBe(slotABefore)
 
-    const mesh = batchFor(group.world, a)
+    const mesh = batchFor(worldFor(group), a)
     const releaseSlotSpy = vi.spyOn(getSpriteBatchOwnership(mesh), 'releaseSlot')
 
     // Bump the material's effect schema version so materialVersionSystem
@@ -64,7 +65,7 @@ describe('materialVersionSystem', () => {
     })
     material.registerEffect(Glow)
 
-    materialVersionSystem(group.world)
+    materialVersionSystem(worldFor(group))
 
     // The CURRENT (post-swap) slots were freed...
     expect(releaseSlotSpy).toHaveBeenCalledWith(slotAAfter, entityA)
@@ -81,10 +82,10 @@ describe('materialVersionSystem', () => {
     // Removed event must not retire those live survivors on the next frame.
     group.update()
     group.update()
-    expect(group.world.isAlive(entityA)).toBe(true)
-    expect(group.world.isAlive(entityB)).toBe(true)
-    expect(group.world.has(entityA, IsBatched)).toBe(true)
-    expect(group.world.has(entityB, IsBatched)).toBe(true)
+    expect(worldFor(group).isAlive(entityA)).toBe(true)
+    expect(worldFor(group).isAlive(entityB)).toBe(true)
+    expect(worldFor(group).has(entityA, IsBatched)).toBe(true)
+    expect(worldFor(group).has(entityB, IsBatched)).toBe(true)
 
     releaseSlotSpy.mockRestore()
     group.dispose()

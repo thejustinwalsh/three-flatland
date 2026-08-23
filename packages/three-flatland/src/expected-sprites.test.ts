@@ -1,3 +1,4 @@
+import { worldFor } from './ecs/testUtils.type-test'
 import { describe, expect, it } from 'vitest'
 import { Flatland } from './Flatland'
 import { select, type World } from './ecs/runtime'
@@ -15,7 +16,7 @@ describe('Flatland expectedSprites', () => {
 
   it('forwards the constructor hint into its SpriteGroup and private world', () => {
     const flatland = new Flatland({ expectedSprites: 32 })
-    const world = flatland.world as World
+    const world = worldFor(flatland) as World
     const registryEntity = world.view(BatchRegistries)[0]!
     const registry = world.read(registryEntity, BatchRegistry)!
 

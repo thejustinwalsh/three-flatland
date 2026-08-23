@@ -1,3 +1,4 @@
+import { entityFor, traitFor, worldFor } from './ecs/testUtils.type-test'
 import { describe, expect, it, vi } from 'vitest'
 import { vec4 } from 'three/tsl'
 import { Flatland } from './Flatland'
@@ -116,11 +117,11 @@ const ThrowingLight = createLightEffect({
 })
 
 function runtimeWorld(flatland: Flatland): World {
-  return flatland.world as World
+  return worldFor(flatland) as World
 }
 
 function numericTrait(instance: { constructor: unknown }): NumericTrait<NumericSchema> {
-  return (instance.constructor as { _trait: NumericTrait<NumericSchema> })._trait
+  return traitFor(instance.constructor as Function) as NumericTrait<NumericSchema>
 }
 
 describe('Flatland effect ownership boundaries', () => {
@@ -134,8 +135,8 @@ describe('Flatland effect ownership boundaries', () => {
 
     const sourceWorld = runtimeWorld(source)
     const destinationWorld = runtimeWorld(destination)
-    const sharedEntity = shared._entity!
-    const destinationEntity = destinationPass._entity!
+    const sharedEntity = entityFor(shared)!
+    const destinationEntity = entityFor(destinationPass)!
     const sourceValue = sourceWorld.read(sharedEntity, numericTrait(shared))!.amount
     const destinationValue = destinationWorld.read(destinationEntity, numericTrait(destinationPass))!.amount
     const destinationRegistry = Reflect.get(destination, '_postPassRegistryEntity')
@@ -144,7 +145,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(() => destination.addPass(shared, 11)).toThrow(/PassEffect is already attached to another Flatland/)
 
     expect(shared._flatland).toBe(source)
-    expect(shared._entity).toBe(sharedEntity)
+    expect(entityFor(shared)).toBe(sharedEntity)
     expect(shared._order).toBe(7)
     expect(shared._storeWorld).toBe(sourceWorld)
     expect(source.passes).toEqual([shared])
@@ -155,7 +156,7 @@ describe('Flatland effect ownership boundaries', () => {
 
     expect(destination.passes).toEqual([destinationPass])
     expect(destinationPass._flatland).toBe(destination)
-    expect(destinationPass._entity).toBe(destinationEntity)
+    expect(entityFor(destinationPass)).toBe(destinationEntity)
     expect(destinationPass._order).toBe(3)
     expect(destinationPass._storeWorld).toBe(destinationWorld)
     expect(destinationWorld.isAlive(destinationEntity)).toBe(true)
@@ -179,8 +180,8 @@ describe('Flatland effect ownership boundaries', () => {
 
     const sourceWorld = runtimeWorld(source)
     const destinationWorld = runtimeWorld(destination)
-    const sharedEntity = shared._entity!
-    const destinationEntity = activeDestination._entity!
+    const sharedEntity = entityFor(shared)!
+    const destinationEntity = entityFor(activeDestination)!
     const sourceValue = sourceWorld.read(sharedEntity, numericTrait(shared))!.intensity
     const destinationValue = destinationWorld.read(destinationEntity, numericTrait(activeDestination))!.ambient
     const destinationContextEntity = Reflect.get(destination, '_lightingContextEntity')
@@ -196,7 +197,7 @@ describe('Flatland effect ownership boundaries', () => {
 
     expect(source.lighting).toBe(shared)
     expect(shared._flatland).toBe(source)
-    expect(shared._entity).toBe(sharedEntity)
+    expect(entityFor(shared)).toBe(sharedEntity)
     expect(shared._storeWorld).toBe(sourceWorld)
     expect(sourceWorld.isAlive(sharedEntity)).toBe(true)
     expect(sourceWorld.has(sharedEntity, LightEffectTrait)).toBe(true)
@@ -206,7 +207,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(destination.lighting).toBe(activeDestination)
     expect(disposeDestination).not.toHaveBeenCalled()
     expect(activeDestination._flatland).toBe(destination)
-    expect(activeDestination._entity).toBe(destinationEntity)
+    expect(entityFor(activeDestination)).toBe(destinationEntity)
     expect(activeDestination._storeWorld).toBe(destinationWorld)
     expect(destinationWorld.isAlive(destinationEntity)).toBe(true)
     expect(destinationWorld.has(destinationEntity, LightEffectTrait)).toBe(true)
@@ -233,7 +234,7 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.addPass(active, 4)
 
     const world = runtimeWorld(flatland)
-    const activeEntity = active._entity!
+    const activeEntity = entityFor(active)!
     const registryEntity = Reflect.get(flatland, '_postPassRegistryEntity')
     const registry = world.read(registryEntity, PostPassRegistry)
     const nextOrder = Reflect.get(flatland, '_nextPassOrder')
@@ -242,13 +243,13 @@ describe('Flatland effect ownership boundaries', () => {
 
     expect(flatland.passes).toEqual([active])
     expect(active._flatland).toBe(flatland)
-    expect(active._entity).toBe(activeEntity)
+    expect(entityFor(active)).toBe(activeEntity)
     expect(world.isAlive(activeEntity)).toBe(true)
     expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBe(registryEntity)
     expect(world.read(registryEntity, PostPassRegistry)).toBe(registry)
     expect(Reflect.get(flatland, '_nextPassOrder')).toBe(nextOrder)
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._passFn).toBeNull()
     expect(replacement._order).toBe(0)
@@ -257,7 +258,7 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.addPass(replacement)
     expect(flatland.passes).toEqual([active, replacement])
     expect(replacement._flatland).toBe(flatland)
-    expect(replacement._entity).not.toBeNull()
+    expect(entityFor(replacement)).not.toBeNull()
 
     flatland.dispose()
   })
@@ -285,7 +286,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(Reflect.get(flatland, '_nextPassOrder')).toBe(nextOrder)
     expect([...world.view(select(PostPassTrait))]).toEqual(activeEntities)
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._passFn).toBeNull()
     expect(replacement._order).toBe(0)
@@ -294,8 +295,8 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.addPass(replacement)
     expect(flatland.passes).toEqual([active, replacement])
     expect(replacement._flatland).toBe(flatland)
-    expect(replacement._entity).not.toBeNull()
-    expect(world.isAlive(replacement._entity!)).toBe(true)
+    expect(entityFor(replacement)).not.toBeNull()
+    expect(world.isAlive(entityFor(replacement)!)).toBe(true)
 
     flatland.dispose()
   })
@@ -315,7 +316,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(source.passes).toEqual([])
     expect(Reflect.get(source, '_postPassRegistryEntity')).toBeNull()
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._passFn).toBeNull()
     expect(() => source.addPass(new OwnedPass())).toThrow(/cannot run after Flatland\.dispose/)
@@ -326,7 +327,7 @@ describe('Flatland effect ownership boundaries', () => {
     destination.addPass(replacement)
     expect(destination.passes).toEqual([replacement])
     expect(replacement._flatland).toBe(destination)
-    expect(replacement._entity).not.toBeNull()
+    expect(entityFor(replacement)).not.toBeNull()
 
     destination.dispose()
   })
@@ -346,7 +347,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect([...sourceWorld.view(select(PostPassRegistry))]).toEqual([])
     expect(Reflect.get(source, '_postPassRegistryEntity')).toBeNull()
     expect(pass._flatland).toBeNull()
-    expect(pass._entity).toBeNull()
+    expect(entityFor(pass)).toBeNull()
     expect(pass._storeWorld).toBeNull()
     expect(pass._passFn).toBeNull()
 
@@ -355,7 +356,7 @@ describe('Flatland effect ownership boundaries', () => {
     destination.addPass(pass)
     expect(destination.passes).toEqual([pass])
     expect(pass._flatland).toBe(destination)
-    expect(pass._entity).not.toBeNull()
+    expect(entityFor(pass)).not.toBeNull()
 
     source.dispose()
     destination.dispose()
@@ -382,7 +383,7 @@ describe('Flatland effect ownership boundaries', () => {
       expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBeNull()
     }
     expect(pass._flatland).toBeNull()
-    expect(pass._entity).toBeNull()
+    expect(entityFor(pass)).toBeNull()
     expect(pass._storeWorld).toBeNull()
     expect(pass._passFn).toBeNull()
 
@@ -392,9 +393,9 @@ describe('Flatland effect ownership boundaries', () => {
     const registryEntity = Reflect.get(source, '_postPassRegistryEntity')
     expect(source.passes).toEqual([pass])
     expect(pass._flatland).toBe(source)
-    expect(pass._entity).not.toBeNull()
-    expect(sourceWorld.isAlive(pass._entity!)).toBe(true)
-    expect([...sourceWorld.view(select(PostPassTrait))]).toEqual([pass._entity])
+    expect(entityFor(pass)).not.toBeNull()
+    expect(sourceWorld.isAlive(entityFor(pass)!)).toBe(true)
+    expect([...sourceWorld.view(select(PostPassTrait))]).toEqual([entityFor(pass)])
     expect([...sourceWorld.view(select(PostPassRegistry))]).toEqual([registryEntity])
     expect([...destinationWorld.view(select(PostPassRegistry))]).toEqual([])
 
@@ -410,7 +411,7 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.setLighting(active)
 
     const world = runtimeWorld(flatland)
-    const activeEntity = active._entity!
+    const activeEntity = entityFor(active)!
     const contextEntity = Reflect.get(flatland, '_lightingContextEntity')
     const context = world.read(contextEntity, LightingContext)!
     const lightStore = Reflect.get(flatland, '_lightStore')
@@ -422,7 +423,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(flatland.lighting).toBe(active)
     expect(disposeActive).not.toHaveBeenCalled()
     expect(active._flatland).toBe(flatland)
-    expect(active._entity).toBe(activeEntity)
+    expect(entityFor(active)).toBe(activeEntity)
     expect(world.isAlive(activeEntity)).toBe(true)
     expect(world.has(activeEntity, LightEffectTrait)).toBe(true)
     expect(Reflect.get(flatland, '_lightingContextEntity')).toBe(contextEntity)
@@ -431,7 +432,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(Reflect.get(flatland, '_lightStore')).toBe(lightStore)
     expect(Reflect.get(flatland, '_shadowPipelineEntity')).toBe(shadowPipelineEntity)
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._lightFn).toBeNull()
 
@@ -439,7 +440,7 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.setLighting(replacement)
     expect(flatland.lighting).toBe(replacement)
     expect(replacement._flatland).toBe(flatland)
-    expect(replacement._entity).not.toBeNull()
+    expect(entityFor(replacement)).not.toBeNull()
     expect(disposeActive).toHaveBeenCalledTimes(1)
 
     flatland.dispose()
@@ -467,7 +468,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect([...world.view(select(ShadowPipeline))]).toEqual([])
     expect([...world.view(select(LightingContext))]).toEqual([])
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._lightFn).toBeNull()
 
@@ -475,8 +476,8 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.setLighting(replacement)
     expect(flatland.lighting).toBe(replacement)
     expect(replacement._flatland).toBe(flatland)
-    expect(replacement._entity).not.toBeNull()
-    expect(world.isAlive(replacement._entity!)).toBe(true)
+    expect(entityFor(replacement)).not.toBeNull()
+    expect(world.isAlive(entityFor(replacement)!)).toBe(true)
     expect([...world.view(select(ShadowPipeline))]).toHaveLength(1)
     expect([...world.view(select(LightingContext))]).toHaveLength(1)
 
@@ -492,7 +493,7 @@ describe('Flatland effect ownership boundaries', () => {
     source.setLighting(active)
 
     const sourceWorld = runtimeWorld(source)
-    const activeEntity = active._entity!
+    const activeEntity = entityFor(active)!
     const sourceContextEntity = Reflect.get(source, '_lightingContextEntity')
     const sourceContext = sourceWorld.read(sourceContextEntity, LightingContext)!
     const sourceStore = Reflect.get(source, '_lightStore')
@@ -513,7 +514,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(thrown).toBe(0)
     expect(source.lighting).toBe(active)
     expect(active._flatland).toBe(source)
-    expect(active._entity).toBe(activeEntity)
+    expect(entityFor(active)).toBe(activeEntity)
     expect(sourceWorld.isAlive(activeEntity)).toBe(true)
     expect(Reflect.get(source, '_lightingContextEntity')).toBe(sourceContextEntity)
     expect(sourceWorld.read(sourceContextEntity, LightingContext)).toBe(sourceContext)
@@ -523,7 +524,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect([...sourceWorld.view(select(ShadowPipeline))]).toHaveLength(1)
     expect([...sourceWorld.view(select(LightingContext))]).toHaveLength(1)
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._lightFn).toBeNull()
     expect(contextualLightStores).toEqual([sourceStore])
@@ -551,7 +552,7 @@ describe('Flatland effect ownership boundaries', () => {
     source.setLighting(active)
 
     const sourceWorld = runtimeWorld(source)
-    const activeEntity = active._entity!
+    const activeEntity = entityFor(active)!
     const sourceContextEntity = Reflect.get(source, '_lightingContextEntity')
     const sourceContext = sourceWorld.read(sourceContextEntity, LightingContext)!
     builderReentryFlatland = source
@@ -561,14 +562,14 @@ describe('Flatland effect ownership boundaries', () => {
 
     expect(source.lighting).toBe(active)
     expect(active._flatland).toBe(source)
-    expect(active._entity).toBe(activeEntity)
+    expect(entityFor(active)).toBe(activeEntity)
     expect(sourceWorld.isAlive(activeEntity)).toBe(true)
     expect(sourceWorld.read(sourceContextEntity, LightingContext)).toBe(sourceContext)
     expect(sourceContext.effect).toBe(active)
     expect([...sourceWorld.view(select(LightEffectTrait))]).toEqual([activeEntity])
     for (const candidate of [outer, inner]) {
       expect(candidate._flatland).toBeNull()
-      expect(candidate._entity).toBeNull()
+      expect(entityFor(candidate)).toBeNull()
       expect(candidate._storeWorld).toBeNull()
       expect(candidate._lightFn).toBeNull()
     }
@@ -595,7 +596,7 @@ describe('Flatland effect ownership boundaries', () => {
     source.setLighting(active)
 
     const sourceWorld = runtimeWorld(source)
-    const activeEntity = active._entity!
+    const activeEntity = entityFor(active)!
     const sourceContextEntity = Reflect.get(source, '_lightingContextEntity')
     const sourceContext = sourceWorld.read(sourceContextEntity, LightingContext)!
     active.dispose = vi.fn(() => {
@@ -606,14 +607,14 @@ describe('Flatland effect ownership boundaries', () => {
 
     expect(source.lighting).toBe(active)
     expect(active._flatland).toBe(source)
-    expect(active._entity).toBe(activeEntity)
+    expect(entityFor(active)).toBe(activeEntity)
     expect(sourceWorld.isAlive(activeEntity)).toBe(true)
     expect(sourceWorld.read(sourceContextEntity, LightingContext)).toBe(sourceContext)
     expect(sourceContext.effect).toBe(active)
     expect([...sourceWorld.view(select(LightEffectTrait))]).toEqual([activeEntity])
     for (const candidate of [outer, inner]) {
       expect(candidate._flatland).toBeNull()
-      expect(candidate._entity).toBeNull()
+      expect(entityFor(candidate)).toBeNull()
       expect(candidate._storeWorld).toBeNull()
       expect(candidate._lightFn).toBeNull()
     }
@@ -637,7 +638,7 @@ describe('Flatland effect ownership boundaries', () => {
     source.setLighting(active)
 
     const sourceWorld = runtimeWorld(source)
-    const activeEntity = active._entity!
+    const activeEntity = entityFor(active)!
     const sourceContextEntity = Reflect.get(source, '_lightingContextEntity')
     builderDisposeFlatland = source
 
@@ -645,12 +646,12 @@ describe('Flatland effect ownership boundaries', () => {
 
     expect(source.lighting).toBe(active)
     expect(active._flatland).toBe(source)
-    expect(active._entity).toBe(activeEntity)
+    expect(entityFor(active)).toBe(activeEntity)
     expect(sourceWorld.isAlive(activeEntity)).toBe(true)
     expect(sourceWorld.read(sourceContextEntity, LightingContext)!.effect).toBe(active)
     expect([...sourceWorld.view(select(LightEffectTrait))]).toEqual([activeEntity])
     expect(replacement._flatland).toBeNull()
-    expect(replacement._entity).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
     expect(replacement._lightFn).toBeNull()
 
@@ -689,10 +690,10 @@ describe('Flatland effect ownership boundaries', () => {
     expect(thrown).toBe(0)
     expect(flatland.passes).toEqual([])
     expect(pass._flatland).toBeNull()
-    expect(pass._entity).toBeNull()
+    expect(entityFor(pass)).toBeNull()
     expect(flatland.lighting).toBeNull()
     expect(light._flatland).toBeNull()
-    expect(light._entity).toBeNull()
+    expect(entityFor(light)).toBeNull()
     expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBeNull()
     expect(Reflect.get(flatland, '_lightingContextEntity')).toBeNull()
     expect(Reflect.get(flatland, '_lightStore')).toBeNull()

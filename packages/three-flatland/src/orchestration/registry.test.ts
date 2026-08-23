@@ -1,3 +1,4 @@
+import { worldFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect } from 'vitest'
 import { Scene } from 'three'
 import { Registry, getOrCreateRegistry, peekRegistry } from './registry'
@@ -40,7 +41,7 @@ describe('per-(renderer, scene) registry foundation', () => {
     const b = getOrCreateRegistry(renderer, s2)
 
     expect(a).not.toBe(b)
-    expect(a.world).not.toBe(b.world)
+    expect(worldFor(a)).not.toBe(worldFor(b))
   })
 
   it('peekRegistry never creates', () => {

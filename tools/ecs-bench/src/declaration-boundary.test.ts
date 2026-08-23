@@ -70,6 +70,42 @@ describe('public declaration boundary verifier', () => {
     ).toThrow(/contains "reserveSlot"/)
   })
 
+  it.each([
+    'WorldHandle',
+    'EntityHandle',
+    'TraitHandle',
+    'RegistryHandle',
+    'createWorld',
+    'buildBatchQueryView',
+    'tileLayer',
+  ])(
+    'rejects the private API identifier %s anywhere in the reachable declaration graph',
+    (identifier) => {
+      const root = fixtureSource(`export interface PublicLeak { ${identifier}: unknown }\n`)
+      expect(() =>
+        execFileSync(process.execPath, [verifier, root, identifier], {
+          encoding: 'utf8',
+          stdio: 'pipe',
+        })
+      ).toThrow(new RegExp(`contains "${identifier}"`))
+    }
+  )
+
+  it('rejects a reachable internal registry-handle declaration', () => {
+    const root = fixtureSource("export type { RegistryHandle } from './internal/registry-handle.js'\n")
+    mkdirSync(join(root, 'dist/internal'), { recursive: true })
+    writeFileSync(
+      join(root, 'dist/internal/registry-handle.d.ts'),
+      'export interface RegistryHandle { readonly opaque: true }\n'
+    )
+    expect(() =>
+      execFileSync(process.execPath, [verifier, root, 'internal/registry-handle'], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    ).toThrow(/contains "internal\/registry-handle"/)
+  })
+
   it.each(['./runtime', './runtime/index', './runtime/index.js', '../ecs/runtime'])(
     'rejects a reachable private runtime through %s',
     (relativeRuntimeImport) => {

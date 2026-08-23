@@ -1,12 +1,11 @@
 import { Group, Matrix4, Plane, Vector3, type Object3D } from 'three'
 import { ClippingGroup } from 'three/webgpu'
 import { createWorld, select, type Entity, type World } from '../ecs/runtime'
-import type { WorldHandle } from '../internal/ecs-handles'
 import type { Registry } from '../orchestration/registry'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { ClipRect, SpriteGroupOptions, RenderStats } from './types'
 import type { SpriteBatch } from './SpriteBatch'
-import { assignWorld, type WorldProvider } from '../ecs/world'
+import { assignWorld } from '../ecs/world'
 import { BatchRegistry, BatchMesh } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import {
@@ -19,7 +18,8 @@ import {
   removeMaterialDisposeHooks,
   resetBatchSlots,
 } from '../ecs/batchUtils'
-import { buildBatchQueryView, type BatchQueryView } from './batchQuery'
+import type { BatchQueryView } from './batchQuery'
+import { buildBatchQueryView } from '../internal/batch-query-builder'
 import { _registerBatchSource, _unregisterBatchSource, type BatchSourceFn } from '../debug/debug-sink'
 import { SystemSchedule } from '../ecs/SystemSchedule'
 import { PERF_TRACK } from '../debug/perf-track'
@@ -37,6 +37,11 @@ import { releaseLightEffectRuntimeContext } from '../ecs/systems/lightEffectSyst
 import { validateMaxBatchSize } from '../internal/max-batch-size'
 import { clampEntityReservation, reserveIndexedArray, validateExpectedSprites } from '../internal/capacity'
 import { reserveWorld } from '../internal/reserved-world'
+import {
+  clearSpriteGroupWorld,
+  registerSpriteGroupRuntime,
+} from '../internal/sprite-group-runtime'
+import { spriteEntity, spriteWorld } from '../internal/sprite-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -73,7 +78,11 @@ const BatchRegistries = select(BatchRegistry)
 const _clipPoint = new Vector3()
 const _clipInverse = new Matrix4()
 
-export class SpriteGroup extends ClippingGroup implements WorldProvider {
+function isSprite2D(object: Object3D): object is Sprite2D {
+  return '_enrollInWorld' in object && '_releaseWorldOwnership' in object
+}
+
+export class SpriteGroup extends ClippingGroup {
   readonly isSpriteGroup = true
   /**
    * ECS world for this renderer.
@@ -184,7 +193,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
 
   /**
    * Per-SpriteGroup state consumed by the schedule closures (built once
-   * in `get world()`). These are the SAME references the BatchRegistry
+   * in the lazy runtime initializer. These are the SAME references the BatchRegistry
    * spawn points at, so the factory systems and the registry never
    * diverge.
    */
@@ -225,12 +234,13 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
     this._expectedBatchCapacity = expectedBatchCapacity
     this._expectedEntityCapacity = expectedEntityCapacity
+    registerSpriteGroupRuntime(this, () => this.#runtimeWorld())
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
     this.autoInvalidateTransforms = options.autoInvalidateTransforms ?? true
     this.clipRect = options.clipRect ?? null
-    if (expectedSprites > 0) void this.world
+    if (expectedSprites > 0) void this.#runtimeWorld()
   }
 
   /** Build parent-local clipping planes from the public rectangle property. */
@@ -280,11 +290,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     return _clipPoint.x >= minX && _clipPoint.x <= maxX && _clipPoint.y >= minY && _clipPoint.y <= maxY
   }
 
-  /**
-   * The ECS world managed by this renderer.
-   * Sprites added to this renderer are enrolled in this world.
-   */
-  get world(): WorldHandle {
+  #runtimeWorld(): World {
     if (!this._world) {
       this._world = createWorld()
       this._batchAssignSystem = createBatchAssignSystem(this._world)
@@ -416,12 +422,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     return this._world
   }
 
-  /** Resolve the private runtime world behind the public opaque handle. */
-  private _runtimeWorld(): World {
-    void this.world
-    return this._world!
-  }
-
   /**
    * Add a sprite to the renderer.
    */
@@ -432,30 +432,28 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     if (rest.length > 0) {
       return super.add(spriteOrObject, ...rest)
     }
-    // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
-    if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
-      if (spriteOrObject._disposed) return this
-      if (spriteOrObject._batchEnrollmentBlockedMaterial === spriteOrObject.material) return this
-      const targetWorld = this._runtimeWorld()
+    if (isSprite2D(spriteOrObject)) {
+      const sprite = spriteOrObject
+      if (sprite._disposed) return this
+      if (sprite._batchEnrollmentBlockedMaterial === sprite.material) return this
+      const targetWorld = this.#runtimeWorld()
       // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
-      if (spriteOrObject.entity && spriteOrObject._flatlandWorld === targetWorld) return this
-      const autoRegistry = spriteOrObject._autoRegistry as unknown as Registry | null
+      if (spriteEntity(sprite) && spriteWorld(sprite) === targetWorld) return this
+      const autoRegistry = (sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry
       if (autoRegistry && autoRegistry.group !== this) {
-        spriteOrObject._releaseAutoOrchestration()
+        sprite._releaseAutoOrchestration()
       }
-      if (spriteOrObject.entity) this._releasePreviousWorldEnrollment(spriteOrObject)
+      if (spriteEntity(sprite)) this._releasePreviousWorldEnrollment(sprite)
       // Assign ECS world, resolve world-scoped default material, enroll
-      assignWorld(spriteOrObject, targetWorld)
-      this._resolveDefaultMaterial(spriteOrObject)
-      spriteOrObject._enrollInWorld(targetWorld)
+      assignWorld(sprite, targetWorld)
+      this._resolveDefaultMaterial(sprite)
+      sprite._enrollInWorld()
       this._spriteCount++
-      this._trackMaterial(spriteOrObject)
+      this._trackMaterial(sprite)
     } else {
       super.add(spriteOrObject)
       spriteOrObject.traverse((object) => {
-        if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
-          this._enrollHierarchySprite(object as Sprite2D)
-        }
+        if (isSprite2D(object)) this._enrollHierarchySprite(object)
       })
     }
     return this
@@ -474,10 +472,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     if (sprite._hierarchyOwner && sprite._hierarchyOwner !== this) {
       sprite._hierarchyOwner._releaseHierarchySprite?.(sprite)
     }
-    if (sprite._autoRegistry) sprite._releaseAutoOrchestration()
+    if ((sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry) {
+      sprite._releaseAutoOrchestration()
+    }
 
-    const targetWorld = this._runtimeWorld()
-    if (sprite.entity && sprite._flatlandWorld !== targetWorld) {
+    const targetWorld = this.#runtimeWorld()
+    if (spriteEntity(sprite) && spriteWorld(sprite) !== targetWorld) {
       this._releasePreviousWorldEnrollment(sprite)
     }
 
@@ -485,7 +485,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     // API, then later be parented below an ordinary Object3D. Convert that
     // enrollment in-place so the authored ancestor chain starts contributing
     // transforms and visibility without changing the sprite count.
-    if (sprite.entity) {
+    if (spriteEntity(sprite)) {
       sprite._hierarchyManaged = true
       sprite._hierarchyOwner = this
       this._hierarchySprites.add(sprite)
@@ -499,7 +499,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     sprite._hierarchyManaged = true
     sprite._hierarchyOwner = this
     this._hierarchySprites.add(sprite)
-    sprite._enrollInWorld(targetWorld)
+    sprite._enrollInWorld()
     this._spriteCount++
     this._trackMaterial(sprite)
   }
@@ -516,7 +516,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     sprite._unenrollFromWorld()
     // Hierarchy ownership follows the authored scene graph. Once fully
     // released, the sprite may be adopted by another SpriteGroup world.
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
     this._spriteCount--
   }
 
@@ -525,16 +525,16 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     // Match Object3D.remove(): a retained descendant is not this group's
     // direct child. The hierarchy reconciler owns its enrollment lifecycle.
     if (sprite._hierarchyOwner === this) return
-    if (!sprite.entity || sprite._flatlandWorld !== this._world) return
+    if (!spriteEntity(sprite) || spriteWorld(sprite) !== this._world) return
     sprite._setBatchSuppressed(false)
     sprite._unenrollFromWorld()
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
     this._spriteCount--
   }
 
   /** Resolve and release the SpriteGroup that owns a sprite's previous ECS world. */
   private _releasePreviousWorldEnrollment(sprite: Sprite2D): void {
-    const previousWorld = sprite._flatlandWorld
+    const previousWorld = spriteWorld(sprite)
     if (!previousWorld) return
     const runtimeWorld = previousWorld as World
     const registryEntity = runtimeWorld.view(BatchRegistries)[0]
@@ -551,7 +551,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     }
     sprite._setBatchSuppressed(false)
     sprite._unenrollFromWorld()
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
   }
 
   /** True when this is the first SpriteGroup above the source sprite. */
@@ -568,15 +568,15 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   private _collectHierarchySprites(object: Object3D): void {
     if ('isSpriteGroup' in object && object.isSpriteGroup === true) return
 
-    if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
-      const sprite = object as Sprite2D
+    if (isSprite2D(object)) {
+      const sprite = object
       if (
         !sprite._disposed &&
         !sprite._renderOrderOverridden &&
         sprite._batchEnrollmentBlockedMaterial !== sprite.material
       ) {
         this._hierarchySeen.add(sprite)
-        if (sprite._hierarchyOwner !== this || !sprite.entity) this._enrollHierarchySprite(sprite)
+        if (sprite._hierarchyOwner !== this || !spriteEntity(sprite)) this._enrollHierarchySprite(sprite)
       }
     }
 
@@ -608,12 +608,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     if (sprite._materialIsBootstrapDefault) {
       const registry = this._getRegistry()
       if (!registry) return
-      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this._runtimeWorld(), registry, texture))
+      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.#runtimeWorld(), registry, texture))
     } else if (sprite._materialIsBootstrapVariant) {
       const registry = this._getRegistry()
       if (!registry) return
       sprite._resolveEffectVariantMaterial(
-        getWorldEffectVariant(this._runtimeWorld(), registry, texture, sprite._currentVariantOptions())
+        getWorldEffectVariant(this.#runtimeWorld(), registry, texture, sprite._currentVariantOptions())
       )
     }
   }
@@ -639,16 +639,17 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       return super.remove(spriteOrObject, ...rest)
     }
     // Check if it's a Sprite2D
-    if ('_unenrollFromWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
-      if (spriteOrObject._hierarchyOwner === this) {
+    if (isSprite2D(spriteOrObject)) {
+      const sprite = spriteOrObject
+      if (sprite._hierarchyOwner === this) {
         // Match Object3D.remove(): a retained descendant is not this
         // group's direct child, so removing it from here is a no-op.
-        if (spriteOrObject.parent !== this) return this
-        this._releaseHierarchySprite(spriteOrObject)
-        super.remove(spriteOrObject)
+        if (sprite.parent !== this) return this
+        this._releaseHierarchySprite(sprite)
+        super.remove(sprite)
       } else {
-        this._releaseDirectEnrollment(spriteOrObject)
-        if (spriteOrObject.parent === this) super.remove(spriteOrObject)
+        this._releaseDirectEnrollment(sprite)
+        if (sprite.parent === this) super.remove(sprite)
       }
     } else {
       spriteOrObject.traverse((object) => {
@@ -705,7 +706,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * before drawing children. This is the main integration point — no manual
    * `update()` call is needed.
    *
-   * Per-frame flow is the `SystemSchedule` built in `get world()`:
+   * Per-frame flow is the `SystemSchedule` built by the lazy runtime initializer:
    * deferredDestroy → material-version check → batchRemove →
    * batchAssign → batchReassign → conditionalTransformSync → batchSort →
    * sceneGraphSync → late-route → flushDirtyRanges, then schedule
@@ -1081,6 +1082,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       runCleanup(() => world.dispose())
     }
     this._world = null
+    clearSpriteGroupWorld(this)
     this._registryEntity = null
     this._registryData = null
     this._batchAssignSystem = null

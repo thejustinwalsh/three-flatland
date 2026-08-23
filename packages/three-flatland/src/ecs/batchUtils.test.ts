@@ -1,3 +1,4 @@
+import { worldFor } from './testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Texture } from 'three'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
@@ -12,7 +13,7 @@ import { registryFor } from './testUtils.type-test'
 // ============================================
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  return registryFor(group.world)
+  return registryFor(worldFor(group))
 }
 
 function activeMeshes(group: SpriteGroup): SpriteBatch[] {
@@ -140,10 +141,10 @@ describe('auto-batch tier defaults (batchUtils)', () => {
       for (let i = 0; i < 1_000; i++) {
         const transient = new Sprite2DMaterial()
         registry.materialRefs.set(transient.batchId, { material: transient, version: transient.version })
-        releaseMaterialIfUnused(group.world, registry, transient)
+        releaseMaterialIfUnused(worldFor(group), registry, transient)
       }
 
-      flushUnusedMaterials(group.world, registry)
+      flushUnusedMaterials(worldFor(group), registry)
 
       expect(runScans).toBe(1)
       expect(spriteScans).toBe(1)

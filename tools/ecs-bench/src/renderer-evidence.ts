@@ -19,6 +19,8 @@ import { BatchMesh, BatchRegistry, BatchSlot, IsBatched } from '../../../package
 import type { RegistryData } from '../../../packages/three-flatland/src/ecs/batchUtils.ts'
 import { entitySlot, liveStoredEntity } from '../../../packages/three-flatland/src/ecs/snapshot.ts'
 import { getSpriteBatchOwnership } from '../../../packages/three-flatland/src/internal/sprite-batch-ownership.ts'
+import { getSpriteGroupWorld } from '../../../packages/three-flatland/src/internal/sprite-group-runtime.ts'
+import { spriteEntity } from '../../../packages/three-flatland/src/internal/sprite-runtime.ts'
 import { gitMergeBase } from './provenance.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
@@ -324,7 +326,7 @@ function createGroup(
     sprites: [sprites],
     textures: [texture],
     tick: 0,
-    worlds: [group.world as World],
+    worlds: [getSpriteGroupWorld(group) as World],
   }
 }
 
@@ -537,7 +539,7 @@ function validateOwners(worlds: readonly World[]): OwnerSummary {
           throw new Error(`BatchSlot disagrees with batch ${batchEntity} slot ${slot}`)
         }
         const sprite = ownership.spriteAtSlot(slot)
-        if (!sprite || sprite.entity !== owner || sprite._batchMesh !== mesh || sprite._batchSlot !== slot) {
+        if (!sprite || spriteEntity(sprite) !== owner || sprite._batchMesh !== mesh || sprite._batchSlot !== slot) {
           throw new Error(`Sprite reference disagrees with batch ${batchEntity} slot ${slot}`)
         }
         if (registry.spriteArr[entitySlot(owner)] !== sprite) {
@@ -554,7 +556,7 @@ function validateOwners(worlds: readonly World[]): OwnerSummary {
           !sprite ||
           slot < 0 ||
           ownership.spriteAtSlot(slot) !== sprite ||
-          ownership.slotEntities[slot] !== sprite.entity
+          ownership.slotEntities[slot] !== spriteEntity(sprite)
         ) {
           throw new Error(`Batch ${batchEntity} stable member ${member} has no matching physical owner`)
         }
