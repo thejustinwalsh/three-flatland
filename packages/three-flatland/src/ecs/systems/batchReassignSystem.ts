@@ -1,5 +1,4 @@
-import { createChanged } from 'koota'
-import type { World, Entity, Trait } from 'koota'
+import { changed, select, type AnyTrait, type Entity, type World } from '../runtime'
 import {
   IsBatched,
   SpriteColor,
@@ -8,7 +7,6 @@ import {
   SortLayer,
   SpriteMaterialRef,
   CameraLayersMask,
-  InBatch,
   BatchSlot,
   BatchMesh,
   BatchMeta,
@@ -21,7 +19,9 @@ import type { RegistryData } from '../batchUtils'
 
 import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
 import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
-import { ENTITY_ID_MASK } from '../snapshot'
+import { entitySlot } from '../snapshot'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Create a batch-reassign system bound to its own scratch state.
@@ -42,45 +42,38 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * group has clean change-tracking state and the Set is cleared-and-
  * filled instead of allocated per frame.
  */
-export function createBatchReassignSystem(): (
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-) => void {
-  const Changed = createChanged()
-  const toReassign = new Set<Entity>()
+export function createBatchReassignSystem(
+  ownerWorld: World
+): (world: World, effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>) => void {
+  const ChangedAssignment = changed({
+    any: [SortLayer, SpriteMaterialRef, CameraLayersMask],
+    all: [IsBatched],
+  })
+  ownerWorld.activate(ChangedAssignment)
 
-  return function batchReassignSystem(world: World, effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>): void {
-    const layerChanged = world.query(Changed(SortLayer), IsBatched)
-    const matChanged = world.query(Changed(SpriteMaterialRef), IsBatched)
-    const maskChanged = world.query(Changed(CameraLayersMask), IsBatched)
+  return function batchReassignSystem(world: World, effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>): void {
+    const toReassign = world.drain(ChangedAssignment)
+    if (toReassign.length === 0) return
 
-    // Dedup entities that appear in multiple queries — reuse the closure
-    // Set, clear-and-fill instead of allocating a new one + array spreads.
-    toReassign.clear()
-    for (const e of layerChanged) toReassign.add(e)
-    for (const e of matChanged) toReassign.add(e)
-    for (const e of maskChanged) toReassign.add(e)
-    if (toReassign.size === 0) return
-
-    const registryEntities = world.query(BatchRegistry)
+    const registryEntities = world.view(BatchRegistries)
     if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
     if (!registry) return
 
     for (const entity of toReassign) {
-      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+      const sprite = registry.spriteArr[entitySlot(entity)]
       if (!sprite) continue
 
-      const newLayer = entity.get(SortLayer)
-      const newMatRef = entity.get(SpriteMaterialRef)
+      const newLayer = world.read(entity, SortLayer)
+      const newMatRef = world.read(entity, SpriteMaterialRef)
       if (!newLayer || !newMatRef) continue
-      const newMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
+      const newMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
 
-      // Check if the batch entity still exists
-      const oldBatchEntity = entity.targetFor(InBatch)
-      if (!oldBatchEntity) continue
+      const oldAssignment = world.read(entity, BatchSlot)
+      const oldBatchEntity = oldAssignment?.batchEntity as Entity | undefined
+      if (!oldBatchEntity || !world.isAlive(oldBatchEntity)) continue
 
-      const oldMeta = oldBatchEntity.get(BatchMeta)
+      const oldMeta = world.read(oldBatchEntity, BatchMeta)
       if (!oldMeta) continue
 
       // Compare run keys — only reassign if the run actually changed
@@ -89,33 +82,49 @@ export function createBatchReassignSystem(): (
 
       if (oldRunKey === newRunKey) continue // Same run — no batch movement needed
 
-      // --- Remove from old batch ---
-      // BatchSlot.slot is the authoritative live slot: batchSortSystem keeps it
-      // in sync on swaps, whereas InBatch.slot is never rewritten and can be a
-      // stale pre-swap index that points at another sprite's row.
-      const oldSlot = entity.get(BatchSlot)?.slot ?? -1
-      const oldBatchMesh = oldBatchEntity.get(BatchMesh)
+      const oldSlot = oldAssignment?.slot ?? -1
+      const oldBatchMesh = world.read(oldBatchEntity, BatchMesh)
+      if (oldSlot < 0 || !oldBatchMesh?.mesh) continue
+      oldBatchMesh.mesh.assertSlotOwner(oldSlot, entity)
 
-      if (oldSlot >= 0 && oldBatchMesh?.mesh) {
-        oldBatchMesh.mesh.freeSlot(oldSlot)
-        oldBatchMesh.mesh.syncCount()
+      // Reserve and seed the destination before releasing the source. A
+      // failed allocation therefore leaves the existing assignment intact.
+      const material = sprite.material
+      const { run } = getOrCreateRun(registry, newLayer.value, newMatRef.materialId, newMask, material)
+      const newBatchEntity = findOrCreateBatch(world, registry, run)
+      const newBatchMesh = world.read(newBatchEntity, BatchMesh)
+      if (!newBatchMesh?.mesh) continue
+      const newSlot = newBatchMesh.mesh.reserveSlot()
+      if (newSlot < 0) continue
+      try {
+        syncAllBuffers(world, entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
+      } catch (error) {
+        newBatchMesh.mesh.grid.remove(sprite)
+        newBatchMesh.mesh.rollbackSlot(newSlot)
+        newBatchMesh.mesh.syncCount()
+        recycleBatchIfEmpty(world, registry, newBatchEntity, run)
+        throw error
       }
+
+      const newMeta = world.read(newBatchEntity, BatchMeta)
+      const newBatchIdx = newMeta?.batchIdx ?? -1
+      world.patch(entity, BatchSlot, { batchEntity: newBatchEntity, batchIdx: newBatchIdx, slot: newSlot }, false)
+      newBatchMesh.mesh.commitSlot(newSlot, entity, sprite)
+
+      oldBatchMesh.mesh.releaseSlot(oldSlot, entity)
+      oldBatchMesh.mesh.syncCount()
 
       // Drop the picking-broadphase entry with the slot — the sprite is
       // re-indexed into its new batch's grid by syncAllBuffers below.
       // The R3F pick proxy moves with it (re-proxied after insertion).
-      if (oldBatchMesh?.mesh) {
-        oldBatchMesh.mesh.grid.remove(sprite)
-        unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
-      }
-
-      entity.remove(InBatch(oldBatchEntity))
+      oldBatchMesh.mesh.grid.remove(sprite)
+      unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
 
       // Recycle old batch if empty
-      if (oldBatchMesh?.mesh?.isEmpty) {
+      if (oldBatchMesh.mesh.isEmpty) {
         const oldRun = registry.runs.get(oldRunKey)
         if (oldRun) {
-          recycleBatchIfEmpty(registry, oldBatchEntity, oldRun)
+          recycleBatchIfEmpty(world, registry, oldBatchEntity, oldRun)
         }
       }
 
@@ -138,28 +147,11 @@ export function createBatchReassignSystem(): (
         }
       }
 
-      // --- Insert into new batch ---
-      const material = sprite.material
+      // Commit the destination assignment after the source is released.
       registry.materialRefs.set(newMatRef.materialId, {
         material,
         version: material._effectSchemaVersion,
       })
-
-      const { run } = getOrCreateRun(registry, newLayer.value, newMatRef.materialId, newMask, material)
-      const newBatchEntity = findOrCreateBatch(world, registry, run)
-      const newBatchMesh = newBatchEntity.get(BatchMesh)
-      if (!newBatchMesh?.mesh) continue
-
-      const newSlot = newBatchMesh.mesh.allocateSlot()
-      if (newSlot < 0) continue
-
-      entity.add(InBatch(newBatchEntity))
-
-      // Update BatchSlot SoA cache (no Changed observers) — the slot's
-      // single source of truth, kept in sync by batchSortSystem.
-      const newMeta = newBatchEntity.get(BatchMeta)
-      const newBatchIdx = newMeta?.batchIdx ?? -1
-      entity.set(BatchSlot, { batchIdx: newBatchIdx, slot: newSlot }, false)
 
       // Update the sprite's cached batch references — the invariant is
       // that these match BatchSlot for the lifetime of the assignment.
@@ -178,31 +170,29 @@ export function createBatchReassignSystem(): (
       // would otherwise let the tracker early-out forever.
       sprite._batchHierarchyState = undefined
       registry.transformsDirty = true
-
-      // Full sync to new batch
-      syncAllBuffers(entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
     }
   }
 }
 
 function syncAllBuffers(
+  world: World,
   entity: Entity,
   slot: number,
   mesh: SpriteBatch,
   sprite: Sprite2D,
-  _effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
+  _effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>
 ): void {
-  const c = entity.get(SpriteColor)
+  const c = world.read(entity, SpriteColor)
   if (c) {
     mesh.writeColor(slot, c.r, c.g, c.b, c.a)
   }
 
-  const uv = entity.get(SpriteUV)
+  const uv = world.read(entity, SpriteUV)
   if (uv) {
     mesh.writeUV(slot, uv.x, uv.y, uv.w, uv.h)
   }
 
-  const f = entity.get(SpriteFlip)
+  const f = world.read(entity, SpriteFlip)
   if (f) {
     mesh.writeFlip(slot, f.x, f.y)
   }

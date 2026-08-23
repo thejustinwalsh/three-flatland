@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { PerspectiveCamera, Scene, Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { peekRegistry, type Registry } from './registry'
@@ -39,10 +38,6 @@ describe('auto-batch: threshold, tiers, hysteresis, demotion', () => {
     scene = new Scene()
     renderer = makeRenderer()
     texture = makeTexture()
-  })
-
-  afterEach(() => {
-    universe.reset()
   })
 
   it('two sprites sharing a run auto-share a tier-0 batch on the first render call', () => {

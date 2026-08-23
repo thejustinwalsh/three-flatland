@@ -13,7 +13,8 @@ import {
   type Intersection,
   type Object3D,
 } from 'three'
-import type { Entity, World } from 'koota'
+import { select, type NumericSchema, type NumericTrait, type World } from '../ecs/runtime'
+import type { EntityHandle, RegistryHandle, WorldHandle } from '../internal/ecs-handles'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial, type Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
@@ -27,13 +28,12 @@ import {
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
-  IsBatched,
   BatchSlot,
   BatchRegistry,
 } from '../ecs/traits'
 import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
 import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
-import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
+import { entitySlot, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
 import type { HitTestMode } from '../events/HitTestMode'
@@ -43,6 +43,8 @@ import { rayPlaneZ0, createIntersection } from '../events/raycastHelpers'
 import { unproxyPickFromBatch } from '../react/batchPicking'
 import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
+
+const BatchRegistries = select(BatchRegistry)
 import type { Registry } from '../orchestration/registry'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 
@@ -443,7 +445,7 @@ export class Sprite2D extends Mesh {
   //
   // Each numeric trait field has a backing array ref + index.
   // Standalone: refs point to local arrays (length >= 1), _idx = 0.
-  // Enrolled: refs point to world SoA store arrays, _idx = eid.
+  // Enrolled: refs point to world SoA store arrays, _idx = packed-handle index.
   // Enrollment swaps refs + copies values. Zero branching in setters.
 
   /** Index into the backing arrays (0 when standalone, eid when enrolled). */
@@ -455,17 +457,17 @@ export class Sprite2D extends Mesh {
   /** @internal */ _uvW: number[] = [1]
   /** @internal */ _uvH: number[] = [1]
 
-  // Color (SpriteColor) — needs entity.set() for Changed() on write
+  // Color (SpriteColor) — direct writes are followed by world.touch()
   /** @internal */ _colorR: number[] = [1]
   /** @internal */ _colorG: number[] = [1]
   /** @internal */ _colorB: number[] = [1]
   /** @internal */ _colorA: number[] = [1]
 
-  // Flip (SpriteFlip) — needs entity.set() for Changed() on write
+  // Flip (SpriteFlip) — direct writes are followed by world.touch()
   /** @internal */ _flipXArr: number[] = [1]
   /** @internal */ _flipYArr: number[] = [1]
 
-  // SortLayer — needs entity.set() for Changed() on write
+  // SortLayer — direct writes are followed by world.touch()
   /** @internal */ _layerArr: number[] = [0]
 
   /**
@@ -515,7 +517,12 @@ export class Sprite2D extends Mesh {
    * was picked up from a vanilla scene (no SpriteGroup / Flatland).
    * @internal
    */
-  _autoRegistry: Registry | null = null
+  _autoRegistry: RegistryHandle | null = null
+
+  /** Concrete private orchestration registry behind the opaque public handle. */
+  private get _runtimeAutoRegistry(): Registry | null {
+    return this._autoRegistry as Registry | null
+  }
 
   /** Enrolled by the nearest SpriteGroup while retaining a real source parent. @internal */
   _hierarchyManaged = false
@@ -609,7 +616,7 @@ export class Sprite2D extends Mesh {
   private _registryCache: RegistryData | undefined
 
   private _registryData(): RegistryData | undefined {
-    const world = this._flatlandWorld
+    const world = this._runtimeWorld
     if (!world) {
       this._registryCacheWorld = null
       this._registryCache = undefined
@@ -617,8 +624,9 @@ export class Sprite2D extends Mesh {
     }
     if (this._registryCacheWorld === world && this._registryCache) return this._registryCache
 
-    const registries = world.query(BatchRegistry)
-    const registry = registries[0]?.get(BatchRegistry) as RegistryData | undefined
+    const registries = world.view(BatchRegistries)
+    const registryEntity = registries[0]
+    const registry = registryEntity ? (world.read(registryEntity, BatchRegistry) as RegistryData) : undefined
     if (registry) {
       this._registryCacheWorld = world
       this._registryCache = registry
@@ -723,13 +731,18 @@ export class Sprite2D extends Mesh {
    * The ECS entity for this sprite (null until enrolled in a world).
    * @internal
    */
-  _entity: Entity | null = null
+  _entity: EntityHandle | null = null
 
   /**
    * The ECS world this sprite belongs to (set by SpriteGroup or Flatland).
    * @internal
    */
-  _flatlandWorld: World | null = null
+  _flatlandWorld: WorldHandle | null = null
+
+  /** Private typed view of the public opaque world handle. */
+  private get _runtimeWorld(): World | null {
+    return this._flatlandWorld as World | null
+  }
 
   /**
    * Cached batch references for O(1) direct-write dispatch from setters.
@@ -741,7 +754,7 @@ export class Sprite2D extends Mesh {
    *
    * Setters that need to write to GPU buffers (UV via setFrame, color
    * via tint/alpha, flip via flipX/flipY) read these directly instead
-   * of routing through Koota's Changed channel and a per-frame
+   * of routing through a tracked change channel and a per-frame
    * bufferSync system pass.
    * @internal
    */
@@ -1041,7 +1054,7 @@ export class Sprite2D extends Mesh {
    */
   private _syncShadowRadiusToBatch() {
     if (!this._entity || !this._flatlandWorld) return
-    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    const bs = this._runtimeWorld!.read(this._entity, BatchSlot)
     if (!bs || bs.batchIdx < 0) return
     const registry = this._registryData()
     if (!registry) return
@@ -1061,10 +1074,10 @@ export class Sprite2D extends Mesh {
   private _resolveWorldDefaultMaterial(texture: Texture): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
       const registry = this._registryData()
-      if (registry) return getWorldDefaultMaterial(this._flatlandWorld, registry, texture)
+      if (registry) return getWorldDefaultMaterial(this._runtimeWorld!, registry, texture)
     }
-    if (this._autoRegistry) {
-      return this._autoRegistry.getDefaultMaterial(texture)
+    if (this._runtimeAutoRegistry) {
+      return this._runtimeAutoRegistry.getDefaultMaterial(texture)
     }
     return null
   }
@@ -1082,10 +1095,10 @@ export class Sprite2D extends Mesh {
   private _resolveWorldEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial | null {
     if (this._flatlandWorld) {
       const registry = this._registryData()
-      if (registry) return getWorldEffectVariant(this._flatlandWorld, registry, texture, options)
+      if (registry) return getWorldEffectVariant(this._runtimeWorld!, registry, texture, options)
     }
-    if (this._autoRegistry) {
-      return this._autoRegistry.getEffectVariant(texture, options)
+    if (this._runtimeAutoRegistry) {
+      return this._runtimeAutoRegistry.getEffectVariant(texture, options)
     }
     return null
   }
@@ -1242,7 +1255,7 @@ export class Sprite2D extends Mesh {
 
     // Update SpriteMaterialRef for batch reassignment
     if (this._entity) {
-      this._entity.set(SpriteMaterialRef, { materialId: newMaterial.batchId })
+      this._runtimeWorld?.patch(this._entity, SpriteMaterialRef, { materialId: newMaterial.batchId })
     }
     this._setupInstanceAttributes()
     if (!this._entity) {
@@ -1305,7 +1318,7 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
-    // Raw array writes to the SoA store (no Koota Changed roundtrip).
+    // Raw array writes to the SoA store (no tracked-change roundtrip).
     const i = this._idx
     this._uvX[i] = frame.x
     this._uvY[i] = frame.y
@@ -1514,11 +1527,11 @@ export class Sprite2D extends Mesh {
     this._sortLayerExplicit = true
     this._layerArr[this._idx] = numeric
     if (this._entity) {
-      this._entity.set(SortLayer, { value: numeric })
-    } else if (this._autoRegistry) {
+      this._runtimeWorld?.touch(this._entity, SortLayer)
+    } else if (this._runtimeAutoRegistry) {
       // Standalone auto sprite changed its run key — re-evaluate
       // thresholds on the next sweep (it may now share a run).
-      this._autoRegistry._autoEvalDirty = true
+      this._runtimeAutoRegistry._autoEvalDirty = true
     }
   }
 
@@ -1542,9 +1555,9 @@ export class Sprite2D extends Mesh {
     this._sortLayerName = name
     this._layerArr[this._idx] = numeric
     if (this._entity) {
-      this._entity.set(SortLayer, { value: numeric })
-    } else if (this._autoRegistry) {
-      this._autoRegistry._autoEvalDirty = true
+      this._runtimeWorld?.touch(this._entity, SortLayer)
+    } else if (this._runtimeAutoRegistry) {
+      this._runtimeAutoRegistry._autoEvalDirty = true
     }
   }
 
@@ -1568,7 +1581,7 @@ export class Sprite2D extends Mesh {
    *
    * For non-gated materials, we flip the batch's `_sortDirty` flag so
    * `batchSortSystem` knows to re-sort this batch on its next pass. This
-   * replaced the prior `Changed(SpriteZIndex)` channel — Koota's change
+   * replaced the prior `Changed(SpriteZIndex)` channel — the generic change
    * tracker enumerated every flip every frame even when the gate trivially
    * skipped the sort, costing ~7ms/frame in a 12k-sprite demo. The
    * per-batch boolean costs one ref read + one write.
@@ -1806,8 +1819,7 @@ export class Sprite2D extends Mesh {
       // Add trait to entity (if enrolled)
       if (this._entity) {
         const traitData = this._buildTraitData(effect)
-        this._entity.add(EffectClass._trait(traitData))
-        this._entity.set(EffectClass._trait, traitData)
+        this._runtimeWorld?.add(this._entity, (EffectClass._trait as NumericTrait<NumericSchema>)(traitData))
       }
 
       if (!this._entity) {
@@ -1841,12 +1853,12 @@ export class Sprite2D extends Mesh {
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags |= 1 << bitIndex
 
-    // 4. Add trait to entity (if enrolled) — ECS state only. No .set()
+    // 4. Add trait to entity (if enrolled) — ECS state only. No touch()
     //    follow-up needed; the direct-write below pushes the data to the
     //    GPU buffer immediately, no Changed event consumer.
     if (this._entity) {
       const traitData = this._buildTraitData(effect)
-      this._entity.add(EffectClass._trait(traitData))
+      this._runtimeWorld?.add(this._entity, (EffectClass._trait as NumericTrait<NumericSchema>)(traitData))
     }
 
     // 5. Store effect
@@ -1881,8 +1893,9 @@ export class Sprite2D extends Mesh {
     this._effectFlags &= ~(1 << bitIndex)
 
     // 2. Remove trait from entity (if enrolled) — ECS state only.
-    if (this._entity && this._entity.has(EffectClass._trait)) {
-      this._entity.remove(EffectClass._trait)
+    const effectTrait = EffectClass._trait as NumericTrait<NumericSchema>
+    if (this._entity && this._runtimeWorld?.has(this._entity, effectTrait)) {
+      this._runtimeWorld.remove(this._entity, effectTrait)
     }
 
     // 3. Detach effect and remove from list
@@ -1906,7 +1919,7 @@ export class Sprite2D extends Mesh {
    * Direct-write the sprite's current effect state (flags + active field
    * values) into its batch's packed effect buffers. Same pattern as the
    * color / zIndex setters — uses the cached `_batchMesh` + `_batchSlot`
-   * refs instead of routing through Koota Changed events.
+   * refs instead of routing through tracked change events.
    * @internal
    */
   private _writeEffectStateToBatch(): void {
@@ -2046,7 +2059,7 @@ export class Sprite2D extends Mesh {
    */
   _syncEffectFlagsToBatch(): void {
     if (!this._entity || !this._flatlandWorld) return
-    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    const bs = this._runtimeWorld!.read(this._entity, BatchSlot)
     if (!bs || bs.batchIdx < 0) return
     const registry = this._registryData()
     if (!registry) return
@@ -2296,10 +2309,10 @@ export class Sprite2D extends Mesh {
    */
   _onLayersMaskChanged(mask: number): void {
     if (this._entity) {
-      this._entity.set(CameraLayersMask, { mask })
-    } else if (this._autoRegistry) {
+      this._runtimeWorld?.patch(this._entity, CameraLayersMask, { mask })
+    } else if (this._runtimeAutoRegistry) {
       // Standalone auto sprite changed its run key — re-evaluate.
-      this._autoRegistry._autoEvalDirty = true
+      this._runtimeAutoRegistry._autoEvalDirty = true
     }
   }
 
@@ -2322,9 +2335,9 @@ export class Sprite2D extends Mesh {
         registry.parentAdd.call(parent, this)
       }
     }
-    if (this._autoRegistry) {
-      this._autoRegistry.standalone.delete(this)
-      this._autoRegistry._autoEvalDirty = true
+    if (this._runtimeAutoRegistry) {
+      this._runtimeAutoRegistry.standalone.delete(this)
+      this._runtimeAutoRegistry._autoEvalDirty = true
     }
     this._setBatchSuppressed(false)
   }
@@ -2405,10 +2418,10 @@ export class Sprite2D extends Mesh {
    * @param world - The ECS world to enroll in (defaults to global world)
    * @internal
    */
-  _enrollInWorld(world?: World): void {
+  _enrollInWorld(world?: WorldHandle): void {
     if (this._disposed || this._entity) return // Disposed or already enrolled
 
-    const w = world ?? this._flatlandWorld ?? getGlobalWorld()
+    const w = (world ?? this._flatlandWorld ?? getGlobalWorld()) as World
     this._flatlandWorld = w
 
     // Read current values from local arrays before swapping refs
@@ -2436,11 +2449,10 @@ export class Sprite2D extends Mesh {
         materialId: this.material.batchId,
       }),
       IsRenderable,
-      IsBatched,
-      BatchSlot({ batchIdx: -1, slot: -1 })
+      BatchSlot({ batchEntity: 0, batchIdx: -1, slot: -1 })
     )
 
-    const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
+    const eid = entitySlot(this._entity)
     this._idx = eid
 
     // The ECS transform pass is the single writer of a batched sprite's
@@ -2477,7 +2489,8 @@ export class Sprite2D extends Mesh {
     // Add effect traits for active effects
     for (const effect of this._effects) {
       const EffectClass = effect.constructor as typeof MaterialEffect
-      this._entity.add(EffectClass._trait(this._buildTraitData(effect)))
+      const effectTrait = EffectClass._trait as NumericTrait<NumericSchema>
+      w.add(this._entity, effectTrait(this._buildTraitData(effect)))
       // Update entity reference on effect instance
       effect._entity = this._entity
     }
@@ -2531,8 +2544,9 @@ export class Sprite2D extends Mesh {
     // Serialize effect trait values back to effect snapshots
     for (const effect of this._effects) {
       const EffectClass = effect.constructor as typeof MaterialEffect
-      if (this._entity.has(EffectClass._trait)) {
-        const traitData = this._entity.get(EffectClass._trait) as Record<string, number>
+      const effectTrait = EffectClass._trait as NumericTrait<NumericSchema>
+      if (this._runtimeWorld?.has(this._entity, effectTrait)) {
+        const traitData = this._runtimeWorld.read(this._entity, effectTrait) as Record<string, number>
         for (const field of EffectClass._fields) {
           if (field.size === 1) {
             effect._defaults[field.name] = traitData[field.name]!
@@ -2555,10 +2569,10 @@ export class Sprite2D extends Mesh {
     }
 
     // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)
-    // for batchRemoveSystem, which needs the InBatch relation and BatchSlot data
-    // to still be present to find and free the batch slot. The system destroys
+    // for batchRemoveSystem, which needs the BatchSlot ownership data to remain
+    // present while it finds and frees the physical row. The system destroys
     // the entity after cleanup.
-    this._entity.remove(IsRenderable)
+    this._runtimeWorld?.remove(this._entity, IsRenderable)
     this._entity = null
 
     // Clear cached batch refs immediately. batchRemoveSystem can't do it
@@ -2589,7 +2603,7 @@ export class Sprite2D extends Mesh {
    * Get the ECS entity for this sprite (null if not enrolled).
    * @internal
    */
-  get entity(): Entity | null {
+  get entity(): EntityHandle | null {
     return this._entity
   }
 
@@ -2763,9 +2777,10 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
     this._batchEnrollmentBlockedMaterial = null
-    if (this._autoRegistry) {
-      this._autoRegistry.standalone.add(this)
-      this._autoRegistry._autoEvalDirty = true
+    const registry = this._autoRegistry as Registry | null
+    if (registry) {
+      registry.standalone.add(this)
+      registry._autoEvalDirty = true
     }
   },
   configurable: true,

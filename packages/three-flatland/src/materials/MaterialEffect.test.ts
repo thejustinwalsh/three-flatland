@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { BufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Texture } from 'three'
 import { getCurrentStack, setCurrentStack, stack } from 'three/tsl'
 import { EventNode } from 'three/webgpu'
-import { createWorld, universe } from 'koota'
+import { createWorld } from '../ecs/runtime'
+import { requiredEntity } from '../ecs/testUtils.type-test'
 import { MaterialEffect, createMaterialEffect } from './MaterialEffect'
 import type { EffectNodeContext } from './MaterialEffect'
 import { Sprite2DMaterial } from './Sprite2DMaterial'
@@ -43,7 +44,7 @@ describe('createMaterialEffect', () => {
     expect(Dissolve.effectSchema.progress).toBe(0)
   })
 
-  it('should auto-create a Koota trait from schema', () => {
+  it('should auto-create a numeric ECS trait from schema', () => {
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
       schema: { progress: 0 },
@@ -860,7 +861,7 @@ describe('Snapshot pattern', () => {
 // ============================================
 
 describe('_setField ECS integration', () => {
-  // Create effect classes at describe level so traits survive universe.reset()
+  // Create effect classes once so each case exercises the same declarations.
   const DissolveEnrolled = createMaterialEffect({
     name: 'dissolve_enrolled',
     schema: { progress: 0 },
@@ -905,7 +906,7 @@ describe('_setField ECS integration', () => {
     // But reading progress should return new value (from trait)
     expect(dissolve.progress).toBeCloseTo(0.9)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('on standalone sprite: writes snapshot + own buffer', () => {
@@ -965,11 +966,11 @@ describe('addEffect triggers Changed for enrolled sprites', () => {
     sprite.addEffect(dissolve)
 
     // Trait should exist with correct value
-    expect(sprite.entity!.has(DissolveChanged._trait)).toBe(true)
-    const traitData = sprite.entity!.get(DissolveChanged._trait) as Record<string, number>
+    expect(world.has(requiredEntity(sprite), DissolveChanged._trait)).toBe(true)
+    const traitData = world.read(requiredEntity(sprite), DissolveChanged._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.6)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('should preserve defaults when adding to enrolled sprite', () => {
@@ -987,10 +988,10 @@ describe('addEffect triggers Changed for enrolled sprites', () => {
     sprite.addEffect(dissolve)
 
     // Trait should have value from _defaults (set before attachment)
-    const traitData = sprite.entity!.get(DissolveChanged._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), DissolveChanged._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.42)
 
-    world.destroy()
+    world.dispose()
   })
 })
 
@@ -1012,10 +1013,6 @@ describe('Effect remove + add cycle', () => {
     texture = new Texture()
     // @ts-expect-error - mocking image for tests
     texture.image = { width: 100, height: 100 }
-  })
-
-  afterEach(() => {
-    universe.reset()
   })
 
   it('standalone: removeEffect + addEffect cycle preserves functionality', () => {
@@ -1061,12 +1058,12 @@ describe('Effect remove + add cycle', () => {
     sprite._enrollInWorld(world)
 
     // Verify initial state
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(true)
 
     // Simulate R3F detach
     sprite.removeEffect(d1)
 
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(false)
+    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(false)
     expect(d1._entity).toBeNull()
     expect(d1._sprite).toBeNull()
 
@@ -1078,14 +1075,14 @@ describe('Effect remove + add cycle', () => {
     // New effect should be attached with correct entity
     expect(d2._sprite).toBe(sprite)
     expect(d2._entity).toBe(sprite.entity)
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(true)
 
     // Property updates should write to trait (enrolled path)
     d2.progress = 0.95
-    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), DissolveRA._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.95)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('enrolled: property updates work after removeEffect + addEffect cycle', () => {
@@ -1101,7 +1098,7 @@ describe('Effect remove + add cycle', () => {
     sprite._enrollInWorld(world)
 
     // Verify enrolled state
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), DissolveRA._trait)).toBe(true)
 
     // Remove and re-add
     sprite.removeEffect(d1)
@@ -1111,13 +1108,13 @@ describe('Effect remove + add cycle', () => {
 
     // The critical test: can we update progress on the new instance?
     d2.progress = 0.85
-    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), DissolveRA._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.85)
 
     // And does _effects contain the new instance?
     expect(sprite._effects.find((e) => e.name === 'dissolve_ra')).toBe(d2)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('enrolled: effect ref functional after multiple cycles', () => {
@@ -1145,10 +1142,10 @@ describe('Effect remove + add cycle', () => {
 
     // Update directly on effect ref — the actual game pattern
     d2.progress = 0.75
-    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), DissolveRA._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.75)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('enrolled: effect flags correct after remove + add cycle', () => {
@@ -1169,7 +1166,7 @@ describe('Effect remove + add cycle', () => {
     sprite.addEffect(d2)
     expect(sprite._effectFlags).toBe(E0)
 
-    world.destroy()
+    world.dispose()
   })
 })
 

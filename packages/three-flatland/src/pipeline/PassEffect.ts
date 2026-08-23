@@ -1,4 +1,5 @@
-import { trait, type Entity, type Trait } from 'koota'
+import { trait, type Entity, type NumericSchema, type NumericTrait, type World } from '../ecs/runtime'
+import type { EntityHandle, TraitHandle } from '../internal/ecs-handles'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -91,8 +92,8 @@ export abstract class PassEffect {
   /** Per-pass data schema with default values. Must be overridden by subclass. */
   static readonly passSchema: EffectSchema
 
-  /** @internal Auto-generated Koota trait from schema. */
-  static _trait: Trait
+  /** @internal Auto-generated numeric trait from the effect schema. */
+  static _trait: TraitHandle
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
   /** @internal Total float slots needed for this pass's data. */
@@ -146,7 +147,7 @@ export abstract class PassEffect {
     this._totalFloats = totalFloats
     this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota (uniform fields only):
+    // Build the flattened numeric trait schema (uniform fields only):
     // - float fields → { fieldName: default }
     // - vecN fields  → { fieldName_0: v[0], fieldName_1: v[1], ... }
     const traitSchema: Record<string, number> = {}
@@ -174,7 +175,7 @@ export abstract class PassEffect {
   _flatland: FlatlandLike | null = null
 
   /** @internal The ECS entity for this pass. */
-  _entity: Entity | null = null
+  _entity: EntityHandle | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. */
   _defaults: Record<string, number | number[]>
@@ -310,9 +311,12 @@ export abstract class PassEffect {
    */
   _getField(name: string): number | number[] {
     const ctor = this.constructor as typeof PassEffect
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = (this._flatland as { world?: World } | null)?.world
+    const entity = this._entity as Entity | null
+    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    if (entity && world?.has(entity, runtimeTrait)) {
       const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+      const data = world.read(entity, runtimeTrait) as Record<string, number>
       if (field.size === 1) {
         return data[name]!
       } else {
@@ -345,16 +349,19 @@ export abstract class PassEffect {
     }
 
     // Write to ECS trait if enrolled
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = (this._flatland as { world?: World } | null)?.world
+    const entity = this._entity as Entity | null
+    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    if (entity && world?.has(entity, runtimeTrait)) {
       if (field.size === 1) {
-        this._entity.set(ctor._trait, { [name]: value as number })
+        world.patch(entity, runtimeTrait, { [name]: value as number })
       } else {
         const arr = value as number[]
         const traitUpdate: Record<string, number> = {}
         for (let i = 0; i < field.size; i++) {
           traitUpdate[`${name}_${i}`] = arr[i]!
         }
-        this._entity.set(ctor._trait, traitUpdate)
+        world.patch(entity, runtimeTrait, traitUpdate)
       }
     }
 
@@ -401,7 +408,7 @@ export type PassEffectClass<S extends EffectSchema> = {
   new (): PassEffect & EffectValues<S> & EffectConstants<S>
   readonly passName: string
   readonly passSchema: S
-  readonly _trait: Trait
+  readonly _trait: TraitHandle
   readonly _fields: EffectField[]
   readonly _totalFloats: number
   readonly _constantFactories: Record<string, () => unknown>

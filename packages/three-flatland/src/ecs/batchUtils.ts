@@ -1,4 +1,4 @@
-import type { Entity, World, Trait } from 'koota'
+import { select, type AnyTrait, type Entity, type World } from './runtime'
 import type { Group, Object3D, Texture } from 'three'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { Sprite2D } from '../sprites/Sprite2D'
@@ -15,7 +15,6 @@ import {
   BatchMesh,
   BatchMeta,
   BatchSlot,
-  InBatch,
   IsAlphaBlendedBatch,
   IsAlphaTestedBatch,
   IsBatched,
@@ -26,10 +25,11 @@ import {
   type BatchRun,
 } from './traits'
 import type { SystemSchedule } from './SystemSchedule'
-import { ENTITY_ID_MASK } from './snapshot'
+import { entitySlot } from './snapshot'
 
 /** Shape of the BatchRegistry trait data, used for parameter typing. */
 export interface RegistryData {
+  world: World | null
   runs: Map<string, BatchRun>
   sortedRunKeys: string[]
   batchPool: Entity[]
@@ -58,7 +58,7 @@ export interface RegistryData {
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: (Sprite2D | null)[]
   /** Cached effect traits across all materials. */
-  effectTraits: Map<Trait, typeof MaterialEffect>
+  effectTraits: Map<AnyTrait, typeof MaterialEffect>
   /** Entities whose destruction is deferred to the top of the next frame. */
   pendingDestroy: Entity[]
   /** The SpriteGroup (parent Group) for scene graph sync. */
@@ -78,6 +78,8 @@ export interface RegistryData {
   /** Whether any occluder changed since the last shadow generation. */
   occludersDirty: boolean
 }
+
+const BatchedMaterialSlots = select(IsBatched, SpriteMaterialRef, BatchSlot)
 
 /**
  * A batch run key: fixed-width hex `sortLayer(8) | materialId(8) | mask(8)`.
@@ -164,6 +166,7 @@ export function allocateBatchIdx(registry: RegistryData, mesh: SpriteBatch): num
  */
 export function freeBatchIdx(registry: RegistryData, idx: number): void {
   if (idx < 0 || idx >= registry.batchSlots.length) return
+  if (registry.batchSlots[idx] === null) return
   registry.batchSlots[idx] = null
   registry.batchSlotFreeList.push(idx)
 }
@@ -238,7 +241,7 @@ export function resolveBatchSize(registry: RegistryData, run: BatchRun, pendingC
 export function findOrCreateBatch(world: World, registry: RegistryData, run: BatchRun, pendingCount = 0): Entity {
   // Check existing batches in this run for free slots
   for (const batchEntity of run.batches) {
-    const batchMesh = batchEntity.get(BatchMesh)
+    const batchMesh = world.read(batchEntity, BatchMesh)
     if (batchMesh?.mesh && !batchMesh.mesh.isFull) return batchEntity
   }
 
@@ -253,7 +256,7 @@ export function findOrCreateBatch(world: World, registry: RegistryData, run: Bat
   const batchSize = resolveBatchSize(registry, run, pendingCount)
 
   if (batchEntity) {
-    const existing = batchEntity.get(BatchMesh)
+    const existing = world.read(batchEntity, BatchMesh)
     const wantedKind = run.material._tightMesh ? 'tight-mesh' : 'synth-quad'
     // A merge/degrade on the atlas bumps its registry version without
     // necessarily flipping `wantedKind` (tight-mesh stays tight-mesh) —
@@ -284,14 +287,15 @@ export function findOrCreateBatch(world: World, registry: RegistryData, run: Bat
   const batchIdx = allocateBatchIdx(registry, mesh)
 
   // Set/update traits on batch entity (no Changed observers — skip change detection)
-  if (batchEntity.has(BatchMesh)) {
-    batchEntity.set(BatchMesh, { mesh }, false)
+  if (world.has(batchEntity, BatchMesh)) {
+    world.patch(batchEntity, BatchMesh, { mesh }, false)
   } else {
-    batchEntity.add(BatchMesh({ mesh }))
+    world.add(batchEntity, BatchMesh({ mesh }))
   }
 
-  if (batchEntity.has(BatchMeta)) {
-    batchEntity.set(
+  if (world.has(batchEntity, BatchMeta)) {
+    world.patch(
+      batchEntity,
       BatchMeta,
       {
         materialId: run.materialId,
@@ -302,7 +306,8 @@ export function findOrCreateBatch(world: World, registry: RegistryData, run: Bat
       false
     )
   } else {
-    batchEntity.add(
+    world.add(
+      batchEntity,
       BatchMeta({
         materialId: run.materialId,
         sortLayer: run.sortLayer,
@@ -320,7 +325,7 @@ export function findOrCreateBatch(world: World, registry: RegistryData, run: Bat
   // Classification traits — declared once at construction (the facts
   // are per-batch-lifetime: pooled entities are reclassified here since
   // their material may differ from the previous tenancy).
-  classifyBatch(batchEntity, run.material)
+  classifyBatch(world, batchEntity, run.material)
 
   // Set descriptive name for devtools scene tree
   mesh.name = `SpriteBatch[sortLayer=${run.sortLayer}, mat=${run.materialId}, mask=${run.layersMask}]`
@@ -336,8 +341,9 @@ export function findOrCreateBatch(world: World, registry: RegistryData, run: Bat
  * Recycle a batch entity to the pool if it's empty.
  * Removes it from its run and from activeBatches.
  */
-export function recycleBatchIfEmpty(registry: RegistryData, batchEntity: Entity, run: BatchRun): void {
-  const batchMesh = batchEntity.get(BatchMesh)
+export function recycleBatchIfEmpty(world: World, registry: RegistryData, batchEntity: Entity, run: BatchRun): void {
+  if (registry.batchPool.includes(batchEntity)) return
+  const batchMesh = world.read(batchEntity, BatchMesh)
   if (!batchMesh?.mesh || !batchMesh.mesh.isEmpty) return
 
   // Defensive: a pooled mesh must never linger in an R3F interaction
@@ -356,10 +362,10 @@ export function recycleBatchIfEmpty(registry: RegistryData, batchEntity: Entity,
   }
 
   // Free the batchIdx
-  const meta = batchEntity.get(BatchMeta)
+  const meta = world.read(batchEntity, BatchMeta)
   if (meta && meta.batchIdx >= 0) {
     freeBatchIdx(registry, meta.batchIdx)
-    batchEntity.set(BatchMeta, { batchIdx: -1 }, false)
+    world.patch(batchEntity, BatchMeta, { batchIdx: -1 }, false)
   }
 
   // Remove from active batches
@@ -375,7 +381,7 @@ export function recycleBatchIfEmpty(registry: RegistryData, batchEntity: Entity,
  * Rebuild the sorted order of active batches based on run key ordering.
  * Assigns renderOrder to each batch entity.
  */
-export function rebuildBatchOrder(registry: RegistryData): void {
+export function rebuildBatchOrder(world: World, registry: RegistryData): void {
   if (!registry.renderOrderDirty) return
 
   registry.activeBatches.length = 0
@@ -384,7 +390,7 @@ export function rebuildBatchOrder(registry: RegistryData): void {
     const run = registry.runs.get(key)
     if (!run) continue
     for (const batchEntity of run.batches) {
-      batchEntity.set(BatchMeta, { renderOrder: order++ }, false)
+      world.patch(batchEntity, BatchMeta, { renderOrder: order++ }, false)
       registry.activeBatches.push(batchEntity)
     }
   }
@@ -506,7 +512,7 @@ export function ensureMaterialDisposeHook(world: World, registry: RegistryData, 
 
 /**
  * Shared eviction core: for every batched entity whose `SpriteMaterialRef`
- * satisfies `shouldEvict`, free its live slot, drop the InBatch relation,
+ * satisfies `shouldEvict`, free its live slot, clear its direct ownership,
  * recycle the batch if it goes empty, clear the sprite's cached
  * direct-write refs, and re-trigger IsRenderable so `batchAssignSystem`
  * re-batches the survivor with whatever material/batch it resolves to
@@ -521,21 +527,25 @@ function evictMatchingBatchedEntities(
   registry: RegistryData,
   shouldEvict: (matRef: { materialId: number }) => boolean
 ): void {
-  const batched = world.query(IsBatched, SpriteMaterialRef, BatchSlot)
-  for (const entity of batched) {
-    const matRef = entity.get(SpriteMaterialRef)
+  const batched = world.view(BatchedMaterialSlots)
+  // Removing IsBatched below mutates this persistent selector in place using
+  // swap-remove. Walk backward so the swapped member is never skipped.
+  for (let position = batched.length - 1; position >= 0; position--) {
+    const entity = batched[position]!
+    const matRef = world.read(entity, SpriteMaterialRef)
     if (!matRef || !shouldEvict(matRef)) continue
 
-    const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+    const sprite = registry.spriteArr[entitySlot(entity)]
 
-    const batchEntity = entity.targetFor(InBatch)
-    if (batchEntity) {
+    const assignment = world.read(entity, BatchSlot)
+    const batchEntity = assignment?.batchEntity as Entity | undefined
+    if (batchEntity && world.isAlive(batchEntity)) {
       // BatchSlot.slot is the authoritative live slot (kept in sync by
-      // batchSortSystem); InBatch's own slot can be a stale pre-swap index.
-      const slot = entity.get(BatchSlot)?.slot ?? -1
-      const batchMesh = batchEntity.get(BatchMesh)
+      // batchSortSystem), so it remains correct after physical-row swaps.
+      const slot = assignment?.slot ?? -1
+      const batchMesh = world.read(batchEntity, BatchMesh)
       if (slot >= 0 && batchMesh?.mesh) {
-        batchMesh.mesh.freeSlot(slot)
+        batchMesh.mesh.releaseSlot(slot, entity)
         batchMesh.mesh.syncCount()
       }
 
@@ -547,15 +557,13 @@ function evictMatchingBatchedEntities(
         unproxyPickFromBatch(sprite, batchMesh.mesh)
       }
 
-      entity.remove(InBatch(batchEntity))
-
       if (batchMesh?.mesh?.isEmpty) {
-        const meta = batchEntity.get(BatchMeta)
+        const meta = world.read(batchEntity, BatchMeta)
         if (meta) {
           const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
           const run = registry.runs.get(key)
           if (run) {
-            recycleBatchIfEmpty(registry, batchEntity, run)
+            recycleBatchIfEmpty(world, registry, batchEntity, run)
           }
         }
       }
@@ -568,11 +576,15 @@ function evictMatchingBatchedEntities(
       sprite._batchIdx = -1
     }
 
-    entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
+    // The tag describes committed physical ownership, not render intent.
+    // Clear it before re-triggering IsRenderable so assignment can add it
+    // exactly once after the replacement row has committed.
+    world.remove(entity, IsBatched)
+    world.patch(entity, BatchSlot, { batchEntity: 0, batchIdx: -1, slot: -1 }, false)
 
     // Re-trigger assignment for entities that still render
-    entity.remove(IsRenderable)
-    entity.add(IsRenderable)
+    world.remove(entity, IsRenderable)
+    world.add(entity, IsRenderable)
   }
 
   registry.renderOrderDirty = true
@@ -664,26 +676,26 @@ export function handleMaterialDispose(world: World, registry: RegistryData, mate
  * stale tags from a previous pool tenancy. Systems still branch on the
  * material directly — see the trait docs for the query-vs-branch rule.
  */
-export function classifyBatch(batchEntity: Entity, material: Sprite2DMaterial): void {
+export function classifyBatch(world: World, batchEntity: Entity, material: Sprite2DMaterial): void {
   const alphaTested = material.alphaTest > 0
   const alphaBlended = material.transparent && material.alphaTest === 0
   const lit = material.colorTransform !== null
 
-  setTag(batchEntity, IsAlphaTestedBatch, alphaTested)
-  setTag(batchEntity, IsAlphaBlendedBatch, alphaBlended)
-  setTag(batchEntity, IsLitBatch, lit)
-  setTag(batchEntity, IsUnlitBatch, !lit)
+  setTag(world, batchEntity, IsAlphaTestedBatch, alphaTested)
+  setTag(world, batchEntity, IsAlphaBlendedBatch, alphaBlended)
+  setTag(world, batchEntity, IsLitBatch, lit)
+  setTag(world, batchEntity, IsUnlitBatch, !lit)
 
   const kind = material._tightMesh ? 'tight-mesh' : 'synth-quad'
-  if (!batchEntity.has(BatchGeometryStrategy)) {
-    batchEntity.add(BatchGeometryStrategy({ kind }))
+  if (!world.has(batchEntity, BatchGeometryStrategy)) {
+    world.add(batchEntity, BatchGeometryStrategy({ kind }))
   } else {
-    batchEntity.set(BatchGeometryStrategy, { kind }, false)
+    world.patch(batchEntity, BatchGeometryStrategy, { kind }, false)
   }
 }
 
-function setTag(entity: Entity, tag: Trait, present: boolean): void {
-  const has = entity.has(tag)
-  if (present && !has) entity.add(tag)
-  else if (!present && has) entity.remove(tag)
+function setTag(world: World, entity: Entity, tag: AnyTrait, present: boolean): void {
+  const has = world.has(entity, tag)
+  if (present && !has) world.add(entity, tag)
+  else if (!present && has) world.remove(entity, tag)
 }

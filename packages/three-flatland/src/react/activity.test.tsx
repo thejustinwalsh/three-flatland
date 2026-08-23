@@ -2,7 +2,6 @@ import { Activity, act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Texture } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 
@@ -18,7 +17,6 @@ const renderer = {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  universe.reset()
 })
 
 describe('React Activity', () => {

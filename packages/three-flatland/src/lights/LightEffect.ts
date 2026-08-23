@@ -1,4 +1,5 @@
-import { trait, type Entity, type Trait } from 'koota'
+import { trait, type Entity, type NumericSchema, type NumericTrait, type World } from '../ecs/runtime'
+import type { EntityHandle, TraitHandle } from '../internal/ecs-handles'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type { OrthographicCamera, Texture } from 'three'
@@ -149,8 +150,8 @@ export abstract class LightEffect {
   /** Per-fragment channels this effect requires (e.g., ['normal']). */
   static readonly requires: readonly ChannelName[] = []
 
-  /** @internal Auto-generated Koota trait from schema. */
-  static _trait: Trait
+  /** @internal Auto-generated numeric trait from the effect schema. */
+  static _trait: TraitHandle
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
   /** @internal Total float slots needed for this effect's data. */
@@ -204,7 +205,7 @@ export abstract class LightEffect {
     this._totalFloats = totalFloats
     this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota (uniform fields only)
+    // Build the flattened numeric trait schema (uniform fields only)
     const traitSchema: Record<string, number> = {}
     for (const field of fields) {
       if (field.size === 1) {
@@ -230,7 +231,7 @@ export abstract class LightEffect {
   _flatland: FlatlandLike | null = null
 
   /** @internal The ECS entity for this effect. */
-  _entity: Entity | null = null
+  _entity: EntityHandle | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. */
   _defaults: Record<string, number | number[]>
@@ -517,9 +518,12 @@ export abstract class LightEffect {
    */
   _getField(name: string): number | number[] {
     const ctor = this.constructor as typeof LightEffect
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = (this._flatland as { world?: World } | null)?.world
+    const entity = this._entity as Entity | null
+    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    if (entity && world?.has(entity, runtimeTrait)) {
       const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+      const data = world.read(entity, runtimeTrait) as Record<string, number>
       if (field.size === 1) {
         return data[name]!
       } else {
@@ -550,16 +554,19 @@ export abstract class LightEffect {
     }
 
     // Write to ECS trait if enrolled
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = (this._flatland as { world?: World } | null)?.world
+    const entity = this._entity as Entity | null
+    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    if (entity && world?.has(entity, runtimeTrait)) {
       if (field.size === 1) {
-        this._entity.set(ctor._trait, { [name]: value as number })
+        world.patch(entity, runtimeTrait, { [name]: value as number })
       } else {
         const arr = value as number[]
         const traitUpdate: Record<string, number> = {}
         for (let i = 0; i < field.size; i++) {
           traitUpdate[`${name}_${i}`] = arr[i]!
         }
-        this._entity.set(ctor._trait, traitUpdate)
+        world.patch(entity, runtimeTrait, traitUpdate)
       }
     }
 
@@ -629,7 +636,7 @@ export type LightEffectClass<S extends EffectSchema> = {
   readonly lightSchema: S
   readonly needsShadows: boolean
   readonly requires: readonly ChannelName[]
-  readonly _trait: Trait
+  readonly _trait: TraitHandle
   readonly _fields: EffectField[]
   readonly _totalFloats: number
   readonly _constantFactories: Record<string, () => unknown>

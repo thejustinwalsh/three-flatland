@@ -1,22 +1,27 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import { IsRenderable, IsBatched, BatchSlot, BatchRegistry, SpriteColor } from '../traits'
+import { IsRenderable, IsBatched, BatchSlot, SpriteColor } from '../traits'
 import type { RegistryData } from '../batchUtils'
+import { batchEntityFor, readRequired, registryFor, requiredEntity } from '../testUtils.type-test'
 
 // ============================================
 // Helpers
 // ============================================
 
-function getRegistry(group: SpriteGroup): RegistryData | null {
-  const world = group.world
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return null
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+function getRegistry(group: SpriteGroup): RegistryData {
+  return registryFor(group.world)
+}
+
+function has(group: SpriteGroup, sprite: Sprite2D, trait: typeof IsRenderable | typeof IsBatched): boolean {
+  return group.world.has(requiredEntity(sprite), trait)
+}
+
+function slot(group: SpriteGroup, sprite: Sprite2D) {
+  return readRequired(group.world, requiredEntity(sprite), BatchSlot)
 }
 
 /** Run ECS systems (calls the deprecated but public update() method) */
@@ -51,7 +56,6 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('add sprite should create entity with IsRenderable', () => {
@@ -59,7 +63,7 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     group.add(sprite)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsRenderable)).toBe(true)
+    expect(has(group, sprite, IsRenderable)).toBe(true)
   })
 
   it('add sprite + run systems should assign batch slot', () => {
@@ -68,12 +72,13 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     runSystems(group)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
 
-    const bs = sprite.entity!.get(BatchSlot)
-    expect(bs).toBeDefined()
-    expect(bs!.batchIdx).toBeGreaterThanOrEqual(0)
-    expect(bs!.slot).toBeGreaterThanOrEqual(0)
+    const bs = slot(group, sprite)
+    expect(bs.batchEntity).toBeGreaterThan(0)
+    expect(batchEntityFor(group.world, sprite)).toBe(bs.batchEntity)
+    expect(bs.batchIdx).toBeGreaterThanOrEqual(0)
+    expect(bs.slot).toBeGreaterThanOrEqual(0)
   })
 
   it('remove sprite should null entity ref', () => {
@@ -120,7 +125,6 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('add, remove, re-add before systems run: sprite should be batched', () => {
@@ -134,13 +138,13 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsRenderable)).toBe(true)
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsRenderable)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
 
-    const bs = sprite.entity!.get(BatchSlot)
-    expect(bs).toBeDefined()
-    expect(bs!.batchIdx).toBeGreaterThanOrEqual(0)
-    expect(bs!.slot).toBeGreaterThanOrEqual(0)
+    const bs = slot(group, sprite)
+    expect(bs.batchEntity).toBeGreaterThan(0)
+    expect(bs.batchIdx).toBeGreaterThanOrEqual(0)
+    expect(bs.slot).toBeGreaterThanOrEqual(0)
   })
 
   it('add, run, remove, re-add, run: sprite should be batched', () => {
@@ -150,7 +154,7 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     // Verify first enrollment
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
 
     // Remove and re-add
     group.remove(sprite)
@@ -160,12 +164,12 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsRenderable)).toBe(true)
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsRenderable)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
 
-    const bs = sprite.entity!.get(BatchSlot)
-    expect(bs).toBeDefined()
-    expect(bs!.batchIdx).toBeGreaterThanOrEqual(0)
+    const bs = slot(group, sprite)
+    expect(bs.batchEntity).toBeGreaterThan(0)
+    expect(bs.batchIdx).toBeGreaterThanOrEqual(0)
   })
 
   it('re-added sprite should have correct color data in batch', () => {
@@ -181,9 +185,8 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     // Verify the entity has the updated alpha
-    const color = sprite.entity!.get(SpriteColor)
-    expect(color).toBeDefined()
-    expect(color!.a).toBeCloseTo(0.75)
+    const color = readRequired(group.world, requiredEntity(sprite), SpriteColor)
+    expect(color.a).toBeCloseTo(0.75)
   })
 })
 
@@ -204,7 +207,6 @@ describe('Entity Lifecycle: Remove/Re-Add Single Frame', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('remove then re-add before systems run: new entity gets batched', () => {
@@ -219,7 +221,7 @@ describe('Entity Lifecycle: Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
   })
 
   it('snapshot values preserved through remove/re-add cycle', () => {
@@ -240,8 +242,8 @@ describe('Entity Lifecycle: Remove/Re-Add Single Frame', () => {
     runSystems(group)
 
     // New entity should have the serialized values
-    const color = sprite.entity!.get(SpriteColor)
-    expect(color!.a).toBeCloseTo(0.3)
+    const color = readRequired(group.world, requiredEntity(sprite), SpriteColor)
+    expect(color.a).toBeCloseTo(0.3)
   })
 })
 
@@ -262,7 +264,6 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('rapid remove/re-add 5 times: final state correct', () => {
@@ -278,7 +279,7 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
     runSystems(group)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(1)
   })
 
@@ -288,7 +289,7 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
     // Frame 1: add
     group.add(sprite)
     runSystems(group)
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
 
     // Frame 2: remove
     group.remove(sprite)
@@ -300,7 +301,7 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
     group.add(sprite)
     runSystems(group)
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(1)
   })
 
@@ -312,23 +313,23 @@ describe('Entity Lifecycle: Multiple Cycles', () => {
     group.add(spriteB)
     runSystems(group)
 
-    expect(spriteA.entity!.has(IsBatched)).toBe(true)
-    expect(spriteB.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, spriteA, IsBatched)).toBe(true)
+    expect(has(group, spriteB, IsBatched)).toBe(true)
 
     // Remove A, keep B
     group.remove(spriteA)
     runSystems(group)
 
     expect(spriteA.entity).toBeNull()
-    expect(spriteB.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, spriteB, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(1)
 
     // Re-add A
     group.add(spriteA)
     runSystems(group)
 
-    expect(spriteA.entity!.has(IsBatched)).toBe(true)
-    expect(spriteB.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, spriteA, IsBatched)).toBe(true)
+    expect(has(group, spriteB, IsBatched)).toBe(true)
     expect(group.spriteCount).toBe(2)
   })
 })
@@ -356,7 +357,6 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('effect values preserved through unenroll/re-enroll', () => {
@@ -369,7 +369,7 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     runSystems(group)
 
     // Effect should be in ECS trait
-    const traitData = sprite.entity!.get(DissolveLifecycle._trait) as Record<string, number>
+    const traitData = group.world.read(requiredEntity(sprite), DissolveLifecycle._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.7)
 
     // Remove sprite — effect values serialized to defaults
@@ -380,7 +380,7 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     group.add(sprite)
     runSystems(group)
 
-    const newTraitData = sprite.entity!.get(DissolveLifecycle._trait) as Record<string, number>
+    const newTraitData = group.world.read(requiredEntity(sprite), DissolveLifecycle._trait) as Record<string, number>
     expect(newTraitData['progress']).toBeCloseTo(0.7)
   })
 
@@ -403,7 +403,7 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     runSystems(group)
 
     // New entity should have the updated value
-    const traitData = sprite.entity!.get(DissolveLifecycle._trait) as Record<string, number>
+    const traitData = group.world.read(requiredEntity(sprite), DissolveLifecycle._trait) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.9)
   })
 
@@ -448,7 +448,6 @@ describe('Entity Lifecycle: Batch Slot Reuse', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('batch recycled when all sprites removed, reused on next add', () => {
@@ -484,7 +483,7 @@ describe('Entity Lifecycle: Batch Slot Reuse', () => {
     group.add(spriteB)
     runSystems(group)
 
-    const slotA = spriteA.entity!.get(BatchSlot)!.slot
+    const slotA = slot(group, spriteA).slot
 
     // Remove sprite A (frees its slot)
     group.remove(spriteA)
@@ -495,7 +494,7 @@ describe('Entity Lifecycle: Batch Slot Reuse', () => {
     group.add(spriteC)
     runSystems(group)
 
-    const slotC = spriteC.entity!.get(BatchSlot)!.slot
+    const slotC = slot(group, spriteC).slot
     expect(slotC).toBe(slotA) // Reused the freed slot
   })
 })
@@ -517,7 +516,6 @@ describe('Entity Lifecycle: Material Tier Change', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('tier upgrade rebuilds batches and re-assigns sprites', () => {
@@ -525,7 +523,7 @@ describe('Entity Lifecycle: Material Tier Change', () => {
     group.add(sprite)
     runSystems(group)
 
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
     const registry = getRegistry(group)!
     const initialBatchCount = registry.activeBatches.length
     expect(initialBatchCount).toBe(1)
@@ -555,7 +553,7 @@ describe('Entity Lifecycle: Material Tier Change', () => {
     runSystems(group)
 
     expect(sprite.entity).not.toBeNull()
-    expect(sprite.entity!.has(IsBatched)).toBe(true)
+    expect(has(group, sprite, IsBatched)).toBe(true)
 
     // Should still have a batch (rebuilt with correct tier)
     expect(registry.activeBatches.length).toBeGreaterThanOrEqual(1)
@@ -586,8 +584,7 @@ describe('Entity Lifecycle: Material Tier Change', () => {
     runSystems(group)
 
     // Alpha should be preserved through the rebuild
-    const color = sprite.entity!.get(SpriteColor)
-    expect(color).toBeDefined()
-    expect(color!.a).toBeCloseTo(0.5)
+    const color = readRequired(group.world, requiredEntity(sprite), SpriteColor)
+    expect(color.a).toBeCloseTo(0.5)
   })
 })

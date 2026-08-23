@@ -58,7 +58,11 @@ function existingFile(candidate) {
 
 function declarationCandidate(importer, specifier) {
   const base = resolve(dirname(importer), specifier)
-  const candidates = [base, `${base}.d.ts`, base.replace(/\.(?:m?js|ts)$/, '.d.ts'), resolve(base, 'index.d.ts')]
+  // Declaration emit keeps JavaScript extensions in relative imports. Prefer
+  // the sibling declaration before an existing `.js` implementation or the
+  // reachability walk can cross from the public type graph into runtime code.
+  const declaration = base.replace(/\.(?:m?js|ts)$/, '.d.ts')
+  const candidates = [declaration, `${base}.d.ts`, resolve(base, 'index.d.ts'), base]
   return candidates.find(existingFile)
 }
 
@@ -73,6 +77,7 @@ function within(file, directory) {
 
 const pending = [...roots]
 const visited = new Set()
+const parent = new Map()
 const violations = []
 while (pending.length > 0) {
   const file = pending.pop()
@@ -80,7 +85,17 @@ while (pending.length > 0) {
   visited.add(file)
   for (const directory of forbiddenDirectories) {
     if (within(file, directory)) {
-      violations.push(`${relative(packageDirectory, file)} resolves inside ${relative(packageDirectory, directory)}`)
+      const chain = []
+      let current = file
+      while (current !== undefined) {
+        chain.push(relative(packageDirectory, current))
+        current = parent.get(current)
+      }
+      violations.push(
+        `${relative(packageDirectory, file)} resolves inside ${relative(packageDirectory, directory)} via ${chain
+          .reverse()
+          .join(' -> ')}`
+      )
     }
   }
   const source = readFileSync(file, 'utf8')
@@ -99,7 +114,10 @@ while (pending.length > 0) {
   for (const dependencyPattern of dependencyPatterns) {
     for (const match of source.matchAll(dependencyPattern)) {
       const dependency = declarationCandidate(file, match[2])
-      if (dependency !== undefined) pending.push(dependency)
+      if (dependency !== undefined) {
+        if (!parent.has(dependency) && !roots.has(dependency)) parent.set(dependency, file)
+        pending.push(dependency)
+      }
     }
   }
 }

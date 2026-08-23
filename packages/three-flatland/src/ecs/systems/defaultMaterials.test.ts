@@ -1,16 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Group, Scene, Texture, CustomBlending, OneFactor } from 'three'
-import { universe } from 'koota'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import { BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
+import { registryFor } from '../testUtils.type-test'
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  const registryEntities = group.world.query(BatchRegistry)
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+  return registryFor(group.world)
 }
 
 function makeTexture(): Texture {
@@ -33,7 +31,6 @@ describe('registry-scoped default materials + dispose resurrection', () => {
   })
 
   afterEach(() => {
-    universe.reset()
     vi.restoreAllMocks()
   })
 
@@ -304,7 +301,6 @@ describe('registry-scoped effect-variant materials + dispose resurrection', () =
   })
 
   afterEach(() => {
-    universe.reset()
     vi.restoreAllMocks()
   })
 

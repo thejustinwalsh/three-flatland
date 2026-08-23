@@ -1,3 +1,5 @@
+import type { TraitHandle } from '../../internal/ecs-handles'
+
 export type NumericSchema = Readonly<Record<string, number>>
 
 export type WidenNumericSchema<TSchema extends NumericSchema> = {
@@ -22,7 +24,7 @@ declare const traitValue: unique symbol
 declare const traitKind: unique symbol
 declare const traitInitializerBrand: unique symbol
 
-export interface Trait<TValue = unknown, TKind extends TraitKind = TraitKind> {
+export interface Trait<TValue = unknown, TKind extends TraitKind = TraitKind> extends TraitHandle {
   readonly id: number
   readonly kind: TKind
   readonly [traitValue]: TValue

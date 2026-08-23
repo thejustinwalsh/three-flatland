@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Group, PerspectiveCamera, Scene, Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
@@ -37,10 +36,6 @@ describe('lazy materialization — dual-signal registration', () => {
     scene = new Scene()
     renderer = makeRenderer()
     texture = makeTexture()
-  })
-
-  afterEach(() => {
-    universe.reset()
   })
 
   it('Signal A: scene.add(sprite) primes the scene; first render call registers', () => {

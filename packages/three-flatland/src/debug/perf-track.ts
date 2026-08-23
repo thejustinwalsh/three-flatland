@@ -17,7 +17,7 @@
  */
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
-declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+declare const process: { env: { NODE_ENV?: string; FL_PROFILE?: string } }
 
 const TRACK_GROUP = 'three-flatland'
 
@@ -93,11 +93,9 @@ export function perfMeasure(
   end: number,
   opts?: PerfDetailOptions
 ): void {
-  // Dev-only: perf-track measurement is never emitted in a production build,
-  // even when the devtools dashboard is force-enabled via FL_DEVTOOLS. The
-  // Chrome Performance-panel instrumentation is a development aid; in prod it
-  // would only add per-call overhead with no consumer.
-  if (process.env.NODE_ENV === 'production') return
+  // Ordinary production stays allocation-free. A separately built
+  // FL_PROFILE=true artifact retains markers for controlled diagnostics.
+  if (process.env.NODE_ENV === 'production' && process.env.FL_PROFILE !== 'true') return
   if (typeof performance === 'undefined' || typeof performance.measure !== 'function') return
   if (end < start) return
   try {

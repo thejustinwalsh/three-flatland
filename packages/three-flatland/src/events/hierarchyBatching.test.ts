@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Group, Raycaster, Scene, Texture, Vector3 } from 'three'
-import { universe } from 'koota'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { flatlandRegister, flatlandSceneSweep, flatlandUnregister } from '../orchestration/orchestrator'
@@ -27,10 +26,6 @@ function batchRaycastAt(sprite: Sprite2D, x: number, y: number): number {
   const raycaster = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
   return raycaster.intersectObject(sprite._batchMesh!).filter((hit) => hit.object === sprite).length
 }
-
-afterEach(() => {
-  universe.reset()
-})
 
 describe('auto batching preserves the source hierarchy', () => {
   it('projects public visibility writes into a directly owned batch slot', () => {
@@ -787,6 +782,7 @@ describe('auto batching preserves the source hierarchy', () => {
   it('syncs a late assignment when automatic invalidation is disabled', () => {
     const scene = new Scene()
     const spriteGroup = new SpriteGroup({ autoInvalidateTransforms: false })
+    void spriteGroup.world
     type BatchAssign = (...args: unknown[]) => boolean
     const internal = spriteGroup as unknown as { _batchAssignSystem: BatchAssign }
     const assign = internal._batchAssignSystem

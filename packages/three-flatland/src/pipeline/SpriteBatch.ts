@@ -163,6 +163,12 @@ export class SpriteBatch extends InstancedMesh {
    */
   private _nextIndex: number = 0
 
+  /** Full packed entity handle occupying each physical row; 0 marks a hole. */
+  private _slotEntities: number[]
+
+  /** Sprite reference parallel to `_slotEntities`; null marks a hole. */
+  private _slotSprites: (Sprite2D | null)[]
+
   /**
    * Interleaved core buffer (UV + color + system + extras).
    */
@@ -315,6 +321,8 @@ export class SpriteBatch extends InstancedMesh {
     this._systemAttribute = systemAttr
     this._extrasAttribute = extrasAttr
     this._customAttributes = customAttributes
+    this._slotEntities = Array<number>(maxSize).fill(0)
+    this._slotSprites = Array<Sprite2D | null>(maxSize).fill(null)
     this.spriteMaterial = material
     this.maxSize = maxSize
     this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
@@ -512,6 +520,13 @@ export class SpriteBatch extends InstancedMesh {
       custom.tracker.markDirty(a)
       custom.tracker.markDirty(b)
     }
+
+    const entity = this._slotEntities[a]!
+    this._slotEntities[a] = this._slotEntities[b]!
+    this._slotEntities[b] = entity
+    const sprite = this._slotSprites[a]
+    this._slotSprites[a] = this._slotSprites[b] ?? null
+    this._slotSprites[b] = sprite ?? null
   }
 
   // ============================================
@@ -530,7 +545,30 @@ export class SpriteBatch extends InstancedMesh {
     return this._activeCount === 0
   }
 
-  allocateSlot(): number {
+  /** Physical row span, including reusable holes below the high-water mark. */
+  get slotSpan(): number {
+    return this._nextIndex
+  }
+
+  /** Packed entity handles parallel to physical instance rows; 0 marks a hole. */
+  get slotEntities(): readonly number[] {
+    return this._slotEntities
+  }
+
+  /** Sprite references parallel to physical instance rows; null marks a hole. */
+  get slotSprites(): readonly (Sprite2D | null)[] {
+    return this._slotSprites
+  }
+
+  /** Assert full packed-handle ownership before a multi-structure commit. */
+  assertSlotOwner(index: number, expectedEntity: number): void {
+    if (index < 0 || index >= this._nextIndex || this._slotEntities[index] !== expectedEntity) {
+      throw new Error(`three-flatland: Batch slot ${index} is not owned by entity ${expectedEntity}`)
+    }
+  }
+
+  /** Reserve a physical row without publishing ownership. */
+  reserveSlot(): number {
     let index: number
 
     if (this._freeList.length > 0) {
@@ -542,8 +580,25 @@ export class SpriteBatch extends InstancedMesh {
       index = this._nextIndex++
     }
 
-    this._activeCount++
     return index
+  }
+
+  /** Publish ownership after every buffer and forward-reference write succeeds. */
+  commitSlot(index: number, entity: number, sprite: Sprite2D): void {
+    if (entity === 0) throw new Error('three-flatland: Entity handle 0 cannot own a batch slot')
+    if (index < 0 || index >= this._nextIndex || this._slotEntities[index] !== 0) {
+      throw new Error(`three-flatland: Cannot commit occupied or unreserved batch slot ${index}`)
+    }
+    this._slotEntities[index] = entity
+    this._slotSprites[index] = sprite
+    this._activeCount++
+  }
+
+  /** Roll back an unpublished reservation without changing active ownership. */
+  rollbackSlot(index: number): void {
+    if (index < 0 || index >= this._nextIndex || this._slotEntities[index] !== 0) return
+    if (index === this._nextIndex - 1) this._nextIndex--
+    else if (!this._freeList.includes(index)) this._freeList.push(index)
   }
 
   /**
@@ -554,8 +609,8 @@ export class SpriteBatch extends InstancedMesh {
    * belt-and-braces (any path that resurrects the matrix before
    * reassignment still draws nothing).
    */
-  freeSlot(index: number): void {
-    if (index < 0 || index >= this._nextIndex) return
+  releaseSlot(index: number, expectedEntity: number): void {
+    this.assertSlotOwner(index, expectedEntity)
 
     const m = this.instanceMatrix.array as Float32Array
     m.fill(0, index * 16, index * 16 + 16)
@@ -564,6 +619,8 @@ export class SpriteBatch extends InstancedMesh {
     this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
     this._interleavedTracker.markDirty(index)
 
+    this._slotEntities[index] = 0
+    this._slotSprites[index] = null
     this._freeList.push(index)
     this._activeCount--
   }
@@ -573,6 +630,8 @@ export class SpriteBatch extends InstancedMesh {
    * Used when recycling a batch from the pool.
    */
   resetSlots(): void {
+    this._slotEntities.fill(0, 0, this._nextIndex)
+    this._slotSprites.fill(null, 0, this._nextIndex)
     this._activeCount = 0
     this._freeList.length = 0
     this._nextIndex = 0

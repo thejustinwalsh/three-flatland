@@ -1,16 +1,11 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { Scene } from 'three'
-import { universe } from 'koota'
 import { Registry, getOrCreateRegistry, peekRegistry } from './registry'
 
 function makeRenderer(): object {
   // The registry never calls renderer methods — identity is all that matters.
   return { isFakeRenderer: true }
 }
-
-afterEach(() => {
-  universe.reset()
-})
 
 describe('per-(renderer, scene) registry foundation', () => {
   it('returns the same registry for the same tuple', () => {

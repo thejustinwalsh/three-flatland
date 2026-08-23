@@ -1,11 +1,11 @@
-import { getStore as kootaGetStore, type World, type Trait } from 'koota'
+import { select, type World } from '../runtime'
 import { Matrix4, type Object3D } from 'three'
-import { IsRenderable, IsBatched, BatchSlot, BatchRegistry } from '../traits'
+import { BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
-import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
-import { ENTITY_ID_MASK } from '../snapshot'
 import { HierarchyStateTracker } from '../HierarchyStateTracker'
+
+const BatchRegistries = select(BatchRegistry)
 
 /** Scratch for quadHalfExtents — systems are single-threaded. */
 const _he = { hx: 0, hy: 0 }
@@ -107,11 +107,6 @@ function hierarchyVisibleFrom(object: Object3D | null): boolean {
   return true
 }
 
-/** Resolve SoA store for a numeric trait — one lookup, reused for all entities. */
-function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
-  return kootaGetStore(world, trait) as Record<string, number[]>
-}
-
 /**
  * Sync transforms to GPU instance matrices AND `sprite.matrixWorld`.
  *
@@ -132,14 +127,11 @@ function getNumericStore(world: World, trait: Trait): Record<string, number[]> {
  * so this system is now matrix-only.
  */
 export function transformSyncSystem(world: World): void {
-  const entities = world.query(IsRenderable, IsBatched, BatchSlot)
-
-  const registryEntities = world.query(BatchRegistry)
+  const registryEntities = world.view(BatchRegistries)
   if (registryEntities.length === 0) return
-  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+  const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
   if (!registry) return
   const meshSlots = registry.batchSlots
-  const spriteArr = registry.spriteArr
 
   // Explicit SpriteGroup schedules run before their own normal matrix
   // compose. Refresh that shared hierarchy boundary once. Auto sprites'
@@ -162,108 +154,100 @@ export function transformSyncSystem(world: World): void {
   if (group) _rootInverse.copy(group.matrixWorld).invert()
   else _rootInverse.identity()
 
-  // Pre-resolve SoA stores once — reused for every entity in the loop.
-  const firstEntity = entities[0]
-  if (!firstEntity) return
-
-  const bsStore = getNumericStore(world, BatchSlot)
-  const batchIdxArr = bsStore['batchIdx']!
-  const slotArr = bsStore['slot']!
-
-  for (const entity of entities) {
-    const eid = (entity as unknown as number) & ENTITY_ID_MASK
-
-    const batchIdx = batchIdxArr[eid]!
-    if (batchIdx < 0) continue
-    const slot = slotArr[eid]!
-
-    const mesh = meshSlots[batchIdx] as SpriteBatch | undefined
+  // Traverse one batch's physical rows to completion before advancing to
+  // the next GPU buffer. The owner arrays are parallel to those rows, so
+  // this path stays cache-local and skips holes with one sentinel check.
+  for (const mesh of meshSlots) {
     if (!mesh) continue
+    const owners = mesh.slotEntities
+    const sprites = mesh.slotSprites
+    for (let slot = 0; slot < mesh.slotSpan; slot++) {
+      if (owners[slot] === 0) continue
+      const sprite = sprites[slot]
+      if (!sprite) continue
 
-    const sprite = spriteArr[eid]
-    if (!sprite) continue
-
-    const buf = mesh.instanceMatrix.array as Float32Array
-    const o = slot * 16
-    const directRoot = !sprite._autoRegistry && !sprite._hierarchyManaged
-    const sourceParent = sprite._autoRegistry || sprite._hierarchyManaged ? sprite.parent : group
-    if (sourceParent && sourceParent !== group && !_updatedParents.has(sourceParent)) {
-      sourceParent.updateWorldMatrix(true, false)
-      _updatedParents.add(sourceParent)
-    }
-    sprite.updateMatrix()
-    const sourceVisible = sprite._batchVisibilityState()
-    const pathChanged = tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
-    if (!pathChanged && !rootChanged) {
-      if (sprite._hierarchyManaged || sprite._autoRegistry) sprite._batchWorldFresh = true
-      continue
-    }
-
-    // updateMatrix() above already produced the fast 2D local affine. Compose
-    // the source world matrix once without calling it again through the public
-    // on-demand helper. The direct-root/identity case is Knightmark's hot path.
-    if (!sourceParent) sprite.matrixWorld.copy(sprite.matrix)
-    else if (sourceParent === group && rootIsIdentity) {
-      sprite.matrixWorld.copy(sprite.matrix)
-    } else sprite.matrixWorld.multiplyMatrices(sourceParent.matrixWorld, sprite.matrix)
-    sprite.matrixWorldNeedsUpdate = false
-    if (sprite._hierarchyManaged || sprite._autoRegistry) sprite._batchWorldFresh = true
-    const worldMatrix = rootIsIdentity && directRoot ? sprite.matrix.elements : sprite.matrixWorld.elements
-    const hierarchyVisible = directRoot ? rootVisible && sourceVisible : sprite._isHierarchyVisible(sourceParent)
-
-    let relativeMatrix: Matrix4
-    if (!sourceParent || sourceParent === group) relativeMatrix = sprite.matrix
-    else {
-      let relativeParent = _relativeParents.get(sourceParent)
-      if (!relativeParent) {
-        relativeParent = _relativeParentPool[_relativeParentPoolIndex]
-        if (!relativeParent) {
-          relativeParent = new Matrix4()
-          _relativeParentPool.push(relativeParent)
-        }
-        _relativeParentPoolIndex++
-        relativeParent.multiplyMatrices(_rootInverse, sourceParent.matrixWorld)
-        _relativeParents.set(sourceParent, relativeParent)
+      const buf = mesh.instanceMatrix.array as Float32Array
+      const o = slot * 16
+      const directRoot = !sprite._autoRegistry && !sprite._hierarchyManaged
+      const sourceParent = sprite._autoRegistry || sprite._hierarchyManaged ? sprite.parent : group
+      if (sourceParent && sourceParent !== group && !_updatedParents.has(sourceParent)) {
+        sourceParent.updateWorldMatrix(true, false)
+        _updatedParents.add(sourceParent)
       }
-      relativeMatrix = _relativeMatrix.multiplyMatrices(relativeParent, sprite.matrix)
-    }
+      sprite.updateMatrix()
+      const sourceVisible = sprite._batchVisibilityState()
+      const pathChanged = tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
+      if (!pathChanged && !rootChanged) {
+        if (sprite._hierarchyManaged || sprite._autoRegistry) sprite._batchWorldFresh = true
+        continue
+      }
 
-    if (pathChanged) {
-      writeInstanceSlot(buf, o, relativeMatrix, hierarchyVisible)
-      mesh.markMatrixDirty(slot)
-    } else if (syncInstanceSlot(buf, o, relativeMatrix, hierarchyVisible)) {
-      // The shared root changed. Root motion normally leaves relative slots
-      // byte-identical; root visibility is the exceptional case that writes.
-      mesh.markMatrixDirty(slot)
-    }
+      // updateMatrix() above already produced the fast 2D local affine. Compose
+      // the source world matrix once without calling it again through the public
+      // on-demand helper. The direct-root/identity case is Knightmark's hot path.
+      if (!sourceParent) sprite.matrixWorld.copy(sprite.matrix)
+      else if (sourceParent === group && rootIsIdentity) {
+        sprite.matrixWorld.copy(sprite.matrix)
+      } else sprite.matrixWorld.multiplyMatrices(sourceParent.matrixWorld, sprite.matrix)
+      sprite.matrixWorldNeedsUpdate = false
+      if (sprite._hierarchyManaged || sprite._autoRegistry) sprite._batchWorldFresh = true
+      const worldMatrix = rootIsIdentity && directRoot ? sprite.matrix.elements : sprite.matrixWorld.elements
+      const hierarchyVisible = directRoot ? rootVisible && sourceVisible : sprite._isHierarchyVisible(sourceParent)
 
-    // Keep the picking broadphase keyed to the composed WORLD position
-    // (the same translation the GPU draws at). No-op inside the grid when the
-    // sprite's cell coverage hasn't changed — the static-sprite frame.
-    if (hierarchyVisible) {
-      quadHalfExtents(worldMatrix[0]!, worldMatrix[4]!, worldMatrix[1]!, worldMatrix[5]!, sprite.hitRadius, _he)
-      mesh.grid.update(sprite, worldMatrix[12]!, worldMatrix[13]!, _he.hx, _he.hy, worldMatrix[14]!)
-    } else {
-      mesh.grid.remove(sprite)
-    }
+      let relativeMatrix: Matrix4
+      if (!sourceParent || sourceParent === group) relativeMatrix = sprite.matrix
+      else {
+        let relativeParent = _relativeParents.get(sourceParent)
+        if (!relativeParent) {
+          relativeParent = _relativeParentPool[_relativeParentPoolIndex]
+          if (!relativeParent) {
+            relativeParent = new Matrix4()
+            _relativeParentPool.push(relativeParent)
+          }
+          _relativeParentPoolIndex++
+          relativeParent.multiplyMatrices(_rootInverse, sourceParent.matrixWorld)
+          _relativeParents.set(sourceParent, relativeParent)
+        }
+        relativeMatrix = _relativeMatrix.multiplyMatrices(relativeParent, sprite.matrix)
+      }
 
-    // matrixWorld remains world-space while the GPU slot is root-relative, so
-    // direct raycasts/debugging and rendering observe the same hierarchy.
+      if (pathChanged) {
+        writeInstanceSlot(buf, o, relativeMatrix, hierarchyVisible)
+        mesh.markMatrixDirty(slot)
+      } else if (syncInstanceSlot(buf, o, relativeMatrix, hierarchyVisible)) {
+        // The shared root changed. Root motion normally leaves relative slots
+        // byte-identical; root visibility is the exceptional case that writes.
+        mesh.markMatrixDirty(slot)
+      }
 
-    // Auto-derived shadow radius tracks animated scale (e.g.
-    // AnimatedSprite2D frame source-size swaps) each frame. Explicit
-    // overrides are static and written once at assign/reassign time, so
-    // skip them here to avoid needless interleaved-buffer re-uploads.
-    if (sprite.shadowRadius === undefined) {
-      if (rootIsIdentity && directRoot) {
-        mesh.writeShadowRadius(
-          slot,
-          Math.max(Math.abs(sprite.scale.x * sprite._trimSX), Math.abs(sprite.scale.y * sprite._trimSY))
-        )
+      // Keep the picking broadphase keyed to the composed WORLD position
+      // (the same translation the GPU draws at). No-op inside the grid when the
+      // sprite's cell coverage hasn't changed — the static-sprite frame.
+      if (hierarchyVisible) {
+        quadHalfExtents(worldMatrix[0]!, worldMatrix[4]!, worldMatrix[1]!, worldMatrix[5]!, sprite.hitRadius, _he)
+        mesh.grid.update(sprite, worldMatrix[12]!, worldMatrix[13]!, _he.hx, _he.hy, worldMatrix[14]!)
       } else {
-        const worldScaleX = Math.hypot(worldMatrix[0]!, worldMatrix[1]!, worldMatrix[2]!)
-        const worldScaleY = Math.hypot(worldMatrix[4]!, worldMatrix[5]!, worldMatrix[6]!)
-        mesh.writeShadowRadius(slot, Math.max(worldScaleX, worldScaleY))
+        mesh.grid.remove(sprite)
+      }
+
+      // matrixWorld remains world-space while the GPU slot is root-relative, so
+      // direct raycasts/debugging and rendering observe the same hierarchy.
+
+      // Auto-derived shadow radius tracks animated scale (e.g.
+      // AnimatedSprite2D frame source-size swaps) each frame. Explicit
+      // overrides are static and written once at assign/reassign time, so
+      // skip them here to avoid needless interleaved-buffer re-uploads.
+      if (sprite.shadowRadius === undefined) {
+        if (rootIsIdentity && directRoot) {
+          mesh.writeShadowRadius(
+            slot,
+            Math.max(Math.abs(sprite.scale.x * sprite._trimSX), Math.abs(sprite.scale.y * sprite._trimSY))
+          )
+        } else {
+          const worldScaleX = Math.hypot(worldMatrix[0]!, worldMatrix[1]!, worldMatrix[2]!)
+          const worldScaleY = Math.hypot(worldMatrix[4]!, worldMatrix[5]!, worldMatrix[6]!)
+          mesh.writeShadowRadius(slot, Math.max(worldScaleX, worldScaleY))
+        }
       }
     }
   }

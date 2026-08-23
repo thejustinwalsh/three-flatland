@@ -1,11 +1,14 @@
 import type { Scene, Texture } from 'three'
-import type { World } from 'koota'
+import { select, type World } from '../ecs/runtime'
+import type { WorldHandle } from '../internal/ecs-handles'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial, Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchRegistry } from '../ecs/traits'
 import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
 import { buildBatchQueryView, type BatchQueryView } from '../pipeline/batchQuery'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Module-global registry key. `Symbol.for` survives double-bundling —
@@ -89,9 +92,14 @@ export class Registry {
     this.group.name = 'FlatlandOrchestrator'
   }
 
-  /** The Koota world backing this registry (owned by the hidden group). */
-  get world(): World {
+  /** The private ECS world backing this registry (owned by the hidden group). */
+  get world(): WorldHandle {
     return this.group.world
+  }
+
+  /** Concrete private runtime view used only by Flatland internals. */
+  private get _runtimeWorld(): World {
+    return this.group.world as World
   }
 
   /**
@@ -102,7 +110,7 @@ export class Registry {
   getDefaultMaterial(texture: Texture): Sprite2DMaterial {
     // Accessing `world` materializes the hidden group's ECS world +
     // BatchRegistry singleton on first use.
-    const world = this.world
+    const world = this._runtimeWorld
     const data = this._registryData()!
     return getWorldDefaultMaterial(world, data, texture)
   }
@@ -113,7 +121,7 @@ export class Registry {
    * `getDefaultMaterial`.
    */
   getEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial {
-    const world = this.world
+    const world = this._runtimeWorld
     const data = this._registryData()!
     return getWorldEffectVariant(world, data, texture, options)
   }
@@ -129,10 +137,10 @@ export class Registry {
 
   /** @internal */
   _registryData(): RegistryData | null {
-    const world = this.group.world
-    const registryEntities = world.query(BatchRegistry)
+    const world = this._runtimeWorld
+    const registryEntities = world.view(BatchRegistries)
     if (registryEntities.length === 0) return null
-    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
+    return (world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined) ?? null
   }
 }
 

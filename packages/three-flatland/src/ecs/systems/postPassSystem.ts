@@ -1,8 +1,11 @@
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import type Node from 'three/src/nodes/core/Node.js'
 import { PostPassTrait, PostPassRegistry } from '../traits'
 
 type PassFn = (input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4'>
+
+const PostPassRegistries = select(PostPassRegistry)
+const PostPasses = select(PostPassTrait)
 
 /**
  * Query sorted post-processing pass functions from the ECS world.
@@ -11,21 +14,21 @@ type PassFn = (input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4'>
  */
 export function postPassSystem(world: World): PassFn[] | null {
   // Find registry entity — early return if none exists or not dirty
-  const registryEntities = world.query(PostPassRegistry)
+  const registryEntities = world.view(PostPassRegistries)
   if (registryEntities.length === 0) return null
 
-  const registryData = registryEntities[0]!.get(PostPassRegistry) as { dirty: boolean } | undefined
+  const registryData = world.read(registryEntities[0]!, PostPassRegistry)
   if (!registryData || !registryData.dirty) return null
 
   // Clear dirty flag
-  registryEntities[0]!.set(PostPassRegistry, { dirty: false })
+  world.patch(registryEntities[0]!, PostPassRegistry, { dirty: false })
 
   // Collect all enabled pass entities, sorted by order
-  const passEntities = world.query(PostPassTrait)
+  const passEntities = world.view(PostPasses)
   const passes: { fn: PassFn; order: number }[] = []
 
   for (const entity of passEntities) {
-    const data = entity.get(PostPassTrait) as { fn: PassFn | null; order: number; enabled: boolean } | undefined
+    const data = world.read(entity, PostPassTrait)
     if (data && data.enabled && data.fn) {
       passes.push({ fn: data.fn, order: data.order })
     }

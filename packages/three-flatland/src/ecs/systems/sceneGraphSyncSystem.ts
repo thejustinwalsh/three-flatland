@@ -1,9 +1,11 @@
 import type { Group, Object3D } from 'three'
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import { BatchRegistry, BatchMesh, BatchMeta } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { rebuildBatchOrder } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Create a scene-graph sync system bound to its own scratch state.
@@ -31,18 +33,18 @@ export function createSceneGraphSyncSystem(): (
     parentAdd: (...objects: Object3D[]) => Group,
     parentRemove: (...objects: Object3D[]) => Group
   ): void {
-    const registryEntities = world.query(BatchRegistry)
+    const registryEntities = world.view(BatchRegistries)
     if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
     if (!registry) return
 
     // Rebuild sorted order if needed
-    rebuildBatchOrder(registry)
+    rebuildBatchOrder(world, registry)
 
     // Build set of active batch meshes — clear-and-fill instead of new.
     activeMeshes.clear()
     for (const batchEntity of registry.activeBatches) {
-      const batchMesh = batchEntity.get(BatchMesh)
+      const batchMesh = world.read(batchEntity, BatchMesh)
       if (batchMesh?.mesh) activeMeshes.add(batchMesh.mesh)
     }
 
@@ -68,10 +70,10 @@ export function createSceneGraphSyncSystem(): (
     let subOrder = 0
     for (let i = 0; i < registry.activeBatches.length; i++) {
       const batchEntity = registry.activeBatches[i]!
-      const batchMesh = batchEntity.get(BatchMesh)
+      const batchMesh = world.read(batchEntity, BatchMesh)
       if (!batchMesh?.mesh) continue
 
-      const sortLayer = batchEntity.get(BatchMeta)?.sortLayer ?? 0
+      const sortLayer = world.read(batchEntity, BatchMeta)?.sortLayer ?? 0
       subOrder = sortLayer === prevLayer ? subOrder + 1 : 0
       prevLayer = sortLayer
       batchMesh.mesh.renderOrder = sortLayer + subOrder * 1e-6

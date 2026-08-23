@@ -1,14 +1,13 @@
-import { createAdded } from 'koota'
-import type { World, Entity, Trait } from 'koota'
+import { added, select, type AnyTrait, type Entity, type World } from '../runtime'
 import {
   IsRenderable,
+  IsBatched,
   SpriteColor,
   SpriteUV,
   SpriteFlip,
   SortLayer,
   SpriteMaterialRef,
   CameraLayersMask,
-  InBatch,
   BatchSlot,
   BatchMesh,
   BatchMeta,
@@ -18,9 +17,11 @@ import type { MaterialEffect } from '../../materials/MaterialEffect'
 import type { Sprite2D } from '../../sprites/Sprite2D'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
 import type { RegistryData } from '../batchUtils'
-import { computeRunKey, getOrCreateRun, findOrCreateBatch } from '../batchUtils'
-import { proxyPickToBatch } from '../../react/batchPicking'
-import { ENTITY_ID_MASK } from '../snapshot'
+import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
+import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
+import { entitySlot } from '../snapshot'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Create a batch-assign system bound to its own scratch state.
@@ -30,29 +31,29 @@ import { ENTITY_ID_MASK } from '../snapshot'
  *
  * Triggered by Added(IsRenderable). Computes the run key from
  * (sortLayer, materialId, layers.mask), finds or creates a batch in that run, allocates
- * a slot, and sets the InBatch relation with slot data. Also performs
+ * a slot, and commits direct `BatchSlot` ownership. Also performs
  * a one-time full buffer sync from trait state.
  *
  * Closes over its own `Added` subscription + `dirtyMeshes`/`pendingCounts`
- * scratch collections so multiple SpriteGroups don't share Koota
- * change-tracking state and the collections are cleared-and-reused
+ * scratch collections so multiple SpriteGroups don't share event state,
+ * and the collections are cleared-and-reused
  * instead of allocated per frame.
  */
-export function createBatchAssignSystem(): (
-  world: World,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
-) => boolean {
-  const Added = createAdded()
+export function createBatchAssignSystem(
+  ownerWorld: World
+): (world: World, effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>) => boolean {
+  const AddedRenderable = added(IsRenderable)
+  ownerWorld.activate(AddedRenderable)
   const dirtyMeshes = new Set<SpriteBatch>()
   const pendingCounts = new Map<string, number>()
 
-  return function batchAssignSystem(world: World, effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>): boolean {
-    const added = world.query(Added(IsRenderable))
-    if (added.length === 0) return false
+  return function batchAssignSystem(world: World, effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>): boolean {
+    const addedEntities = world.drain(AddedRenderable)
+    if (addedEntities.length === 0) return false
 
-    const registryEntities = world.query(BatchRegistry)
+    const registryEntities = world.view(BatchRegistries)
     if (registryEntities.length === 0) return false
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
     if (!registry) return false
 
     dirtyMeshes.clear()
@@ -62,25 +63,25 @@ export function createBatchAssignSystem(): (
     // first batch for that load instead of the ladder's bottom tier. See
     // resolveBatchSize/findOrCreateBatch.
     pendingCounts.clear()
-    for (const entity of added) {
-      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+    for (const entity of addedEntities) {
+      const sprite = registry.spriteArr[entitySlot(entity)]
       if (!sprite) continue
-      const layerData = entity.get(SortLayer)
-      const matRef = entity.get(SpriteMaterialRef)
+      const layerData = world.read(entity, SortLayer)
+      const matRef = world.read(entity, SpriteMaterialRef)
       if (!layerData || !matRef) continue
-      const layersMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
+      const layersMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
       const key = computeRunKey(layerData.value, matRef.materialId, layersMask)
       pendingCounts.set(key, (pendingCounts.get(key) ?? 0) + 1)
     }
 
-    for (const entity of added) {
-      const sprite = registry.spriteArr[(entity as unknown as number) & ENTITY_ID_MASK]
+    for (const entity of addedEntities) {
+      const sprite = registry.spriteArr[entitySlot(entity)]
       if (!sprite) continue
 
-      const layerData = entity.get(SortLayer)
-      const matRef = entity.get(SpriteMaterialRef)
+      const layerData = world.read(entity, SortLayer)
+      const matRef = world.read(entity, SpriteMaterialRef)
       if (!layerData || !matRef) continue
-      const layersMask = entity.get(CameraLayersMask)?.mask ?? sprite.layers.mask
+      const layersMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
 
       // Track material for schema version detection
       const material = sprite.material
@@ -98,55 +99,49 @@ export function createBatchAssignSystem(): (
       // Find or create a batch with free slots
       const pendingCount = pendingCounts.get(runKey) ?? 0
       const batchEntity = findOrCreateBatch(world, registry, run, pendingCount)
-      const batchMesh = batchEntity.get(BatchMesh)
+      const batchMesh = world.read(batchEntity, BatchMesh)
       if (!batchMesh?.mesh) continue
       const mesh = batchMesh.mesh
 
       // Allocate a slot
-      const slot = mesh.allocateSlot()
+      const slot = mesh.reserveSlot()
       if (slot < 0) continue
 
-      // Add the InBatch membership relation. The slot lives in BatchSlot
-      // (set below) — the single source of truth kept in sync by the sort.
-      entity.add(InBatch(batchEntity))
-
-      // Set BatchSlot SoA cache for O(1) hot-path reads.
-      // BatchSlot is pre-added at spawn time — always use set, no archetype transition.
-      const meta = batchEntity.get(BatchMeta)
+      const meta = world.read(batchEntity, BatchMeta)
       const batchIdx = meta?.batchIdx ?? -1
-      entity.set(BatchSlot, { batchIdx, slot }, false)
+      let committed = false
+      try {
+        // Prepare every potentially-throwing projection before publishing
+        // ownership. A failed preparation leaves no IsBatched or reverse row.
+        syncSlotBuffers(world, entity, slot, mesh, sprite, effectTraits)
+        proxyPickToBatch(sprite, mesh)
+        world.patch(entity, BatchSlot, { batchEntity, batchIdx, slot }, false)
+        mesh.commitSlot(slot, entity, sprite)
+        committed = true
 
-      // Cache batch references on the sprite for O(1) direct-write
-      // dispatch from setters. While the sprite is in a batch, this
-      // triplet is the invariant: _batchMesh === mesh, _batchSlot === slot,
-      // _batchIdx === batchIdx. Setters check `_batchMesh !== null` as the
-      // "am I batched?" test.
-      sprite._batchMesh = mesh
-      sprite._batchSlot = slot
-      sprite._batchIdx = batchIdx
-
-      // R3F batch-root picking: route the sprite's raycast through the
-      // batch's broadphase instead of R3F's O(n) per-object list. No-op
-      // for vanilla (non-R3F) sprites.
-      proxyPickToBatch(sprite, mesh)
-
-      // Auto-orchestrated sprites live in the user's scene tree — once a
-      // batch draws them, their own Mesh must stop rendering. Explicit
-      // SpriteGroup sprites were never tree children; leave them alone.
-      if (sprite._autoRegistry || sprite._hierarchyManaged) {
-        sprite._setBatchSuppressed(true)
+        sprite._batchMesh = mesh
+        sprite._batchSlot = slot
+        sprite._batchIdx = batchIdx
+        if (sprite._autoRegistry || sprite._hierarchyManaged) sprite._setBatchSuppressed(true)
+        world.add(entity, IsBatched)
+        mesh.markSortDirty()
+        dirtyMeshes.add(mesh)
+      } catch (error) {
+        mesh.grid.remove(sprite)
+        unproxyPickFromBatch(sprite, mesh)
+        if (committed) mesh.releaseSlot(slot, entity)
+        else mesh.rollbackSlot(slot)
+        if (world.has(entity, IsBatched)) world.remove(entity, IsBatched)
+        if (world.isAlive(entity) && world.has(entity, BatchSlot)) {
+          world.patch(entity, BatchSlot, { batchEntity: 0, batchIdx: -1, slot: -1 }, false)
+        }
+        sprite._batchMesh = null
+        sprite._batchSlot = -1
+        sprite._batchIdx = -1
+        sprite._setBatchSuppressed(false)
+        recycleBatchIfEmpty(world, registry, batchEntity, run)
+        throw error
       }
-
-      // Signal that this batch needs sorting on the next pass — the new
-      // sprite was just inserted at an arbitrary slot (allocateSlot's
-      // free-list / nextIndex), not its sorted position. For gated
-      // materials this is a no-op since batchSortSystem skips them
-      // anyway; the marker is harmless.
-      mesh.markSortDirty()
-
-      // One-time full buffer sync from current trait state (no needsUpdate — deferred)
-      syncSlotBuffers(entity, slot, mesh, sprite, effectTraits)
-      dirtyMeshes.add(mesh)
     }
 
     // Flush syncCount once per mesh, not per entity.
@@ -168,26 +163,27 @@ export function createBatchAssignSystem(): (
  * Does NOT set needsUpdate — caller batches that across all entities.
  */
 function syncSlotBuffers(
+  world: World,
   entity: Entity,
   slot: number,
   mesh: SpriteBatch,
   sprite: Sprite2D,
-  effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
+  effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>
 ): void {
   // Color
-  const c = entity.get(SpriteColor)
+  const c = world.read(entity, SpriteColor)
   if (c) {
     mesh.writeColor(slot, c.r, c.g, c.b, c.a)
   }
 
   // UV
-  const uv = entity.get(SpriteUV)
+  const uv = world.read(entity, SpriteUV)
   if (uv) {
     mesh.writeUV(slot, uv.x, uv.y, uv.w, uv.h)
   }
 
   // Flip
-  const f = entity.get(SpriteFlip)
+  const f = world.read(entity, SpriteFlip)
   if (f) {
     mesh.writeFlip(slot, f.x, f.y)
   }
@@ -214,7 +210,7 @@ function syncEffectBuffers(
   slot: number,
   mesh: SpriteBatch,
   sprite: Sprite2D,
-  _effectTraits: ReadonlyMap<Trait, typeof MaterialEffect>
+  _effectTraits: ReadonlyMap<AnyTrait, typeof MaterialEffect>
 ): void {
   const material = sprite.material
   const tier = material._effectTier

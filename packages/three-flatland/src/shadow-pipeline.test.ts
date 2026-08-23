@@ -5,6 +5,8 @@ import { Flatland } from './Flatland'
 import { createLightEffect } from './lights/LightEffect'
 import { ShadowPipeline, LightingContext } from './ecs/traits'
 import { shadowPipelineSystem } from './ecs/systems/shadowPipelineSystem'
+import { select, type Trait } from './ecs/runtime'
+import { readRequired } from './ecs/testUtils.type-test'
 import { vec4 } from 'three/tsl'
 
 const LitNoShadows = createLightEffect({
@@ -23,8 +25,14 @@ const LitWithShadows = createLightEffect({
 
 /** Helper — read the singleton ShadowPipeline trait from a Flatland's world. */
 function getPipeline(flatland: Flatland) {
-  const entities = flatland.world.query(ShadowPipeline)
-  return entities.length > 0 ? entities[0]!.get(ShadowPipeline) : null
+  const entity = flatland.world.view(select(ShadowPipeline))[0]
+  return entity === undefined ? null : readRequired(flatland.world, entity, ShadowPipeline)
+}
+
+function getSingleton<TValue>(flatland: Flatland, trait: Trait<TValue>): TValue {
+  const entity = flatland.world.view(select(trait))[0]
+  if (entity === undefined) throw new Error(`Expected singleton trait ${trait.id}`)
+  return readRequired(flatland.world, entity, trait)
 }
 
 /** Creates the minimal renderer surface needed to advance shadow systems. */
@@ -44,13 +52,22 @@ function mockRenderer(width: number, height: number) {
 }
 
 describe('shadowPipelineSystem + ShadowPipeline trait', () => {
+  const flatlands: Flatland[] = []
+
+  function makeFlatland(): Flatland {
+    const flatland = new Flatland()
+    flatlands.push(flatland)
+    return flatland
+  }
+
   afterEach(() => {
+    for (const flatland of flatlands.splice(0)) flatland.dispose()
     vi.restoreAllMocks()
   })
 
   it('setLighting with a non-shadow effect does not allocate the pipeline', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const flatland = new Flatland()
+    const flatland = makeFlatland()
     flatland.setLighting(new LitNoShadows())
 
     // Trait may exist (Flatland always bootstraps it) but generators are null.
@@ -66,7 +83,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     // calling buildLightFn — the system picks up the existing instances
     // on its first tick and just runs init()/resize() against them.
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const flatland = new Flatland()
+    const flatland = makeFlatland()
     flatland.setLighting(new LitWithShadows())
 
     const pipeline = getPipeline(flatland)
@@ -76,7 +93,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     // Running the system afterwards is idempotent — it shouldn't replace
     // the existing allocations.
     const sdfBefore = pipeline!.sdfGenerator
-    const lctx = flatland.world.query(LightingContext)[0]!.get(LightingContext)
+    const lctx = getSingleton(flatland, LightingContext)
     lctx.renderer = {
       getSize: (t: { set: (x: number, y: number) => void }) => {
         t.set(1920, 1080)
@@ -92,7 +109,7 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
 
   it('resizes the live shadow pipeline when render() observes render-target swaps', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const flatland = new Flatland()
+    const flatland = makeFlatland()
     flatland.setLighting(new LitWithShadows())
     const pipeline = getPipeline(flatland)!
     const sdfInit = vi.spyOn(pipeline.sdfGenerator!, 'init').mockImplementation(() => {})
@@ -121,11 +138,11 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
 
   it('switching from shadow → no-shadow tears down on next system tick', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const flatland = new Flatland()
+    const flatland = makeFlatland()
     flatland.setLighting(new LitWithShadows())
 
     // Force allocation by running the system with a fake renderer (as above).
-    const lctx = flatland.world.query(LightingContext)[0]!.get(LightingContext)
+    const lctx = getSingleton(flatland, LightingContext)
     lctx.renderer = {
       getSize: (t: { set: (x: number, y: number) => void }) => {
         t.set(256, 256)
@@ -156,10 +173,10 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     // sourced layout.
     const { lightEffectSystem } = await import('./ecs/systems/lightEffectSystem')
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const flatland = new Flatland()
+    const flatland = makeFlatland()
     flatland.setLighting(new LitWithShadows())
 
-    const lctx = flatland.world.query(LightingContext)[0]!.get(LightingContext)
+    const lctx = getSingleton(flatland, LightingContext)
     lctx.renderer = {
       getSize: (t: { set: (x: number, y: number) => void }) => {
         t.set(256, 256)
@@ -184,10 +201,10 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
 
   it('Flatland.dispose() releases trait-owned GPU resources', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const flatland = new Flatland()
+    const flatland = makeFlatland()
     flatland.setLighting(new LitWithShadows())
 
-    const lctx = flatland.world.query(LightingContext)[0]!.get(LightingContext)
+    const lctx = getSingleton(flatland, LightingContext)
     lctx.renderer = {
       getSize: (t: { set: (x: number, y: number) => void }) => {
         t.set(256, 256)

@@ -1,6 +1,6 @@
-import type { Trait, World } from 'koota'
+import { select, type AnyTrait, type World } from '../ecs/runtime'
+import type { EntityHandle, WorldHandle } from '../internal/ecs-handles'
 import type { SpriteBatch } from './SpriteBatch'
-import type { RegistryData, RunKey } from '../ecs/batchUtils'
 import {
   BatchMesh,
   IsAlphaBlendedBatch as _IsAlphaBlendedBatch,
@@ -11,7 +11,7 @@ import {
 
 /**
  * Opaque batch classification token. The underlying ECS trait never
- * leaks — the Koota dependency stays swappable behind this facade.
+ * leaks — the private ECS implementation stays replaceable behind this facade.
  */
 export interface BatchQueryTag {
   readonly __flBatchTag?: true
@@ -41,10 +41,10 @@ export const IsUnlitBatch: BatchQueryTag = _IsUnlitBatch as unknown as BatchQuer
  * evolve from branch → query-narrowing as workload demands without
  * breaking this surface.
  */
-export class BatchQueryView extends Map<RunKey, SpriteBatch[]> {
-  private _world: World | null
+export class BatchQueryView extends Map<string, SpriteBatch[]> {
+  private _world: WorldHandle | null
 
-  constructor(world: World | null, entries?: Iterable<readonly [RunKey, SpriteBatch[]]>) {
+  constructor(world: WorldHandle | null, entries?: Iterable<readonly [string, SpriteBatch[]]>) {
     super(entries)
     this._world = world
   }
@@ -52,13 +52,18 @@ export class BatchQueryView extends Map<RunKey, SpriteBatch[]> {
   /** All batches currently tagged with the given classification. */
   where(tag: BatchQueryTag): SpriteBatch[] {
     if (!this._world) return []
+    const world = this._world as World
     const result: SpriteBatch[] = []
-    for (const entity of this._world.query(tag as unknown as Trait, BatchMesh)) {
-      const mesh = entity.get(BatchMesh)?.mesh
+    for (const entity of world.view(select(tag as unknown as AnyTrait, BatchMesh))) {
+      const mesh = world.read(entity, BatchMesh)?.mesh
       if (mesh) result.push(mesh)
     }
     return result
   }
+}
+
+interface BatchQueryRegistry {
+  readonly runs: ReadonlyMap<string, { readonly batches: readonly EntityHandle[] }>
 }
 
 /**
@@ -66,13 +71,17 @@ export class BatchQueryView extends Map<RunKey, SpriteBatch[]> {
  * run key. Shared by `SpriteGroup.batches` and `Registry.batches` so the
  * run → mesh-list traversal has exactly one implementation.
  */
-export function buildBatchQueryView(world: World | null, registryData: RegistryData | null): BatchQueryView {
+export function buildBatchQueryView(
+  world: WorldHandle | null,
+  registryData: BatchQueryRegistry | null
+): BatchQueryView {
+  const runtimeWorld = world as World | null
   const view = new BatchQueryView(world)
   if (!registryData) return view
   for (const [key, run] of registryData.runs) {
     const meshes: SpriteBatch[] = []
     for (const batchEntity of run.batches) {
-      const mesh = batchEntity.get(BatchMesh)?.mesh
+      const mesh = runtimeWorld?.read(batchEntity, BatchMesh)?.mesh
       if (mesh) meshes.push(mesh)
     }
     view.set(key, meshes)

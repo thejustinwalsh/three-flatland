@@ -1,6 +1,9 @@
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import { LightingContext, ShadowPipeline } from '../traits'
 import type { LightEffectRuntimeContext } from '../../lights/LightEffect'
+
+const LightingContexts = select(LightingContext)
+const ShadowPipelines = select(ShadowPipeline)
 
 // Module-scoped scratch reused every frame — mutated in place so the
 // per-frame update path stays zero-alloc past warmup (matches the perf
@@ -27,10 +30,10 @@ const _runtimeCtx = {
  * trait — the authoritative owner of that handle. No mirrored state.
  */
 export function lightEffectSystem(world: World): void {
-  const ctxEntities = world.query(LightingContext)
+  const ctxEntities = world.view(LightingContexts)
   if (ctxEntities.length === 0) return
 
-  const ctx = ctxEntities[0]!.get(LightingContext)
+  const ctx = world.read(ctxEntities[0]!, LightingContext)
   if (!ctx) return
   if (!ctx.effect?.enabled || !ctx.lightStore) return
   if (!ctx.renderer || !ctx.camera) return
@@ -38,8 +41,8 @@ export function lightEffectSystem(world: World): void {
   // Pull the live SDF handle from ShadowPipeline. Null when the active
   // effect does not declare needsShadows, which is correct — effects that
   // don't need shadows shouldn't see a generator in their runtime context.
-  const pipelineEntities = world.query(ShadowPipeline)
-  const pipeline = pipelineEntities.length > 0 ? pipelineEntities[0]!.get(ShadowPipeline) : null
+  const pipelineEntities = world.view(ShadowPipelines)
+  const pipeline = pipelineEntities.length > 0 ? world.read(pipelineEntities[0]!, ShadowPipeline) : null
   const sdfGenerator = pipeline?.sdfGenerator ?? null
 
   const cam = ctx.camera

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { universe } from 'koota'
 import { Texture } from 'three'
 import { SpriteGroup } from './SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
 import { SortLayers } from './sortLayers'
-import { SpriteColor, InBatch, BatchMesh, BatchSlot } from '../ecs/traits'
+import { SpriteColor, BatchSlot, IsBatched } from '../ecs/traits'
+import { batchEntityFor, batchFor, readRequired, requiredEntity } from '../ecs/testUtils.type-test'
 
-// Create effect class at module level so the Koota trait survives universe.reset()
+// Create the effect class once so every test exercises the same declared trait.
 const DissolveRenderer = createMaterialEffect({
   name: 'dissolve_renderer',
   schema: { progress: 0 },
@@ -30,7 +30,6 @@ describe('SpriteGroup', () => {
   afterEach(() => {
     renderer?.dispose()
     renderer = null
-    universe.reset()
   })
 
   it('should create a renderer with default options', () => {
@@ -218,24 +217,17 @@ describe('SpriteGroup', () => {
     renderer.add(sprite)
     renderer.updateMatrixWorld()
 
-    // Now sprite is enrolled + batched via InBatch relation
-    const entity = sprite._entity!
-    const batchEntity = entity.targetFor(InBatch)
-    expect(batchEntity).not.toBeUndefined()
-
-    const batchMeshData = batchEntity!.get(BatchMesh)
-    const mesh = batchMeshData?.mesh
-    expect(mesh).not.toBeNull()
-
-    const batchSlot = entity.get(BatchSlot)
-    expect(batchSlot).toBeDefined()
-    const slot = batchSlot!.slot
+    const entity = requiredEntity(sprite)
+    const batchEntity = batchEntityFor(renderer.world, sprite)
+    expect(batchEntity).toBeGreaterThan(0)
+    const mesh = batchFor(renderer.world, sprite)
+    const slot = readRequired(renderer.world, entity, BatchSlot).slot
 
     // Change tint — writes to trait only (no immediate batch write)
     sprite.tint = [1, 0, 0]
 
     // Trait should have new value
-    const color = entity.get(SpriteColor)
+    const color = readRequired(renderer.world, entity, SpriteColor)
     expect(color.r).toBe(1)
     expect(color.g).toBe(0)
 
@@ -244,7 +236,7 @@ describe('SpriteGroup', () => {
 
     // Verify batch buffer was updated. Interleaved layout — color
     // at offsets 4..7 within each instance's 16-float slice.
-    const colorAttr = mesh!.getColorAttribute()
+    const colorAttr = mesh.getColorAttribute()
     const array = colorAttr.array as Float32Array
     const base = slot * 16 + 4
     expect(array[base + 0]).toBeCloseTo(1) // r
@@ -259,10 +251,9 @@ describe('SpriteGroup', () => {
     renderer.add(sprite)
     renderer.updateMatrixWorld()
 
-    const entity = sprite._entity!
-    const batchEntity = entity.targetFor(InBatch)!
-    const mesh = batchEntity.get(BatchMesh)!.mesh!
-    const slot = entity.get(BatchSlot)!.slot
+    const entity = requiredEntity(sprite)
+    const mesh = batchFor(renderer.world, sprite)
+    const slot = readRequired(renderer.world, entity, BatchSlot).slot
 
     // R3F sets nested props by mutating the returned Color in place
     // (`sprite.tint.set(...)`), NOT by reassigning `sprite.tint`. The
@@ -299,9 +290,9 @@ describe('SpriteGroup', () => {
     renderer.add(sprite)
     renderer.updateMatrixWorld()
 
-    // Sprite should be batched via InBatch relation
-    const entity = sprite._entity!
-    expect(entity.targetFor(InBatch)).not.toBeUndefined()
+    const entity = requiredEntity(sprite)
+    expect(renderer.world.has(entity, IsBatched)).toBe(true)
+    expect(batchEntityFor(renderer.world, sprite)).toBeGreaterThan(0)
 
     // Change effect property — writes to trait only
     dissolve.progress = 0.8

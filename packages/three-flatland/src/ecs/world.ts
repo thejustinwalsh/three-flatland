@@ -1,14 +1,17 @@
-import { createWorld, type World } from 'koota'
+import { createWorld } from './runtime'
+import type { WorldHandle } from '../internal/ecs-handles'
+
+type RuntimeWorld = ReturnType<typeof createWorld>
 
 /** Global fallback world for standalone sprites (no SpriteGroup parent) */
-let _globalWorld: World | null = null
+let _globalWorld: RuntimeWorld | null = null
 
 /**
  * Get the global fallback world.
  * Created lazily on first access. Used by sprites that aren't
  * inside a SpriteGroup or Flatland context.
  */
-export function getGlobalWorld(): World {
+export function getGlobalWorld(): WorldHandle {
   if (!_globalWorld) _globalWorld = createWorld()
   return _globalWorld
 }
@@ -19,7 +22,7 @@ export function getGlobalWorld(): World {
  */
 export function resetGlobalWorld(): void {
   if (_globalWorld) {
-    _globalWorld.destroy()
+    _globalWorld.dispose()
     _globalWorld = null
   }
 }
@@ -29,7 +32,7 @@ export function resetGlobalWorld(): void {
  * Implemented by SpriteGroup and Flatland.
  */
 export interface WorldProvider {
-  readonly world: World
+  readonly world: WorldHandle
 }
 
 /**
@@ -43,7 +46,7 @@ export interface WorldProvider {
  * @param child - Three.js object to assign world to
  * @param world - ECS world to assign
  */
-export function assignWorld(child: { _flatlandWorld?: World | null }, world: World): void {
+export function assignWorld(child: { _flatlandWorld?: WorldHandle | null }, world: WorldHandle): void {
   if (child._flatlandWorld && child._flatlandWorld !== world) {
     throw new Error('three-flatland: Cannot switch worlds after creation. Destroy and recreate the object.')
   }

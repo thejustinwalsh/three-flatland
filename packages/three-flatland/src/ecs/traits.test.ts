@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { createWorld, universe } from 'koota'
+import { createWorld } from './runtime'
 import { Texture } from 'three'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -14,6 +14,7 @@ import {
   BatchRegistry,
 } from './traits'
 import type { RegistryData } from './batchUtils'
+import { readRequired, requiredEntity } from './testUtils.type-test'
 
 describe('ECS traits — sprite enrollment lifecycle', () => {
   let world: ReturnType<typeof createWorld>
@@ -21,7 +22,7 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
   let material: Sprite2DMaterial
 
   afterEach(() => {
-    world?.destroy()
+    world?.dispose()
   })
 
   function setup() {
@@ -51,21 +52,15 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    const color = entity.get(SpriteColor)
-    expect(color).toBeDefined()
-    expect(color!.r).toBeCloseTo(1)
-    expect(color!.g).toBeCloseTo(0)
-    expect(color!.b).toBeCloseTo(0)
-    expect(color!.a).toBe(0.5)
+    const entity = requiredEntity(sprite)
+    const color = readRequired(world, entity, SpriteColor)
+    expect(color.r).toBeCloseTo(1)
+    expect(color.g).toBeCloseTo(0)
+    expect(color.b).toBeCloseTo(0)
+    expect(color.a).toBe(0.5)
 
-    const layer = entity.get(SortLayer)
-    expect(layer).toBeDefined()
-    expect(layer!.value).toBe(3)
-
-    const zIdx = entity.get(SpriteZIndex)
-    expect(zIdx).toBeDefined()
-    expect(zIdx!.zIndex).toBe(42)
+    expect(readRequired(world, entity, SortLayer).value).toBe(3)
+    expect(readRequired(world, entity, SpriteZIndex).zIndex).toBe(42)
   })
 
   it('should set UV trait from frame data', () => {
@@ -82,13 +77,11 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    const uv = entity.get(SpriteUV)
-    expect(uv).toBeDefined()
-    expect(uv!.x).toBeCloseTo(0.1)
-    expect(uv!.y).toBeCloseTo(0.2)
-    expect(uv!.w).toBeCloseTo(0.3)
-    expect(uv!.h).toBeCloseTo(0.4)
+    const uv = readRequired(world, requiredEntity(sprite), SpriteUV)
+    expect(uv.x).toBeCloseTo(0.1)
+    expect(uv.y).toBeCloseTo(0.2)
+    expect(uv.w).toBeCloseTo(0.3)
+    expect(uv.h).toBeCloseTo(0.4)
   })
 
   it('should set flip trait from initial state', () => {
@@ -96,11 +89,9 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     const sprite = new Sprite2D({ material, flipX: true, flipY: false })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    const flip = entity.get(SpriteFlip)
-    expect(flip).toBeDefined()
-    expect(flip!.x).toBe(-1)
-    expect(flip!.y).toBe(1)
+    const flip = readRequired(world, requiredEntity(sprite), SpriteFlip)
+    expect(flip.x).toBe(-1)
+    expect(flip.y).toBe(1)
   })
 
   it('should set material ref trait', () => {
@@ -108,22 +99,20 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    const matRef = entity.get(SpriteMaterialRef)
-    expect(matRef).toBeDefined()
-    expect(matRef!.materialId).toBe(material.batchId)
+    const matRef = readRequired(world, requiredEntity(sprite), SpriteMaterialRef)
+    expect(matRef.materialId).toBe(material.batchId)
   })
 
   it('should register in spriteArr when BatchRegistry exists', () => {
     setup()
     // Spawn a registry entity so spriteArr is available
     const registryEntity = world.spawn(BatchRegistry())
-    const registry = registryEntity.get(BatchRegistry) as RegistryData | undefined
+    const registry = world.read(registryEntity, BatchRegistry) as RegistryData | undefined
 
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    const eid = (sprite._entity! as unknown as number) & ((1 << 20) - 1)
+    const eid = world.index(requiredEntity(sprite))
     expect(registry!.spriteArr[eid]).toBe(sprite)
   })
 
@@ -132,8 +121,7 @@ describe('ECS traits — sprite enrollment lifecycle', () => {
     const sprite = new Sprite2D({ material })
     sprite._enrollInWorld(world)
 
-    const entity = sprite._entity!
-    expect(entity.has(IsRenderable)).toBe(true)
+    expect(world.has(requiredEntity(sprite), IsRenderable)).toBe(true)
   })
 
   it('should not enroll twice', () => {
@@ -171,7 +159,7 @@ describe('ECS traits — property sync', () => {
   let material: Sprite2DMaterial
 
   afterEach(() => {
-    world?.destroy()
+    world?.dispose()
   })
 
   function setup() {
@@ -187,10 +175,10 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.tint = 0x00ff00
-    const color = sprite._entity!.get(SpriteColor)
-    expect(color!.r).toBeCloseTo(0)
-    expect(color!.g).toBeCloseTo(1)
-    expect(color!.b).toBeCloseTo(0)
+    const color = readRequired(world, requiredEntity(sprite), SpriteColor)
+    expect(color.r).toBeCloseTo(0)
+    expect(color.g).toBeCloseTo(1)
+    expect(color.b).toBeCloseTo(0)
   })
 
   it('should sync alpha changes to SpriteColor trait', () => {
@@ -199,8 +187,7 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.alpha = 0.3
-    const color = sprite._entity!.get(SpriteColor)
-    expect(color!.a).toBe(0.3)
+    expect(readRequired(world, requiredEntity(sprite), SpriteColor).a).toBe(0.3)
   })
 
   it('should sync sortLayer changes to SortLayer trait', () => {
@@ -209,8 +196,7 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.sortLayer = 5
-    const layer = sprite._entity!.get(SortLayer)
-    expect(layer!.value).toBe(5)
+    expect(readRequired(world, requiredEntity(sprite), SortLayer).value).toBe(5)
   })
 
   it('should sync zIndex changes to SpriteZIndex trait', () => {
@@ -219,8 +205,7 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.zIndex = 99
-    const zIdx = sprite._entity!.get(SpriteZIndex)
-    expect(zIdx!.zIndex).toBe(99)
+    expect(readRequired(world, requiredEntity(sprite), SpriteZIndex).zIndex).toBe(99)
   })
 
   it('should sync flipX changes to SpriteFlip trait', () => {
@@ -229,8 +214,7 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.flipX = true
-    const flip = sprite._entity!.get(SpriteFlip)
-    expect(flip!.x).toBe(-1)
+    expect(readRequired(world, requiredEntity(sprite), SpriteFlip).x).toBe(-1)
   })
 
   it('should sync flipY changes to SpriteFlip trait', () => {
@@ -239,8 +223,7 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.flipY = true
-    const flip = sprite._entity!.get(SpriteFlip)
-    expect(flip!.y).toBe(-1)
+    expect(readRequired(world, requiredEntity(sprite), SpriteFlip).y).toBe(-1)
   })
 
   it('should sync flip() method to SpriteFlip trait', () => {
@@ -249,9 +232,9 @@ describe('ECS traits — property sync', () => {
     sprite._enrollInWorld(world)
 
     sprite.flip(true, true)
-    const flip = sprite._entity!.get(SpriteFlip)
-    expect(flip!.x).toBe(-1)
-    expect(flip!.y).toBe(-1)
+    const flip = readRequired(world, requiredEntity(sprite), SpriteFlip)
+    expect(flip.x).toBe(-1)
+    expect(flip.y).toBe(-1)
   })
 
   it('should sync setFrame to SpriteUV trait', () => {
@@ -269,11 +252,11 @@ describe('ECS traits — property sync', () => {
       sourceHeight: 32,
     })
 
-    const uv = sprite._entity!.get(SpriteUV)
-    expect(uv!.x).toBeCloseTo(0.25)
-    expect(uv!.y).toBeCloseTo(0.5)
-    expect(uv!.w).toBeCloseTo(0.25)
-    expect(uv!.h).toBeCloseTo(0.25)
+    const uv = readRequired(world, requiredEntity(sprite), SpriteUV)
+    expect(uv.x).toBeCloseTo(0.25)
+    expect(uv.y).toBeCloseTo(0.5)
+    expect(uv.w).toBeCloseTo(0.25)
+    expect(uv.h).toBeCloseTo(0.25)
   })
 
   it('should not write to trait when no entity exists', () => {
@@ -305,7 +288,7 @@ describe('ECS traits — snapshot lifecycle', () => {
   let material: Sprite2DMaterial
 
   afterEach(() => {
-    world?.destroy()
+    world?.dispose()
   })
 
   function setup() {
@@ -345,17 +328,14 @@ describe('ECS traits — snapshot lifecycle', () => {
     sprite.sortLayer = 5
     sprite.zIndex = 99
 
-    const color = sprite._entity!.get(SpriteColor)
-    expect(color!.r).toBeCloseTo(0)
-    expect(color!.g).toBeCloseTo(1)
-    expect(color!.b).toBeCloseTo(0)
-    expect(color!.a).toBe(0.7)
-
-    const layer = sprite._entity!.get(SortLayer)
-    expect(layer!.value).toBe(5)
-
-    const zIdx = sprite._entity!.get(SpriteZIndex)
-    expect(zIdx!.zIndex).toBe(99)
+    const entity = requiredEntity(sprite)
+    const color = readRequired(world, entity, SpriteColor)
+    expect(color.r).toBeCloseTo(0)
+    expect(color.g).toBeCloseTo(1)
+    expect(color.b).toBeCloseTo(0)
+    expect(color.a).toBe(0.7)
+    expect(readRequired(world, entity, SortLayer).value).toBe(5)
+    expect(readRequired(world, entity, SpriteZIndex).zIndex).toBe(99)
   })
 
   it('should preserve values in local arrays on unenrollment', () => {
@@ -404,13 +384,12 @@ describe('ECS traits — snapshot lifecycle', () => {
     sprite._enrollInWorld(world)
     expect(sprite._entity).not.toBeNull()
 
-    const color = sprite._entity!.get(SpriteColor)
-    expect(color!.r).toBeCloseTo(0)
-    expect(color!.g).toBeCloseTo(0)
-    expect(color!.b).toBeCloseTo(1)
-
-    const layer = sprite._entity!.get(SortLayer)
-    expect(layer!.value).toBe(9)
+    const entity = requiredEntity(sprite)
+    const color = readRequired(world, entity, SpriteColor)
+    expect(color.r).toBeCloseTo(0)
+    expect(color.g).toBeCloseTo(0)
+    expect(color.b).toBeCloseTo(1)
+    expect(readRequired(world, entity, SortLayer).value).toBe(9)
   })
 
   it('should read from correct source via getters', () => {

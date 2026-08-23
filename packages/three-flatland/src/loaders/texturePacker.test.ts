@@ -1,14 +1,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { SpriteSheetLoader } from './SpriteSheetLoader'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { ROTATED_FRAME_MASK } from '../materials/effectFlagBits'
-import { BatchSlot, BatchRegistry } from '../ecs/traits'
-import type { RegistryData } from '../ecs/batchUtils'
-import type { SpriteBatch } from '../pipeline/SpriteBatch'
+import { BatchSlot } from '../ecs/traits'
+import { batchFor, readRequired, requiredEntity } from '../ecs/testUtils.type-test'
 import type { SpriteSheet } from '../sprites/types'
 
 function mockLoad(json: unknown): Promise<SpriteSheet> {
@@ -29,7 +27,6 @@ function mockLoad(json: unknown): Promise<SpriteSheet> {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  universe.reset()
 })
 
 describe('TexturePacker compatibility (#95)', () => {
@@ -116,10 +113,8 @@ describe('TexturePacker compatibility (#95)', () => {
     group.add(sprite)
     group.update() // assigns the batch slot (sprite._batchMesh / _batchSlot)
 
-    const registryEntities = group.world.query(BatchRegistry)
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData
-    const bs = sprite.entity!.get(BatchSlot)!
-    const batch = registry.batchSlots[bs.batchIdx] as SpriteBatch
+    const bs = readRequired(group.world, requiredEntity(sprite), BatchSlot)
+    const batch = batchFor(group.world, sprite)
     const sysArr = batch.getSystemAttribute().array as Float32Array
     const flagsOffset = bs.slot * 16 + 8 + 2 // instanceSystem.z — see effectFlagBits.ts
 

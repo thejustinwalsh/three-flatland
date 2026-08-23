@@ -23,7 +23,7 @@ describe('createLightEffect', () => {
     expect(Simple.lightSchema.ambientIntensity).toBe(0.2)
   })
 
-  it('should auto-create a Koota trait from schema', () => {
+  it('should auto-create a numeric ECS trait from schema', () => {
     const Simple = createLightEffect({
       name: 'simpleTrait',
       schema: { ambientIntensity: 0.2 },

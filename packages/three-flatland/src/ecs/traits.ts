@@ -1,6 +1,6 @@
-import { trait, relation } from 'koota'
+import { trait } from './runtime'
 import { Vector2 } from 'three'
-import type { Entity, Trait } from 'koota'
+import type { AnyTrait, Entity, World } from './runtime'
 import type { Group, Object3D, OrthographicCamera, Scene, Texture } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
@@ -77,18 +77,7 @@ export const IsStandalone = trait()
  * slot is the index within that batch's GPU buffers.
  * Avoids O(n) relation resolution per entity per frame.
  */
-export const BatchSlot = trait({ batchIdx: -1, slot: -1 })
-
-// ============================================
-// Relations
-// ============================================
-
-/**
- * Relation: sprite entity → batch entity (exclusive: sprite can only be in one batch).
- * Pure membership marker — the slot index lives in BatchSlot, which batchSortSystem
- * keeps in sync on every swap (a slot on the relation would go stale after a sort).
- */
-export const InBatch = relation({ exclusive: true })
+export const BatchSlot = trait({ batchEntity: 0, batchIdx: -1, slot: -1 })
 
 // ============================================
 // Batch entity traits
@@ -97,7 +86,8 @@ export const InBatch = relation({ exclusive: true })
 /**
  * AoS — reference to the SpriteBatch that owns GPU buffers AND slot management.
  * SpriteBatch already has: writeColor(), writeUV(), writeFlip(),
- * writeMatrix(), writeCustom(), writeEffectSlot(), allocateSlot(), freeSlot().
+ * writeMatrix(), writeCustom(), writeEffectSlot(), reserveSlot(), commitSlot(),
+ * and ownership-checked releaseSlot().
  */
 export const BatchMesh = trait(() => ({
   mesh: null as SpriteBatch | null,
@@ -173,6 +163,8 @@ export interface BatchRun {
  * Spawned once by SpriteGroup; systems query for it.
  */
 export const BatchRegistry = trait(() => ({
+  /** Owning world, used by internal inspection facades without parallel lookup state. */
+  world: null as World | null,
   /** Runs indexed by run key — groups batches by (materialId, sortLayer, layers.mask). */
   runs: new Map<string, BatchRun>(),
   /** Sorted run keys for O(log R) binary search on insert. */
@@ -210,7 +202,7 @@ export const BatchRegistry = trait(() => ({
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: [] as (Sprite2D | null)[],
   /** Cached effect traits across all materials. Populated by materialVersionSystem. */
-  effectTraits: new Map() as Map<Trait, typeof MaterialEffect>,
+  effectTraits: new Map() as Map<AnyTrait, typeof MaterialEffect>,
   /** Entities whose destruction is deferred to the top of the next frame. */
   pendingDestroy: [] as Entity[],
   /** The SpriteGroup (parent Group) for scene graph sync. */
@@ -299,7 +291,7 @@ export const LightEffectTrait = trait(() => ({
  *
  * Fast-path contract: every field here is either a nullable object
  * reference or a small scalar. Consumers read via `entity.get(ShadowPipeline)`
- * (O(1) pointer deref in Koota) and mutate in place. No per-frame
+ * (O(1) object-store lookup) and mutate in place. No per-frame
  * allocation.
  */
 export const ShadowPipeline = trait(() => ({

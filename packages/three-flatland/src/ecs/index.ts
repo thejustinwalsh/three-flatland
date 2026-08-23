@@ -13,7 +13,6 @@ export {
   IsBatched,
   IsStandalone,
   BatchSlot,
-  InBatch,
   BatchMesh,
   BatchMeta,
   BatchRegistry,

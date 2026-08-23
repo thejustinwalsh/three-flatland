@@ -1,22 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { universe } from 'koota'
 import { Texture } from 'three'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { BatchRegistry } from './traits'
 import type { RegistryData } from './batchUtils'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
+import { registryFor } from './testUtils.type-test'
 
 // ============================================
 // Helpers
 // ============================================
 
-function getRegistry(group: SpriteGroup): RegistryData | null {
-  const world = group.world
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return null
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+function getRegistry(group: SpriteGroup): RegistryData {
+  return registryFor(group.world)
 }
 
 function activeMeshes(group: SpriteGroup): SpriteBatch[] {
@@ -50,13 +46,11 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     group = new SpriteGroup()
   })
 
-  // 60s ceiling: tearing down a 40k-sprite group + universe.reset() is O(n) and
-  // blew even a bumped 20s hookTimeout on a contended CI runner (passes in ~6s
-  // locally). It's the bulk-prime fixture's inherent teardown cost, not a hang —
-  // the reset is correctly dirty-gated; give it headroom.
+  // 60s ceiling: tearing down a 40k-sprite group is O(n) and can exceed a
+  // bumped 20s hook timeout on a contended CI runner. It is the bulk-prime
+  // fixture's inherent teardown cost, not a hang.
   afterEach(() => {
     group.dispose()
-    universe.reset()
   }, 60000)
 
   it('small scene: 200 sprites in one pass produce exactly one 1024-slot batch', () => {

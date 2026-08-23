@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
 import { declareSortLayer } from '../../pipeline/sortLayers'
 import { IsBatched, BatchRegistry, BatchMeta, CameraLayersMask } from '../traits'
 import type { RegistryData } from '../batchUtils'
+import { readRequired, registryFor, requiredEntity } from '../testUtils.type-test'
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  const registryEntities = group.world.query(BatchRegistry)
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+  return registryFor(group.world)
 }
 
 function runSystems(group: SpriteGroup): void {
@@ -36,7 +35,6 @@ describe('sortLayer + layers.mask run-key routing', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('same material + sortLayer but different layers masks produce separate batches', () => {
@@ -55,7 +53,9 @@ describe('sortLayer + layers.mask run-key routing', () => {
     const registry = getRegistry(group)
     expect(registry.activeBatches.length).toBe(3)
 
-    const masks = registry.activeBatches.map((e) => e.get(BatchMeta)!.layersMask).sort((x, y) => x - y)
+    const masks = registry.activeBatches
+      .map((entity) => readRequired(group.world, entity, BatchMeta).layersMask)
+      .sort((x, y) => x - y)
     expect(masks).toEqual([1, 4, 8]) // Layers.set(n) = 1 << n
 
     // The batch meshes inherit their run's camera mask
@@ -78,12 +78,12 @@ describe('sortLayer + layers.mask run-key routing', () => {
     const originalMesh = a._batchMesh
 
     a.layers.enable(5)
-    expect(a.entity!.get(CameraLayersMask)!.mask).toBe(1 | (1 << 5))
+    expect(readRequired(group.world, requiredEntity(a), CameraLayersMask).mask).toBe(1 | (1 << 5))
 
     runSystems(group)
 
     // Still batched — but in a new batch with the new mask
-    expect(a.entity!.has(IsBatched)).toBe(true)
+    expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
     expect(a._batchMesh).not.toBe(originalMesh)
     expect(a._batchMesh!.layers.mask).toBe(1 | (1 << 5))
     expect(registry.activeBatches.length).toBe(2)
@@ -107,12 +107,12 @@ describe('sortLayer + layers.mask run-key routing', () => {
     // a distinct write path through the Layers instance that must still
     // funnel through the same Proxy `set` trap.
     a.layers.set(5)
-    expect(a.entity!.get(CameraLayersMask)!.mask).toBe(1 << 5)
+    expect(readRequired(group.world, requiredEntity(a), CameraLayersMask).mask).toBe(1 << 5)
 
     runSystems(group)
 
     // Still batched — but in a new batch with the new mask
-    expect(a.entity!.has(IsBatched)).toBe(true)
+    expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
     expect(a._batchMesh).not.toBe(originalMesh)
     expect(a._batchMesh!.layers.mask).toBe(1 << 5)
     expect(registry.activeBatches.length).toBe(2)
@@ -133,7 +133,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     const registry = getRegistry(group)
-    const meta = registry.activeBatches[0]!.get(BatchMeta)!
+    const meta = readRequired(group.world, registry.activeBatches[0]!, BatchMeta)
     expect(meta.sortLayer).toBe(6)
   })
 
@@ -151,7 +151,7 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     expect(registry.activeBatches.length).toBe(2)
-    expect(a.entity!.has(IsBatched)).toBe(true)
+    expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
   })
 
   it('renderOrder override demotes the sprite to standalone with the custom order', () => {

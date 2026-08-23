@@ -1,7 +1,9 @@
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import { BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { evictBatchesForMaterial } from '../batchUtils'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Check for material schema version changes (tier upgrades from effect registration).
@@ -13,9 +15,9 @@ import { evictBatchesForMaterial } from '../batchUtils'
  * Self-gating: no-ops if no BatchRegistry exists.
  */
 export function materialVersionSystem(world: World): void {
-  const registryEntities = world.query(BatchRegistry)
+  const registryEntities = world.view(BatchRegistries)
   if (registryEntities.length === 0) return
-  const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+  const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
   if (!registry) return
 
   for (const [materialId, ref] of registry.materialRefs) {

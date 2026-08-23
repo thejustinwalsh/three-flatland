@@ -15,7 +15,8 @@ import {
 import { RenderPipeline } from 'three/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { pass, uv as uvNode, convertToTexture, uniform } from 'three/tsl'
-import type { World, Entity } from 'koota'
+import { select, type Entity, type NumericSchema, type NumericTrait, type World } from './ecs/runtime'
+import type { WorldHandle } from './internal/ecs-handles'
 import { SpriteGroup } from './pipeline/SpriteGroup'
 import {
   declareSortLayer,
@@ -40,6 +41,8 @@ import {
   ShadowPipeline,
   BatchRegistry,
 } from './ecs/traits'
+
+const BatchRegistries = select(BatchRegistry)
 import { SDFGenerator } from './lights/SDFGenerator'
 import { OcclusionPass } from './lights/OcclusionPass'
 import { postPassSystem } from './ecs/systems/postPassSystem'
@@ -501,8 +504,13 @@ export class Flatland extends Group implements WorldProvider {
    * The ECS world for this Flatland instance.
    * Delegates to SpriteGroup's lazy-initialized world.
    */
-  get world(): World {
+  get world(): WorldHandle {
     return this.spriteGroup.world
+  }
+
+  /** Private typed view of the public opaque world handle. */
+  private get _runtimeWorld(): World {
+    return this.spriteGroup.world as World
   }
 
   /**
@@ -956,7 +964,7 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _ensurePostPassRegistry(): void {
     if (!this._postPassRegistryEntity) {
-      this._postPassRegistryEntity = this.world.spawn(PostPassRegistry({ dirty: false }))
+      this._postPassRegistryEntity = this._runtimeWorld.spawn(PostPassRegistry({ dirty: false }))
     }
   }
 
@@ -992,7 +1000,9 @@ export class Flatland extends Group implements WorldProvider {
 
     // Spawn ECS entity with PostPassTrait
     const ctor = passEffect.constructor as typeof PassEffect
-    const entity = this.world.spawn(PostPassTrait({ fn, order: passEffect._order, enabled: passEffect.enabled }))
+    const entity = this._runtimeWorld.spawn(
+      PostPassTrait({ fn, order: passEffect._order, enabled: passEffect.enabled })
+    )
 
     // Add class-specific trait if schema has fields
     if (ctor._fields.length > 0) {
@@ -1008,13 +1018,14 @@ export class Flatland extends Group implements WorldProvider {
           }
         }
       }
-      entity.add(ctor._trait(traitValues))
+      const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+      this._runtimeWorld.add(entity, runtimeTrait(traitValues))
     }
 
     passEffect._entity = entity
     this._passes.push(passEffect)
 
-    this._postPassRegistryEntity!.set(PostPassRegistry, { dirty: true })
+    this._runtimeWorld.patch(this._postPassRegistryEntity!, PostPassRegistry, { dirty: true })
     this._renderPipelineEnabled = true
     return this
   }
@@ -1030,13 +1041,13 @@ export class Flatland extends Group implements WorldProvider {
     if (idx === -1) return this
 
     if (passEffect._entity) {
-      passEffect._entity.destroy()
+      this._runtimeWorld.destroy(passEffect._entity)
     }
     passEffect._detach()
     this._passes.splice(idx, 1)
 
     if (this._postPassRegistryEntity) {
-      this._postPassRegistryEntity.set(PostPassRegistry, { dirty: true })
+      this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
     }
     return this
   }
@@ -1050,7 +1061,7 @@ export class Flatland extends Group implements WorldProvider {
   clearPasses(): this {
     for (const passEffect of this._passes) {
       if (passEffect._entity) {
-        passEffect._entity.destroy()
+        this._runtimeWorld.destroy(passEffect._entity)
       }
       passEffect._detach()
     }
@@ -1058,7 +1069,7 @@ export class Flatland extends Group implements WorldProvider {
     this._nextPassOrder = 0
 
     if (this._postPassRegistryEntity) {
-      this._postPassRegistryEntity.set(PostPassRegistry, { dirty: true })
+      this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
     }
 
     if (this._autoRenderPipeline) {
@@ -1081,7 +1092,7 @@ export class Flatland extends Group implements WorldProvider {
    */
   _markPostPassDirty(): void {
     if (this._postPassRegistryEntity) {
-      this._postPassRegistryEntity.set(PostPassRegistry, { dirty: true })
+      this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
     }
   }
 
@@ -1135,7 +1146,7 @@ export class Flatland extends Group implements WorldProvider {
       // against its next renderer without leaking the previous allocation.
       this._lightEffect.dispose()
       if (this._lightEffect._entity) {
-        this._lightEffect._entity.destroy()
+        this._runtimeWorld.destroy(this._lightEffect._entity)
       }
       this._lightEffect._detach()
     }
@@ -1165,7 +1176,7 @@ export class Flatland extends Group implements WorldProvider {
       this._ensureShadowPipelineEntity()
       let sdfTexture: Texture | null = null
       if (ctor.needsShadows && this._shadowPipelineEntity) {
-        const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+        const pipeline = this._runtimeWorld.read(this._shadowPipelineEntity, ShadowPipeline)
         if (pipeline) {
           if (!pipeline.sdfGenerator) pipeline.sdfGenerator = new SDFGenerator()
           if (!pipeline.occlusionPass) pipeline.occlusionPass = new OcclusionPass()
@@ -1188,7 +1199,7 @@ export class Flatland extends Group implements WorldProvider {
       const requiredChannels: ReadonlySet<ChannelName> = new Set(ctor.requires ?? [])
 
       // Spawn ECS entity for the effect
-      const entity = this.world.spawn(LightEffectTrait({ fn, enabled: lightEffect.enabled }))
+      const entity = this._runtimeWorld.spawn(LightEffectTrait({ fn, enabled: lightEffect.enabled }))
 
       // Add class-specific trait if schema has fields
       if (ctor._fields.length > 0) {
@@ -1203,7 +1214,8 @@ export class Flatland extends Group implements WorldProvider {
             }
           }
         }
-        entity.add(ctor._trait(traitValues))
+        const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+        this._runtimeWorld.add(entity, runtimeTrait(traitValues))
       }
 
       lightEffect._entity = entity
@@ -1212,8 +1224,8 @@ export class Flatland extends Group implements WorldProvider {
       this._ensureLightingContext()
       const lctxEntity = this._lightingContextEntity!
       // Get existing context to preserve runtime fields
-      const existingCtx = lctxEntity.get(LightingContext) as LightingContextData | undefined
-      lctxEntity.set(LightingContext, {
+      const existingCtx = this._runtimeWorld.read(lctxEntity, LightingContext) as LightingContextData | undefined
+      this._runtimeWorld.patch(lctxEntity, LightingContext, {
         effect: lightEffect,
         lightStore: this._lightStore,
         lights: this._lights,
@@ -1245,14 +1257,16 @@ export class Flatland extends Group implements WorldProvider {
     } else {
       // Clearing lighting
       if (this._lightingContextEntity) {
-        const existingCtx = this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined
-        this._lightingContextEntity.set(LightingContext, {
+        const existingCtx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext) as
+          | LightingContextData
+          | undefined
+        this._runtimeWorld.patch(this._lightingContextEntity, LightingContext, {
           effect: null,
           lightStore: existingCtx?.lightStore ?? null,
           lights: existingCtx?.lights ?? [],
           wrappedLightFn: null,
           requiredChannels: new Set<ChannelName>(),
-          materials: existingCtx?.materials ?? new Set(),
+          materials: existingCtx?.materials ?? new Set<Sprite2DMaterial>(),
           dirty: true,
           initialized: false,
           surfaceSize: existingCtx?.surfaceSize ?? new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
@@ -1275,7 +1289,7 @@ export class Flatland extends Group implements WorldProvider {
    */
   _markLightingDirty(): void {
     if (this._lightingContextEntity) {
-      const lctx = this._lightingContextEntity.get(LightingContext)
+      const lctx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext)
       if (lctx) {
         lctx.dirty = true
       }
@@ -1322,13 +1336,13 @@ export class Flatland extends Group implements WorldProvider {
   private _doRebuildLightFn(): void {
     const lightEffect = this._lightEffect
     if (!lightEffect || !this._lightStore || !this._lightingContextEntity) return
-    const lctx = this._lightingContextEntity.get(LightingContext)
+    const lctx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext)
     if (!lctx) return
 
     let sdfTexture: Texture | null = null
     const ctor = lightEffect.constructor as typeof LightEffect
     if (ctor.needsShadows && this._shadowPipelineEntity) {
-      const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+      const pipeline = this._runtimeWorld.read(this._shadowPipelineEntity, ShadowPipeline)
       if (pipeline?.sdfGenerator) sdfTexture = pipeline.sdfGenerator.sdfTexture
     }
 
@@ -1348,14 +1362,14 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _ensureLightingContext(): void {
     if (!this._lightingContextEntity) {
-      this._lightingContextEntity = this.world.spawn(
+      this._lightingContextEntity = this._runtimeWorld.spawn(
         LightingContext({
           effect: null,
           lightStore: null,
           lights: [],
           wrappedLightFn: null,
           requiredChannels: new Set(),
-          materials: new Set(),
+          materials: new Set<Sprite2DMaterial>(),
           dirty: false,
           initialized: false,
           surfaceSize: new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
@@ -1406,7 +1420,7 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _ensureShadowPipelineEntity(): void {
     if (this._shadowPipelineEntity) return
-    this._shadowPipelineEntity = this.world.spawn(ShadowPipeline)
+    this._shadowPipelineEntity = this._runtimeWorld.spawn(ShadowPipeline)
   }
 
   /**
@@ -1519,16 +1533,18 @@ export class Flatland extends Group implements WorldProvider {
    */
   private _getLightingContext() {
     if (!this._lightingContextEntity) return null
-    return (this._lightingContextEntity.get(LightingContext) as LightingContextData | undefined) ?? null
+    return (
+      (this._runtimeWorld.read(this._lightingContextEntity, LightingContext) as LightingContextData | undefined) ?? null
+    )
   }
 
   /**
    * Get the BatchRegistry data from the world singleton.
    */
   private _getRegistry(): RegistryData | null {
-    const registryEntities = this.world.query(BatchRegistry)
+    const registryEntities = this._runtimeWorld.view(BatchRegistries)
     if (registryEntities.length === 0) return null
-    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
+    return (this._runtimeWorld.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined) ?? null
   }
 
   /**
@@ -1737,7 +1753,7 @@ export class Flatland extends Group implements WorldProvider {
 
       // Mark dirty so the system rebuilds
       if (this._postPassRegistryEntity) {
-        this._postPassRegistryEntity.set(PostPassRegistry, { dirty: true })
+        this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
       }
     }
 
@@ -1746,7 +1762,7 @@ export class Flatland extends Group implements WorldProvider {
     this._syncRenderPipelineOutputTransform()
 
     // Run postPassSystem to get sorted passes (returns null if not dirty)
-    const sortedPasses = postPassSystem(this.world)
+    const sortedPasses = postPassSystem(this._runtimeWorld)
     if (sortedPasses && this._renderPipeline && this._passNode) {
       // PassNode's target stays full-surface sized, so sample only the active
       // canvas or pixel-camera viewport. Full-surface paths retain (1,1)/(0,0).
@@ -2090,7 +2106,7 @@ export class Flatland extends Group implements WorldProvider {
     // Clear ECS pass entities before world destruction
     this.clearPasses()
     if (this._postPassRegistryEntity) {
-      this._postPassRegistryEntity.destroy()
+      this._runtimeWorld.destroy(this._postPassRegistryEntity)
       this._postPassRegistryEntity = null
     }
 
@@ -2098,13 +2114,13 @@ export class Flatland extends Group implements WorldProvider {
     if (this._lightEffect) {
       this._lightEffect.dispose()
       if (this._lightEffect._entity) {
-        this._lightEffect._entity.destroy()
+        this._runtimeWorld.destroy(this._lightEffect._entity)
       }
       this._lightEffect._detach()
       this._lightEffect = null
     }
     if (this._lightingContextEntity) {
-      this._lightingContextEntity.destroy()
+      this._runtimeWorld.destroy(this._lightingContextEntity)
       this._lightingContextEntity = null
     }
     this._lightStore?.dispose()
@@ -2113,10 +2129,10 @@ export class Flatland extends Group implements WorldProvider {
     // the effect detaches. Destroying the world during Flatland.dispose()
     // drops the singleton entity with it.
     if (this._shadowPipelineEntity) {
-      const pipeline = this._shadowPipelineEntity.get(ShadowPipeline)
+      const pipeline = this._runtimeWorld.read(this._shadowPipelineEntity, ShadowPipeline)
       pipeline?.sdfGenerator?.dispose()
       pipeline?.occlusionPass?.dispose()
-      this._shadowPipelineEntity.destroy()
+      this._runtimeWorld.destroy(this._shadowPipelineEntity)
       this._shadowPipelineEntity = null
     }
     this._lights.length = 0

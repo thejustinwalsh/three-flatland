@@ -1,8 +1,8 @@
-import type { World } from 'koota'
+import type { World } from './runtime'
 import { perfMeasure, PERF_TRACK, type PerfTrackName } from '../debug/perf-track'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
-declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+declare const process: { env: { NODE_ENV?: string; FL_PROFILE?: string } }
 
 /**
  * A system function takes only a world — all context comes from world resource traits.
@@ -33,10 +33,10 @@ interface SystemEntry {
  * to allow the next execution.
  *
  * Every registration carries a perf label (`{ track, name }`). When
- * devtools is bundled, `run()` emits a `performance.measure` span per
- * system plus an outer `ecs:run` span on the Schedule track. In prod
- * the instrumented branch is dead code (terser folds the devtools build
- * gate) and `run()` is the plain loop.
+ * profiling is enabled, `run()` emits a `performance.measure` span per
+ * system plus an outer `ecs:run` span on the Schedule track. Ordinary
+ * production builds use the plain loop; `FL_PROFILE=true` produces a
+ * separately identifiable production-profile build for diagnostics.
  *
  * @example
  * ```typescript
@@ -83,13 +83,11 @@ export class SystemSchedule {
     if (this._lastRunFrame === this._frameId) return
     this._lastRunFrame = this._frameId
 
-    // Dev-only: the per-system perf-track instrumentation (two `performance.now()`
-    // reads + a `perfMeasure` with an allocated detail payload per system, every
-    // frame) is a development profiling aid. It is gated on dev mode alone — NOT
-    // on FL_DEVTOOLS — so a production build (even one that force-enables the
-    // devtools dashboard via FL_DEVTOOLS) dead-strips it to the plain loop below
-    // and pays zero per-frame overhead.
-    if (process.env.NODE_ENV !== 'production') {
+    // Development and explicit production-profile builds emit Chrome timing
+    // spans. FL_PROFILE is deliberately separate from FL_DEVTOOLS: enabling a
+    // dashboard must not silently add two clocks + an allocated detail payload
+    // per system, per frame, to an otherwise representative production build.
+    if (process.env.NODE_ENV !== 'production' || process.env.FL_PROFILE === 'true') {
       const schedStart = performance.now()
       for (const entry of this._systems) {
         const t0 = performance.now()

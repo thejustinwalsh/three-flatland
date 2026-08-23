@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { World } from 'koota'
+import type { World } from './runtime'
 import { SystemSchedule } from './SystemSchedule'
 import { PERF_TRACK } from '../debug/perf-track'
 

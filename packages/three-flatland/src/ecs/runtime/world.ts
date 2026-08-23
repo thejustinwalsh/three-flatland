@@ -1,5 +1,6 @@
 import { EntityPool, entityGeneration, entityIndex } from './entity'
 import type { Entity } from './entity'
+import type { WorldHandle } from '../../internal/ecs-handles'
 import type { EventKind, EventSelector, Selector } from './selector'
 import { SparseSet } from './sparse-set'
 import {
@@ -74,7 +75,7 @@ class HandleQueue {
   }
 }
 
-export interface World {
+export interface World extends WorldHandle {
   readonly disposed: boolean
 
   spawn(...inputs: readonly TraitInput[]): Entity
@@ -625,5 +626,5 @@ export function createWorld(): World {
     store,
     touch,
     view,
-  }
+  } as unknown as World
 }

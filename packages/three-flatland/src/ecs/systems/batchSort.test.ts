@@ -1,23 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import { BatchSlot, BatchRegistry } from '../traits'
+import { BatchSlot } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+import { batchFor, readRequired, registryFor, requiredEntity } from '../testUtils.type-test'
 
 // ============================================
 // Helpers
 // ============================================
 
-function getRegistry(group: SpriteGroup): RegistryData | null {
-  const world = group.world
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return null
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+function getRegistry(group: SpriteGroup): RegistryData {
+  return registryFor(group.world)
 }
 
 function runSystems(group: SpriteGroup): void {
@@ -30,11 +27,12 @@ function makeTexture(): Texture {
   return texture
 }
 
-function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch | null {
-  const registry = getRegistry(group)
-  if (!registry) return null
-  const bs = sprite.entity!.get(BatchSlot)!
-  return registry.batchSlots[bs.batchIdx] as SpriteBatch | null
+function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch {
+  return batchFor(group.world, sprite)
+}
+
+function slotFor(group: SpriteGroup, sprite: Sprite2D): number {
+  return readRequired(group.world, requiredEntity(sprite), BatchSlot).slot
 }
 
 function readMatrixZ(batch: SpriteBatch, slot: number): number {
@@ -60,7 +58,6 @@ describe('batchSortSystem (Option B — transparent path)', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('sorts instance slots by zIndex ascending after a zIndex flip', () => {
@@ -78,9 +75,9 @@ describe('batchSortSystem (Option B — transparent path)', () => {
 
     // After initial assignment + sort, slots in ascending order should
     // correspond to zIndex ascending: slot[0] = zIndex 5, slot[1] = 7, slot[2] = 10.
-    const bs = a.entity!.get(BatchSlot)!
-    const bsB = b.entity!.get(BatchSlot)!
-    const bsC = c.entity!.get(BatchSlot)!
+    const bs = readRequired(group.world, requiredEntity(a), BatchSlot)
+    const bsB = readRequired(group.world, requiredEntity(b), BatchSlot)
+    const bsC = readRequired(group.world, requiredEntity(c), BatchSlot)
 
     // b (z=5) should have the lowest slot, c (z=7) next, a (z=10) last.
     expect(bsB.slot).toBeLessThan(bsC.slot)
@@ -96,9 +93,9 @@ describe('batchSortSystem (Option B — transparent path)', () => {
     a.zIndex = 0
     runSystems(group)
 
-    const bs2 = a.entity!.get(BatchSlot)!
-    const bsB2 = b.entity!.get(BatchSlot)!
-    const bsC2 = c.entity!.get(BatchSlot)!
+    const bs2 = readRequired(group.world, requiredEntity(a), BatchSlot)
+    const bsB2 = readRequired(group.world, requiredEntity(b), BatchSlot)
+    const bsC2 = readRequired(group.world, requiredEntity(c), BatchSlot)
 
     // a (z=0) now has the lowest slot.
     expect(bs2.slot).toBeLessThan(bsB2.slot)
@@ -140,7 +137,6 @@ describe('batchSortSystem (Option A — alphaTest opt-in)', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('skips batches whose material has alphaTest > 0 and depthWrite', () => {
@@ -181,10 +177,6 @@ describe('Sprite2DMaterial.getShared (alphaTest in dedup key)', () => {
     texture = makeTexture()
   })
 
-  afterEach(() => {
-    universe.reset()
-  })
-
   it('returns the same instance for identical alphaTest', () => {
     const a = Sprite2DMaterial.getShared({ map: texture, alphaTest: 0.5 })
     const b = Sprite2DMaterial.getShared({ map: texture, alphaTest: 0.5 })
@@ -215,7 +207,6 @@ describe('transformSyncSystem — matrix Z monotonic in zIndex', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('bakes greater matrix Z for higher zIndex at the same layer', () => {
@@ -228,8 +219,8 @@ describe('transformSyncSystem — matrix Z monotonic in zIndex', () => {
     runSystems(group)
 
     const batch = getBatchForSprite(group, a)!
-    const za = readMatrixZ(batch, a.entity!.get(BatchSlot)!.slot)
-    const zb = readMatrixZ(batch, b.entity!.get(BatchSlot)!.slot)
+    const za = readMatrixZ(batch, slotFor(group, a))
+    const zb = readMatrixZ(batch, slotFor(group, b))
     expect(zb).toBeGreaterThan(za)
   })
 })
@@ -254,7 +245,6 @@ describe('transformSyncSystem — anchor + trim parity with Sprite2D.updateMatri
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('matches the standalone bake for a non-center anchor + trimmed + rotated sprite', () => {
@@ -279,7 +269,7 @@ describe('transformSyncSystem — anchor + trim parity with Sprite2D.updateMatri
     runSystems(group)
 
     const batch = getBatchForSprite(group, sprite)!
-    const slot = sprite.entity!.get(BatchSlot)!.slot
+    const slot = slotFor(group, sprite)
     const buf = batch.instanceMatrix.array as Float32Array
     const o = slot * 16
 
@@ -316,7 +306,6 @@ describe('Sort correctness — regression guards', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   // (1) swapSlots invariant — every per-instance attribute must permute
@@ -330,8 +319,8 @@ describe('Sort correctness — regression guards', () => {
     runSystems(group)
 
     const batch = getBatchForSprite(group, a)!
-    const slotA = a.entity!.get(BatchSlot)!.slot
-    const slotB = b.entity!.get(BatchSlot)!.slot
+    const slotA = slotFor(group, a)
+    const slotB = slotFor(group, b)
 
     // Write distinct, identifiable data to every per-instance attribute
     // at both slots so we can verify each one was permuted.
@@ -362,6 +351,11 @@ describe('Sort correctness — regression guards', () => {
     expect(systemAttr[slotB * 16 + 8 + 0]).toBe(-1) // was slotA's flipX
     expect(m[slotA * 16 + 14]).toBeCloseTo(7.7)
     expect(m[slotB * 16 + 14]).toBeCloseTo(5.5)
+
+    // This unit exercises the raw physical permutation directly, outside
+    // batchSortSystem's matching BatchSlot patches. Restore ownership before
+    // the group teardown validates every physical row against ECS metadata.
+    batch.swapSlots(slotA, slotB)
   })
 
   // (2) Y-as-zIndex pattern across multiple frames of motion. This is
@@ -411,7 +405,7 @@ describe('Sort correctness — regression guards', () => {
     // Y descending. Read the actual slot→zIndex mapping and verify
     // monotonicity.
     const slotsByZIndex = sprites
-      .map((s) => ({ slot: s.entity!.get(BatchSlot)!.slot, zIndex: s.zIndex }))
+      .map((s) => ({ slot: slotFor(group, s), zIndex: s.zIndex }))
       .sort((a, b) => a.slot - b.slot)
     for (let i = 1; i < slotsByZIndex.length; i++) {
       expect(slotsByZIndex[i]!.zIndex).toBeGreaterThanOrEqual(slotsByZIndex[i - 1]!.zIndex)
@@ -438,8 +432,8 @@ describe('Sort correctness — regression guards', () => {
     runSystems(group)
 
     // a (z=10) sits at the higher slot, b (z=5) at the lower.
-    const aSlotBefore = a.entity!.get(BatchSlot)!.slot
-    const bSlotBefore = b.entity!.get(BatchSlot)!.slot
+    const aSlotBefore = slotFor(group, a)
+    const bSlotBefore = slotFor(group, b)
     expect(aSlotBefore).toBeGreaterThan(bSlotBefore)
 
     // Add an effect to a only — its bit + data live at a's slot.
@@ -458,8 +452,8 @@ describe('Sort correctness — regression guards', () => {
     a.zIndex = 0
     runSystems(group)
 
-    const aSlotAfter = a.entity!.get(BatchSlot)!.slot
-    const bSlotAfter = b.entity!.get(BatchSlot)!.slot
+    const aSlotAfter = slotFor(group, a)
+    const bSlotAfter = slotFor(group, b)
     expect(aSlotAfter).toBeLessThan(bSlotAfter)
 
     // Effect data + bit must now live at a's NEW slot, NOT the old one.
@@ -490,7 +484,7 @@ describe('Sort correctness — regression guards', () => {
     group.add(d)
     runSystems(group)
 
-    const slots = [a, b, d, c].map((s) => s.entity!.get(BatchSlot)!.slot)
+    const slots = [a, b, d, c].map((s) => slotFor(group, s))
     // a(1) < b(5) < d(7) < c(10) — slot order should match zIndex order.
     expect(slots[0]).toBeLessThan(slots[1]!)
     expect(slots[1]).toBeLessThan(slots[2]!)
@@ -531,8 +525,8 @@ describe('Sort correctness — regression guards', () => {
     runSystems(group)
 
     const batch = getBatchForSprite(group, a)!
-    const slotA = a.entity!.get(BatchSlot)!.slot
-    const slotB = b.entity!.get(BatchSlot)!.slot
+    const slotA = slotFor(group, a)
+    const slotB = slotFor(group, b)
 
     // Flush once to clear any pending state from the warmup. The
     // interleaved core attributes (getColorAttribute, etc.) are views
@@ -550,5 +544,9 @@ describe('Sort correctness — regression guards', () => {
 
     expect(colorBuf.version).toBeGreaterThan(colorVerBefore)
     expect(matrix.version).toBeGreaterThan(matrixVerBefore)
+
+    // Keep the direct unit's physical ownership aligned with the untouched
+    // BatchSlot records before the group teardown releases both rows.
+    batch.swapSlots(slotA, slotB)
   })
 })

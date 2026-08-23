@@ -2,7 +2,6 @@ import { act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrthographicCamera, Vector2, Vector4, type Color } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
-import { universe } from 'koota'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from '../Flatland'
 
@@ -11,7 +10,6 @@ extend({ Flatland })
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  universe.reset()
 })
 
 /** Creates a headless R3F root with mutable renderer surface dimensions. */

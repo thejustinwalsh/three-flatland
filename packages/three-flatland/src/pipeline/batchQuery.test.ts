@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from './SpriteGroup'
@@ -9,6 +8,7 @@ import { BatchGeometryStrategy } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import { vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
+import { readRequired } from '../ecs/testUtils.type-test'
 
 function makeTexture(): Texture {
   const texture = new Texture()
@@ -27,7 +27,6 @@ describe('batch classification traits + query facade', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('alpha-blend vs alpha-test classification follows the material', () => {
@@ -72,7 +71,7 @@ describe('batch classification traits + query facade', () => {
 
     const data = (group as unknown as { _getRegistry(): RegistryData | null })._getRegistry()!
     for (const batchEntity of data.activeBatches) {
-      expect(batchEntity.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+      expect(readRequired(group.world, batchEntity, BatchGeometryStrategy).kind).toBe('synth-quad')
     }
     expect(data.activeBatches.length).toBeGreaterThan(0)
   })

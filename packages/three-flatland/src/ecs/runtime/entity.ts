@@ -1,8 +1,8 @@
 import { SparseSet } from './sparse-set'
+import type { EntityHandle } from '../../internal/ecs-handles'
 
-declare const entityBrand: unique symbol
-
-export type Entity = number & { readonly [entityBrand]: true }
+export type { EntityHandle } from '../../internal/ecs-handles'
+export type Entity = EntityHandle
 
 export const ENTITY_INDEX_BITS = 20
 export const ENTITY_INDEX_STRIDE = 2 ** ENTITY_INDEX_BITS

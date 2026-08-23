@@ -1,5 +1,5 @@
-import { trait } from 'koota'
-import type { Entity, Trait } from 'koota'
+import { trait, type Entity, type NumericSchema, type NumericTrait, type World } from '../ecs/runtime'
+import type { EntityHandle, TraitHandle } from '../internal/ecs-handles'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
@@ -167,8 +167,8 @@ export abstract class MaterialEffect {
   /** Channel node builder — produces TSL nodes for declared channels. */
   static channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null = null
 
-  /** @internal Auto-generated Koota trait from schema. */
-  static _trait: Trait
+  /** @internal Auto-generated numeric trait from the effect schema. */
+  static _trait: TraitHandle
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
   /** @internal Total float slots needed for this effect's data (excluding flags). */
@@ -191,7 +191,7 @@ export abstract class MaterialEffect {
 
   /**
    * Initialize static metadata from the schema (called once per subclass, lazily).
-   * Computes field metadata, creates Koota trait, and sets up the node function.
+   * Computes field metadata, creates the numeric trait, and sets up the node function.
    * @internal
    */
   static _initialize(): void {
@@ -225,7 +225,7 @@ export abstract class MaterialEffect {
     this._totalFloats = totalFloats
     this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota (uniform fields only):
+    // Build the flattened numeric trait schema (uniform fields only):
     // - float fields → { fieldName: default }
     // - vecN fields  → { fieldName_0: v[0], fieldName_1: v[1], ... }
     const traitSchema: Record<string, number> = {}
@@ -262,7 +262,7 @@ export abstract class MaterialEffect {
   _sprite: Sprite2D | null = null
 
   /** @internal The ECS entity for the parent sprite. */
-  _entity: Entity | null = null
+  _entity: EntityHandle | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. Keyed by field name. */
   _defaults: Record<string, number | number[]>
@@ -362,10 +362,13 @@ export abstract class MaterialEffect {
    */
   _getField(name: string): number | number[] {
     const ctor = this.constructor as typeof MaterialEffect
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = this._sprite?._flatlandWorld as World | null | undefined
+    const entity = this._entity as Entity | null
+    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    if (entity && world?.has(entity, runtimeTrait)) {
       // Read from trait
       const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+      const data = world.read(entity, runtimeTrait) as Record<string, number>
       if (field.size === 1) {
         return data[name]!
       } else {
@@ -389,15 +392,18 @@ export abstract class MaterialEffect {
   _setField(name: string, value: number | number[]): void {
     const ctor = this.constructor as typeof MaterialEffect
 
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = this._sprite?._flatlandWorld as World | null | undefined
+    const entity = this._entity as Entity | null
+    const runtimeTrait = ctor._trait as NumericTrait<NumericSchema>
+    if (entity && world?.has(entity, runtimeTrait)) {
       // Write to trait — systems will sync to batch buffers
       const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+      const data = world.read(entity, runtimeTrait) as Record<string, number>
 
       if (field.size === 1) {
         // Skip if value unchanged — avoids unnecessary Changed triggers
         if (data[name] === value) return
-        this._entity.set(ctor._trait, { [name]: value as number })
+        world.patch(entity, runtimeTrait, { [name]: value as number })
       } else {
         const arr = value as number[]
         const traitUpdate: Record<string, number> = {}
@@ -408,7 +414,7 @@ export abstract class MaterialEffect {
           if (data[key] !== arr[i]) changed = true
         }
         if (!changed) return
-        this._entity.set(ctor._trait, traitUpdate)
+        world.patch(entity, runtimeTrait, traitUpdate)
       }
     } else {
       // Write to snapshot defaults
@@ -472,7 +478,7 @@ export type MaterialEffectClass<S extends EffectSchema> = {
   readonly effectSchema: S
   readonly provides: readonly ChannelName[]
   readonly channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null
-  readonly _trait: Trait
+  readonly _trait: TraitHandle
   readonly _fields: EffectField[]
   readonly _totalFloats: number
   readonly _constantFactories: Record<string, () => unknown>

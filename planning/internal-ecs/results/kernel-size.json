@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "9f3798570565f130d127f92dcb9613f48899f8684ae21ff1fa1ab0364929f0bb",
+  "harnessSha256": "c9429ba938135a20ffef8624f4a215b7e813a4c2abfa7596ecd1fb5a95636c25",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -26,8 +26,8 @@
   "measurements": [
     {
       "artifact": "Flatland private production runtime",
-      "brotliBytes": 3427,
-      "gzipBytes": 3824,
+      "brotliBytes": 3434,
+      "gzipBytes": 3826,
       "minifiedBytes": 11647
     },
     {
@@ -55,7 +55,7 @@
       "minifiedBytes": 8623
     }
   ],
-  "mergeBase": "93c7d9cc9a5c35844ea2f08daf090c3bc06080e5",
+  "mergeBase": "bd19dd506f64cbb060e69148e01fc7b9ceb4bee8",
   "methodology": {
     "brotli": "node:zlib brotliCompressSync defaults",
     "bundle": "esbuild browser ESM bundle with minification and tree shaking",

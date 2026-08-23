@@ -1,5 +1,6 @@
 import type { Camera, Scene, WebGLRenderer } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
+import type { RegistryHandle } from '../internal/ecs-handles'
 import { computeRunKey } from '../ecs/batchUtils'
 import { getOrCreateRegistry, peekRegistry, type Registry, type RendererLike } from './registry'
 
@@ -81,7 +82,7 @@ export function flatlandRegister(sprite: Sprite2D, renderer: RendererLike, scene
  * enrolled (auto-batch slice); here we drop the bookkeeping.
  */
 export function flatlandUnregister(sprite: Sprite2D): void {
-  const registry = sprite._autoRegistry
+  const registry = sprite._autoRegistry as Registry | null
   if (registry) {
     registry.sprites.delete(sprite)
     registry.standalone.delete(sprite)
@@ -232,12 +233,12 @@ export function evaluateAutoBatch(registry: Registry): void {
  */
 function registerSprite(registry: Registry, sprite: Sprite2D): void {
   if (sprite._disposed) return
-  if (sprite._autoRegistry === registry) return
+  if (sprite._autoRegistry === (registry as unknown as RegistryHandle)) return
   if (sprite._flatlandWorld && sprite._flatlandWorld !== registry.world) return
 
   attachOrchestratorGroup(registry)
   registry.sprites.add(sprite)
-  sprite._autoRegistry = registry
+  sprite._autoRegistry = registry as unknown as RegistryHandle
   sprite._pendingPrimeScene = null
 
   // Resolve the bootstrap default (or bootstrap effect variant) to this
