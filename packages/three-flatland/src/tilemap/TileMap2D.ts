@@ -22,6 +22,7 @@ import {
   queryTileMapMaterialRetention,
 } from '../internal/ownership-observers'
 import {
+  beginTileLayerEffectValues,
   clearTileLayerEffectValues,
   commitTileLayerEffectValues,
   copyTileLayerMaterialState,
@@ -139,11 +140,14 @@ export class TileMap2D extends Group {
     super()
     registerTileMapEffectProjection(this, (effect, fieldName) => {
       this._assertMutable('effect value update')
+      this._projectionTransition = true
       try {
+        for (const layer of this.tileLayers) beginTileLayerEffectValues(layer, effect)
         for (const layer of this.tileLayers) prepareTileLayerEffectValues(layer, effect, fieldName)
         for (const layer of this.tileLayers) commitTileLayerEffectValues(layer)
       } finally {
         for (const layer of this.tileLayers) clearTileLayerEffectValues(layer)
+        this._projectionTransition = false
       }
     })
     this.name = 'TileMap2D'

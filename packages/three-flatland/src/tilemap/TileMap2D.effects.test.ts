@@ -72,6 +72,12 @@ const DynamicTileEffect = createMaterialEffect({
   node: ({ inputColor }) => inputColor,
 })
 
+const ReentrantTileEffect = createMaterialEffect({
+  name: 'reentrant_tile_values',
+  schema: { first: 3, second: 6 },
+  node: ({ inputColor }) => inputColor,
+})
+
 function firstChunk(map: TileMap2D): InstancedMesh {
   return map.getLayers()[0]!.children[0] as InstancedMesh
 }
@@ -183,6 +189,79 @@ describe('TileMap2D retained material effects', () => {
     map.dispose()
   })
 
+  it('does not publish a tile mutation when metadata preparation terminalizes the layer', () => {
+    const data = makeMapData()
+    data.tileLayers[0]!.data = new Uint32Array([1, 1, 1, 1])
+    data.tilesets[0]!.tiles.set(0, {
+      id: 0,
+      uv: { x: 0, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    })
+    const target: TileDefinition = {
+      id: 1,
+      uv: { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    }
+    data.tilesets[0]!.tiles.set(1, target)
+    const map = new TileMap2D({ data })
+    const effect = new DynamicTileEffect()
+    map.addEffect(effect)
+    const layer = map.getLayerAt(0)!
+    target.properties = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          layer.dispose()
+          return undefined
+        },
+      }
+    )
+
+    expect(() => layer.setTileAt(0, 0, 2)).toThrow(/terminated during preparation/)
+    expect(data.tileLayers[0]!.data[0]).toBe(1)
+    expect(map.getLayers()).toEqual([])
+    expect(layer.children).toEqual([])
+    expect(layer.chunkCount).toBe(0)
+    map.dispose()
+  })
+
+  it('rejects a nested setTileAt before either logical or GPU state changes', () => {
+    const data = makeMapData()
+    data.tileLayers[0]!.data = new Uint32Array([1, 1, 1, 1])
+    data.tilesets[0]!.tiles.set(0, {
+      id: 0,
+      uv: { x: 0, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    })
+    const target: TileDefinition = {
+      id: 1,
+      uv: { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    }
+    data.tilesets[0]!.tiles.set(1, target)
+    const map = new TileMap2D({ data })
+    map.addEffect(new DynamicTileEffect())
+    const layer = map.getLayerAt(0)!
+    const geometry = firstChunk(map).geometry
+    const uv = geometry.getAttribute('instanceUV')
+    const before = [uv.getX(0), uv.getY(0), uv.getZ(0), uv.getW(0)]
+    target.properties = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          layer.setTileAt(1, 0, 0)
+          return undefined
+        },
+      }
+    )
+
+    expect(() => layer.setTileAt(0, 0, 2)).toThrow(/projection transition/)
+    expect(Array.from(data.tileLayers[0]!.data)).toEqual([1, 1, 1, 1])
+    expect(firstChunk(map).geometry).toBe(geometry)
+    expect([uv.getX(0), uv.getY(0), uv.getZ(0), uv.getW(0)]).toEqual(before)
+    map.dispose()
+  })
+
   it('keeps constants-only providers on the allocation-free nonzero fast path', () => {
     const data = makeMapData()
     data.tileLayers[0]!.data = new Uint32Array([1, 0, 0, 0])
@@ -272,6 +351,41 @@ describe('TileMap2D retained material effects', () => {
     expect(Array.from(secondBuffer.array)).toEqual(secondBefore)
     expect(firstBuffer.version).toBe(firstVersion)
     expect(secondBuffer.version).toBe(secondVersion)
+    map.dispose()
+  })
+
+  it('rejects a nested effect setter before shared projection scratch can be overwritten', () => {
+    const data = makeMapData()
+    const tile: TileDefinition = {
+      id: 0,
+      uv: { x: 0, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    }
+    data.tilesets[0]!.tiles.set(0, tile)
+    const map = new TileMap2D({ data })
+    const effect = new ReentrantTileEffect()
+    map.addEffect(effect)
+    const buffer = firstChunk(map).geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
+    const before = Array.from(buffer.array)
+    const version = buffer.version
+    tile.properties = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor(target, property) {
+          if (property === 'first') effect.second = 8
+          return Reflect.getOwnPropertyDescriptor(target, property)
+        },
+      }
+    )
+
+    expect(() => {
+      effect.first = 9
+    }).toThrow(/projection transition/)
+    expect(effect.first).toBe(3)
+    expect(effect.second).toBe(6)
+    expect(Array.from(buffer.array)).toEqual(before)
+    expect(buffer.version).toBe(version)
+    expect(Reflect.get(map.getLayerAt(0)!, '_effectSyncBuffers')).toEqual([])
     map.dispose()
   })
 

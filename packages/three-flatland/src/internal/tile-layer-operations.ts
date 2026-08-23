@@ -12,6 +12,7 @@ export interface TileLayerMaterialReplacement extends TileLayerCleanupResult {
 }
 
 interface TileLayerOperations {
+  beginEffectValues(effect: MaterialEffect): void
   clearEffectValues(): void
   commitEffectValues(): void
   copyMaterialState(source: Sprite2DMaterial): void
@@ -55,6 +56,10 @@ export function replaceTileLayerMaterial(
 
 export function prepareTileLayerEffectValues(layer: TileLayer, effect: MaterialEffect, fieldName: string): void {
   resolve(layer).prepareEffectValues(effect, fieldName)
+}
+
+export function beginTileLayerEffectValues(layer: TileLayer, effect: MaterialEffect): void {
+  resolve(layer).beginEffectValues(effect)
 }
 
 export function commitTileLayerEffectValues(layer: TileLayer): void {

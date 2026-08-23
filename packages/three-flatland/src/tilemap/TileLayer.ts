@@ -161,6 +161,7 @@ export class TileLayer extends Group {
   private _effectSyncCount = 0
   private _effectSyncSize = 0
   private _effectSyncBufferName = ''
+  private _effectValueTransition = false
   private readonly _effectSyncBuffers: Float32Array[] = []
   private readonly _effectSyncOffsets: number[] = []
   private readonly _effectSync0: number[] = []
@@ -323,6 +324,7 @@ export class TileLayer extends Group {
     this.chunkSize = chunkSize
     this._effects = [...effects]
     registerTileLayerOperations(this, {
+      beginEffectValues: (effect) => this.#beginEffectValues(effect),
       clearEffectValues: () => this.#clearEffectValues(),
       commitEffectValues: () => this.#commitEffectValues(),
       copyMaterialState: (source) => this.#copyMaterialState(source),
@@ -471,11 +473,18 @@ export class TileLayer extends Group {
   }
 
   /** Prepare every row before publishing any live effect value. */
-  #prepareEffectValues(effect: MaterialEffect, fieldName: string): void {
+  #beginEffectValues(effect: MaterialEffect): void {
     this.#clearEffectValues()
     this._assertMutable('effect value update')
     if (!this._effects.includes(effect)) {
       throw new Error('TileLayer effect value update requires an attached effect')
+    }
+    this._effectValueTransition = true
+  }
+
+  #prepareEffectValues(effect: MaterialEffect, fieldName: string): void {
+    if (!this._effectValueTransition) {
+      throw new Error('TileLayer effect value update requires an active projection transition')
     }
     const effectClass = effect.constructor as typeof MaterialEffect
     const field = effectClass._fieldMap.get(fieldName)!
@@ -518,7 +527,9 @@ export class TileLayer extends Group {
 
   /** Commit a fully prepared projection; no user-owned data is read here. */
   #commitEffectValues(): void {
-    this._assertMutable('effect value update')
+    if (!this._effectValueTransition || this._disposed) {
+      throw new Error('TileLayer effect value update cannot commit outside its projection transition')
+    }
     for (let index = 0; index < this._effectSyncCount; index++) {
       const buffer = this._effectSyncBuffers[index]!
       const offset = this._effectSyncOffsets[index]!
@@ -537,6 +548,7 @@ export class TileLayer extends Group {
 
   /** Release every object reference retained by the reusable projection scratch. */
   #clearEffectValues(): void {
+    this._effectValueTransition = false
     this._effectSyncCount = 0
     this._effectSyncSize = 0
     this._effectSyncBufferName = ''
@@ -1002,62 +1014,70 @@ export class TileLayer extends Group {
     if (tileX < 0 || tileX >= width || tileY < 0 || tileY >= height) {
       return
     }
-
-    const index = tileY * width + tileX
-    const oldRawGid = data[index] ?? 0
-    const oldGid = oldRawGid & 0x1fffffff
-
-    const mapping = this.tileIndexMap.get(index)
-
-    const nextGid = gid & 0x1fffffff
-    const needsProjectionRebuild = this._requiresTileProjectionRebuild(oldGid, nextGid)
-    let preparedUv: { x: number; y: number; width: number; height: number } | undefined
-    if (oldGid !== 0 && nextGid !== 0 && mapping && !needsProjectionRebuild) {
-      const uv = this.tileset.getUV(nextGid)
-      // Snapshot user-supplied TileDefinition accessors before publishing the
-      // logical GID so a throwing component getter cannot split CPU/GPU state.
-      preparedUv = { x: uv.x, y: uv.y, width: uv.width, height: uv.height }
-    }
-
-    // Publish logical data only after projection validation succeeds.
-    data[index] = gid
-
-    if (mapping && preparedUv) {
-      // Non-zero -> non-zero: update UV in-place within the chunk
-      const chunk = this.chunks.get(mapping.chunkKey)
-      if (!chunk) return
-
-      const i = mapping.instanceIndex
-      const base = i * 16
-      this.writeUV(chunk.instanceData, base + 0, preparedUv)
-      chunk.instanceData[base + 8] = (gid & 0x80000000) !== 0 ? -1 : 1
-      chunk.instanceData[base + 9] = (gid & 0x40000000) !== 0 ? -1 : 1
-
-      const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
-      if (uvAttr && (uvAttr.data as { needsUpdate?: boolean })) {
-        ;(uvAttr.data as { needsUpdate: boolean }).needsUpdate = true
+    this._projectionTransition = true
+    const revision = this._lifecycleRevision
+    try {
+      const index = tileY * width + tileX
+      const oldRawGid = data[index] ?? 0
+      const oldGid = oldRawGid & 0x1fffffff
+      const mapping = this.tileIndexMap.get(index)
+      const nextGid = gid & 0x1fffffff
+      const needsProjectionRebuild = this._requiresTileProjectionRebuild(oldGid, nextGid)
+      let preparedUv: { x: number; y: number; width: number; height: number } | undefined
+      if (oldGid !== 0 && nextGid !== 0 && mapping && !needsProjectionRebuild) {
+        const uv = this.tileset.getUV(nextGid)
+        // Snapshot user-supplied TileDefinition accessors before publishing the
+        // logical GID so a throwing component getter cannot split CPU/GPU state.
+        preparedUv = { x: uv.x, y: uv.y, width: uv.width, height: uv.height }
       }
-      notifyTileLayerDataChanged(this)
-    } else {
-      // Tile added or removed — rebuild the entire layer
-      let cleanup: CleanupResult
-      try {
-        cleanup = this.buildInstances()
-      } catch (error) {
-        data[index] = oldRawGid
-        throw error
+      if (this._disposed || this._lifecycleRevision !== revision) {
+        throw new Error('TileLayer tile mutation was terminated during preparation')
       }
-      let firstError = cleanup.error
-      let didError = cleanup.didError
-      try {
-        notifyTileLayerDataChanged(this)
-      } catch (error) {
-        if (!didError) {
-          firstError = error
-          didError = true
+
+      // Publish logical data only after every observable preparation step and
+      // the lifecycle revision check have succeeded.
+      data[index] = gid
+
+      if (mapping && preparedUv) {
+        // Non-zero -> non-zero: update UV in-place within the chunk
+        const chunk = this.chunks.get(mapping.chunkKey)
+        if (!chunk) return
+
+        const i = mapping.instanceIndex
+        const base = i * 16
+        this.writeUV(chunk.instanceData, base + 0, preparedUv)
+        chunk.instanceData[base + 8] = (gid & 0x80000000) !== 0 ? -1 : 1
+        chunk.instanceData[base + 9] = (gid & 0x40000000) !== 0 ? -1 : 1
+
+        const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
+        if (uvAttr && (uvAttr.data as { needsUpdate?: boolean })) {
+          ;(uvAttr.data as { needsUpdate: boolean }).needsUpdate = true
         }
+        notifyTileLayerDataChanged(this)
+      } else {
+        // Tile added or removed — rebuild the entire layer inside the already
+        // active mutation transition.
+        let cleanup: CleanupResult
+        try {
+          cleanup = this._buildInstancesTransaction(revision)
+        } catch (error) {
+          data[index] = oldRawGid
+          throw error
+        }
+        let firstError = cleanup.error
+        let didError = cleanup.didError
+        try {
+          notifyTileLayerDataChanged(this)
+        } catch (error) {
+          if (!didError) {
+            firstError = error
+            didError = true
+          }
+        }
+        if (didError) throw firstError
       }
-      if (didError) throw firstError
+    } finally {
+      this._projectionTransition = false
     }
   }
 
@@ -1193,6 +1213,9 @@ export class TileLayer extends Group {
     if (this._disposed) throw new Error(`TileLayer.${member} cannot be used after dispose()`)
     if (this._projectionTransition) {
       throw new Error(`TileLayer.${member} cannot run during a projection transition`)
+    }
+    if (this._effectValueTransition) {
+      throw new Error(`TileLayer.${member} cannot run during an effect value transition`)
     }
   }
 
