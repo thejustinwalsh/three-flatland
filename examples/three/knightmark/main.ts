@@ -21,6 +21,15 @@ import {
   createDevtoolsProvider,
 } from 'three-flatland'
 import { createPane } from '@three-flatland/devtools'
+import {
+  DEFAULT_BENCHMARK_SEED,
+  benchmarkParams,
+  booleanParam,
+  createSeededRandom,
+  integerParam,
+  numberParam,
+  publishBenchmarkReady,
+} from '../../_shared/benchmark'
 
 // ============================================
 // CONSTANTS
@@ -203,6 +212,14 @@ let rafId = 0
 let activeRenderer: WebGPURenderer | null = null
 
 async function main() {
+  const query = benchmarkParams()
+  const benchmarkEnabled = query.get('bench') === '1'
+  const requestedSprites = integerParam(query, 'sprites', integerParam(query, 'spawn', 10))
+  const seed = integerParam(query, 'seed', DEFAULT_BENCHMARK_SEED)
+  const collisionsEnabled = booleanParam(query, 'collisions', true)
+  const fixedDeltaMs = numberParam(query, 'fixedDelta')
+  const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
+
   // WebGPU renderer
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
@@ -341,11 +358,11 @@ async function main() {
       material,
     })
     sprite.scale.set(sim.knightScale, sim.knightScale, 1)
-    const x = boundsLeft + margin + Math.random() * (boundsRight - boundsLeft - margin * 2)
-    const y = boundsBottom + margin + Math.random() * (boundsTop - boundsBottom - margin * 2)
+    const x = boundsLeft + margin + random() * (boundsRight - boundsLeft - margin * 2)
+    const y = boundsBottom + margin + random() * (boundsTop - boundsBottom - margin * 2)
     sprite.position.set(x, y, 0)
-    const speed = sim.speedMin + Math.random() * (sim.speedMax - sim.speedMin)
-    const angle = Math.random() * Math.PI * 2
+    const speed = sim.speedMin + random() * (sim.speedMax - sim.speedMin)
+    const angle = random() * Math.PI * 2
     const baseVx = Math.cos(angle) * speed
     const baseVy = Math.sin(angle) * speed
     const animName = speed < SPEED_THRESHOLD ? 'idle' : 'run'
@@ -390,8 +407,7 @@ async function main() {
     })
   }
 
-  const urlSpawn = parseInt(new URLSearchParams(window.location.search).get('spawn') ?? '', 10)
-  spawnBatch(Number.isFinite(urlSpawn) && urlSpawn > 0 ? urlSpawn : 10)
+  spawnBatch(requestedSprites)
 
   // --- UI ---
   const addBtn = document.getElementById('btn-add')!
@@ -420,7 +436,7 @@ async function main() {
   function animate() {
     rafId = requestAnimationFrame(animate)
     const now = performance.now()
-    const deltaMs = now - lastTime
+    const deltaMs = fixedDeltaMs ?? now - lastTime
     lastTime = now
     const dt = deltaMs / 1000
 
@@ -480,40 +496,40 @@ async function main() {
       k.sprite.update(deltaMs)
     }
 
-    // Knight-knight collisions via spatial hash
-    spatialHash.clear()
-    // Update spatial hash cell size from current hitRadius
-    ;(spatialHash as unknown as { cellSize: number }).cellSize = cellSize
-    for (const k of knights) spatialHash.insert(k)
-    const collisionDist = sim.hitRadius * 2
-    const collisionDistSq = collisionDist * collisionDist
-    // One reusable visitor closure per frame, steered by `_current`, instead
-    // of allocating a fresh `(other) => …` per WALK knight every frame — at
-    // 20k knights that was ~20k closures/frame, ~0.3MB/frame of allocation
-    // churn (both GC pressure and raw allocation cost).
-    let _current: Knight = knights[0]!
-    const _visitor = (other: Knight): boolean => {
-      if (other.state !== 'WALK') return false
-      const dx = other.sprite.position.x - _current.sprite.position.x
-      const dy = other.sprite.position.y - _current.sprite.position.y
-      const distSq = dx * dx + dy * dy
-      if (distSq < collisionDistSq) {
-        const tripChanceA = _current.speed / (_current.speed + other.speed)
-        if (Math.random() < tripChanceA) {
-          triggerTrip(_current)
-          triggerRoll(other)
-        } else {
-          triggerTrip(other)
-          triggerRoll(_current)
+    if (collisionsEnabled) {
+      // Knight-knight collisions via spatial hash
+      spatialHash.clear()
+      // Update spatial hash cell size from current hitRadius
+      ;(spatialHash as unknown as { cellSize: number }).cellSize = cellSize
+      for (const k of knights) spatialHash.insert(k)
+      const collisionDist = sim.hitRadius * 2
+      const collisionDistSq = collisionDist * collisionDist
+      // One reusable visitor closure per frame, steered by `_current`, instead
+      // of allocating a fresh `(other) => …` per WALK knight every frame.
+      let current = knights[0]!
+      const visitor = (other: Knight): boolean => {
+        if (other.state !== 'WALK') return false
+        const dx = other.sprite.position.x - current.sprite.position.x
+        const dy = other.sprite.position.y - current.sprite.position.y
+        const distSq = dx * dx + dy * dy
+        if (distSq < collisionDistSq) {
+          const tripChanceA = current.speed / (current.speed + other.speed)
+          if (random() < tripChanceA) {
+            triggerTrip(current)
+            triggerRoll(other)
+          } else {
+            triggerTrip(other)
+            triggerRoll(current)
+          }
+          return true
         }
-        return true
+        return false
       }
-      return false
-    }
-    for (const k of knights) {
-      if (k.state !== 'WALK') continue
-      _current = k
-      spatialHash.forEachNeighbor(k, _visitor)
+      for (const knight of knights) {
+        if (knight.state !== 'WALK') continue
+        current = knight
+        spatialHash.forEachNeighbor(knight, visitor)
+      }
     }
 
     // Render — systems run automatically in updateMatrixWorld
@@ -526,6 +542,16 @@ async function main() {
     const s = spriteGroup.stats
     knightStats.knights = knights.length
     knightStats.batches = s.batchCount
+    if (benchmarkEnabled) {
+      publishBenchmarkReady({
+        example: 'knightmark',
+        variant: 'three',
+        seed,
+        requestedSprites,
+        actualSprites: knights.length,
+        actualBatches: s.batchCount,
+      })
+    }
   }
   animate()
 }

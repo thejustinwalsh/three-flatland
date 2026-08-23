@@ -21,6 +21,14 @@ import { ExampleFallback } from './ExampleFallback'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
+import {
+  DEFAULT_BENCHMARK_SEED,
+  benchmarkParams,
+  createSeededRandom,
+  integerParam,
+  numberParam,
+  publishBenchmarkReady,
+} from '../../_shared/benchmark'
 
 extend({
   Flatland,
@@ -59,6 +67,13 @@ const TILE_SCALE = 2
 const KNIGHT_SCALE = TILE_PX * TILE_SCALE * 2
 const SLIME_SCALE = TILE_PX * TILE_SCALE
 const WALL_TILE = 24
+
+const benchmarkQuery = benchmarkParams()
+const benchmarkEnabled = benchmarkQuery.get('bench') === '1'
+const benchmarkSlimes = integerParam(benchmarkQuery, 'slimes', 5)
+const benchmarkLights = integerParam(benchmarkQuery, 'lights', benchmarkSlimes)
+const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
+const benchmarkFixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
 
 // Hero movement speed (world u/s) + click-to-walk tuning.
 const HERO_SPEED = 70
@@ -187,13 +202,19 @@ interface Wanderer {
  * like slimes; pass the smaller `WALL_TILE` fudge for sprites whose
  * art is designed to overlap the wall a bit (e.g. the hero).
  */
-function newInteriorWanderer(halfW: number, halfH: number, entityHalf: number, wallInset: number): Wanderer {
+function newInteriorWanderer(
+  halfW: number,
+  halfH: number,
+  entityHalf: number,
+  wallInset: number,
+  random: () => number
+): Wanderer {
   const mx = halfW - wallInset - entityHalf
   const my = halfH - wallInset - entityHalf
   return {
-    pos: new Vector2((Math.random() * 2 - 1) * mx, (Math.random() * 2 - 1) * my),
+    pos: new Vector2((random() * 2 - 1) * mx, (random() * 2 - 1) * my),
     vel: new Vector2(),
-    retargetTimer: Math.random() * 2,
+    retargetTimer: random() * 2,
   }
 }
 
@@ -213,6 +234,7 @@ interface SceneProps {
   pixelSize: number
   ambient: number
   slimeCount: number
+  slimeLightCount: number
   slimeLights: boolean
   slimeQuota: number
   torchIntensity: number
@@ -231,6 +253,7 @@ interface SceneProps {
 }
 
 function FlatlandScene(props: SceneProps) {
+  const random = useMemo(() => (benchmarkEnabled ? createSeededRandom(benchmarkSeed) : Math.random), [])
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
     l.normals = true
     l.forceRuntime = true
@@ -342,25 +365,25 @@ function FlatlandScene(props: SceneProps) {
       // shares a single collective cycle phase. drainBias (±10%)
       // ensures that even slimes that happen to align drift apart
       // over time from the accumulated rate difference.
-      const stamina = Math.random()
+      const stamina = random()
       const state = stamina < 0.4 ? 'rest' : 'wander'
       // Random initial hop phase + leftover timer so wandering slimes
       // don't all burst out of the gate in unison either.
-      const hopPhase = Math.random() < 0.5 ? 'hop' : 'pause'
+      const hopPhase = random() < 0.5 ? 'hop' : 'pause'
       slimesRef.current.push({
         // Full-tile wall inset (TILE_PX * TILE_SCALE = 32) keeps the
         // slime's tight body clear of the wall art. The hero uses the
         // smaller WALL_TILE fudge because its frame has transparent
         // padding that can visually overlap the wall without clipping.
-        anim: newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE),
+        anim: newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE, random),
         sprite: null,
         light: null,
         stamina,
         state,
         hopPhase,
-        hopTimer: Math.random() * 0.5,
+        hopTimer: random() * 0.5,
         animation: state === 'rest' || hopPhase === 'pause' ? 'idle' : 'walk',
-        drainBias: 0.85 + Math.random() * 0.3,
+        drainBias: 0.85 + random() * 0.3,
       })
     }
     if (slimesRef.current.length > props.slimeCount) slimesRef.current.length = props.slimeCount
@@ -504,7 +527,7 @@ function FlatlandScene(props: SceneProps) {
     // canvas continues to update — useful for capturing comparison
     // screenshots on identical entity positions.
     if (props.paused) return
-    const delta = rawDelta
+    const delta = benchmarkFixedDeltaMs === undefined ? rawDelta : benchmarkFixedDeltaMs / 1000
     flickerTimer.current += delta
     const t = flickerTimer.current
 
@@ -656,7 +679,7 @@ function FlatlandScene(props: SceneProps) {
           // the slime pre-roll-surveys before hopping. Feels more
           // natural than teleporting straight into motion.
           s.hopPhase = 'pause'
-          s.hopTimer = 0.2 + Math.random() * 0.2
+          s.hopTimer = 0.2 + random() * 0.2
           s.anim.vel.x = 0
           s.anim.vel.y = 0
         }
@@ -678,8 +701,8 @@ function FlatlandScene(props: SceneProps) {
             s.hopPhase = 'pause'
             s.hopTimer =
               s.state === 'excited'
-                ? SLIME_PAUSE_MIN_EXCITED + Math.random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
-                : SLIME_PAUSE_MIN_WANDER + Math.random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
+                ? SLIME_PAUSE_MIN_EXCITED + random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
+                : SLIME_PAUSE_MIN_WANDER + random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
             s.anim.vel.x = 0
             s.anim.vel.y = 0
           } else {
@@ -687,9 +710,9 @@ function FlatlandScene(props: SceneProps) {
             s.hopPhase = 'hop'
             s.hopTimer =
               s.state === 'excited'
-                ? SLIME_HOP_MIN_EXCITED + Math.random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
-                : SLIME_HOP_MIN_WANDER + Math.random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
-            const angle = Math.random() * Math.PI * 2
+                ? SLIME_HOP_MIN_EXCITED + random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
+                : SLIME_HOP_MIN_WANDER + random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
+            const angle = random() * Math.PI * 2
             const speed = s.state === 'excited' ? SLIME_SPEED_EXCITED : SLIME_SPEED_WANDER
             s.anim.vel.x = Math.cos(angle) * speed
             s.anim.vel.y = Math.sin(angle) * speed
@@ -760,6 +783,19 @@ function FlatlandScene(props: SceneProps) {
   useFrame(
     () => {
       flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
+      const flatland = flatlandRef.current
+      if (benchmarkEnabled && flatland) {
+        publishBenchmarkReady({
+          example: 'lighting',
+          variant: 'react',
+          seed: benchmarkSeed,
+          requestedSprites: benchmarkSlimes,
+          actualSprites: slimesRef.current.length,
+          actualBatches: flatland.spriteGroup.batchCount,
+          requestedLights: benchmarkLights,
+          actualLights: slimesRef.current.reduce((count, slime) => count + (slime.light ? 1 : 0), 0),
+        })
+      }
     },
     { phase: 'render' }
   )
@@ -878,7 +914,7 @@ function FlatlandScene(props: SceneProps) {
               s.sprite = el
               if (firstMount && el !== null) {
                 const frames = slimeAnimations.animations[s.animation]!.frames.length
-                el.play(s.animation, { startFrame: Math.floor(Math.random() * frames) })
+                el.play(s.animation, { startFrame: Math.floor(random() * frames) })
               }
             }}
             texture={slimeSheet.texture}
@@ -893,21 +929,23 @@ function FlatlandScene(props: SceneProps) {
             <normalMapProvider attach={attachEffect} normalMap={slimeSheet.normalMap ?? null} />
           </animatedSprite2D>
         ))}
-        {slimesRef.current.map((s, i) => (
-          <light2D
-            key={`slime-light-${i}`}
-            ref={(el) => {
-              s.light = el
-            }}
-            lightType="point"
-            color={0x33ff66}
-            intensity={0.25}
-            distance={40}
-            decay={2}
-            castsShadow={false}
-            category="slime"
-          />
-        ))}
+        {slimesRef.current.map((s, i) =>
+          i < props.slimeLightCount ? (
+            <light2D
+              key={`slime-light-${i}`}
+              ref={(el) => {
+                s.light = el
+              }}
+              lightType="point"
+              color={0x33ff66}
+              intensity={0.25}
+              distance={40}
+              decay={2}
+              castsShadow={false}
+              category="slime"
+            />
+          ) : null
+        )}
       </flatland>
     </>
   )
@@ -973,6 +1011,8 @@ export default function App() {
   const shadowPixelSnapEnabled = shadowPixelSize > 0
   const glowEnabled = glowRadius > 0
   const rimEnabled = rimIntensity > 0
+  const sceneSlimeCount = benchmarkEnabled ? benchmarkSlimes : slimeCount
+  const sceneSlimeLightCount = benchmarkEnabled ? benchmarkLights : sceneSlimeCount
 
   return (
     <Canvas dpr={1} renderer={{ antialias: false, ...exampleRendererColorConfig }} fallback={<ExampleFallback />}>
@@ -989,7 +1029,8 @@ export default function App() {
           shadowPixelSize={shadowPixelSize}
           pixelSize={pixelSize}
           ambient={ambient}
-          slimeCount={slimeCount}
+          slimeCount={sceneSlimeCount}
+          slimeLightCount={sceneSlimeLightCount}
           slimeLights={slimeLights}
           slimeQuota={slimeQuota}
           torchIntensity={torchIntensity}

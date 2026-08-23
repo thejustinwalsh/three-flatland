@@ -16,6 +16,14 @@ import {
 } from 'three-flatland'
 import { DefaultLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import { createPane } from '@three-flatland/devtools'
+import {
+  DEFAULT_BENCHMARK_SEED,
+  benchmarkParams,
+  createSeededRandom,
+  integerParam,
+  numberParam,
+  publishBenchmarkReady,
+} from '../../_shared/benchmark'
 
 // ============================================
 // CONSTANTS
@@ -142,27 +150,27 @@ interface SlimeState {
   drainBias: number
 }
 
-function newSlime(mapHalfW: number, mapHalfH: number): SlimeState {
+function newSlime(mapHalfW: number, mapHalfH: number, random: () => number): SlimeState {
   // Full-tile wall inset (TILE_PX * TILE_SCALE = 32) keeps the
   // slime's tight body clear of the wall art.
   const wallInset = TILE_PX * TILE_SCALE
   const entityHalf = SLIME_SCALE / 2
   const mx = mapHalfW - wallInset - entityHalf
   const my = mapHalfH - wallInset - entityHalf
-  const stamina = Math.random()
+  const stamina = random()
   const state: SlimeState['state'] = stamina < 0.4 ? 'rest' : 'wander'
-  const hopPhase: SlimeState['hopPhase'] = Math.random() < 0.5 ? 'hop' : 'pause'
+  const hopPhase: SlimeState['hopPhase'] = random() < 0.5 ? 'hop' : 'pause'
   return {
-    pos: new Vector2((Math.random() * 2 - 1) * mx, (Math.random() * 2 - 1) * my),
+    pos: new Vector2((random() * 2 - 1) * mx, (random() * 2 - 1) * my),
     vel: new Vector2(),
     sprite: null,
     light: null,
     stamina,
     state,
     hopPhase,
-    hopTimer: Math.random() * 0.5,
+    hopTimer: random() * 0.5,
     animation: state === 'rest' || hopPhase === 'pause' ? 'idle' : 'walk',
-    drainBias: 0.85 + Math.random() * 0.3,
+    drainBias: 0.85 + random() * 0.3,
   }
 }
 
@@ -171,6 +179,15 @@ function newSlime(mapHalfW: number, mapHalfH: number): SlimeState {
 // ============================================
 
 async function main() {
+  const query = benchmarkParams()
+  const benchmarkEnabled = query.get('bench') === '1'
+  const requestedSlimes = integerParam(query, 'slimes', 5)
+  const requestedSlimeLights = integerParam(query, 'lights', requestedSlimes)
+  const seed = integerParam(query, 'seed', DEFAULT_BENCHMARK_SEED)
+  const fixedDeltaMs = numberParam(query, 'fixedDelta')
+  const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
+  const slimeLightLimit = benchmarkEnabled ? requestedSlimeLights : Number.POSITIVE_INFINITY
+
   // ─── Renderer ───────────────────────────────────────────────────
   const renderer = new WebGPURenderer({ antialias: false })
   configureExampleRendererColor(renderer)
@@ -308,7 +325,7 @@ async function main() {
   const slimes: SlimeState[] = []
 
   function addSlime(): void {
-    const s = newSlime(mapHalfW, mapHalfH)
+    const s = newSlime(mapHalfW, mapHalfH, random)
     const sprite = new AnimatedSprite2D({
       spriteSheet: slimeSheet,
       animationSet: slimeAnimations,
@@ -325,19 +342,22 @@ async function main() {
     sprite.addEffect(slimeNormals)
     // Stagger animation cursor so slimes don't lock-step on first frame.
     const frames = slimeAnimations.animations[s.animation]!.frames.length
-    sprite.play(s.animation, { startFrame: Math.floor(Math.random() * frames) })
+    sprite.play(s.animation, { startFrame: Math.floor(random() * frames) })
     flatland.add(sprite)
 
-    const light = new Light2D({
-      type: 'point',
-      color: 0x33ff66,
-      intensity: 0.25,
-      distance: 40,
-      decay: 2,
-      castsShadow: false,
-      category: 'slime',
-    })
-    flatland.add(light)
+    const light =
+      slimes.length < slimeLightLimit
+        ? new Light2D({
+            type: 'point',
+            color: 0x33ff66,
+            intensity: 0.25,
+            distance: 40,
+            decay: 2,
+            castsShadow: false,
+            category: 'slime',
+          })
+        : null
+    if (light) flatland.add(light)
 
     s.sprite = sprite
     s.light = light
@@ -384,7 +404,7 @@ async function main() {
     shadowPixelSize: 4,
     torchIntensity: 1.8,
     torchDistance: 140,
-    slimeCount: 5,
+    slimeCount: requestedSlimes,
     slimeLights: true,
     slimeQuota: 4,
   }
@@ -655,7 +675,7 @@ async function main() {
 
   function animate(): void {
     const now = performance.now()
-    const rawDelta = Math.min(0.1, (now - lastTime) / 1000)
+    const rawDelta = fixedDeltaMs === undefined ? Math.min(0.1, (now - lastTime) / 1000) : fixedDeltaMs / 1000
     lastTime = now
     // Two deltas:
     //   `animDelta` — sprite animation cursors + torch flicker. Zero only
@@ -781,7 +801,7 @@ async function main() {
         if (s.stamina >= SLIME_STAMINA_RESUME) {
           s.state = knightNear ? 'excited' : 'wander'
           s.hopPhase = 'pause'
-          s.hopTimer = 0.2 + Math.random() * 0.2
+          s.hopTimer = 0.2 + random() * 0.2
           s.vel.set(0, 0)
         }
       } else {
@@ -799,16 +819,16 @@ async function main() {
             s.hopPhase = 'pause'
             s.hopTimer =
               s.state === 'excited'
-                ? SLIME_PAUSE_MIN_EXCITED + Math.random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
-                : SLIME_PAUSE_MIN_WANDER + Math.random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
+                ? SLIME_PAUSE_MIN_EXCITED + random() * (SLIME_PAUSE_MAX_EXCITED - SLIME_PAUSE_MIN_EXCITED)
+                : SLIME_PAUSE_MIN_WANDER + random() * (SLIME_PAUSE_MAX_WANDER - SLIME_PAUSE_MIN_WANDER)
             s.vel.set(0, 0)
           } else {
             s.hopPhase = 'hop'
             s.hopTimer =
               s.state === 'excited'
-                ? SLIME_HOP_MIN_EXCITED + Math.random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
-                : SLIME_HOP_MIN_WANDER + Math.random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
-            const angle = Math.random() * Math.PI * 2
+                ? SLIME_HOP_MIN_EXCITED + random() * (SLIME_HOP_MAX_EXCITED - SLIME_HOP_MIN_EXCITED)
+                : SLIME_HOP_MIN_WANDER + random() * (SLIME_HOP_MAX_WANDER - SLIME_HOP_MIN_WANDER)
+            const angle = random() * Math.PI * 2
             const speed = s.state === 'excited' ? SLIME_SPEED_EXCITED : SLIME_SPEED_WANDER
             s.vel.set(Math.cos(angle) * speed, Math.sin(angle) * speed)
           }
@@ -861,6 +881,18 @@ async function main() {
     }
 
     flatland.render(renderer)
+    if (benchmarkEnabled) {
+      publishBenchmarkReady({
+        example: 'lighting',
+        variant: 'three',
+        seed,
+        requestedSprites: requestedSlimes,
+        actualSprites: slimes.length,
+        actualBatches: flatland.spriteGroup.batchCount,
+        requestedLights: requestedSlimeLights,
+        actualLights: slimes.reduce((count, slime) => count + (slime.light ? 1 : 0), 0),
+      })
+    }
     updateDevtools()
   }
 

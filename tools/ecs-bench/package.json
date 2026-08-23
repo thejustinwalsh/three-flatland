@@ -53,12 +53,21 @@
           "command": "node --experimental-strip-types src/numeric-storage.ts",
           "cwd": "{projectRoot}"
         }
+      },
+      "benchmark:browser": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "node --import tsx src/browser-benchmark.ts",
+          "cwd": "{projectRoot}"
+        }
       }
     }
   },
   "scripts": {
     "baseline:size": "node --experimental-strip-types src/measure-kernels-size.ts",
     "benchmark": "node --disable-warning=DEP0205 --import tsx --expose-gc src/benchmark.ts",
+    "benchmark:browser": "node --import tsx src/browser-benchmark.ts",
     "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",
     "lint": "oxlint --type-aware .",
     "test": "vitest run",
@@ -68,6 +77,7 @@
     "koota": "catalog:"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@types/node": "catalog:",
     "esbuild": "0.28.1",
     "tsx": "^4.19.2",
