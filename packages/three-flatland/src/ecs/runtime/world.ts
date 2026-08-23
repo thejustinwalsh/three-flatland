@@ -38,6 +38,11 @@ interface PreparedInput {
   readonly objectValue?: object
 }
 
+interface ValidatedNumericFields {
+  readonly fields: readonly string[]
+  readonly snapshot: Record<string, number>
+}
+
 class HandleQueue {
   readonly dense: Entity[] = []
   private readonly positions: Array<number | undefined> = []
@@ -206,21 +211,25 @@ export function createWorld(): World {
     return state
   }
 
-  function validateNumericInitial(
-    trait: NumericTrait<NumericSchema>,
-    initial: object | undefined
-  ): Record<string, number> | undefined {
-    if (initial === undefined) return undefined
-    const snapshot = numericDataSnapshot(initial)
+  function validatedNumericFields(trait: NumericTrait<NumericSchema>, value: object): ValidatedNumericFields {
+    const snapshot = numericDataSnapshot(value)
     if (snapshot === undefined) {
       throw new TypeError('three-flatland: Invalid numeric initializer object')
     }
-    for (const field of Object.keys(snapshot)) {
+    const fields = Object.keys(snapshot)
+    for (const field of fields) {
       if (!Object.hasOwn(trait.defaults, field)) {
         throw new TypeError(`three-flatland: Invalid numeric initializer field ${field}`)
       }
     }
-    return snapshot
+    return { fields, snapshot }
+  }
+
+  function validateNumericInitial(
+    trait: NumericTrait<NumericSchema>,
+    initial: object | undefined
+  ): Record<string, number> | undefined {
+    return initial === undefined ? undefined : validatedNumericFields(trait, initial).snapshot
   }
 
   function prepareObjectValue(trait: ObjectTrait<object>, initial: object | undefined): object {
@@ -271,16 +280,8 @@ export function createWorld(): World {
     value: object,
     state: TraitState
   ): void {
-    const snapshot = numericDataSnapshot(value)
-    if (snapshot === undefined) {
-      throw new TypeError('three-flatland: Invalid numeric initializer object')
-    }
-    for (const field of Object.keys(snapshot)) {
-      if (!Object.hasOwn(trait.defaults, field)) {
-        throw new TypeError(`three-flatland: Invalid numeric initializer field ${field}`)
-      }
-    }
-    for (const field of Object.keys(snapshot)) {
+    const { fields, snapshot } = validatedNumericFields(trait, value)
+    for (const field of fields) {
       state.numeric![field]![index] = snapshot[field]!
     }
   }
