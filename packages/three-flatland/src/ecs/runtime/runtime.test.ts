@@ -279,6 +279,23 @@ describe('private Flatland entity runtime', () => {
     world.dispose()
   })
 
+  it('preserves writable data descriptors across repeated object patches', () => {
+    const State = trait(() => ({ value: 0 }))
+    const world = createWorld()
+    const entity = world.spawn(State)
+
+    world.patch(entity, State, { value: 1 })
+    expect(Object.getOwnPropertyDescriptor(world.read(entity, State)!, 'value')).toMatchObject({
+      configurable: true,
+      enumerable: true,
+      value: 1,
+      writable: true,
+    })
+    world.patch(entity, State, { value: 2 })
+    expect(world.read(entity, State)?.value).toBe(2)
+    world.dispose()
+  })
+
   it('keeps failed multi-field object patches atomic and untracked', () => {
     const RecordState = trait(() => {
       const value = { a: 0, b: 0 }
