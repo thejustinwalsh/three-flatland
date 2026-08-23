@@ -36,7 +36,6 @@
     "animejs": "^4.5.0",
     "astro": "^7.1.3",
     "reveal.js": "^5.1.0",
-    "koota": "catalog:",
     "qr-code-styling": "^1.9.2",
     "react": "catalog:",
     "react-dom": "catalog:",

@@ -336,9 +336,6 @@ importers:
       hast-util-select:
         specifier: ^6.0.4
         version: 6.0.4
-      koota:
-        specifier: 'catalog:'
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       qr-code-styling:
         specifier: ^1.9.2
         version: 1.9.2
@@ -1891,9 +1888,6 @@ importers:
       '@three-flatland/normals':
         specifier: workspace:*
         version: link:../normals
-      koota:
-        specifier: 'catalog:'
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'

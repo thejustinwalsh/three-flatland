@@ -8,5 +8,5 @@ export default defineConfig({
   clean: true,
   unbundle: true,
   fixedExtension: false,
-  deps: { neverBundle: ['three', 'react', '@react-three/fiber', 'koota'] },
+  deps: { neverBundle: ['three', 'react', '@react-three/fiber'] },
 })

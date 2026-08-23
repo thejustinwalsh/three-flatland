@@ -240,7 +240,6 @@
   },
   "peerDependencies": {
     "@react-three/fiber": "catalog:",
-    "koota": "catalog:",
     "react": "catalog:",
     "three": "catalog:"
   },
