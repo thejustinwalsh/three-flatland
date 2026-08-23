@@ -113,6 +113,7 @@ export class TileMap2D extends Group {
   /** Material effects retained across data/chunk rebuilds and R3F lifecycles. */
   private readonly _effects: MaterialEffect[] = []
   private readonly _effectTransitionRetiredMaterials: Sprite2DMaterial[] = []
+  private readonly _effectProjectionLayers: TileLayer[] = []
   private readonly _retiredMaterials = new WeakSet<Sprite2DMaterial>()
 
   /** Disposal is terminal; a disposed map cannot rebuild untracked projection resources. */
@@ -140,13 +141,21 @@ export class TileMap2D extends Group {
     super()
     registerTileMapEffectProjection(this, (effect, fieldName) => {
       this._assertMutable('effect value update')
+      const layers = this._effectProjectionLayers
+      layers.length = 0
+      for (const layer of this.tileLayers) layers.push(layer)
+      const revision = this._lifecycleRevision
       this._projectionTransition = true
       try {
-        for (const layer of this.tileLayers) beginTileLayerEffectValues(layer, effect)
-        for (const layer of this.tileLayers) prepareTileLayerEffectValues(layer, effect, fieldName)
-        for (const layer of this.tileLayers) commitTileLayerEffectValues(layer)
+        for (const layer of layers) beginTileLayerEffectValues(layer, effect)
+        for (const layer of layers) prepareTileLayerEffectValues(layer, effect, fieldName)
+        if (this._disposed || this._lifecycleRevision !== revision) {
+          throw new Error('TileMap2D effect value update was terminated during preparation')
+        }
+        for (const layer of layers) commitTileLayerEffectValues(layer)
       } finally {
-        for (const layer of this.tileLayers) clearTileLayerEffectValues(layer)
+        for (const layer of layers) clearTileLayerEffectValues(layer)
+        layers.length = 0
         this._projectionTransition = false
       }
     })

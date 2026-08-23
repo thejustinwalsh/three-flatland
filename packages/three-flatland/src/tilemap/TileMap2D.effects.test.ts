@@ -389,6 +389,54 @@ describe('TileMap2D retained material effects', () => {
     map.dispose()
   })
 
+  it('clears every snapshotted layer when late-row preparation terminalizes the map', () => {
+    const data = makeMapData(2)
+    data.tileLayers[1]!.data.fill(2)
+    data.tilesets[0]!.tiles.set(0, {
+      id: 0,
+      uv: { x: 0, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    })
+    const lateTile: TileDefinition = {
+      id: 1,
+      uv: { x: 0.5, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    }
+    data.tilesets[0]!.tiles.set(1, lateTile)
+    const map = new TileMap2D({ data })
+    const effect = new DynamicTileEffect()
+    map.addEffect(effect)
+    const layers = [...map.getLayers()]
+    const buffers = layers.map(
+      (layer) => (layer.children[0] as InstancedMesh).geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
+    )
+    const values = buffers.map((buffer) => Array.from(buffer.array))
+    const versions = buffers.map((buffer) => buffer.version)
+    lateTile.properties = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          map.dispose()
+          return undefined
+        },
+      }
+    )
+
+    expect(() => {
+      effect.amount = 9
+    }).toThrow(/terminated during preparation/)
+    expect(effect.amount).toBe(1)
+    expect(map.getLayers()).toEqual([])
+    for (let index = 0; index < layers.length; index++) {
+      expect(Array.from(buffers[index]!.array)).toEqual(values[index])
+      expect(buffers[index]!.version).toBe(versions[index])
+      expect(Reflect.get(layers[index]!, '_effectSyncBuffers')).toEqual([])
+      expect(Reflect.get(layers[index]!, '_effectSync0')).toEqual([])
+      expect(Reflect.get(layers[index]!, '_effectSyncCount')).toBe(0)
+      expect(Reflect.get(layers[index]!, '_effectValueTransition')).toBe(false)
+    }
+  })
+
   it('does not scan or dirty chunk buffers for identical scalar/vector assignments', () => {
     const map = new TileMap2D({ data: makeMapData() })
     const effect = new DynamicTileEffect()
