@@ -123,9 +123,9 @@ Times are milliseconds per sample. Lower is better.
 | Three routing writes, 12,000          |      5.049 / 5.190 |           1.729 / 1.930 |        -65.8% |
 | Exclusive assign/read/remove, 12,000  |      3.577 / 4.660 |           1.494 / 1.652 |        -58.2% |
 
-The production stable-iteration observations include two 86–87 ms startup/JIT outliers;
+The production stable-iteration observations include two 86–87 ms timing outliers;
 the other 43 observations cluster between 8.42 and 8.91 ms. The aggregate p95 remains 8.908 ms, and
-the raw result intentionally retains that startup/JIT scheduling variance instead of filtering it
+the raw result intentionally retains that timing variance instead of filtering it
 from the evidence.
 
 The direct-store loop measured 0.172 ms for the production runtime versus 0.174 ms for Koota, an
