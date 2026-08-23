@@ -156,6 +156,8 @@ describe('SpriteBatch', () => {
     expect(batch.spriteAtSlot(0)).toBeNull()
     expect(batch.spriteAtSlot(1)).toBeNull()
     expect(batch.activeCount).toBe(0)
+    expect(batch.memberSprites.slice(0, 2)).toEqual([null, null])
+    expect(() => batch.memberSlotAt(0)).toThrow('outside the active span')
     expect(retainedSprites.every((sprite) => sprite !== null)).toBe(true)
   })
 
@@ -176,7 +178,7 @@ describe('SpriteBatch', () => {
     expect(batch.spriteAtSlot(first)).toBe(secondSprite)
     expect(batch.spriteAtSlot(second)).toBe(firstSprite)
     expect(batch.memberSprites.slice(0, 2)).toEqual(stableSprites)
-    expect(Array.from(batch.memberSlots.slice(0, 2))).toEqual([second, first])
+    expect([batch.memberSlotAt(0), batch.memberSlotAt(1)]).toEqual([second, first])
   })
 
   it('releases and reuses stable traversal rows independently of sorted physical slots', () => {
@@ -191,12 +193,12 @@ describe('SpriteBatch', () => {
 
     expect(batch.memberSpan).toBe(1)
     expect(batch.memberSprites[0]).not.toBe(firstSprite)
-    expect(batch.memberSlots[0]).toBe(first)
+    expect(batch.memberSlotAt(0)).toBe(first)
 
     const reusedPhysical = claimSlot(batch)
     expect(reusedPhysical).toBe(second)
     expect(batch.memberSprites[0]).not.toBe(firstSprite)
-    expect(Array.from(batch.memberSlots.slice(0, 2))).toEqual([first, second])
+    expect([batch.memberSlotAt(0), batch.memberSlotAt(1)]).toEqual([first, second])
     expect(batch.memberSprites[1]).not.toBeNull()
   })
 

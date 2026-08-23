@@ -25,7 +25,7 @@ import {
   type BatchRun,
 } from './traits'
 import type { SystemSchedule } from './SystemSchedule'
-import { entitySlot } from './snapshot'
+import { entitySlot, liveStoredEntity } from './snapshot'
 
 /** Shape of the BatchRegistry trait data, used for parameter typing. */
 export interface RegistryData {
@@ -538,8 +538,8 @@ function evictMatchingBatchedEntities(
     const sprite = registry.spriteArr[entitySlot(entity)]
 
     const assignment = world.read(entity, BatchSlot)
-    const batchEntity = assignment?.batchEntity as Entity | undefined
-    if (batchEntity && world.isAlive(batchEntity)) {
+    const batchEntity = liveStoredEntity(world, assignment?.batchEntity ?? 0)
+    if (batchEntity) {
       // BatchSlot.slot is the authoritative live slot (kept in sync by
       // batchSortSystem), so it remains correct after physical-row swaps.
       const slot = assignment?.slot ?? -1

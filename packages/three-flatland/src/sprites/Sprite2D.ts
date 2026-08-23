@@ -32,7 +32,12 @@ import {
   BatchRegistry,
 } from '../ecs/traits'
 import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
-import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
+import {
+  ensureMaterialDisposeHook,
+  getWorldDefaultMaterial,
+  getWorldEffectVariant,
+  type RegistryData,
+} from '../ecs/batchUtils'
 import { entitySlot, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
@@ -1253,10 +1258,6 @@ export class Sprite2D extends Mesh {
       }
     }
 
-    // Update SpriteMaterialRef for batch reassignment
-    if (this._entity) {
-      this._runtimeWorld?.patch(this._entity, SpriteMaterialRef, { materialId: newMaterial.batchId })
-    }
     this._setupInstanceAttributes()
     if (!this._entity) {
       this._writeEffectDataOwn()
@@ -2777,6 +2778,22 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
     this._batchEnrollmentBlockedMaterial = null
+    const world = this._flatlandWorld as World | null
+    const entity = this._entity
+    if (world && entity && world.isAlive(entity) && world.has(entity, SpriteMaterialRef)) {
+      const registryEntity = world.view(BatchRegistries)[0]
+      const registry = registryEntity
+        ? (world.read(registryEntity, BatchRegistry) as RegistryData | undefined)
+        : undefined
+      if (registry) {
+        registry.materialRefs.set(value.batchId, {
+          material: value,
+          version: value._effectSchemaVersion,
+        })
+        ensureMaterialDisposeHook(world, registry, value)
+      }
+      world.patch(entity, SpriteMaterialRef, { materialId: value.batchId })
+    }
     const registry = this._autoRegistry as Registry | null
     if (registry) {
       registry.standalone.add(this)

@@ -577,19 +577,22 @@ export class SpriteBatch extends InstancedMesh {
     return member >= 0 && member < this._activeCount ? (this._memberSprites[member] ?? null) : null
   }
 
-  /** Stable assignment-order span used by transform traversal. */
+  /** Packed active-member span used by transform traversal. */
   get memberSpan(): number {
     return this._activeCount
   }
 
-  /** Sprite references in stable assignment order; null marks a hole. */
+  /** Packed sprite references whose order is stable while sorting physical rows. */
   get memberSprites(): readonly (Sprite2D | null)[] {
     return this._memberSprites
   }
 
-  /** Current physical slot parallel to the stable member arrays. */
-  get memberSlots(): Int32Array {
-    return this._memberSlots
+  /** Current physical slot for one packed active member. */
+  memberSlotAt(member: number): number {
+    if (member < 0 || member >= this._activeCount) {
+      throw new RangeError(`three-flatland: Batch member ${member} is outside the active span`)
+    }
+    return this._memberSlots[member]!
   }
 
   private _assertStableMember(slot: number, entity: number): number {

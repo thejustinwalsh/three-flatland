@@ -1,7 +1,7 @@
 import { select, type Entity, type World } from '../runtime'
 import { BatchMesh, BatchSlot, BatchRegistry, IsBatched, SpriteZIndex } from '../traits'
 import type { RegistryData } from '../batchUtils'
-import { entitySlot } from '../snapshot'
+import { entitySlot, liveStoredEntity } from '../snapshot'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -14,7 +14,7 @@ const BatchRegistries = select(BatchRegistry)
  * gated out exactly as before.
  */
 export function createBatchSortSystem(): (world: World) => void {
-  const sortedEntities: number[] = []
+  const sortedEntities: Entity[] = []
   const occupiedSlots: number[] = []
   let slotToSortedIndex = new Int32Array(0)
 
@@ -46,35 +46,35 @@ export function createBatchSortSystem(): (world: World) => void {
       for (let slot = 0; slot < mesh.slotSpan; slot++) {
         const owner = owners[slot] ?? 0
         if (owner === 0) continue
-        const entity = owner as Entity
+        const entity = liveStoredEntity(world, owner)
+        if (!entity) throw new Error(`three-flatland: Batch slot ${slot} contains a stale owner`)
         const index = entitySlot(entity)
-        const batchEntity = batchEntityByEntity[index] as Entity
+        const batchEntity = liveStoredEntity(world, batchEntityByEntity[index] ?? 0)
         if (
-          !world.isAlive(entity) ||
           !world.has(entity, IsBatched) ||
           slotByEntity[index] !== slot ||
-          !world.isAlive(batchEntity) ||
+          !batchEntity ||
           world.read(batchEntity, BatchMesh)?.mesh !== mesh ||
           mesh.spriteAtSlot(slot) !== registry.spriteArr[index]
         ) {
           throw new Error(`three-flatland: Batch slot ${slot} ownership is inconsistent`)
         }
-        sortedEntities.push(owner)
+        sortedEntities.push(entity)
         occupiedSlots.push(slot)
       }
       if (sortedEntities.length < 2) continue
 
-      sortedEntities.sort((a, b) => zIndexByEntity[entitySlot(a as Entity)]! - zIndexByEntity[entitySlot(b as Entity)]!)
+      sortedEntities.sort((a, b) => zIndexByEntity[entitySlot(a)]! - zIndexByEntity[entitySlot(b)]!)
 
       ensureSlotMapCapacity(mesh.slotSpan)
       for (let index = 0; index < sortedEntities.length; index++) {
-        const entity = sortedEntities[index] as Entity
+        const entity = sortedEntities[index]!
         slotToSortedIndex[slotByEntity[entitySlot(entity)]!] = index
       }
 
       for (let index = 0; index < sortedEntities.length; index++) {
         const targetSlot = occupiedSlots[index]!
-        const targetEntity = sortedEntities[index] as Entity
+        const targetEntity = sortedEntities[index]!
         const targetEntityIndex = entitySlot(targetEntity)
         const currentSlot = slotByEntity[targetEntityIndex]!
         if (currentSlot === targetSlot) continue
@@ -83,7 +83,7 @@ export function createBatchSortSystem(): (world: World) => void {
         if (otherIndex <= index) {
           throw new Error('three-flatland: Batch ownership permutation is inconsistent')
         }
-        const otherEntity = sortedEntities[otherIndex] as Entity
+        const otherEntity = sortedEntities[otherIndex]!
         const otherEntityIndex = entitySlot(otherEntity)
         const targetSprite = registry.spriteArr[targetEntityIndex]
         const otherSprite = registry.spriteArr[otherEntityIndex]

@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
 import { declareSortLayer } from '../../pipeline/sortLayers'
-import { IsBatched, BatchRegistry, BatchMeta, CameraLayersMask } from '../traits'
+import { IsBatched, BatchRegistry, BatchMeta, CameraLayersMask, SpriteMaterialRef } from '../traits'
 import type { RegistryData } from '../batchUtils'
-import { readRequired, registryFor, requiredEntity } from '../testUtils.type-test'
+import { batchEntityFor, readRequired, registryFor, requiredEntity } from '../testUtils.type-test'
 
 function getRegistry(group: SpriteGroup): RegistryData {
   return registryFor(group.world)
@@ -152,6 +152,52 @@ describe('sortLayer + layers.mask run-key routing', () => {
 
     expect(registry.activeBatches.length).toBe(2)
     expect(group.world.has(requiredEntity(a), IsBatched)).toBe(true)
+  })
+
+  it('captures a route mutation made reentrantly by updateMatrix in the same frame', () => {
+    const sprite = new Sprite2D({ texture, material })
+    group.add(sprite)
+    runSystems(group)
+
+    const updateMatrix = sprite.updateMatrix.bind(sprite)
+    let mutateRoute = true
+    sprite.updateMatrix = () => {
+      updateMatrix()
+      if (mutateRoute) {
+        mutateRoute = false
+        sprite.layers.set(3)
+      }
+    }
+
+    sprite.sortLayer = 'ui'
+    runSystems(group)
+
+    const meta = readRequired(group.world, batchEntityFor(group.world, sprite), BatchMeta)
+    expect(sprite.layers.mask).toBe(1 << 3)
+    expect(readRequired(group.world, requiredEntity(sprite), CameraLayersMask).mask).toBe(1 << 3)
+    expect(meta.layersMask).toBe(1 << 3)
+  })
+
+  it('routes direct material assignment through the live batch and dispose hook', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sprite = new Sprite2D({ texture, material })
+    const replacement = new Sprite2DMaterial({ map: texture })
+    group.add(sprite)
+    runSystems(group)
+
+    sprite.material = replacement
+    expect(readRequired(group.world, requiredEntity(sprite), SpriteMaterialRef).materialId).toBe(replacement.batchId)
+    runSystems(group)
+
+    const registry = getRegistry(group)
+    const meta = readRequired(group.world, batchEntityFor(group.world, sprite), BatchMeta)
+    expect(meta.materialId).toBe(replacement.batchId)
+    expect(sprite._batchMesh?.spriteMaterial).toBe(replacement)
+    expect(registry.materialRefs.get(replacement.batchId)?.material).toBe(replacement)
+
+    replacement.dispose()
+    expect(sprite.entity).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
   })
 
   it('renderOrder override demotes the sprite to standalone with the custom order', () => {

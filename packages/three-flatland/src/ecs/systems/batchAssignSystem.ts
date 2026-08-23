@@ -78,6 +78,9 @@ export function createBatchAssignSystem(
       const sprite = registry.spriteArr[entitySlot(entity)]
       if (!sprite) continue
 
+      // updateMatrix() is virtual/user-owned. Run it before route capture so
+      // reentrant layers/material changes are assigned to the current route.
+      sprite.updateMatrix()
       const layerData = world.read(entity, SortLayer)
       const matRef = world.read(entity, SpriteMaterialRef)
       if (!layerData || !matRef) continue
@@ -188,8 +191,7 @@ function syncSlotBuffers(
     mesh.writeFlip(slot, f.x, f.y)
   }
 
-  // Transform — use Sprite2D's updateMatrix for full 3D support
-  sprite.updateMatrix()
+  // updateMatrix() runs before route capture in the caller.
   mesh.writeMatrix(slot, sprite.matrix)
 
   // Picking broadphase: index at the local translation; the group-folded

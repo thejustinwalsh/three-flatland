@@ -90,6 +90,18 @@ describe('Entity Lifecycle: Basic Add/Remove', () => {
     expect(sprite.entity).toBeNull()
   })
 
+  it('destroys a sprite removed before its first batch assignment', () => {
+    const sprite = makeSprite(texture, material)
+    group.add(sprite)
+    const removedEntity = requiredEntity(sprite)
+
+    group.remove(sprite)
+    runSystems(group)
+    runSystems(group)
+
+    expect(group.world.isAlive(removedEntity)).toBe(false)
+  })
+
   it('remove sprite + run systems should free batch slot', () => {
     const sprite = makeSprite(texture, material)
     group.add(sprite)
@@ -131,8 +143,10 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     const sprite = makeSprite(texture, material)
 
     group.add(sprite)
+    const removedEntity = requiredEntity(sprite)
     group.remove(sprite)
     group.add(sprite)
+    const replacementEntity = requiredEntity(sprite)
 
     // Run systems once — should handle the add/remove/re-add
     runSystems(group)
@@ -145,6 +159,12 @@ describe('Entity Lifecycle: Add/Remove/Re-Add Single Frame', () => {
     expect(bs.batchEntity).toBeGreaterThan(0)
     expect(bs.batchIdx).toBeGreaterThanOrEqual(0)
     expect(bs.slot).toBeGreaterThanOrEqual(0)
+
+    // The removed generation is retired on the next deferred-destroy pass;
+    // the replacement packed handle remains live.
+    runSystems(group)
+    expect(group.world.isAlive(removedEntity)).toBe(false)
+    expect(group.world.isAlive(replacementEntity)).toBe(true)
   })
 
   it('add, run, remove, re-add, run: sprite should be batched', () => {

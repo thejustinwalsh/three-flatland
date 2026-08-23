@@ -154,20 +154,19 @@ export function transformSyncSystem(world: World): void {
   if (group) _rootInverse.copy(group.matrixWorld).invert()
   else _rootInverse.identity()
 
-  // Traverse one batch's physical rows to completion before advancing to
-  // the next GPU buffer. The owner arrays are parallel to those rows, so
-  // this path stays batch-local while preserving stable assignment order.
-  // The stable table is packed, so historical holes add no traversal cost.
+  // Traverse one batch's packed active-member table to completion before
+  // advancing to the next GPU buffer. Sorting only changes each member's
+  // physical-slot indirection, so sprite/SoA reads remain batch-local and
+  // stable across sort permutations. Swap-removal keeps the table hole-free.
   for (const mesh of meshSlots) {
     if (!mesh) continue
     const sprites = mesh.memberSprites
-    const slots = mesh.memberSlots
     const memberSpan = mesh.memberSpan
     const buf = mesh.instanceMatrix.array as Float32Array
     for (let member = 0; member < memberSpan; member++) {
       const sprite = sprites[member]
       if (!sprite) continue
-      const slot = slots[member]!
+      const slot = mesh.memberSlotAt(member)
 
       const o = slot * 16
       const directRoot = !sprite._autoRegistry && !sprite._hierarchyManaged

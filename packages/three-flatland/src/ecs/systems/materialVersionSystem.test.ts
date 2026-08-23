@@ -5,7 +5,7 @@ import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { materialVersionSystem } from './materialVersionSystem'
-import { BatchSlot } from '../traits'
+import { BatchSlot, IsBatched } from '../traits'
 import { batchFor, readRequired, requiredEntity } from '../testUtils.type-test'
 
 function makeTexture(): Texture {
@@ -75,6 +75,15 @@ describe('materialVersionSystem', () => {
     // each sprite's cached direct-write refs.
     expect(a._batchMesh).toBeNull()
     expect(b._batchMesh).toBeNull()
+
+    // Eviction re-triggers IsRenderable on the same entities. The queued
+    // Removed event must not retire those live survivors on the next frame.
+    group.update()
+    group.update()
+    expect(group.world.isAlive(entityA)).toBe(true)
+    expect(group.world.isAlive(entityB)).toBe(true)
+    expect(group.world.has(entityA, IsBatched)).toBe(true)
+    expect(group.world.has(entityB, IsBatched)).toBe(true)
 
     releaseSlotSpy.mockRestore()
     group.dispose()

@@ -19,7 +19,7 @@ import type { RegistryData } from '../batchUtils'
 
 import { computeRunKey, getOrCreateRun, findOrCreateBatch, recycleBatchIfEmpty } from '../batchUtils'
 import { proxyPickToBatch, unproxyPickFromBatch } from '../../react/batchPicking'
-import { entitySlot } from '../snapshot'
+import { entitySlot, liveStoredEntity } from '../snapshot'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -60,126 +60,152 @@ export function createBatchReassignSystem(
     const registry = world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
     if (!registry) return
 
-    for (const entity of toReassign) {
+    entityLoop: for (const entity of toReassign) {
       const sprite = registry.spriteArr[entitySlot(entity)]
       if (!sprite) continue
 
-      const newLayer = world.read(entity, SortLayer)
-      const newMatRef = world.read(entity, SpriteMaterialRef)
-      if (!newLayer || !newMatRef) continue
-      const newMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
-
       const oldAssignment = world.read(entity, BatchSlot)
-      const oldBatchEntity = oldAssignment?.batchEntity as Entity | undefined
-      if (!oldBatchEntity || !world.isAlive(oldBatchEntity)) continue
+      const oldBatchEntity = liveStoredEntity(world, oldAssignment?.batchEntity ?? 0)
+      if (!oldBatchEntity) continue
 
       const oldMeta = world.read(oldBatchEntity, BatchMeta)
       if (!oldMeta) continue
-
-      // Compare run keys — only reassign if the run actually changed
       const oldRunKey = computeRunKey(oldMeta.sortLayer, oldMeta.materialId, oldMeta.layersMask)
-      const newRunKey = computeRunKey(newLayer.value, newMatRef.materialId, newMask)
-
-      if (oldRunKey === newRunKey) continue // Same run — no batch movement needed
-
       const oldSlot = oldAssignment?.slot ?? -1
       const oldBatchMesh = world.read(oldBatchEntity, BatchMesh)
       if (oldSlot < 0 || !oldBatchMesh?.mesh) continue
       oldBatchMesh.mesh.assertSlotOwner(oldSlot, entity)
 
-      // Reserve and seed the destination before releasing the source. A
-      // failed allocation therefore leaves the existing assignment intact.
-      const material = sprite.material
-      const { run } = getOrCreateRun(registry, newLayer.value, newMatRef.materialId, newMask, material)
-      const newBatchEntity = findOrCreateBatch(world, registry, run)
-      const newBatchMesh = world.read(newBatchEntity, BatchMesh)
-      if (!newBatchMesh?.mesh) continue
-      const newSlot = newBatchMesh.mesh.reserveSlot()
-      if (newSlot < 0) continue
-      let destinationCommitted = false
-      let newBatchIdx = -1
-      try {
-        syncAllBuffers(world, entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
-        // Revalidate the source after preparation, which can call user-owned
-        // Object3D/material code, before publishing either side of the move.
-        oldBatchMesh.mesh.assertSlotOwner(oldSlot, entity)
-        newBatchMesh.mesh.commitSlot(newSlot, entity, sprite)
-        destinationCommitted = true
+      // updateMatrix() is virtual/user-owned. Run it before reading the route
+      // so a reentrant layers/material change is included in this transaction.
+      // Preparation below is revalidated once and retried in the same frame.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        sprite.updateMatrix()
+        const newLayer = world.read(entity, SortLayer)
+        const newMatRef = world.read(entity, SpriteMaterialRef)
+        if (!newLayer || !newMatRef) continue entityLoop
+        const newMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
+        const material = sprite.material
+        const newRunKey = computeRunKey(newLayer.value, newMatRef.materialId, newMask)
 
-        const newMeta = world.read(newBatchEntity, BatchMeta)
-        newBatchIdx = newMeta?.batchIdx ?? -1
-        world.patch(entity, BatchSlot, { batchEntity: newBatchEntity, batchIdx: newBatchIdx, slot: newSlot }, false)
-      } catch (error) {
-        newBatchMesh.mesh.grid.remove(sprite)
-        if (destinationCommitted) newBatchMesh.mesh.releaseSlot(newSlot, entity)
-        else newBatchMesh.mesh.rollbackSlot(newSlot)
-        newBatchMesh.mesh.syncCount()
-        recycleBatchIfEmpty(world, registry, newBatchEntity, run)
-        throw error
-      }
+        if (oldRunKey === newRunKey) continue entityLoop
 
-      // Source ownership was fully preflighted immediately before the
-      // destination publish. Nothing between that check and this release can
-      // mutate its physical/stable rows, so release is the no-throw half of
-      // the transaction.
-      oldBatchMesh.mesh.releaseSlot(oldSlot, entity)
-      oldBatchMesh.mesh.syncCount()
+        // Reserve and seed the destination before releasing the source. A
+        // failed allocation therefore leaves the existing assignment intact.
+        const { run } = getOrCreateRun(registry, newLayer.value, newMatRef.materialId, newMask, material)
+        const newBatchEntity = findOrCreateBatch(world, registry, run)
+        const newBatchMesh = world.read(newBatchEntity, BatchMesh)
+        if (!newBatchMesh?.mesh) continue entityLoop
+        const newSlot = newBatchMesh.mesh.reserveSlot()
+        if (newSlot < 0) continue entityLoop
+        let destinationCommitted = false
+        let destinationRolledBack = false
+        let newBatchIdx = -1
+        try {
+          syncAllBuffers(world, entity, newSlot, newBatchMesh.mesh, sprite, effectTraits)
 
-      // Drop the picking-broadphase entry with the slot — the sprite is
-      // re-indexed into its new batch's grid by syncAllBuffers below.
-      // The R3F pick proxy moves with it (re-proxied after insertion).
-      oldBatchMesh.mesh.grid.remove(sprite)
-      unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
+          const currentLayer = world.read(entity, SortLayer)
+          const currentMatRef = world.read(entity, SpriteMaterialRef)
+          const currentMask = world.read(entity, CameraLayersMask)?.mask ?? sprite.layers.mask
+          const routeStillCurrent =
+            currentLayer?.value === newLayer.value &&
+            currentMatRef?.materialId === newMatRef.materialId &&
+            currentMask === newMask &&
+            sprite.material === material
+          if (!routeStillCurrent) {
+            newBatchMesh.mesh.grid.remove(sprite)
+            newBatchMesh.mesh.rollbackSlot(newSlot)
+            newBatchMesh.mesh.syncCount()
+            recycleBatchIfEmpty(world, registry, newBatchEntity, run)
+            destinationRolledBack = true
+            if (attempt === 0) continue
+            throw new Error('three-flatland: Batch route changed repeatedly during reassignment preparation')
+          }
 
-      registry.materialRefs.set(newMatRef.materialId, {
-        material,
-        version: material._effectSchemaVersion,
-      })
+          // Revalidate the source after preparation before publishing either
+          // side of the move.
+          oldBatchMesh.mesh.assertSlotOwner(oldSlot, entity)
+          newBatchMesh.mesh.commitSlot(newSlot, entity, sprite)
+          destinationCommitted = true
 
-      // Update the sprite's cached batch references — the invariant is
-      // that these match BatchSlot for the lifetime of the assignment.
-      sprite._batchMesh = newBatchMesh.mesh
-      sprite._batchSlot = newSlot
-      sprite._batchIdx = newBatchIdx
-
-      // Re-route R3F picking through the new batch.
-      proxyPickToBatch(sprite, newBatchMesh.mesh)
-
-      // Recycle old batch if empty
-      if (oldBatchMesh.mesh.isEmpty) {
-        const oldRun = registry.runs.get(oldRunKey)
-        if (oldRun) {
-          recycleBatchIfEmpty(world, registry, oldBatchEntity, oldRun)
+          const newMeta = world.read(newBatchEntity, BatchMeta)
+          newBatchIdx = newMeta?.batchIdx ?? -1
+          world.patch(entity, BatchSlot, { batchEntity: newBatchEntity, batchIdx: newBatchIdx, slot: newSlot }, false)
+        } catch (error) {
+          newBatchMesh.mesh.grid.remove(sprite)
+          if (!destinationRolledBack) {
+            if (destinationCommitted) newBatchMesh.mesh.releaseSlot(newSlot, entity)
+            else newBatchMesh.mesh.rollbackSlot(newSlot)
+            newBatchMesh.mesh.syncCount()
+            recycleBatchIfEmpty(world, registry, newBatchEntity, run)
+          }
+          throw error
         }
-      }
 
-      // If the material itself changed, the old material's materialRefs
-      // entry (a strong ref — keeps the material, and transitively its
-      // texture, alive) is dead weight once no run still batches it.
-      // registry.runs is sized by distinct (sortLayer, materialId, mask)
-      // combinations, not sprite count, so this scan is cheap and only
-      // runs on this reassignment event, never per frame.
-      if (oldMeta.materialId !== newMatRef.materialId) {
-        let stillBatched = false
-        for (const otherRun of registry.runs.values()) {
-          if (otherRun.materialId === oldMeta.materialId) {
-            stillBatched = true
-            break
+        // Source ownership was fully preflighted immediately before the
+        // destination publish. Nothing between that check and this release can
+        // mutate its physical/stable rows, so release is the no-throw half of
+        // the transaction.
+        oldBatchMesh.mesh.releaseSlot(oldSlot, entity)
+        oldBatchMesh.mesh.syncCount()
+
+        // Drop the picking-broadphase entry with the slot — the sprite is
+        // re-indexed into its new batch's grid by syncAllBuffers below.
+        // The R3F pick proxy moves with it (re-proxied after insertion).
+        oldBatchMesh.mesh.grid.remove(sprite)
+        unproxyPickFromBatch(sprite, oldBatchMesh.mesh)
+
+        registry.materialRefs.set(newMatRef.materialId, {
+          material,
+          version: material._effectSchemaVersion,
+        })
+
+        // Update the sprite's cached batch references — the invariant is
+        // that these match BatchSlot for the lifetime of the assignment.
+        sprite._batchMesh = newBatchMesh.mesh
+        sprite._batchSlot = newSlot
+        sprite._batchIdx = newBatchIdx
+
+        // Re-route R3F picking through the new batch.
+        proxyPickToBatch(sprite, newBatchMesh.mesh)
+
+        // Recycle old batch if empty
+        if (oldBatchMesh.mesh.isEmpty) {
+          const oldRun = registry.runs.get(oldRunKey)
+          if (oldRun) {
+            recycleBatchIfEmpty(world, registry, oldBatchEntity, oldRun)
           }
         }
-        if (!stillBatched) {
-          registry.materialRefs.delete(oldMeta.materialId)
-        }
-      }
 
-      // The new slot is seeded below from the sprite's local matrix, but a
-      // hierarchy/auto-managed sprite may need an ancestor-composed matrix or
-      // a zero-scale hidden matrix instead. Force the transform pass that
-      // follows this system to rewrite the slot and its broadphase entry in
-      // the same schedule run. Retaining the previous hierarchy snapshot
-      // would otherwise let the tracker early-out forever.
-      sprite._batchHierarchyState = undefined
-      registry.transformsDirty = true
+        // If the material itself changed, the old material's materialRefs
+        // entry (a strong ref — keeps the material, and transitively its
+        // texture, alive) is dead weight once no run still batches it.
+        // registry.runs is sized by distinct (sortLayer, materialId, mask)
+        // combinations, not sprite count, so this scan is cheap and only
+        // runs on this reassignment event, never per frame.
+        if (oldMeta.materialId !== newMatRef.materialId) {
+          let stillBatched = false
+          for (const otherRun of registry.runs.values()) {
+            if (otherRun.materialId === oldMeta.materialId) {
+              stillBatched = true
+              break
+            }
+          }
+          if (!stillBatched) {
+            registry.materialRefs.delete(oldMeta.materialId)
+          }
+        }
+
+        // The new slot is seeded below from the sprite's local matrix, but a
+        // hierarchy/auto-managed sprite may need an ancestor-composed matrix or
+        // a zero-scale hidden matrix instead. Force the transform pass that
+        // follows this system to rewrite the slot and its broadphase entry in
+        // the same schedule run. Retaining the previous hierarchy snapshot
+        // would otherwise let the tracker early-out forever.
+        sprite._batchHierarchyState = undefined
+        registry.transformsDirty = true
+        continue entityLoop
+      }
     }
   }
 }
@@ -207,8 +233,8 @@ function syncAllBuffers(
     mesh.writeFlip(slot, f.x, f.y)
   }
 
-  // Transform — use Sprite2D's updateMatrix for full 3D support
-  sprite.updateMatrix()
+  // updateMatrix() runs before route capture in the caller so any reentrant
+  // route mutation participates in the same transaction.
   mesh.writeMatrix(slot, sprite.matrix)
 
   // Picking broadphase: index at the local translation; the world-folded
