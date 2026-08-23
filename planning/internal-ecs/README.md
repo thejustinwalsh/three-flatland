@@ -1,6 +1,6 @@
 # Internal ECS design gate
 
-Status: **approved — core migration validated locally, deterministic renderer A/B pending**
+Status: **approved — core migration and frozen-source evidence accepted, live browser A/B pending**
 
 Date: 2026-08-22
 
@@ -10,9 +10,9 @@ Approve or revise the proposal to replace Koota inside `three-flatland` with a p
 
 The recommendation is **not** to publish another general ECS and **not** to recreate Koota. The proposed runtime keeps the useful part of Koota's model—typed trait schemas with tag, structure-of-arrays, and object-backed forms—while removing the general features Flatland does not use.
 
-The replacement must prove all of the following before Koota is removed. The private runtime and
-core migration now satisfy the first four gates locally; the deterministic renderer A/B is the final
-performance confirmation before dependency cleanup:
+The replacement was required to prove all of the following before Koota was removed. The private
+runtime, core migration, dependency cleanup, frozen-source Node evidence, and consumer budgets now
+satisfy those gates. The deterministic live browser A/B remains the final release timing check:
 
 1. It is behaviorally equivalent for Flatland's entity lifecycle, batching, effect traits, and change events.
 2. It is faster in the representative structural and steady-state workloads.
@@ -100,6 +100,7 @@ Against the currently installed Koota 0.6.5:
 | ------------------------------------------------------ | -------------------------------------------------------------: |
 | Installed Koota package                                |                                                 496 kB on disk |
 | Tree-shaken bundle of Flatland's seven runtime imports | 34,910 bytes minified / 10,584 bytes gzip / 9,362 bytes Brotli |
+| Shipped private runtime with capacity                  |  10,954 bytes minified / 3,887 bytes gzip / 3,529 bytes Brotli |
 
 The seven imports are `createWorld`, `trait`, `relation`, `createAdded`, `createChanged`, `createRemoved`, and `getStore`. Type-only imports are excluded from the bundle measurement.
 

@@ -101,8 +101,8 @@ The first clean frozen-source run writes its artifacts and then fails as `pendin
 copies the inspected candidate to the accepted budget path. After committing the reviewed artifact
 and returning to a clean tree, re-run to prove the accepted fixture set, hashes, provenance, and byte
 maxima. Future budget changes use the same explicit capture-review-copy-commit
-cycle; the harness never edits the accepted artifact. The source-freeze capture and initial
-accepted-current budget are still pending.
+cycle; the harness never edits the accepted artifact. The initial frozen-source budget is accepted;
+the latest clean verification reproduced zero-byte deltas across all four fixtures.
 
 ## Node renderer schedule evidence
 

@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: kernel, private-runtime, package, and representative-consumer gates implemented; definitive renderer and consumer captures pending
+Status: kernel, private-runtime, package, Node renderer, and representative-consumer gates accepted; live browser A/B pending
 
 Date: 2026-08-22
 
@@ -134,7 +134,7 @@ identify the same owner.
 
 The harness uses the production schedule's existing User Timing spans and a process-local wrapper of
 existing batch-buffer calls; production instrumentation is unchanged. The wrapper is active for one
-separate, unreported topology-validation frame per case. Its transitions are summarized, its queue
+separate, untimed topology-validation frame per case. Its transitions are summarized in the report, its queue
 is cleared, and every wrapper is restored before GC, warm-up, timing, or retained-heap sampling.
 The report records the compressed topology summary and validates ownership after every measured
 frame. With `--expose-gc`, every case first runs dedicated create/dispose contexts before allocating
@@ -258,9 +258,9 @@ Required behavior:
 
 The browser report records Chromium `JSHeapUsedSize` after warmup and after the sampled frame window,
 without forcing garbage collection. This catches gross browser-heap drift but does not satisfy the
-retained-heap, create/destroy, or 60,000-entity peak requirements above. The dedicated Node protocol
-now exists, but its full 16,384-sprite and optional 60,000-sprite reports remain pending; smoke output
-does not satisfy the memory gate.
+retained-heap, create/destroy, or 60,000-entity peak requirements above. The dedicated Node protocol's
+reviewed production report covers both 16,384 and 60,000 sprites across three clean create/dispose
+cycles per case. Smoke output does not satisfy the memory gate.
 
 ## Bundle checks
 
@@ -324,7 +324,8 @@ candidates are ineligible. With no accepted artifact, the first definitive run p
 artifacts and then fails `pending`; review copies the inspected clean candidate into the versioned
 path, commits that reviewed artifact, and a second clean run verifies it. The deterministic test
 suite exercises all four fixtures and the attribution, provenance, exact-budget, and output
-safeguards. The source-freeze capture and initial accepted-current budget remain pending.
+safeguards. The frozen-source capture and initial accepted-current budget are reviewed, committed,
+and reproduced with zero-byte deltas across all four fixtures.
 
 ## Behavioral reference tests
 

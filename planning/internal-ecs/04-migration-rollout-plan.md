@@ -1,6 +1,6 @@
 # Internal ECS migration and rollout plan
 
-Status: core migration in progress — private runtime merged, renderer A/B pending
+Status: core migration complete — private runtime, source freeze, and Node evidence accepted; live browser A/B pending
 
 Date: 2026-08-22
 
@@ -9,16 +9,17 @@ Date: 2026-08-22
 Work begins in a clean worktree rebased onto the then-current `origin/main`. Do not use the Driller branch or the camera stack worktrees.
 
 The first three planned review slices landed together in PR #231: design evidence, the differential
-harness, and a private typed runtime with no production consumer. The remaining delivery is a
-two-PR stack:
+harness, and a private typed runtime with no production consumer. The planned production and cleanup
+stack has now landed on the migration branch:
 
 1. Core migration, compiled event/selectors, direct batch ownership, deterministic browser
    fixtures, and live renderer A/B evidence, targeting `main`.
 2. Koota dependency removal, installation documentation, and representative-consumer attribution,
    targeting the core migration PR.
 
-Only the final cleanup PR removes Koota from the package manifest. The current migration remains
-reversible independently of dependency and documentation cleanup.
+The cleanup commits remove Koota from the package manifest, starters, public declarations, and
+published output. Their atomic history keeps dependency and documentation cleanup independently
+reversible while the live browser evidence is completed.
 
 Implemented and proposed commit sequence:
 
