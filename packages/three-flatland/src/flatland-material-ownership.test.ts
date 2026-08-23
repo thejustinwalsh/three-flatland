@@ -223,6 +223,26 @@ describe('Flatland material ownership', () => {
     destination.dispose()
   })
 
+  it('rejects a shared-material sprite reparent before removing it from its source Flatland', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const shared = makeMaterial()
+    const moving = makeSprite(shared)
+    const retained = makeSprite(shared)
+    source.add(moving, retained)
+
+    expect(() => destination.add(moving)).toThrow(/cannot be shared by multiple Flatland/)
+    expect(source.spriteGroup.spriteCount).toBe(2)
+    expect(materialRefCounts(source)).toEqual(new Map([[shared, 2]]))
+    expect(trackedMaterials(source)).toEqual(new Set([shared]))
+    expect(destination.spriteGroup.spriteCount).toBe(0)
+    expect(materialRefCounts(destination).size).toBe(0)
+
+    source.remove(moving, retained)
+    source.dispose()
+    destination.dispose()
+  })
+
   it('rolls back a live material setter when the replacement belongs to another Flatland', () => {
     const source = new Flatland()
     const destination = new Flatland()
@@ -294,6 +314,28 @@ describe('Flatland material ownership', () => {
     expect(material.globalUniforms).toBe(destination.globals)
 
     destination.remove(tileMap)
+    tileMap.dispose()
+    source.dispose()
+    destination.dispose()
+  })
+
+  it('rejects a shared tilemap-material reparent before removing it from its source Flatland', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const tileMap = new TileMap2D({ data: makeMapData() })
+    const shared = tileMap.getLayerMaterialAt(0)!
+    const retained = makeSprite(shared)
+    source.add(tileMap, retained)
+
+    expect(() => destination.add(tileMap)).toThrow(/cannot be shared by multiple Flatland/)
+    expect(source.scene.children).toEqual([source.spriteGroup, tileMap])
+    expect(source.spriteGroup.spriteCount).toBe(1)
+    expect(materialRefCounts(source)).toEqual(new Map([[shared, 2]]))
+    expect(trackedMaterials(source)).toEqual(new Set([shared]))
+    expect(destination.scene.children).toEqual([destination.spriteGroup])
+    expect(materialRefCounts(destination).size).toBe(0)
+
+    source.remove(tileMap, retained)
     tileMap.dispose()
     source.dispose()
     destination.dispose()

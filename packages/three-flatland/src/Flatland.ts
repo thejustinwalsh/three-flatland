@@ -864,6 +864,19 @@ export class Flatland extends Group implements WorldProvider {
     this._getLightingContext()?.materials.delete(material)
   }
 
+  private _assertCanAdoptMaterials(materials: readonly Sprite2DMaterial[], previousOwner?: Flatland): void {
+    const proposedCounts = new Map<Sprite2DMaterial, number>()
+    for (const material of materials) proposedCounts.set(material, (proposedCounts.get(material) ?? 0) + 1)
+    for (const [material, proposedCount] of proposedCounts) {
+      const owner = _flatlandMaterialOwners.get(material)
+      if (!owner || owner === this) continue
+      if (owner === previousOwner && owner._spriteMaterialRefCounts.get(material) === proposedCount) continue
+      throw new Error(
+        'Flatland.add: a Sprite2DMaterial cannot be shared by multiple Flatland instances; remove its existing owners first'
+      )
+    }
+  }
+
   private _trackSprite(sprite: Sprite2D): void {
     const tracked = this._spriteOwnedMaterials.get(sprite)
     if (tracked !== sprite.material) {
@@ -960,13 +973,16 @@ export class Flatland extends Group implements WorldProvider {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
         const previousOwner = _flatlandSpriteOwners.get(child)
-        if (previousOwner && previousOwner !== this) previousOwner.remove(child)
-        this.spriteGroup.add(child)
+        const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
+        this._assertCanAdoptMaterials([child.material], transferring)
+        if (transferring) transferring.remove(child)
         try {
+          this.spriteGroup.add(child)
           this._trackSprite(child)
         } catch (error) {
           this.spriteGroup.remove(child)
           this._untrackSprite(child)
+          if (transferring) transferring.add(child)
           throw error
         }
         // Defer validation to `render()` — by the time that runs, R3F has
@@ -978,13 +994,19 @@ export class Flatland extends Group implements WorldProvider {
         this._pendingChannelValidation.add(child)
       } else if (child instanceof TileMap2D) {
         const previousOwner = _flatlandTileMapOwners.get(child)
-        if (previousOwner && previousOwner !== this) previousOwner.remove(child)
-        this.scene.add(child)
+        const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
+        this._assertCanAdoptMaterials(
+          child.getLayers().map((layer) => layer.material),
+          transferring
+        )
+        if (transferring) transferring.remove(child)
         try {
+          this.scene.add(child)
           this._trackTileMap(child)
         } catch (error) {
           this.scene.remove(child)
           this._untrackTileMap(child)
+          if (transferring) transferring.add(child)
           throw error
         }
       } else if (child instanceof Light2D) {
