@@ -85,7 +85,7 @@ Koota 0.6.5 and the Flatland contract:
    composition and throws before consuming an index or touching stores, selectors, or events.
 8. Koota accepts an empty all-entities selector. Flatland rejects it because the renderer has no
    all-entities query and should not maintain a global membership index for an unused feature.
-9. Koota's 12-bit generation wraps and aliases the original handle on the 4,096th recycle. Flatland
+9. Koota's 8-bit generation wraps and aliases the original handle on the 256th recycle. Flatland
    uses the safe-integer generation range and permanently retires an index before it could wrap.
 10. Removing an exclusive relation from a destroyed source silently no-ops in Koota. Flatland
     rejects stale-source unassignment consistently with every other structural mutation.

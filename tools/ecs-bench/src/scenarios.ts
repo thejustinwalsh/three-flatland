@@ -405,15 +405,20 @@ function captureGenerationSafety(adapter: EcsAdapter): Snapshot {
   let current = original
   let sameIndexThroughout = true
   let everAliasedOriginal = false
-  for (let cycle = 0; cycle < 4097; cycle++) {
+  let firstAliasRecycle: number | null = null
+  for (let cycle = 1; cycle <= 257; cycle++) {
     horizonWorld.destroy(current)
     current = horizonWorld.spawn()
     sameIndexThroughout &&= horizonWorld.index(current) === originalIndex
-    everAliasedOriginal ||= current === original || horizonWorld.isAlive(original)
+    if (current === original || horizonWorld.isAlive(original)) {
+      everAliasedOriginal = true
+      firstAliasRecycle ??= cycle
+    }
   }
   const horizonResult = {
     sameIndexThroughout,
     everAliasedOriginal,
+    firstAliasRecycle,
     originalAliveAtEnd: horizonWorld.isAlive(original),
     finalHandleDiffers: current !== original,
   }

@@ -30,6 +30,7 @@ satisfy those gates. The deterministic live browser A/B remains the final releas
 6. [Baseline and kernel decision](./05-baseline-and-kernel-decision.md) — raw-evidence links, Koota behavior findings, isolated size results, and the selected production direction.
 7. [Private ECS architecture standard](./06-private-ecs-architecture-standard.md) — the durable public/private boundary, ownership laws, hot-path rules, lifecycle contract, capacity policy, and telemetry policy.
 8. [Private ECS convergence plan](./07-private-ecs-convergence-plan.md) — subsystem audit, ranked migrations, source references, and the gates required for each follow-up.
+9. [Koota upstream suggestions](./08-koota-upstream-suggestions.md) — narrowly scoped ideas learned from the migration, separated into measured proposals and lower-confidence experiments.
 
 ## Proposed decision in one page
 
