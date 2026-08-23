@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: kernel, private-runtime, and package gates captured; Node renderer harness implemented, definitive renderer captures pending
+Status: kernel, private-runtime, package, and representative-consumer gates implemented; definitive renderer and consumer captures pending
 
 Date: 2026-08-22
 
@@ -276,12 +276,18 @@ Reject if greater than:
 
 ### Representative consumers
 
-Measure at least:
+The deterministic harness in `tools/ecs-bench/src/consumer-bundle-evidence.ts` bundles:
 
 - one basic Three.js example,
 - one basic React example,
 - Knightmark/batch stress,
 - a pass/lighting example that creates dynamic traits.
+
+For each fixture, the current source graph is paired with the identical graph plus the exact seven
+Koota exports used by the recorded 0.6.5 baseline. This isolates Koota's contribution without
+changing Three.js, React, the fixture, the private runtime, or esbuild settings. The harness also
+rebuilds the isolated Koota entry and requires the exact recorded 34,910 B minified / 10,584 B gzip /
+9,362 B Brotli result before accepting the paired measurements.
 
 Required result versus Koota baseline:
 
@@ -294,6 +300,13 @@ Required result versus Koota baseline:
 The PR report includes metafile attribution so a hash or unrelated dependency change cannot be
 mistaken for the ECS saving. Workspace minis and other packages that intentionally use Koota are
 reported separately; they do not fail this package-scoped removal gate.
+
+Every run writes minified bundles, raw esbuild metafiles, exact minified/gzip/Brotli attribution, the
+full Git revision, resolved tool versions, and source/fixture/harness/lockfile hashes outside the
+source tree. A definitive run requires a clean tree and a current `three-flatland` package build;
+`--allow-dirty` produces only a `smoke-dirty` report. The deterministic test suite exercises all four
+fixtures and the provenance/output safeguards. The source-freeze capture remains pending and must be
+recorded as `measured-unreviewed` before review accepts it as release evidence.
 
 ## Behavioral reference tests
 

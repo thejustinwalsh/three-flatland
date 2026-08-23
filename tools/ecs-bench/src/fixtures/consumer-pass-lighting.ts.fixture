@@ -1,0 +1,43 @@
+import { Texture } from 'three'
+import { vec4 } from 'three/tsl'
+import {
+  Flatland,
+  Sprite2D,
+  Sprite2DMaterial,
+  createLightEffect,
+  createMaterialEffect,
+  createPassEffect,
+} from 'three-flatland'
+
+const DynamicTint = createMaterialEffect({
+  name: 'consumer_dynamic_tint',
+  schema: { intensity: 0.5 },
+  node: ({ inputColor }) => inputColor,
+})
+
+const ConsumerLighting = createLightEffect({
+  name: 'consumer_lighting',
+  schema: { ambient: 0.25 },
+  light: () => (context) => vec4(context.color.rgb, context.color.a),
+})
+
+const ConsumerPass = createPassEffect({
+  name: 'consumer_pass',
+  schema: { amount: 0.5 },
+  pass: () => (input) => input,
+})
+
+export function createPassLightingConsumer(): Flatland {
+  const texture = new Texture()
+  texture.image = { width: 16, height: 16 }
+  const material = new Sprite2DMaterial({ map: texture })
+  material.registerEffect(DynamicTint)
+  const sprite = new Sprite2D({ material, texture })
+  sprite.addEffect(new DynamicTint())
+
+  const flatland = new Flatland()
+  flatland.add(sprite)
+  flatland.setLighting(new ConsumerLighting())
+  flatland.addPass(new ConsumerPass())
+  return flatland
+}

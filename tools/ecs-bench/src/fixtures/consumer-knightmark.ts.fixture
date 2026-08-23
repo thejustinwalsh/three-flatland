@@ -1,0 +1,17 @@
+import { Texture } from 'three'
+import { AnimatedSprite2D, Sprite2DMaterial, SpriteGroup } from 'three-flatland'
+
+export function createKnightmarkConsumer(count: number): SpriteGroup {
+  const texture = new Texture()
+  texture.image = { width: 64, height: 64 }
+  const material = new Sprite2DMaterial({ map: texture, alphaTest: 0.5 })
+  const group = new SpriteGroup({ expectedSprites: count })
+
+  for (let index = 0; index < count; index++) {
+    const sprite = new AnimatedSprite2D({ material })
+    sprite.position.set(index % 256, Math.floor(index / 256), 0)
+    group.add(sprite)
+  }
+
+  return group
+}

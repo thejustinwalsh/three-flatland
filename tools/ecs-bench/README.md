@@ -46,6 +46,35 @@ benchmark commands accept `--output=<path>` to preserve the raw JSON report.
 Wall-clock results are comparative evidence, not a deterministic CI test. The scenario suite,
 type checks, and later bundle budgets are deterministic gates.
 
+## Representative consumer bundle attribution
+
+The consumer bundle gate builds four production-shaped entry points: basic Three.js, basic React
+Three Fiber, Knightmark-style batching, and pass/lighting with dynamic effect traits. Each current
+bundle has a paired attribution baseline made from the identical consumer graph plus the exact seven
+Koota exports used by the recorded 0.6.5 baseline. This keeps Three.js, React, fixture code, the
+private runtime, and minifier settings identical across each pair.
+
+Build the published package first, then capture from a clean source tree:
+
+```sh
+pnpm --filter three-flatland build
+node --import tsx tools/ecs-bench/src/measure-consumer-bundles.ts \
+  --output=/private/tmp/three-flatland-consumer-bundles-$(git rev-parse --short=12 HEAD)
+```
+
+Omit `--output` to use the operating system's temporary directory. The harness refuses an output
+path inside the repository and refuses a non-empty output directory. Every capture emits the
+minified bundles, raw esbuild metafiles, and a JSON report containing exact minified, gzip, and
+Brotli sizes; source, fixture, harness, and lockfile hashes; exact tool versions; and the full Git
+revision.
+
+A passing capture proves that Koota is absent from the current consumer graphs, production source,
+and built `three-flatland` output; the private runtime is retained in exactly one output per fixture;
+the isolated Koota bundle still matches the recorded 34,910 B minified / 10,584 B gzip / 9,362 B
+Brotli baseline; and every paired consumer saves at least 22 kB minified and 6 kB gzip. Use
+`--allow-dirty` only while changing the harness. Dirty captures are labeled `smoke-dirty` and are not
+release evidence.
+
 ## Node renderer schedule evidence
 
 `benchmark:renderer` runs the production `SpriteGroup`, private runtime, and `SystemSchedule`

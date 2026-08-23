@@ -1,0 +1,9 @@
+import { createElement, type ReactElement } from 'react'
+import { extend } from '@react-three/fiber/webgpu'
+import { Flatland, Sprite2D } from 'three-flatland/react'
+
+extend({ Flatland, Sprite2D })
+
+export function BasicReactConsumer(): ReactElement {
+  return createElement('flatland', { viewSize: 320 }, createElement('sprite2D', { anchor: [0.5, 0.5] }))
+}
