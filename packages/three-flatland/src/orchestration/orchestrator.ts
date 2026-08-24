@@ -169,16 +169,26 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
  */
 export function flatlandSceneSweep(renderer: RendererLike, scene: Scene): void {
   const state = getPrimeState(scene)
-  const registry = state.pending.size > 0 ? getOrCreateRegistry(renderer, scene) : null
+  // Peeking also replaces a terminal registry and carries its still-authored
+  // members into the replacement's recovery queue. Drain that queue before
+  // choosing whether this sweep has registration work.
+  let registry = peekRegistry(renderer, scene)
+  if (!registry && state.pending.size > 0) registry = getOrCreateRegistry(renderer, scene)
+  if (registry) queueRegistryRecovery(registry, state)
 
-  if (registry) {
+  const registrationRegistry = state.pending.size > 0 ? registry : null
+  if (registrationRegistry) {
     for (const sprite of Array.from(state.pending)) {
+      // Material cleanup may terminalize the hidden group. Never send the
+      // untouched tail of this snapshot through the captured dead registry;
+      // it remains pending for a fresh registry on the next sweep.
+      if (!isSpriteGroupRuntimeLive(registrationRegistry.group)) break
       // Remove before invoking material disposal callbacks. A callback may
       // detach the sprite and call flatlandUnregister; leaving it in the set
       // until the end would resurrect a ghost on the next sweep.
       state.pending.delete(sprite)
       try {
-        if (registerSprite(registry, sprite)) {
+        if (registerSprite(registrationRegistry, sprite)) {
           state.pending.delete(sprite)
         } else if (isEligibleForAutoRegistration(scene, sprite)) {
           state.pending.add(sprite)
@@ -197,8 +207,9 @@ export function flatlandSceneSweep(renderer: RendererLike, scene: Scene): void {
   // Threshold evaluation runs whenever standalone membership changed —
   // Signal-B registrations and removals mark the registry dirty for the
   // next sweep.
-  const liveRegistry = registry && isSpriteGroupRuntimeLive(registry.group) ? registry : null
-  const evalRegistry = liveRegistry ?? (state.pending.size === 0 ? peekDirtyRegistry(renderer, scene) : null)
+  const liveRegistry =
+    registrationRegistry && isSpriteGroupRuntimeLive(registrationRegistry.group) ? registrationRegistry : null
+  const evalRegistry = liveRegistry ?? (state.pending.size === 0 && registry?._autoEvalDirty ? registry : null)
   if (evalRegistry && evalRegistry._autoEvalDirty) {
     evaluateAutoBatch(evalRegistry)
   }
@@ -213,10 +224,15 @@ export function flatlandSceneSweep(renderer: RendererLike, scene: Scene): void {
   }
 }
 
-/** Resolve an existing registry only when it has evaluation work queued. */
-function peekDirtyRegistry(renderer: RendererLike, scene: Scene): Registry | null {
-  const existing = peekRegistry(renderer, scene)
-  return existing && existing._autoEvalDirty ? existing : null
+/** Move terminal-registry survivors into the scene's normal transaction. */
+function queueRegistryRecovery(registry: Registry, state: ScenePrimeState): void {
+  for (const sprite of registry._recoveryCandidates) {
+    if (isEligibleForAutoRegistration(registry.scene, sprite)) {
+      state.pending.add(sprite)
+      sprite._pendingPrimeScene = registry.scene
+    }
+  }
+  registry._recoveryCandidates.clear()
 }
 
 /**
@@ -286,9 +302,9 @@ function registerSprite(registry: Registry, sprite: Sprite2D): boolean {
     // Resolve before publishing ownership. Staging-material disposal is
     // user-extensible and may terminalize the hidden group or detach/adopt
     // the sprite reentrantly.
-    if (bootstrapDefault && sprite.texture) {
+    if ((bootstrapDefault || registryDefault) && sprite.texture) {
       sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
-    } else if (bootstrapVariant && sprite.texture) {
+    } else if ((bootstrapVariant || registryVariant) && sprite.texture) {
       sprite._resolveEffectVariantMaterial(registry.getEffectVariant(sprite.texture, sprite._currentVariantOptions()))
     }
 

@@ -79,4 +79,31 @@ describe('per-(renderer, scene) registry foundation', () => {
     expect(registry._sceneHookInstalled).toBe(false)
     expect(registry.group.name).toBe('FlatlandOrchestrator')
   })
+
+  it('publishes a live replacement before terminal-group removal callbacks run', () => {
+    const renderer = makeRenderer()
+    const scene = new Scene()
+    const terminal = getOrCreateRegistry(renderer, scene)
+    let observed: Registry | null = null
+    scene.add(terminal.group)
+    terminal.group.addEventListener('removed', () => {
+      observed = peekRegistry(renderer, scene)
+      throw 0
+    })
+    terminal.group.dispose()
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      getOrCreateRegistry(renderer, scene)
+    } catch (error) {
+      thrown = error
+    }
+
+    const replacement = peekRegistry(renderer, scene)!
+    expect(thrown).toBe(0)
+    expect(replacement).not.toBe(terminal)
+    expect(observed).toBe(replacement)
+    expect(terminal.group.parent).toBeNull()
+    replacement.group.dispose()
+  })
 })

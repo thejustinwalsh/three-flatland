@@ -77,6 +77,9 @@ export class Registry {
    */
   readonly standalone = new Set<Sprite2D>()
 
+  /** Authored members carried forward when a terminal registry is replaced. */
+  readonly _recoveryCandidates = new Set<Sprite2D>()
+
   /** Set when standalone membership changed; drained by the scene sweep. */
   _autoEvalDirty = false
 
@@ -150,9 +153,7 @@ export function getOrCreateRegistry(renderer: RendererLike, scene: Scene): Regis
   const host = getOrCreateHost(renderer)
   let registry = host.scenes.get(scene)
   if (registry && !isSpriteGroupRuntimeLive(registry.group)) {
-    retireRegistry(registry)
-    host.scenes.delete(scene)
-    registry = undefined
+    registry = replaceTerminalRegistry(host, registry)
   }
   if (!registry) {
     registry = new Registry(renderer, scene)
@@ -161,28 +162,60 @@ export function getOrCreateRegistry(renderer: RendererLike, scene: Scene): Regis
   return registry
 }
 
-/** Get the registry for a tuple if one exists; never creates. */
+/** Get the registry for an existing tuple, replacing terminal metadata only. */
 export function peekRegistry(renderer: RendererLike, scene: Scene): Registry | null {
   const host = (renderer as Record<symbol, unknown>)[REGISTRY_SYMBOL] as RegistryHost | undefined
   const registry = host?.scenes.get(scene)
   if (!registry) return null
   if (isSpriteGroupRuntimeLive(registry.group)) return registry
-  retireRegistry(registry)
-  host!.scenes.delete(scene)
-  return null
+  return replaceTerminalRegistry(host!, registry)
 }
 
-/** Drop every strong/semantic edge held by a terminal auto registry. */
-function retireRegistry(registry: Registry): void {
-  if (registry.group.parent === registry.scene) registry.scene.remove(registry.group)
-  for (const sprite of registry.sprites) {
+/** Replace terminal orchestration while retaining only still-authored members. */
+function replaceTerminalRegistry(host: RegistryHost, registry: Registry): Registry {
+  const replacement = new Registry(registry.renderer, registry.scene)
+  // Publish first so a hostile `removed` listener that peeks the tuple sees
+  // the live replacement instead of recursively replacing the same corpse.
+  host.scenes.set(registry.scene, replacement)
+  retireRegistry(registry, replacement)
+  return replacement
+}
+
+/** Drop old edges and stage eligible members for transactional re-registration. */
+function retireRegistry(registry: Registry, replacement: Registry): void {
+  let removalError: unknown
+  let removalFailed = false
+  if (registry.group.parent === registry.scene) {
+    try {
+      registry.scene.remove(registry.group)
+    } catch (error) {
+      removalError = error
+      removalFailed = true
+    }
+  }
+  const candidates = new Set([...registry.sprites, ...registry.standalone])
+  for (const sprite of candidates) {
     const runtimeSprite = sprite as unknown as { _autoRegistry: Registry | null }
+    if (runtimeSprite._autoRegistry && runtimeSprite._autoRegistry !== registry) continue
     if (runtimeSprite._autoRegistry === registry) runtimeSprite._autoRegistry = null
     sprite._setBatchSuppressed(false)
+    if (isAuthoredBelow(registry.scene, sprite)) replacement._recoveryCandidates.add(sprite)
   }
   registry.sprites.clear()
   registry.standalone.clear()
   registry._autoEvalDirty = false
+  if (removalFailed) throw removalError
+}
+
+/** Keep terminal-registry recovery scoped to the exact authored scene. */
+function isAuthoredBelow(scene: Scene, sprite: Sprite2D): boolean {
+  if (sprite._disposed) return false
+  let parent = sprite.parent
+  while (parent) {
+    if (parent === scene) return true
+    parent = parent.parent
+  }
+  return false
 }
 
 function getOrCreateHost(renderer: RendererLike): RegistryHost {
