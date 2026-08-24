@@ -1,6 +1,6 @@
 # Internal ECS benchmark and validation plan
 
-Status: kernel, private-runtime, package, Node renderer, and representative-consumer gates accepted; live browser A/B pending
+Status: kernel, private-runtime, and package gates accepted; final frozen-source Node, consumer, and live browser evidence pending
 
 Date: 2026-08-22
 
@@ -100,11 +100,11 @@ Use the established 16,384-sprite schedule workload and add a 60,000-sprite scal
 
 The source-level harness is implemented in `tools/ecs-bench/src/renderer-evidence.ts` and is wired as
 `@three-flatland/ecs-bench:benchmark:renderer`. `--quick` runs a smoke-sized version of all cases for
-tool validation. The production capture in `results/renderer-production.json` covers all eight cases
-at both 16,384 and 60,000 sprites, including three GC-controlled lifecycle cycles per case. Its raw
-report preserves the harness-emitted `measured-unreviewed` state; the reviewed decision and exact
-claims live in `05-baseline-and-kernel-decision.md`, so a quick run cannot be mistaken for accepted
-evidence.
+tool validation. The historical production capture in `results/renderer-production.json` covers all
+eight cases at both 16,384 and 60,000 sprites, including three GC-controlled lifecycle cycles per
+case. Runtime lifecycle fixes landed after that capture, so it is not final release evidence. Its
+raw report preserves the harness-emitted `measured-unreviewed` state; the frozen implementation must
+be recaptured before the decision record can accept updated claims.
 
 Canonical non-quick cases use the production `SpriteGroup` tier ladder with no fixed-capacity
 override. A 16,384-sprite one-material bulk enrollment must initially commit one batch; 60,000 must
@@ -324,8 +324,9 @@ candidates are ineligible. With no accepted artifact, the first definitive run p
 artifacts and then fails `pending`; review copies the inspected clean candidate into the versioned
 path, commits that reviewed artifact, and a second clean run verifies it. The deterministic test
 suite exercises all four fixtures and the attribution, provenance, exact-budget, and output
-safeguards. The frozen-source capture and initial accepted-current budget are reviewed, committed,
-and reproduced with zero-byte deltas across all four fixtures.
+safeguards. The previously accepted budget records the earlier source snapshot. The final
+frozen-source run must replace it with a reviewed candidate, then reproduce that candidate with
+zero-byte deltas across all four fixtures.
 
 ## Behavioral reference tests
 

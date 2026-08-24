@@ -1,6 +1,6 @@
 # Internal ECS design gate
 
-Status: **approved — core migration and frozen-source evidence accepted, live browser A/B pending**
+Status: **approved — implementation frozen; final Node, consumer, and live browser evidence pending**
 
 Date: 2026-08-22
 
@@ -11,8 +11,9 @@ Approve or revise the proposal to replace Koota inside `three-flatland` with a p
 The recommendation is **not** to publish another general ECS and **not** to recreate Koota. The proposed runtime keeps the useful part of Koota's model—typed trait schemas with tag, structure-of-arrays, and object-backed forms—while removing the general features Flatland does not use.
 
 The replacement was required to prove all of the following before Koota was removed. The private
-runtime, core migration, dependency cleanup, frozen-source Node evidence, and consumer budgets now
-satisfy those gates. The deterministic live browser A/B remains the final release timing check:
+runtime, core migration, and dependency cleanup satisfy their implementation gates. The final
+frozen-source Node matrix, consumer budgets, and deterministic live browser A/B must be recaptured
+before release:
 
 1. It is behaviorally equivalent for Flatland's entity lifecycle, batching, effect traits, and change events.
 2. It is faster in the representative structural and steady-state workloads.
@@ -64,7 +65,7 @@ const BatchSlot = trait({
   batchEntity: -1,
   batchIdx: -1,
   slot: -1,
-})
+});
 ```
 
 This removes the relation engine while retaining O(1) access to both the batch entity and the batch's GPU-buffer index.

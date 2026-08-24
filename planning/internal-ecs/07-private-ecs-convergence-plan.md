@@ -56,13 +56,13 @@ Resource-set cleanup is no longer part of that ambiguity: canonical sprite/tile/
 
 ## Ranked migrations
 
-### P0 — private boundary cleanup and frozen-source attribution complete
+### P0 — private boundary cleanup complete; final frozen-source attribution pending
 
 `three-flatland` no longer declares Koota as a peer dependency or `tsdown` external. Install documentation and starter manifests no longer add it, and the packed-publication gate scans production source, emitted JavaScript, declarations, source maps, and the published manifest. Workspace minis and the ECS comparison harness keep their explicit Koota dependencies because they use it independently.
 
-Commit `5f128a15` replaced the additive Koota estimate with a true-consumer A/B harness: identical fixtures are bundled against the current source and the pinned pre-migration source. The accepted frozen-source capture passes attribution and has an honestly mixed historical classification. Basic Three.js, basic React, and pass/lighting are larger by 21,567/4,816, 23,178/5,310, and 28,019/7,436 minified/gzip bytes respectively; Knightmark is smaller by 18,892/5,619. That comparison spans all reachable package-source changes and is report-only, not an isolated ECS savings gate. The isolated Koota bundle remains a dependency-attribution diagnostic.
+Commit `5f128a15` replaced the additive Koota estimate with a true-consumer A/B harness: identical fixtures are bundled against the current source and the pinned pre-migration source. The earlier accepted capture has an honestly mixed historical classification. Basic Three.js, basic React, and pass/lighting are larger by 21,567/4,816, 23,178/5,310, and 28,019/7,436 minified/gzip bytes respectively; Knightmark is smaller by 18,892/5,619. That comparison spans all reachable package-source changes and is report-only, not an isolated ECS savings gate. The isolated Koota bundle remains a dependency-attribution diagnostic.
 
-The dependency, publication, declaration, combined-runtime-cap, and no-duplicate-runtime exit conditions are complete. Current consumer growth is gated against reviewed per-fixture absolute minified/gzip/Brotli budgets; any one-byte increase fails while reductions pass without automatic ratcheting. The frozen-source capture and initial accepted-current budget are committed and reproduce with zero-byte deltas. The release evidence retains the exact mixed historical result rather than inferring savings from the isolated Koota kernel.
+The dependency, publication, declaration, combined-runtime-cap, and no-duplicate-runtime exit conditions are complete. Consumer growth is gated against reviewed per-fixture absolute minified/gzip/Brotli budgets; any one-byte increase fails while reductions pass without automatic ratcheting. The final frozen-source capture must replace the earlier accepted-current budget and reproduce with zero-byte deltas. Release evidence must retain the exact mixed historical result rather than infer savings from the isolated Koota kernel.
 
 ### P0 — consolidate render/pass graph ownership
 

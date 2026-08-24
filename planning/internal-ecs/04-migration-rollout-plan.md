@@ -1,6 +1,6 @@
 # Internal ECS migration and rollout plan
 
-Status: core migration complete — private runtime, source freeze, and Node evidence accepted; live browser A/B pending
+Status: core migration implementation frozen; final Node, consumer, and live browser evidence pending
 
 Date: 2026-08-22
 

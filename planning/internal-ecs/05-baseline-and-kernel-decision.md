@@ -1,6 +1,6 @@
 # Baseline and kernel decision
 
-Status: core migration and production Node renderer matrix independently reviewed and accepted; live browser A/B gates remain pending
+Status: kernel decision accepted; final frozen-source Node, consumer, and live browser evidence pending
 
 Date: 2026-08-22
 
@@ -22,8 +22,10 @@ It is the best current balance for Flatland's bounded trait surface:
 - 58.7% lower median for full-handle numeric batch assignment.
 
 The production runtime passes the `SystemSchedule`, allocation, isolated-kernel-size, declaration,
-package test, and production-source Node renderer gates. Deterministic Knightmark and lighting runs still have to prove
-the end-to-end result in live WebGPU. This decision does not waive that shipping threshold.
+and package gates. The earlier production-source Node matrix passed on its captured revision, but
+runtime lifecycle fixes landed afterward. The frozen implementation must repeat that matrix, the
+consumer-budget capture, and deterministic Knightmark and lighting runs before release. This
+decision does not waive those shipping thresholds.
 
 ## Reproducible environment
 
@@ -116,10 +118,11 @@ capacity measures 23,956 / 6,697 / 5,833 bytes smaller and remains below the unc
 additive compressed size: the authoritative shipped delta over the base runtime is 49 bytes
 minified, 22 bytes gzip, and 22 bytes Brotli.
 
-Representative consumer sizes are now gated against the reviewed frozen-source budget. The pinned
-historical comparison is intentionally report-only because it spans every package change reachable
-from those fixtures: basic Three, basic React, and pass/lighting are larger, while Knightmark is
-smaller. Current graphs contain no Koota and retain exactly one private-runtime output.
+Representative consumer sizes were gated against the reviewed earlier-source budget. The final
+frozen-source capture must replace and reproduce that budget. The pinned historical comparison is
+intentionally report-only because it spans every package change reachable from those fixtures:
+basic Three, basic React, and pass/lighting are larger, while Knightmark is smaller. Publication
+checks continue to reject Koota and duplicate private-runtime output.
 
 ## Full microbenchmark summary
 
@@ -150,16 +153,19 @@ end-to-end schedule and batch-local traversal gates remain authoritative. The as
 full packed handle in a numeric field with `0` as the unassigned sentinel, matching the planned
 `BatchSlot.batchEntity` storage rather than a general relation or `Map` shim.
 
-## Production renderer schedule
+## Historical production renderer schedule
 
-The production `SpriteGroup`/`SystemSchedule` harness ran all eight accepted cases at both 16,384 and
-60,000 sprites on the same Apple M4 host. Each case first used three fresh GC-controlled memory-only
+The production `SpriteGroup`/`SystemSchedule` harness ran all eight cases at both 16,384 and 60,000
+sprites on the same Apple M4 host at renderer source `7faf7f40`. This matrix established the prior
+acceptance baseline; it must be repeated on the frozen implementation before release. Each case
+first used three fresh GC-controlled memory-only
 contexts. Those contexts contained no retained User Timing measures, probe events, topology
 summaries, or timing samples. A separate production context then ran one untimed
 topology-validation frame, five warm-ups, and ten instrumented measured frames. These timings include
 per-system User Timing instrumentation, so they are diagnostic schedule measurements rather than
 the ordinary uninstrumented browser merge gate. The raw artifact preserves its capture-time
-`measured-unreviewed` status; this decision record is the independent review and acceptance layer.
+`measured-unreviewed` status; the tables below remain historical until the final recapture is
+independently reviewed.
 
 | Case                   | 16,384 median / p95 | Batches | 60,000 median / p95 | Batches |
 | ---------------------- | ------------------: | ------: | ------------------: | ------: |
