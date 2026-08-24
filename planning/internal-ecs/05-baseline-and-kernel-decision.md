@@ -16,7 +16,7 @@ It is the best current balance for Flatland's bounded trait surface:
 - 50.0% lower median for the 60,000-entity lifecycle workload than Koota,
 - 55.6% lower median for the 60,000-entity, 256-dynamic-effect-trait lifecycle,
 - 99.8% lower median for repeated stable-query retrieval,
-- 46.3% lower median when actually iterating 16.384 million stable-query entities,
+- 46.3% lower median across 16.384 million stable-query iteration visits,
 - 65.2% lower median for 12,000 routing changes,
 - 81.0% lower median for 12,000 dynamic structural changes, and
 - 58.7% lower median for full-handle numeric batch assignment.

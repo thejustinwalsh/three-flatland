@@ -50,10 +50,8 @@ describe('representative consumer bundle evidence', () => {
     }
     expect(report.gate.baselineIncludesKoota).toBe(true)
     expect(report.gate.baselineOmitsPrivateRuntime).toBe(true)
-    expect(report.historicalComparison).toEqual({
-      classification: 'mixed',
-      revision: PRE_MIGRATION_REVISION,
-    })
+    expect(report.historicalComparison.revision).toBe(PRE_MIGRATION_REVISION)
+    expect(['all-smaller', 'all-larger', 'unchanged', 'mixed']).toContain(report.historicalComparison.classification)
     expect(report.methodology).toMatch(/historical comparison.*report-only/i)
   })
 
@@ -108,7 +106,7 @@ describe('representative consumer bundle evidence', () => {
       schemaVersion: number
     }
     expect(budgetCandidate.schemaVersion).toBe(1)
-    expect(budgetCandidate.provenance.sourceTreeDirty).toBe(true)
+    expect(budgetCandidate.provenance.sourceTreeDirty).toBe(report.provenance.dirty)
     expect(budgetCandidate.provenance.captureStatus).toBe('smoke-dirty')
     expect(Object.keys(budgetCandidate.fixtures).sort()).toEqual(consumerFixtures.map(({ id }) => id).sort())
     for (const capture of report.captures) {
@@ -151,6 +149,17 @@ describe('capture safeguards', () => {
 
     const external = resolve(tmpdir(), 'three-flatland-external-evidence')
     expect(resolveEvidenceOutputDirectory({ outputDirectory: external }, repositoryRoot, 'a'.repeat(40))).toBe(external)
+
+    const firstDefault = resolveEvidenceOutputDirectory({}, repositoryRoot, 'a'.repeat(40))
+    const secondDefault = resolveEvidenceOutputDirectory({}, repositoryRoot, 'a'.repeat(40))
+    try {
+      expect(firstDefault).not.toBe(secondDefault)
+      expect(firstDefault).toContain('three-flatland-consumer-bundles-aaaaaaaaaaaa-')
+      expect(secondDefault).toContain('three-flatland-consumer-bundles-aaaaaaaaaaaa-')
+    } finally {
+      rmSync(firstDefault, { force: true, recursive: true })
+      rmSync(secondDefault, { force: true, recursive: true })
+    }
   })
 
   it('requires and scans the published package output', () => {

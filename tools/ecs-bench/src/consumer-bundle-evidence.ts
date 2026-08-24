@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve, sep } from 'node:path'
@@ -562,7 +562,8 @@ export function resolveEvidenceOutputDirectory(
   revision: string
 ): string {
   const requested = options.outputDirectory
-  const directory = requested ?? join(tmpdir(), `three-flatland-consumer-bundles-${revision.slice(0, 12)}`)
+  const directory =
+    requested ?? mkdtempSync(join(tmpdir(), `three-flatland-consumer-bundles-${revision.slice(0, 12)}-`))
   const absolute = resolve(directory)
   const repositoryRelative = relative(root, absolute)
   if (repositoryRelative === '' || (!repositoryRelative.startsWith(`..${sep}`) && repositoryRelative !== '..')) {
@@ -661,6 +662,7 @@ export async function captureConsumerBundleEvidence(
     path: source,
     sha256: sha256(readFileSync(resolve(root, source))),
   }))
+  const fixtureSourceHashes = new Map(fixtureSources.map(({ path, sha256: hash }) => [path, hash]))
   const toolVersions = {
     esbuild: packageVersion('esbuild', resolve(root, 'tools/ecs-bench/package.json')),
     koota: packageVersion('koota', resolve(root, 'tools/ecs-bench/package.json')),
@@ -678,15 +680,21 @@ export async function captureConsumerBundleEvidence(
     sourceTreeDirty: dirty,
     toolVersions,
   }
-  const budgetObservations = publicCaptures.map(({ current, fixture }) => ({
-    fixture,
-    size: {
-      brotliBytes: current.brotliBytes,
-      gzipBytes: current.gzipBytes,
-      minifiedBytes: current.minifiedBytes,
-    },
-    sourceSha256: fixtureSources.find(({ path }) => path === fixture.source)?.sha256 ?? '',
-  }))
+  const budgetObservations = publicCaptures.map(({ current, fixture }) => {
+    const sourceSha256 = fixtureSourceHashes.get(fixture.source)
+    if (sourceSha256 === undefined) {
+      throw new Error(`Missing source hash for consumer fixture '${fixture.id}' (${fixture.source})`)
+    }
+    return {
+      fixture,
+      size: {
+        brotliBytes: current.brotliBytes,
+        gzipBytes: current.gzipBytes,
+        minifiedBytes: current.minifiedBytes,
+      },
+      sourceSha256,
+    }
+  })
   const budgetCandidate = createConsumerBudgetCandidate(budgetObservations, budgetProvenance)
   const budgetEvaluation = evaluateAcceptedConsumerBudget(readAcceptedConsumerBudget(root), budgetObservations)
   const report: ConsumerBundleEvidenceReport = {
@@ -711,7 +719,10 @@ export async function captureConsumerBundleEvidence(
         publicCaptures.every(({ current }) => current.duplicateRuntimeInputs.length === 0) &&
         sharedGraph.attribution.duplicateRuntimeInputs.length === 0,
       publishedOutputKootaReferences: publishedReferences,
-      recordedKootaDiagnosticMatched: JSON.stringify(isolatedKoota.size) === JSON.stringify(RECORDED_KOOTA_BASELINE),
+      recordedKootaDiagnosticMatched:
+        isolatedKoota.size.minifiedBytes === RECORDED_KOOTA_BASELINE.minifiedBytes &&
+        isolatedKoota.size.gzipBytes === RECORDED_KOOTA_BASELINE.gzipBytes &&
+        isolatedKoota.size.brotliBytes === RECORDED_KOOTA_BASELINE.brotliBytes,
       sourceKootaImports: sourceImports,
     },
     historicalComparison: {

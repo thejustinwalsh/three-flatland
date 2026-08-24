@@ -835,7 +835,7 @@ export class TileMap2D extends Group {
           // Preserve the replacement failure after best-effort rollback.
         }
       }
-      for (let index = previous.length + 1; index < prepared.length; index++) {
+      for (let index = attemptedReplacement + 1; index < prepared.length; index++) {
         try {
           this._retireMaterial(prepared[index]!)
         } catch {

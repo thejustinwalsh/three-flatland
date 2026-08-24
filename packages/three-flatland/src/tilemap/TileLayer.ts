@@ -391,7 +391,7 @@ export class TileLayer extends Group {
       map: this.tileset.texture ?? undefined,
       transparent: previous.transparent,
       alphaTest: previous.alphaTest,
-      premultipliedAlpha: previous.premultipliedAlpha,
+      premultipliedAlpha: previous.variantOptions.premultipliedAlpha,
       colorTransform: previous.colorTransform ?? undefined,
       globalUniforms: previous.globalUniforms ?? undefined,
     })

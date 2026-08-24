@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
@@ -9,6 +10,17 @@ import { Sprite2D } from '../../../packages/three-flatland/src/sprites/Sprite2D.
 import type { Sprite2DOptions } from '../../../packages/three-flatland/src/sprites/types.ts'
 import type { World } from '../../../packages/three-flatland/src/ecs/runtime/index.ts'
 import { timingSummary } from './benchmark-statistics.ts'
+import { gitMergeBase } from './provenance.ts'
+
+const ROOT = resolve(import.meta.dirname, '../../..')
+
+function git(...args: string[]): string {
+  return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim()
+}
+
+function sha256(contents: string | Buffer): string {
+  return createHash('sha256').update(contents).digest('hex')
+}
 
 type TextureType = NonNullable<Sprite2DOptions['texture']>
 const { Texture } = createRequire(resolve(import.meta.dirname, '../../../packages/three-flatland/package.json'))(
@@ -203,12 +215,14 @@ for (let round = 0; round < options.samples; round++) {
 const harnessSources = [
   'expected-sprites.ts',
   'benchmark-statistics.ts',
+  'provenance.ts',
   '../../../packages/three-flatland/src/internal/capacity.ts',
   '../../../packages/three-flatland/src/internal/reserved-world.ts',
   '../../../packages/three-flatland/src/ecs/runtime/entity.ts',
   '../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts',
   '../../../packages/three-flatland/src/ecs/runtime/world.ts',
   '../../../packages/three-flatland/src/ecs/batchUtils.ts',
+  '../../../packages/three-flatland/src/materials/Sprite2DMaterial.ts',
   '../../../packages/three-flatland/src/pipeline/SpriteGroup.ts',
   '../../../packages/three-flatland/src/sprites/Sprite2D.ts',
 ] as const
@@ -216,9 +230,25 @@ const sourceHashes: Record<string, string> = {}
 const harnessHash = createHash('sha256')
 for (const source of harnessSources) {
   const contents = readFileSync(resolve(import.meta.dirname, source))
-  sourceHashes[source] = createHash('sha256').update(contents).digest('hex')
+  sourceHashes[source] = sha256(contents)
   harnessHash.update(source)
   harnessHash.update(contents)
+}
+
+const productionSources = git('ls-files', 'packages/three-flatland/src')
+  .split('\n')
+  .filter(
+    (source) =>
+      source.length > 0 &&
+      /\.(?:ts|tsx)$/.test(source) &&
+      !/\.(?:test|spec|bench)(?:-d)?\.(?:ts|tsx)$/.test(source) &&
+      !source.endsWith('.type-test.ts')
+  )
+  .sort()
+const productionSourceHash = createHash('sha256')
+for (const source of productionSources) {
+  productionSourceHash.update(source)
+  productionSourceHash.update(readFileSync(resolve(ROOT, source)))
 }
 
 function observations(samples: readonly Observation[]) {
@@ -233,13 +263,25 @@ function observations(samples: readonly Observation[]) {
   }
 }
 
+const gitProvenance = {
+  dirty: git('status', '--porcelain').length > 0,
+  head: git('rev-parse', 'HEAD'),
+  mergeBase: gitMergeBase(),
+}
+if (!quick && gitProvenance.dirty) {
+  throw new Error('Definitive expectedSprites evidence requires a clean source tree')
+}
+
 const report = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   provenance: {
+    git: gitProvenance,
     harnessSha256: harnessHash.digest('hex'),
     harnessSources,
+    lockfileSha256: sha256(readFileSync(resolve(ROOT, 'pnpm-lock.yaml'))),
     node: process.version,
     platform: `${process.platform}-${process.arch}`,
+    productionSourceSha256: productionSourceHash.digest('hex'),
     sourceHashes,
     timestamp: new Date().toISOString(),
   },

@@ -442,6 +442,44 @@ describe('Flatland material ownership', () => {
     flatland.dispose()
   })
 
+  it('retires Flatland ownership when SpriteGroup removal throws after release', () => {
+    const source = new Flatland()
+    const destination = new Flatland()
+    const material = makeMaterial()
+    const sprite = makeSprite(material)
+    source.add(sprite)
+    const remove = source.spriteGroup.remove.bind(source.spriteGroup)
+    vi.spyOn(source.spriteGroup, 'remove').mockImplementation((spriteOrObject, ...rest) => {
+      remove(spriteOrObject, ...rest)
+      throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      source.remove(sprite)
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(source.spriteGroup.spriteCount).toBe(0)
+    expect(trackedMaterials(source).size).toBe(0)
+    expect(materialRefCounts(source).size).toBe(0)
+    expect((Reflect.get(source, '_spriteOwnedMaterials') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(source, '_spriteMaterialSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(source, '_spriteDisposeSubscriptions') as Map<unknown, unknown>).size).toBe(0)
+    expect(() => destination.add(sprite)).not.toThrow()
+    expect(destination.spriteGroup.spriteCount).toBe(1)
+    expect(material.globalUniforms).toBe(destination.globals)
+
+    destination.remove(sprite)
+    source.dispose()
+    destination.dispose()
+  })
+
   it('keeps shared material ownership until the final directly owned sprite disposes', () => {
     const flatland = new Flatland()
     const shared = makeMaterial()

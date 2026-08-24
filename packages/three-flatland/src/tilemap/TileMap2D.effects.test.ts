@@ -7,6 +7,7 @@ import { attachEffect } from '../react/attach'
 import { TileMap2D } from './TileMap2D'
 import type { TileDefinition, TileMapData } from './types'
 import { subscribeTileMapMaterials } from '../internal/ownership-observers'
+import { copyTileLayerMaterialState } from '../internal/tile-layer-operations'
 import { registerTileLayerOwner } from '../internal/tile-layer-ownership'
 
 function makeMapData(layerCount = 1): TileMapData {
@@ -627,6 +628,26 @@ describe('TileMap2D retained material effects', () => {
       userData: { authored: { value: 3 } },
     })
 
+    map.dispose()
+  })
+
+  it('preserves premultiplied-alpha shader variants across effect schema replacement', () => {
+    const map = new TileMap2D({ data: makeMapData() })
+    const source = new Sprite2DMaterial({
+      map: map.getLayerMaterialAt(0)!.map ?? undefined,
+      premultipliedAlpha: true,
+    })
+    copyTileLayerMaterialState(map.getLayers()[0]!, source)
+    expect(map.getLayerMaterialAt(0)!.variantOptions.premultipliedAlpha).toBe(true)
+
+    const effect = new WideTileEffect()
+    map.addEffect(effect)
+    expect(map.getLayerMaterialAt(0)!.variantOptions.premultipliedAlpha).toBe(true)
+
+    map.removeEffect(effect)
+    expect(map.getLayerMaterialAt(0)!.variantOptions.premultipliedAlpha).toBe(true)
+
+    source.dispose()
     map.dispose()
   })
 

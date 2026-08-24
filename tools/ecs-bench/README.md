@@ -60,13 +60,13 @@ by adding Koota to the current runtime.
 Build the published package first, then capture from a clean source tree:
 
 ```sh
-pnpm --filter three-flatland build
+pnpm nx run three-flatland:build
 node --import tsx tools/ecs-bench/src/measure-consumer-bundles.ts \
   --output=/private/tmp/three-flatland-consumer-bundles-$(git rev-parse --short=12 HEAD)
 ```
 
-Omit `--output` to use the operating system's temporary directory. The harness refuses an output
-path inside the repository and refuses a non-empty output directory. Every capture emits the
+Omit `--output` to create a unique directory under the operating system's temporary directory. The
+harness refuses an output path inside the repository and refuses a non-empty output directory. Every capture emits the
 minified bundles, raw esbuild metafiles, and a JSON report containing exact minified, gzip, and
 Brotli sizes; source, fixture, harness, baseline, and lockfile hashes; exact tool versions; and both
 full Git revisions.

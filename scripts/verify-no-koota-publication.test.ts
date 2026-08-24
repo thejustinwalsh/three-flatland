@@ -43,6 +43,7 @@ describe('findKootaReferences', () => {
     "import { createWorld } from 'koota'",
     "export type { World } from 'koota'",
     "const k = await import('koota')",
+    'const k = await import(`koota/react`)',
     "require('koota')",
     "import { useQuery } from 'koota/react'",
     "declare module 'koota' {}",
@@ -86,6 +87,12 @@ describe('manifestKootaViolations', () => {
     ).toHaveLength(1)
   })
 
+  it('fails an optional runtime dependency because consumers can still install it', () => {
+    const violations = manifestKootaViolations({ optionalDependencies: { koota: '^0.6.5' } })
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain('optionalDependencies.koota')
+  })
+
   it('allows unrelated peers and ignores devDependencies consumers never install', () => {
     expect(
       manifestKootaViolations({
@@ -119,11 +126,14 @@ describe('collectPublicationViolations — forbidden edges', () => {
 
   it('catches production JavaScript importing koota, including subpaths and dynamic import', () => {
     const root = fixture({
-      'dist/index.js': "import { createWorld } from 'koota'\nexport const load = () => import('koota/react')\n",
+      'dist/index.js':
+        "import { createWorld } from 'koota'\n" +
+        "export const load = () => import('koota/react')\n" +
+        'export const loadTemplate = () => import(`koota/react`)\n',
     })
     const { violations, scanned } = collectPublicationViolations(root)
     expect(scanned.javascriptScanned).toBe(1)
-    expect(violations.filter((v) => v.startsWith('dist/index.js:'))).toHaveLength(2)
+    expect(violations.filter((v) => v.startsWith('dist/index.js:'))).toHaveLength(3)
   })
 
   it('catches a sourcemap whose embedded original source references koota', () => {

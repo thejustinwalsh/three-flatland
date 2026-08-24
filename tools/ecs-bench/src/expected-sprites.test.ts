@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { gitMergeBase } from './provenance.ts'
 
 interface HarnessReport {
   cases: Record<string, { expectedSprites: number | null }>
@@ -15,6 +16,13 @@ interface HarnessReport {
       }>
     }
   >
+  provenance: {
+    git: { dirty: boolean; head: string; mergeBase: string }
+    lockfileSha256: string
+    productionSourceSha256: string
+    sourceHashes: Record<string, string>
+  }
+  schemaVersion: number
 }
 
 describe('expectedSprites evidence harness', () => {
@@ -39,6 +47,18 @@ describe('expectedSprites evidence harness', () => {
     )
     const report = JSON.parse(output) as HarnessReport
 
+    expect(report.schemaVersion).toBe(4)
+    expect(report.provenance.git).toEqual({
+      dirty: expect.any(Boolean),
+      head: expect.stringMatching(/^[0-9a-f]{40}$/),
+      mergeBase: gitMergeBase(),
+    })
+    expect(report.provenance.lockfileSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(report.provenance.productionSourceSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(report.provenance.sourceHashes).toHaveProperty(
+      '../../../packages/three-flatland/src/materials/Sprite2DMaterial.ts',
+      expect.stringMatching(/^[0-9a-f]{64}$/)
+    )
     expect(report.cases).toEqual({
       unhinted: { expectedSprites: null },
       under: { expectedSprites: 4 },

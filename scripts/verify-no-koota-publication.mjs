@@ -7,8 +7,8 @@
  * published artifact (same insight as scripts/consumer-smoke.mjs, minus the
  * registry round-trip). Three edge classes are checked:
  *
- *   1. Manifest   — no `koota` entry in dependencies/peerDependencies of the
- *                   packed manifest, including optional peers.
+ *   1. Manifest   — no `koota` entry in dependencies, optionalDependencies,
+ *                   or peerDependencies of the packed manifest.
  *   2. Types      — every declaration reachable from the packed `exports` map
  *                   (BFS over relative import/require/reference edges) must not
  *                   reference a koota module specifier or `/// <reference types>`.
@@ -38,7 +38,7 @@ const PACKAGE_DIR = join(ROOT, 'packages', 'three-flatland')
 // One quoted-specifier regex covers every module-edge shape that quotes the
 // name: static/dynamic import, export-from, require(), `declare module`,
 // `/// <reference types>` attribute values, and subpaths like 'koota/react'.
-const KOOTA_SPECIFIER = /(['"])koota(?:\/[^'"\n]*)?\1/g
+const KOOTA_SPECIFIER = /(['"`])koota(?:\/[^'"`\n]*)?\1/g
 // A koota token inside a sourcemap `sources` path segment.
 const KOOTA_PATH_TOKEN = /(^|[/\\._-])koota([/\\._-]|$)/
 
@@ -54,7 +54,7 @@ export function findKootaReferences(source) {
 /** Published dependency edges. Koota must not appear even as an optional peer. */
 export function manifestKootaViolations(manifest) {
   const violations = []
-  const fields = ['dependencies', 'peerDependencies']
+  const fields = ['dependencies', 'optionalDependencies', 'peerDependencies']
   for (const field of fields) {
     for (const [name, range] of Object.entries(manifest[field] ?? {})) {
       if (!KOOTA_PATH_TOKEN.test(`/${name}/`)) continue
@@ -76,10 +76,7 @@ function listFiles(root, filter) {
     .filter((entry) => typeof entry === 'string')
     .map((entry) => entry.split(sep).join('/'))
     .filter(
-      (entry) =>
-        !entry.split('/').includes('node_modules') &&
-        statSync(join(root, entry)).isFile() &&
-        filter(entry)
+      (entry) => !entry.split('/').includes('node_modules') && statSync(join(root, entry)).isFile() && filter(entry)
     )
 }
 
@@ -250,7 +247,7 @@ function printReport(result, packageRoot) {
     for (const violation of violations) console.error(`  - ${violation}`)
     console.error('')
     console.error('The published package must be installable and typed with NO Koota edge:')
-    console.error('  1. no koota entry in the packed package.json dependencies/peerDependencies')
+    console.error('  1. no koota entry in the packed package.json dependency fields')
     console.error('  2. no koota reference reachable from the packed exports-map declarations')
     console.error('  3. no koota reference in shipped production JavaScript or its source maps')
     console.error('Manifest changes are owned by the internal-ECS convergence workstream.')

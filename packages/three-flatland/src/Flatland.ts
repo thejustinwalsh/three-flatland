@@ -1128,8 +1128,14 @@ export class Flatland extends Group implements WorldProvider {
     for (const child of objects) {
       if (child instanceof Sprite2D) {
         this._pendingChannelValidation.delete(child)
-        this.spriteGroup.remove(child)
-        this._untrackSprite(child)
+        try {
+          this.spriteGroup.remove(child)
+        } finally {
+          // Three publishes the hierarchy removal before dispatching the
+          // user-extensible `removed` event. Always retire ownership even
+          // when an earlier listener throws.
+          this._untrackSprite(child)
+        }
       } else if (child instanceof TileMap2D) {
         try {
           this.scene.remove(child)

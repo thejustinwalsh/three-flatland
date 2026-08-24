@@ -87,7 +87,8 @@ describe('accepted-current consumer budgets', () => {
     )
 
     const extra = acceptedBudget()
-    ;(extra.fixtures as Record<string, unknown>).extra = {
+    const extraFixtures = extra.fixtures as Record<string, unknown>
+    extraFixtures.extra = {
       maximum: size(1),
       source: 'fixtures/extra.ts',
       sourceSha256: hashA,
@@ -147,13 +148,15 @@ describe('accepted-current consumer budgets', () => {
     ).toContain("budget has unexpected key 'note'")
 
     const extraFixtureKey = acceptedBudget()
-    ;(extraFixtureKey.fixtures.basic as unknown as Record<string, unknown>).note = 'unexpected'
+    const fixture = extraFixtureKey.fixtures.basic as unknown as Record<string, unknown>
+    fixture.note = 'unexpected'
     expect(evaluateAcceptedConsumerBudget(extraFixtureKey, observations).violations).toContain(
       "fixtures.basic has unexpected key 'note'"
     )
 
     const extraMetric = acceptedBudget()
-    ;(extraMetric.fixtures.basic!.maximum as unknown as Record<string, unknown>).rawBytes = 123
+    const maximum = extraMetric.fixtures.basic!.maximum as unknown as Record<string, unknown>
+    maximum.rawBytes = 123
     expect(evaluateAcceptedConsumerBudget(extraMetric, observations).violations).toContain(
       "fixtures.basic.maximum has unexpected key 'rawBytes'"
     )
