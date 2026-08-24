@@ -220,8 +220,11 @@ describe('LightStore', () => {
 
   it('is terminal and preserves a falsy texture disposal error under reentry', () => {
     const store = new LightStore()
+    const texture = store.lightsTexture
+    const textureNode = store.lightsTextureNode
+    const countNode = store.countNode
     let disposeCount = 0
-    store.lightsTexture.addEventListener('dispose', () => {
+    texture.addEventListener('dispose', () => {
       disposeCount++
       store.dispose()
       throw false
@@ -239,6 +242,22 @@ describe('LightStore', () => {
     expect(didThrow).toBe(true)
     expect(thrown).toBe(false)
     expect(disposeCount).toBe(1)
+    const textureVersion = texture.version
+    const count = countNode.value
+    const data = Array.from(texture.image.data as Float32Array)
+    expect(() => store.sync([new Light2D()])).toThrow('three-flatland: LightStore.sync cannot be used after dispose()')
+    expect(() => store.readLightData(0 as unknown as Node<'float'>)).toThrow(
+      'three-flatland: LightStore.readLightData cannot be used after dispose()'
+    )
+    expect(() => store.lightsTexture).toThrow('three-flatland: LightStore.lightsTexture cannot be used after dispose()')
+    expect(() => store.lightsTextureNode).toThrow(
+      'three-flatland: LightStore.lightsTextureNode cannot be used after dispose()'
+    )
+    expect(() => store.countNode).toThrow('three-flatland: LightStore.countNode cannot be used after dispose()')
+    expect(texture.version).toBe(textureVersion)
+    expect(textureNode).toBeDefined()
+    expect(countNode.value).toBe(count)
+    expect(Array.from(texture.image.data as Float32Array)).toEqual(data)
     expect(() => store.dispose()).not.toThrow()
     expect(disposeCount).toBe(1)
   })

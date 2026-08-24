@@ -64,6 +64,7 @@ export class SDFGenerator {
 
   /** Final SDF output texture. Reference is stable across resizes. */
   get sdfTexture(): Texture {
+    this._assertUsable('sdfTexture')
     return this._sdfRT.texture
   }
 
@@ -175,6 +176,7 @@ export class SDFGenerator {
   }
 
   init(width: number, height: number): void {
+    this._assertUsable('init')
     this.resize(width, height)
   }
 
@@ -187,6 +189,7 @@ export class SDFGenerator {
    * ping-pong RTs, which must stay nearest for correct seed propagation.
    */
   setFilter(filter: typeof NearestFilter | typeof LinearFilter): void {
+    this._assertUsable('setFilter')
     if (filter === this._sdfFilter) return
     this._sdfRT.texture.minFilter = filter
     this._sdfRT.texture.magFilter = filter
@@ -198,6 +201,7 @@ export class SDFGenerator {
   }
 
   resize(width: number, height: number): void {
+    this._assertUsable('resize')
     this._pingRT.setSize(width, height)
     this._pongRT.setSize(width, height)
     this._sdfRT.setSize(width, height)
@@ -211,6 +215,7 @@ export class SDFGenerator {
    * Must be called each frame before {@link generate}.
    */
   setWorldBounds(worldSize: Vector2): void {
+    this._assertUsable('setWorldBounds')
     this._worldSizeNode.value.copy(worldSize)
   }
 
@@ -224,6 +229,7 @@ export class SDFGenerator {
    * Scene/Camera/Mesh render did not.
    */
   generate(renderer: WebGPURenderer, occlusionRT: RenderTarget): void {
+    this._assertUsable('generate')
     this._ensureSeedMaterial(occlusionRT.texture)
 
     _rendererState = RendererUtils.resetRendererState(renderer, _rendererState)
@@ -332,6 +338,10 @@ export class SDFGenerator {
     runCleanup(() => this._blurHMaterial.dispose())
     runCleanup(() => this._blurVMaterial.dispose())
     if (didError) throw firstError
+  }
+
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: SDFGenerator.${member} cannot be used after dispose()`)
   }
 
   /**

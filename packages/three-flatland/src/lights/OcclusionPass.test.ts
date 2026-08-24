@@ -101,7 +101,8 @@ describe('OcclusionPass', () => {
     }
     const firstMaterial = internals._getOrCreateOcclusionMaterial(firstTexture)
     const secondMaterial = internals._getOrCreateOcclusionMaterial(secondTexture)
-    const resources = [pass.renderTarget, firstMaterial, secondMaterial]
+    const renderTarget = pass.renderTarget
+    const resources = [renderTarget, firstMaterial, secondMaterial]
     const disposeCounts = resources.map(() => 0)
     let cacheSizeDuringFailure = -1
     resources.forEach((resource, index) => {
@@ -129,6 +130,17 @@ describe('OcclusionPass', () => {
     expect(cacheSizeDuringFailure).toBe(0)
     expect(internals._occlusionMaterials.size).toBe(0)
     expect(disposeCounts).toEqual([1, 1, 1])
+    const renderTargetWidth = renderTarget.width
+    expect(() => pass.resize(512, 512)).toThrow('three-flatland: OcclusionPass.resize cannot be used after dispose()')
+    expect(() => pass.render({} as never, {} as never, {} as never)).toThrow(
+      'three-flatland: OcclusionPass.render cannot be used after dispose()'
+    )
+    expect(() => pass.renderTarget).toThrow('three-flatland: OcclusionPass.renderTarget cannot be used after dispose()')
+    expect(() => internals._getOrCreateOcclusionMaterial(firstTexture)).toThrow(
+      'three-flatland: OcclusionPass.getOcclusionMaterial cannot be used after dispose()'
+    )
+    expect(renderTarget.width).toBe(renderTargetWidth)
+    expect(internals._occlusionMaterials.size).toBe(0)
     expect(() => pass.dispose()).not.toThrow()
     expect(disposeCounts).toEqual([1, 1, 1])
     firstTexture.dispose()

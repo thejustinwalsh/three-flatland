@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { NearestFilter, LinearFilter, Texture } from 'three'
+import { NearestFilter, LinearFilter, Texture, Vector2 } from 'three'
 import { SDFGenerator } from './SDFGenerator'
 
 // Reach into the private RTs the same way other tests cast to read internals.
@@ -88,6 +88,8 @@ describe('SDFGenerator.dispose', () => {
   it('preserves the first falsy error while disposing every resource exactly once under reentry', () => {
     const gen = new SDFGenerator()
     const occlusionTexture = new Texture()
+    gen.init(8, 8)
+    const sdfTexture = gen.sdfTexture
     const internals = gen as unknown as {
       _ensureSeedMaterial(texture: Texture): void
       _pingRT: DisposableResource
@@ -101,6 +103,7 @@ describe('SDFGenerator.dispose', () => {
       _finalMaterialB: DisposableResource
       _blurHMaterial: DisposableResource
       _blurVMaterial: DisposableResource
+      _worldSizeNode: { value: Vector2 }
     }
     internals._ensureSeedMaterial(occlusionTexture)
     const resources = [
@@ -139,6 +142,24 @@ describe('SDFGenerator.dispose', () => {
     expect(didThrow).toBe(true)
     expect(thrown).toBe(0)
     expect(disposeCounts).toEqual(resources.map(() => 1))
+    const pingWidth = (internals._pingRT as unknown as { width: number }).width
+    const textureVersion = sdfTexture.version
+    const worldSize = internals._worldSizeNode.value.clone()
+    expect(() => gen.init(16, 16)).toThrow('three-flatland: SDFGenerator.init cannot be used after dispose()')
+    expect(() => gen.resize(16, 16)).toThrow('three-flatland: SDFGenerator.resize cannot be used after dispose()')
+    expect(() => gen.setFilter(LinearFilter)).toThrow(
+      'three-flatland: SDFGenerator.setFilter cannot be used after dispose()'
+    )
+    expect(() => gen.setWorldBounds(new Vector2(4, 4))).toThrow(
+      'three-flatland: SDFGenerator.setWorldBounds cannot be used after dispose()'
+    )
+    expect(() => gen.generate({} as never, {} as never)).toThrow(
+      'three-flatland: SDFGenerator.generate cannot be used after dispose()'
+    )
+    expect(() => gen.sdfTexture).toThrow('three-flatland: SDFGenerator.sdfTexture cannot be used after dispose()')
+    expect((internals._pingRT as unknown as { width: number }).width).toBe(pingWidth)
+    expect(sdfTexture.version).toBe(textureVersion)
+    expect(internals._worldSizeNode.value).toEqual(worldSize)
     expect(() => gen.dispose()).not.toThrow()
     expect(disposeCounts).toEqual(resources.map(() => 1))
     occlusionTexture.dispose()

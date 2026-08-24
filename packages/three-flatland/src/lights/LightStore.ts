@@ -117,16 +117,19 @@ export class LightStore {
 
   /** Get the lights DataTexture (for use by GPU systems that sample lights directly) */
   get lightsTexture(): DataTexture {
+    this._assertUsable('lightsTexture')
     return this._lightsTexture
   }
 
   /** Get the TSL node for the lights DataTexture */
   get lightsTextureNode(): Node<'vec4'> {
+    this._assertUsable('lightsTextureNode')
     return this._lightsTextureNode
   }
 
   /** Get the current light count uniform node */
   get countNode(): UniformNode<'float', number> {
+    this._assertUsable('countNode')
     return this._countNode
   }
 
@@ -136,6 +139,7 @@ export class LightStore {
    * DataTexture backing array. No shader recompilation.
    */
   sync(lights: readonly Light2D[]): void {
+    this._assertUsable('sync')
     const count = Math.min(lights.length, this.maxLights)
     this._countNode.value = count
 
@@ -210,6 +214,7 @@ export class LightStore {
     row2: Node<'vec4'>
     row3: Node<'vec4'>
   } {
+    this._assertUsable('readLightData')
     const i = int(lightIndex)
     const row0 = textureLoad(this._lightsTexture, ivec2(i, int(0)))
     const row1 = textureLoad(this._lightsTexture, ivec2(i, int(1)))
@@ -240,5 +245,9 @@ export class LightStore {
     runCleanup(() => unregisterDebugArray('lightStore.data'))
     runCleanup(() => unregisterDebugTexture('lightStore.lights'))
     if (didError) throw firstError
+  }
+
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: LightStore.${member} cannot be used after dispose()`)
   }
 }
