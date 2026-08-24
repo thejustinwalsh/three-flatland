@@ -5,7 +5,7 @@ const smoke = process.env['FLATLAND_LABS_SMOKE'] === 'true'
 export default defineConfig({
   benchDir: 'benches',
   benchMatch: '**/*.bench.ts',
-  resultsDir: '.labs',
+  resultsDir: process.env['FLATLAND_LABS_RESULTS_DIR'] ?? '.labs',
   adaptive: smoke ? false : 0.005,
   minCpuTime: smoke ? 0.05 : 5,
   maxCpuTime: smoke ? 1 : 30,

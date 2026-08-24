@@ -84,7 +84,7 @@
           "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
         ],
         "options": {
-          "command": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false FLATLAND_LABS_SMOKE=true labs run '@smoke'",
+          "command": "node --import tsx src/labs-smoke.ts",
           "cwd": "{projectRoot}"
         }
       },
@@ -149,7 +149,7 @@
     "benchmark:labs:baseline": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame' --baseline",
     "benchmark:labs:compare": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame' --compare",
     "benchmark:labs:save": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame'",
-    "benchmark:labs:smoke": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false FLATLAND_LABS_SMOKE=true labs run '@smoke'",
+    "benchmark:labs:smoke": "node --import tsx src/labs-smoke.ts",
     "benchmark:renderer": "node --disable-warning=DEP0205 --import tsx --expose-gc src/renderer-evidence.ts",
     "benchmark:expected-sprites": "node --disable-warning=DEP0205 --import tsx --expose-gc src/expected-sprites.ts",
     "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",

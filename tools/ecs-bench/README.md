@@ -67,7 +67,9 @@ is noisy. A faster/slower verdict therefore requires statistical significance, p
 and effect size together; raw median movement alone is not a verdict.
 
 Run the smoke target after editing the fixture. It exercises the real static 16,384-sprite case with
-a deliberately short fixed sample budget and saves nothing:
+a deliberately short fixed sample budget and saves nothing. The wrapper redirects Labs to a fresh
+temporary results directory, then verifies both that directory and the trusted `.labs` state are
+unchanged before discarding it:
 
 ```sh
 pnpm nx run @three-flatland/ecs-bench:benchmark:labs:smoke
