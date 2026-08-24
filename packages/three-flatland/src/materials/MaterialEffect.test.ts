@@ -1905,7 +1905,12 @@ describe('Sprite2D clone with effects', () => {
 
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
-      schema: { progress: 0, offset: [0, 0] as const },
+      schema: {
+        progress: 0,
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
       node: ({ inputColor }) => inputColor,
     })
 
@@ -1917,10 +1922,19 @@ describe('Sprite2D clone with effects', () => {
     dissolve.offset = [3, 4]
     sprite.addEffect(dissolve)
 
-    const cloned = sprite.clone()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cloned: Sprite2D
+    try {
+      cloned = sprite.clone()
+      expect(warning).not.toHaveBeenCalled()
+    } finally {
+      warning.mockRestore()
+    }
     expect(cloned._effects).toHaveLength(1)
     expect(cloned._systemFlags).toBe(DEFAULT_FLAGS)
     expect(cloned._effectFlags).toBe(E0)
+    expect(cloned.material._effectTier).toBeGreaterThan(8)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
 
     // Cloned effect should be independent
     const clonedDissolve = cloned._effects[0]!

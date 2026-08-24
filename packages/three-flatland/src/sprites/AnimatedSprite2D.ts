@@ -451,6 +451,12 @@ export class AnimatedSprite2D extends Sprite2D {
           clonedEffect._defaults[field.name] = [...value]
         }
       }
+      // Cloning intentionally reproduces a known effect schema. Register it
+      // explicitly so addEffect does not report the user-facing
+      // late-registration warning for this internal operation.
+      if (cloned.material.registerEffect(EffectClass as unknown as typeof MaterialEffect, clonedEffect._constants)) {
+        cloned._setupInstanceAttributes()
+      }
       cloned.addEffect(clonedEffect)
     }
 

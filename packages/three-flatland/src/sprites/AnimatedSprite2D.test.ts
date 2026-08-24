@@ -4,6 +4,7 @@ import { AnimatedSprite2D } from './AnimatedSprite2D'
 import { AlphaMap } from '../events/AlphaMap'
 import type { SpriteSheet, SpriteFrame } from './types'
 import { createMaterialEffect } from '../materials/MaterialEffect'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createWorld } from '../ecs/runtime'
 import { enrollInWorld, requiredEntity, traitFor } from '../ecs/testUtils.type-test'
 
@@ -413,13 +414,18 @@ describe('AnimatedSprite2D', () => {
     sprite.dispose()
   })
 
-  it('keeps cloned effect vector snapshots immutable', () => {
+  it('pre-registers cloned effects and keeps vector snapshots immutable', () => {
     const Offset = createMaterialEffect({
       name: 'animated_clone_offset',
-      schema: { offset: [0, 0] as const },
+      schema: {
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
       node: ({ inputColor }) => inputColor,
     })
-    const sprite = new AnimatedSprite2D({ spriteSheet })
+    const material = new Sprite2DMaterial({ map: spriteSheet.texture, transparent: true })
+    const sprite = new AnimatedSprite2D({ spriteSheet, material })
     sprite.material.registerEffect(Offset)
     const offset = new Offset()
     offset.offset = [5, 6]
@@ -432,7 +438,17 @@ describe('AnimatedSprite2D', () => {
     store.offset_1![index] = 8
     expect(offset.offset).toEqual([7, 8])
 
-    const cloned = sprite.clone()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cloned: AnimatedSprite2D
+    try {
+      cloned = sprite.clone()
+      expect(warning).not.toHaveBeenCalled()
+      expect(cloned.material.hasEffect(Offset)).toBe(true)
+      expect(cloned.material._effectTier).toBeGreaterThan(8)
+      expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    } finally {
+      warning.mockRestore()
+    }
     const clonedOffsetEffect = cloned._effects[0] as InstanceType<typeof Offset>
     const snapshot = clonedOffsetEffect.offset
     expect(snapshot).toEqual([7, 8])
@@ -445,6 +461,7 @@ describe('AnimatedSprite2D', () => {
     cloned.dispose()
     sprite._unenrollFromWorld()
     world.dispose()
+    material.dispose()
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {

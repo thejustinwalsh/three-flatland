@@ -2795,10 +2795,12 @@ export class Sprite2D extends Mesh {
           clonedEffect._defaults[field.name] = [...(value as readonly number[])]
         }
       }
-      // Clone owns this material and is intentionally reproducing a known
-      // effect schema. Register it explicitly so addEffect does not report the
-      // user-facing late-registration warning for this internal operation.
-      cloned.material.registerEffect(EffectClass as unknown as typeof MaterialEffect, clonedEffect._constants)
+      // Cloning intentionally reproduces a known effect schema. Register it
+      // explicitly so addEffect does not report the user-facing
+      // late-registration warning for this internal operation.
+      if (cloned.material.registerEffect(EffectClass as unknown as typeof MaterialEffect, clonedEffect._constants)) {
+        cloned._setupInstanceAttributes()
+      }
       cloned.addEffect(clonedEffect)
     }
 
