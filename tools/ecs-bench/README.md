@@ -13,6 +13,8 @@ published package entrypoints.
   tree shaking and minification.
 - The benchmark records raw observations, median, p95, operation counts, warm-ups, tool versions,
   machine details, and the tested base commit.
+- A production-only `@pmndrs/labs` lane supplies the trusted Node renderer timing verdict with
+  isolated workers, adaptive confidence sampling, CPU-clock checks, and statistical comparisons.
 - A separate numeric-storage harness compares ordinary arrays, fixed typed arrays, and typed arrays
   behind a stable growable wrapper, including reference-stability and growth behavior.
 - The browser harness runs deterministic Knightmark or lighting fixtures against one or two
@@ -35,6 +37,7 @@ pnpm nx run @three-flatland/ecs-bench:baseline:size
 pnpm nx run @three-flatland/ecs-bench:benchmark --args='--quick'
 pnpm nx run @three-flatland/ecs-bench:benchmark
 pnpm nx run @three-flatland/ecs-bench:benchmark:storage
+pnpm nx run @three-flatland/ecs-bench:benchmark:labs:smoke
 pnpm nx run @three-flatland/ecs-bench:benchmark:renderer --args='--quick'
 pnpm nx run @three-flatland/ecs-bench:benchmark:browser --args='--help'
 ```
@@ -45,6 +48,65 @@ benchmark commands accept `--output=<path>` to preserve the raw JSON report.
 
 Wall-clock results are comparative evidence, not a deterministic CI test. The scenario suite,
 type checks, and later bundle budgets are deterministic gates.
+
+## Trusted renderer timing with Labs
+
+`benchmark:labs:*` runs the production `SpriteGroup` frame through `@pmndrs/labs` 0.6.0. This is
+the statistical Node timing lane. It covers static, moving alpha/depth, transparent sorting, and
+12,000 routing changes at 16,384 sprites, plus static and moving alpha/depth at 60,000 sprites.
+Every case runs in an isolated worker and uses inner GC. Fixture creation, initial assignment,
+topology assertions, next-frame mutations, and teardown are outside the measured callback; only
+`group.update()` is measured.
+
+The runner refuses development, `FL_PROFILE=true`, or `FL_DEVTOOLS=true` execution so User Timing
+and devtools instrumentation cannot contaminate a production verdict. The checked-in config uses
+adaptive 0.5% log-space confidence sampling, at least 5 seconds and 100 samples per case, a
+30-second ceiling, Mann-Whitney U at `alpha=0.05`, a 3% practical-delta floor, and
+`|Cliff's d| >= 0.474`. Labs raises the effective practical threshold above 3% when a distribution
+is noisy. A faster/slower verdict therefore requires statistical significance, practical magnitude,
+and effect size together; raw median movement alone is not a verdict.
+
+Run the smoke target after editing the fixture. It exercises the real static 16,384-sprite case with
+a deliberately short fixed sample budget and saves nothing:
+
+```sh
+pnpm nx run @three-flatland/ecs-bench:benchmark:labs:smoke
+```
+
+Smoke output proves that discovery, setup, measurement, teardown, and GC work. It is not performance
+evidence. For an A/B, freeze the benchmark source, use the same idle host and Node runtime, avoid
+concurrent browser/GPU captures, and run the baseline before changing the implementation:
+
+```sh
+pnpm nx run @three-flatland/ecs-bench:benchmark:labs:baseline \
+  --args='-n renderer-before'
+
+# Switch to the candidate while keeping the benchmark/config identical.
+pnpm nx run @three-flatland/ecs-bench:benchmark:labs:compare \
+  --args='-n renderer-after'
+```
+
+`benchmark:labs:save` records a named run without replacing an existing baseline (Labs makes the
+first saved result the baseline when none exists). All Labs targets disable Nx caching; saved local
+observations live in the ignored `tools/ecs-bench/.labs/` directory. Reject
+missing/noisy comparisons and clock-drift or clock-mismatch warnings rather than promoting them to
+release evidence. Alternate old-first/head-first order when repeating a pair. If the older revision
+predates this fixture, apply the exact same benchmark-only commit to both comparison worktrees and
+record its hash with both source revisions.
+
+Every saved run automatically embeds the full source revision, dirty state, installed Labs version,
+and SHA-256 hashes of the lockfile, Labs config, renderer fixture, and provenance runner in its
+description; Labs records the CPU, clock, OS, architecture, and Node runtime in the result itself.
+Only clean runs with identical lock/config/fixture/runner hashes are eligible for comparison evidence.
+Use `--args='-m context'` to append a human note without replacing that provenance.
+`@pmndrs/labs` 0.6.0 requires Node 25 or newer; the rest of this workspace retains its Node 24 floor.
+The baseline and compare targets refuse dirty trees, smoke sampling, and a baseline whose Labs,
+lockfile, config, fixture, or runner hash differs from the candidate.
+
+Labs answers whether whole production frames differ. It does not replace the deterministic renderer
+harness below, which remains authoritative for topology, ownership, memory lifecycle, buffer-call
+boundaries, per-system attribution, and provenance. Its instrumented wall-time medians are diagnostic
+clues only and must not overrule a neutral Labs comparison.
 
 ## Representative consumer bundle attribution
 
@@ -168,7 +230,9 @@ lockfile hash, per-source SHA-256 values, and an aggregate source hash.
 These Node totals are instrumented diagnostics: the schedule emits User Timing spans. The separate
 topology frame observes buffer boundaries without contaminating those totals or retained-heap
 samples. The results are useful for per-system attribution and regression
-detection, but the ordinary uninstrumented browser production pair remains the merge-timing gate.
+diagnosis, but they do not issue the statistical timing verdict. Use the uninstrumented Labs lane for
+trusted Node comparison and the ordinary uninstrumented browser production pair for the real-world
+merge-timing gate.
 Non-quick runs reject a dirty source tree so a definitive-looking report cannot be detached from its
 recorded source hashes.
 

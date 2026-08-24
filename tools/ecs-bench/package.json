@@ -75,6 +75,58 @@
           "cwd": "{projectRoot}"
         }
       },
+      "benchmark:labs:smoke": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
+        ],
+        "options": {
+          "command": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false FLATLAND_LABS_SMOKE=true labs run '@smoke'",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "benchmark:labs:save": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
+        ],
+        "options": {
+          "command": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame'",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "benchmark:labs:baseline": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
+        ],
+        "options": {
+          "command": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame' --baseline",
+          "cwd": "{projectRoot}"
+        }
+      },
+      "benchmark:labs:compare": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/packages/three-flatland/src/**/*.ts"
+        ],
+        "options": {
+          "command": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame' --compare",
+          "cwd": "{projectRoot}"
+        }
+      },
       "benchmark:expected-sprites": {
         "executor": "nx:run-commands",
         "cache": false,
@@ -94,6 +146,10 @@
     "baseline:size": "node --experimental-strip-types src/measure-kernels-size.ts",
     "benchmark": "node --disable-warning=DEP0205 --import tsx --expose-gc src/benchmark.ts",
     "benchmark:browser": "node --import tsx src/browser-benchmark.ts",
+    "benchmark:labs:baseline": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame' --baseline",
+    "benchmark:labs:compare": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame' --compare",
+    "benchmark:labs:save": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false node --import tsx src/labs-run.ts '@renderer-frame'",
+    "benchmark:labs:smoke": "NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false FLATLAND_LABS_SMOKE=true labs run '@smoke'",
     "benchmark:renderer": "node --disable-warning=DEP0205 --import tsx --expose-gc src/renderer-evidence.ts",
     "benchmark:expected-sprites": "node --disable-warning=DEP0205 --import tsx --expose-gc src/expected-sprites.ts",
     "benchmark:storage": "node --experimental-strip-types src/numeric-storage.ts",
@@ -106,6 +162,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
+    "@pmndrs/labs": "catalog:",
     "@types/node": "catalog:",
     "esbuild": "0.28.1",
     "tsx": "^4.19.2",
