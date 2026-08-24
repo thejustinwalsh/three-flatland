@@ -2758,26 +2758,27 @@ export class Sprite2D extends Mesh {
   override clone(recursive?: boolean): this {
     // Ignore recursive parameter - we create a fresh sprite
     void recursive
-    const cloned = new Sprite2D(
-      this._texture
-        ? {
-            texture: this._texture,
-            frame: this._frame ?? undefined,
-            anchor: this._anchor,
-            tint: this.tint,
-            alpha: this.alpha,
-            flipX: this.flipX,
-            flipY: this.flipY,
-            sortLayer: this.sortLayer,
-            zIndex: this.zIndex,
-            pixelPerfect: this.pixelPerfect,
-            lit: this.lit,
-            receiveShadows: this.receiveShadows,
-            castsShadow: this.castsShadow,
-            shadowRadius: this._shadowRadius,
-          }
-        : undefined
-    )
+    // Enter construction with the source's already-complete material schema,
+    // preserving Three.js clone sharing semantics. A texture-only constructor
+    // would resolve an unrelated bootstrap material; registering this clone's
+    // effects there could widen its shader layout underneath existing sprites.
+    const cloned = new Sprite2D({
+      texture: this._texture ?? undefined,
+      material: this.material,
+      frame: this._frame ?? undefined,
+      anchor: this._anchor,
+      tint: this.tint,
+      alpha: this.alpha,
+      flipX: this.flipX,
+      flipY: this.flipY,
+      sortLayer: this.sortLayer,
+      zIndex: this.zIndex,
+      pixelPerfect: this.pixelPerfect,
+      lit: this.lit,
+      receiveShadows: this.receiveShadows,
+      castsShadow: this.castsShadow,
+      shadowRadius: this._shadowRadius,
+    })
 
     // Clone effect instances
     for (const effect of this._effects) {
@@ -2794,6 +2795,11 @@ export class Sprite2D extends Mesh {
         } else {
           clonedEffect._defaults[field.name] = [...(value as readonly number[])]
         }
+      }
+      // Primitive constants copy by value; reference constants deliberately
+      // retain identity because material variant routing keys objects by identity.
+      for (const name of Object.keys(effect._constants)) {
+        clonedEffect._constants[name] = effect._constants[name]
       }
       // Cloning intentionally reproduces a known effect schema. Register it
       // explicitly so addEffect does not report the user-facing

@@ -1915,11 +1915,14 @@ describe('Sprite2D clone with effects', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
-    material.registerEffect(Dissolve)
-    const sprite = new Sprite2D({ texture, material })
+    const unrelated = new Sprite2D({ texture })
+    const unrelatedMaterial = unrelated.material
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
     const dissolve = new Dissolve()
     dissolve.progress = 0.7
     dissolve.offset = [3, 4]
+    material.registerEffect(Dissolve)
+    const sprite = new Sprite2D({ texture, material })
     sprite.addEffect(dissolve)
 
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -1933,8 +1936,14 @@ describe('Sprite2D clone with effects', () => {
     expect(cloned._effects).toHaveLength(1)
     expect(cloned._systemFlags).toBe(DEFAULT_FLAGS)
     expect(cloned._effectFlags).toBe(E0)
+    expect(cloned.material).toBe(material)
+    expect(cloned.material).not.toBe(unrelatedMaterial)
     expect(cloned.material._effectTier).toBeGreaterThan(8)
     expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect(unrelated.material).toBe(unrelatedMaterial)
+    expect(unrelated.material.hasEffect(Dissolve)).toBe(false)
+    expect(unrelated.material._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
 
     // Cloned effect should be independent
     const clonedDissolve = cloned._effects[0]!
@@ -1948,6 +1957,41 @@ describe('Sprite2D clone with effects', () => {
       ;(clonedOffset as unknown as number[])[0] = 99
     }).toThrow(TypeError)
     expect((clonedDissolve as InstanceType<typeof Dissolve>).offset).toEqual([3, 4])
+    cloned.dispose()
+    unrelated.dispose()
+    sprite.dispose()
+    material.dispose()
+  })
+
+  it('preserves authored primitive and reference constants', () => {
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const ConstantEffect = createMaterialEffect({
+      name: 'sprite_clone_constants',
+      schema: {
+        amount: 0,
+        variant: () => 'default',
+        resource: () => ({ kind: 'default' }),
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const resource = { kind: 'authored' }
+    const effect = new ConstantEffect()
+    effect.amount = 4
+    effect.variant = 'authored'
+    effect.resource = resource
+    const sprite = new Sprite2D({ texture })
+    sprite.addEffect(effect)
+
+    const cloned = sprite.clone()
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof ConstantEffect>
+    expect(cloned.material).toBe(sprite.material)
+    expect(clonedEffect.amount).toBe(4)
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+
+    cloned.dispose()
+    sprite.dispose()
   })
 })
 

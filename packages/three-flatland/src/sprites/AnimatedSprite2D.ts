@@ -420,6 +420,9 @@ export class AnimatedSprite2D extends Sprite2D {
 
     const cloned = new AnimatedSprite2D({
       spriteSheet: this._spriteSheet,
+      // Reuse the source's complete schema instead of resolving an unrelated
+      // texture bootstrap material that clone registration could invalidate.
+      material: this.material,
       animations,
       animation: this.currentAnimation ?? undefined,
       anchor: this.anchor,
@@ -435,6 +438,15 @@ export class AnimatedSprite2D extends Sprite2D {
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
+    cloned.visible = this._isAuthoredVisible()
+    cloned.lit = this.lit
+    cloned.receiveShadows = this.receiveShadows
+    cloned.castsShadow = this.castsShadow
+    cloned.shadowRadius = this.shadowRadius
+    cloned.alphaMap = this.alphaMap
+    cloned.alphaThreshold = this.alphaThreshold
+    cloned.hitRadius = this.hitRadius
+    cloned.hitTestMode = this.hitTestMode
 
     // Clone effect instances from parent
     for (const effect of this._effects) {
@@ -450,6 +462,11 @@ export class AnimatedSprite2D extends Sprite2D {
         } else {
           clonedEffect._defaults[field.name] = [...value]
         }
+      }
+      // Primitive constants copy by value; reference constants deliberately
+      // retain identity because material variant routing keys objects by identity.
+      for (const name of Object.keys(effect._constants)) {
+        clonedEffect._constants[name] = effect._constants[name]
       }
       // Cloning intentionally reproduces a known effect schema. Register it
       // explicitly so addEffect does not report the user-facing

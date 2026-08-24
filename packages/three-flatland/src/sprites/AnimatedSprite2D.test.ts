@@ -425,11 +425,24 @@ describe('AnimatedSprite2D', () => {
       node: ({ inputColor }) => inputColor,
     })
     const material = new Sprite2DMaterial({ map: spriteSheet.texture, transparent: true })
+    const unrelated = new AnimatedSprite2D({ spriteSheet })
+    const unrelatedMaterial = unrelated.material
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
     const sprite = new AnimatedSprite2D({ spriteSheet, material })
-    sprite.material.registerEffect(Offset)
     const offset = new Offset()
     offset.offset = [5, 6]
+    sprite.material.registerEffect(Offset)
     sprite.addEffect(offset)
+    const alphaMap = new AlphaMap(new Uint8Array([255]), 1, 1)
+    sprite.visible = false
+    sprite.lit = true
+    sprite.receiveShadows = false
+    sprite.castsShadow = true
+    sprite.shadowRadius = 7
+    sprite.alphaMap = alphaMap
+    sprite.alphaThreshold = 0.25
+    sprite.hitRadius = 2
+    sprite.hitTestMode = 'alpha'
     const world = createWorld()
     enrollInWorld(sprite, world)
     const store = world.store(traitFor(Offset))
@@ -444,6 +457,8 @@ describe('AnimatedSprite2D', () => {
       cloned = sprite.clone()
       expect(warning).not.toHaveBeenCalled()
       expect(cloned.material.hasEffect(Offset)).toBe(true)
+      expect(cloned.material).toBe(material)
+      expect(cloned.material).not.toBe(unrelatedMaterial)
       expect(cloned.material._effectTier).toBeGreaterThan(8)
       expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
     } finally {
@@ -458,10 +473,53 @@ describe('AnimatedSprite2D', () => {
       ;(snapshot as unknown as number[])[1] = 99
     }).toThrow(TypeError)
     expect(clonedOffsetEffect.offset).toEqual([7, 8])
+    expect(cloned.visible).toBe(false)
+    expect(cloned.lit).toBe(true)
+    expect(cloned.receiveShadows).toBe(false)
+    expect(cloned.castsShadow).toBe(true)
+    expect(cloned.shadowRadius).toBe(7)
+    expect(cloned.alphaMap).toBe(alphaMap)
+    expect(cloned.alphaThreshold).toBe(0.25)
+    expect(cloned.hitRadius).toBe(2)
+    expect(cloned.hitTestMode).toBe('alpha')
+    expect(unrelated.material).toBe(unrelatedMaterial)
+    expect(unrelated.material.hasEffect(Offset)).toBe(false)
+    expect(unrelated.material._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
     cloned.dispose()
+    unrelated.dispose()
     sprite._unenrollFromWorld()
     world.dispose()
     material.dispose()
+  })
+
+  it('preserves authored effect constants when cloned', () => {
+    const ConstantEffect = createMaterialEffect({
+      name: 'animated_clone_constants',
+      schema: {
+        amount: 0,
+        variant: () => 'default',
+        resource: () => ({ kind: 'default' }),
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const resource = { kind: 'authored' }
+    const effect = new ConstantEffect()
+    effect.amount = 4
+    effect.variant = 'authored'
+    effect.resource = resource
+    const sprite = new AnimatedSprite2D({ spriteSheet })
+    sprite.addEffect(effect)
+
+    const cloned = sprite.clone()
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof ConstantEffect>
+    expect(cloned.material).toBe(sprite.material)
+    expect(clonedEffect.amount).toBe(4)
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+
+    cloned.dispose()
+    sprite.dispose()
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {

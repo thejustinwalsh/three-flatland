@@ -3,7 +3,7 @@ import type { Entity, NumericSchema, NumericTrait } from '../ecs/runtime'
 const values = new WeakMap<object, NumericTrait<NumericSchema> | Entity>()
 const vectorSnapshots = new WeakMap<object, Record<string, readonly number[]>>()
 
-interface VectorReadOverrideState {
+interface EffectReadOverrideState {
   depth: number
   name0: string
   size0: number
@@ -19,7 +19,7 @@ interface VectorReadOverrideState {
   c13: number
 }
 
-const vectorReadOverrides = new WeakMap<object, VectorReadOverrideState>()
+const effectReadOverrides = new WeakMap<object, EffectReadOverrideState>()
 
 export function setEffectTrait(effectClass: Function, trait: NumericTrait<NumericSchema>): void {
   values.set(effectClass, trait)
@@ -53,7 +53,7 @@ export function readEffectVectorSnapshot(
   c2 = 0,
   c3 = 0
 ): readonly number[] {
-  const override = vectorReadOverrides.get(effect)
+  const override = effectReadOverrides.get(effect)
   const nested = override?.depth === 2
   const overrideName = override && override.depth > 0 ? (nested ? override.name1 : override.name0) : undefined
   if (overrideName === name) {
@@ -85,22 +85,31 @@ export function readEffectVectorSnapshot(
   return snapshot
 }
 
+/** Return the prior committed scalar while a transactional write prepares. @internal */
+export function readEffectScalarValue(effect: object, name: string, value: number): number {
+  const override = effectReadOverrides.get(effect)
+  if (!override || override.depth === 0) return value
+  const nested = override.depth === 2
+  const overrideName = nested ? override.name1 : override.name0
+  return overrideName === name ? (nested ? override.c10 : override.c00) : value
+}
+
 /**
- * Publish a prior committed vector value while a transactional write prepares.
+ * Publish a prior committed numeric value while a transactional write prepares.
  * The first transaction creates two fixed frames; steady writes only mutate
  * that retained state, including the one reentrant frame TileMap2D can reach.
  * @internal
  */
-export function beginEffectVectorReadOverride(
+export function beginEffectReadOverride(
   effect: object,
   name: string,
   size: number,
   c0: number,
-  c1: number,
+  c1 = 0,
   c2 = 0,
   c3 = 0
 ): object {
-  let state = vectorReadOverrides.get(effect)
+  let state = effectReadOverrides.get(effect)
   if (!state) {
     state = {
       depth: 0,
@@ -117,11 +126,11 @@ export function beginEffectVectorReadOverride(
       c12: 0,
       c13: 0,
     }
-    vectorReadOverrides.set(effect, state)
+    effectReadOverrides.set(effect, state)
   }
 
   if (state.depth >= 2) {
-    throw new Error('Effect vector read override exceeded the supported TileMap2D projection nesting depth')
+    throw new Error('Effect read override exceeded the supported TileMap2D projection nesting depth')
   }
 
   if (state.depth === 0) {
@@ -146,7 +155,7 @@ export function beginEffectVectorReadOverride(
 }
 
 /** Restore the enclosing transactional read state. @internal */
-export function restoreEffectVectorReadOverride(effect: object): void {
-  const state = vectorReadOverrides.get(effect)
+export function restoreEffectReadOverride(effect: object): void {
+  const state = effectReadOverrides.get(effect)
   if (state && state.depth > 0) state.depth--
 }

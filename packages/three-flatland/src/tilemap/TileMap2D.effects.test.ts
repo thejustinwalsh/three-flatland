@@ -388,6 +388,38 @@ describe('TileMap2D retained material effects', () => {
     map.dispose()
   })
 
+  it('does not expose a staged scalar from a failed projection transaction', () => {
+    const data = makeMapData()
+    const tile: TileDefinition = {
+      id: 0,
+      uv: { x: 0, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    }
+    data.tilesets[0]!.tiles.set(0, tile)
+    const map = new TileMap2D({ data })
+    const effect = new DynamicTileEffect()
+    map.addEffect(effect)
+    let captured: number | undefined
+    tile.properties = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          captured = effect.amount
+          throw new Error('forced scalar projection failure')
+        },
+      }
+    )
+
+    expect(() => {
+      effect.amount = 8
+    }).toThrow('forced scalar projection failure')
+    expect(captured).toBe(1)
+    expect(effect.amount).toBe(1)
+    expect(effect._defaults.amount).toBe(1)
+
+    map.dispose()
+  })
+
   it('reuses TileMap vector transaction state and keeps snapshots lazy across steady writes', () => {
     const map = new TileMap2D({ data: makeMapData() })
     const effect = new DynamicTileEffect()

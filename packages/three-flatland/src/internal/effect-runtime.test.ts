@@ -1,21 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  beginEffectVectorReadOverride,
+  beginEffectReadOverride,
+  readEffectScalarValue,
   readEffectVectorSnapshot,
-  restoreEffectVectorReadOverride,
+  restoreEffectReadOverride,
 } from './effect-runtime'
 
 describe('effect vector runtime snapshots', () => {
   it('reuses one override record across steady writes and fixed reentrant nesting', () => {
     const effect = {}
-    const record = beginEffectVectorReadOverride(effect, 'vector', 2, 1, 2)
+    const record = beginEffectReadOverride(effect, 'vector', 2, 1, 2)
     expect(readEffectVectorSnapshot(effect, 'vector', 2, 9, 10)).toEqual([1, 2])
-    const nestedRecord = beginEffectVectorReadOverride(effect, 'vector', 2, 3, 4)
+    const nestedRecord = beginEffectReadOverride(effect, 'vector', 2, 3, 4)
     expect(nestedRecord).toBe(record)
     expect(readEffectVectorSnapshot(effect, 'vector', 2, 9, 10)).toEqual([3, 4])
-    restoreEffectVectorReadOverride(effect)
+    restoreEffectReadOverride(effect)
     expect(readEffectVectorSnapshot(effect, 'vector', 2, 9, 10)).toEqual([1, 2])
-    restoreEffectVectorReadOverride(effect)
+    restoreEffectReadOverride(effect)
     expect(readEffectVectorSnapshot(effect, 'vector', 2, 9, 10)).toEqual([9, 10])
 
     const weakMapSet = vi.spyOn(WeakMap.prototype, 'set')
@@ -25,8 +26,8 @@ describe('effect vector runtime snapshots', () => {
     let freezeCalls = -1
     try {
       for (let i = 0; i < 3_000; i++) {
-        reused = beginEffectVectorReadOverride(effect, 'vector', 2, i, i + 1) === record && reused
-        restoreEffectVectorReadOverride(effect)
+        reused = beginEffectReadOverride(effect, 'vector', 2, i, i + 1) === record && reused
+        restoreEffectReadOverride(effect)
       }
       setCalls = weakMapSet.mock.calls.length
       freezeCalls = freeze.mock.calls.length
@@ -37,6 +38,34 @@ describe('effect vector runtime snapshots', () => {
     expect(reused).toBe(true)
     expect(setCalls).toBe(0)
     expect(freezeCalls).toBe(0)
+  })
+
+  it('reuses the same override frames for scalar reads and nesting', () => {
+    const effect = {}
+    const record = beginEffectReadOverride(effect, 'amount', 1, 1)
+    expect(readEffectScalarValue(effect, 'amount', 9)).toBe(1)
+    const nestedRecord = beginEffectReadOverride(effect, 'amount', 1, 3)
+    expect(nestedRecord).toBe(record)
+    expect(readEffectScalarValue(effect, 'amount', 9)).toBe(3)
+    restoreEffectReadOverride(effect)
+    expect(readEffectScalarValue(effect, 'amount', 9)).toBe(1)
+    restoreEffectReadOverride(effect)
+    expect(readEffectScalarValue(effect, 'amount', 9)).toBe(9)
+
+    const weakMapSet = vi.spyOn(WeakMap.prototype, 'set')
+    let reused = true
+    let setCalls = -1
+    try {
+      for (let i = 0; i < 3_000; i++) {
+        reused = beginEffectReadOverride(effect, 'amount', 1, i) === record && reused
+        restoreEffectReadOverride(effect)
+      }
+      setCalls = weakMapSet.mock.calls.length
+    } finally {
+      weakMapSet.mockRestore()
+    }
+    expect(reused).toBe(true)
+    expect(setCalls).toBe(0)
   })
 
   it('creates the per-effect snapshot record only on the first read', () => {

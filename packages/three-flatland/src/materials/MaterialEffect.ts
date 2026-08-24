@@ -8,11 +8,12 @@ import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
 import { syncTileMapEffectProjection } from '../internal/tile-map-effect-projection'
 import {
-  beginEffectVectorReadOverride,
+  beginEffectReadOverride,
   getEffectEntity,
   getEffectTrait,
+  readEffectScalarValue,
   readEffectVectorSnapshot,
-  restoreEffectVectorReadOverride,
+  restoreEffectReadOverride,
   setEffectEntity,
   setEffectTrait,
 } from '../internal/effect-runtime'
@@ -441,7 +442,7 @@ export abstract class MaterialEffect {
       const store = this._cacheStore(world)
       const index = entitySlot(entity)
       if (field.size === 1) {
-        return store[keys[0]!]![index]!
+        return readEffectScalarValue(this, name, store[keys[0]!]![index]!)
       } else {
         return readEffectVectorSnapshot(
           this,
@@ -455,7 +456,7 @@ export abstract class MaterialEffect {
       }
     }
     const staged = this._defaults[name]!
-    if (typeof staged === 'number') return staged
+    if (typeof staged === 'number') return readEffectScalarValue(this, name, staged)
     const field = ctor._fieldMap.get(name)!
     return readEffectVectorSnapshot(
       this,
@@ -557,10 +558,16 @@ export abstract class MaterialEffect {
     if (this._tileMap) {
       let readOverrideActive = false
       try {
-        if (field.size > 1) {
-          beginEffectVectorReadOverride(this, name, field.size, previous0, previous1, previous2, previous3)
-          readOverrideActive = true
-        }
+        beginEffectReadOverride(
+          this,
+          name,
+          field.size,
+          field.size === 1 ? previousScalar : previous0,
+          previous1,
+          previous2,
+          previous3
+        )
+        readOverrideActive = true
         syncTileMapEffectProjection(this._tileMap, this, name)
       } catch (error) {
         if (field.size === 1) {
@@ -574,7 +581,7 @@ export abstract class MaterialEffect {
         }
         throw error
       } finally {
-        if (readOverrideActive) restoreEffectVectorReadOverride(this)
+        if (readOverrideActive) restoreEffectReadOverride(this)
       }
     }
 
