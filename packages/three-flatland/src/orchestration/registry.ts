@@ -193,6 +193,14 @@ function retireRegistry(registry: Registry, replacement: Registry): void {
       removalFailed = true
     }
   }
+  // A public `removed` listener can synchronously re-add this exact terminal
+  // group. Retire it from the source scene without redispatching callbacks;
+  // leave an intentional foreign-parent reparent alone.
+  if (registry.group.parent === registry.scene) {
+    const index = registry.scene.children.indexOf(registry.group)
+    if (index !== -1) registry.scene.children.splice(index, 1)
+    registry.group.parent = null
+  }
   const candidates = new Set([...registry.sprites, ...registry.standalone])
   for (const sprite of candidates) {
     const runtimeSprite = sprite as unknown as { _autoRegistry: Registry | null }

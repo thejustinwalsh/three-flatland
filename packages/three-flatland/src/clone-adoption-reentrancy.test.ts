@@ -456,6 +456,61 @@ describe('managed clone adoption reentrancy', () => {
   )
 
   it.each([false, true])(
+    'force-detaches a terminal auto group re-added by its removal callback (throw=%s)',
+    (throws) => {
+      const source = new Flatland()
+      const renderer = {}
+      const scene = new Scene()
+      const { sprite, clone, texture } = makeManagedClone('sprite', 'default', source)
+      const existing = new Sprite2D({ texture })
+      scene.add(existing)
+      flatlandSceneSweep(renderer, scene)
+      const terminalRegistry = peekRegistry(renderer, scene)!
+      terminalRegistry.group.addEventListener('removed', () => {
+        scene.add(terminalRegistry.group)
+        if (throws) throw 0
+      })
+
+      clone.material.addEventListener('dispose', () => {
+        terminalRegistry.group.dispose()
+      })
+      scene.add(clone)
+      expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+
+      const notThrown = Symbol('not thrown')
+      let thrown: unknown = notThrown
+      try {
+        flatlandSceneSweep(renderer, scene)
+      } catch (error) {
+        thrown = error
+      }
+      expect(thrown).toBe(throws ? 0 : notThrown)
+      expect(terminalRegistry.group.parent).toBeNull()
+      expect(scene.children).not.toContain(terminalRegistry.group)
+
+      if (throws) expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+      const recovered = peekRegistry(renderer, scene)!
+      expect(recovered).not.toBe(terminalRegistry)
+      expect(recovered.sprites).toEqual(new Set([clone, existing]))
+      expect(recovered.standalone.size).toBe(0)
+      expect(recovered.group.spriteCount).toBe(2)
+      expect(autoRegistryFor(existing)).toBe(recovered)
+      expect(autoRegistryFor(clone)).toBe(recovered)
+      expect(entityFor(existing)).not.toBeNull()
+      expect(entityFor(clone)).not.toBeNull()
+      expect(() => worldFor(recovered)).not.toThrow()
+      expect(scene.children.filter((child) => child.name === 'FlatlandOrchestrator')).toEqual([recovered.group])
+
+      scene.remove(existing, clone)
+      recovered.group.dispose()
+      source.dispose()
+      existing.dispose()
+      clone.dispose()
+      sprite.dispose()
+    }
+  )
+
+  it.each([false, true])(
     'stops a terminalized registry sweep before touching the remaining pending clone (throw=%s)',
     (throws) => {
       const source = new Flatland()
