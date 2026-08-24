@@ -45,12 +45,13 @@
  */
 
 import { execFileSync, spawn } from 'node:child_process'
-import { cpSync, mkdtempSync, readFileSync, writeFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { createServer as netServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve, extname } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { materializeConsumerExample } from './lib/consumer-smoke-layout.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const args = process.argv.slice(2)
@@ -558,7 +559,7 @@ if (WANTS_SCAFFOLD) {
 
 for (const ex of CONSUMERS) {
   const id = ex.kind === 'scaffold' ? `scaffold/${ex.slug}` : `${ex.type}/${ex.slug}`
-  const dest = join(WORK, `${ex.type}-${ex.slug}`)
+  const dest = ex.kind === 'scaffold' ? join(WORK, `${ex.type}-${ex.slug}`) : join(WORK, 'examples', ex.type, ex.slug)
   // Skip consumers that need a flatland package we couldn't pack/publish — else
   // npm would 404 (our packages don't proxy npmjs) and the failure would be
   // about the harness, not the consumer. For a scaffold, the template manifest is
@@ -584,11 +585,10 @@ for (const ex of CONSUMERS) {
       run(process.execPath, [ensureCli(), `${ex.type}-${ex.slug}`, '--template', ex.slug], WORK)
       if (!existsSync(join(dest, 'package.json'))) throw new Error(`CLI produced no package.json at ${dest}`)
     } else {
-      // Copy the example out of the repo (skip any local node_modules/dist).
-      cpSync(ex.dir, dest, {
-        recursive: true,
-        filter: (src) => !/(^|\/)(node_modules|dist)(\/|$)/.test(src.slice(ex.dir.length)),
-      })
+      // Copy the example out of the repo (skip any local node_modules/dist),
+      // preserving its `examples/<type>/<slug>` layout so shared imports remain
+      // faithful to the source tree.
+      materializeConsumerExample(ROOT, WORK, ex)
     }
     // Either way the package.json is left UNTOUCHED — no `file:` overrides, no
     // dependency rewriting. Everything resolves by declared range from Verdaccio.

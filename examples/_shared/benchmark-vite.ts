@@ -47,7 +47,6 @@ export function benchmarkFixtureSourceSha256(exampleDirectory: string): string {
  * derive the SHA from Git rather than trusting an operator-supplied label.
  */
 export function benchmarkBuildMetadata(command: 'build' | 'serve', exampleDirectory: string): BenchmarkBuildMetadata {
-  const fixtureSourceSha256 = benchmarkFixtureSourceSha256(exampleDirectory)
   const devtools = process.env.FL_DEVTOOLS ?? 'true'
   const profile = process.env.FL_PROFILE ?? 'false'
   if (devtools !== 'true' && devtools !== 'false') {
@@ -59,11 +58,13 @@ export function benchmarkBuildMetadata(command: 'build' | 'serve', exampleDirect
   if (command !== 'build' || process.env.FL_BENCHMARK_EVIDENCE !== 'true') {
     return {
       revision: 'development',
-      fixtureSourceSha256,
+      fixtureSourceSha256: 'development',
       devtoolsEnabled: devtools === 'true',
       profileEnabled: profile === 'true',
     }
   }
+
+  const fixtureSourceSha256 = benchmarkFixtureSourceSha256(exampleDirectory)
 
   if (devtools !== 'false') {
     throw new Error('Benchmark evidence builds require FL_DEVTOOLS=false')

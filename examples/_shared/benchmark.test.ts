@@ -16,6 +16,20 @@ const FIXTURE_DIRECTORIES = [
 ] as const
 
 describe('benchmark simulation gate', () => {
+  it('does not require Git provenance for ordinary extracted consumer builds', () => {
+    const previousEvidence = process.env.FL_BENCHMARK_EVIDENCE
+    try {
+      delete process.env.FL_BENCHMARK_EVIDENCE
+      expect(benchmarkBuildMetadata('build', 'outside-the-repository')).toMatchObject({
+        revision: 'development',
+        fixtureSourceSha256: 'development',
+      })
+    } finally {
+      if (previousEvidence === undefined) delete process.env.FL_BENCHMARK_EVIDENCE
+      else process.env.FL_BENCHMARK_EVIDENCE = previousEvidence
+    }
+  })
+
   it('requires evidence builds to disable devtools explicitly', () => {
     const previousEvidence = process.env.FL_BENCHMARK_EVIDENCE
     const previousDevtools = process.env.FL_DEVTOOLS
