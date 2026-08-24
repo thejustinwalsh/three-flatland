@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { gitMergeBase } from './provenance.ts'
 import { parseRendererEvidenceArgs, runRendererEvidence, type RendererEvidenceCase } from './renderer-evidence.ts'
 
 const cases: RendererEvidenceCase[] = [
@@ -60,6 +61,10 @@ describe('production renderer evidence smoke harness', () => {
       peak60000: 'pending',
     })
     expect(report.cases.map((result) => result.case)).toEqual(cases)
+    expect(report.provenance.git.mergeBase).toBe(gitMergeBase())
+    expect(report.provenance.sources).toContainEqual(
+      expect.objectContaining({ path: 'tools/ecs-bench/src/provenance.ts' })
+    )
     for (const result of report.cases) {
       expect(result.initialBatches).toEqual({ actual: 4, expected: 4, mode: 'quick-fixed' })
       expect(result.samples).toHaveLength(1)
