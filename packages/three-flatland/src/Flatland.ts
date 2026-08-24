@@ -1820,9 +1820,19 @@ export class Flatland extends Group {
         throw new Error('three-flatland: lighting ownership changed during previous-effect disposal')
       }
     } catch (error) {
-      if (suspendedContext && suspendedContextSnapshot) Object.assign(suspendedContext, suspendedContextSnapshot)
-      if (lightingSystemsSuspended && !world.disposed) this._setLightingSystemsScheduled(world, true)
-      discardPrepared()
+      // Keep the old runtime unpublished until every provisional candidate
+      // resource is gone. Resource dispose listeners are user code and may
+      // force a schedule run; restoring first would let that callback run the
+      // old effect in the middle of rollback.
+      try {
+        discardPrepared()
+      } catch {}
+      try {
+        if (suspendedContext && suspendedContextSnapshot) Object.assign(suspendedContext, suspendedContextSnapshot)
+      } catch {}
+      try {
+        if (lightingSystemsSuspended && !world.disposed) this._setLightingSystemsScheduled(world, true)
+      } catch {}
       throw error
     }
     if (lightingSystemsSuspended) {

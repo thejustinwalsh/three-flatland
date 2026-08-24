@@ -994,6 +994,68 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.dispose()
   })
 
+  it('keeps old lighting suspended while discarding a failed shadow candidate', () => {
+    const flatland = new Flatland()
+    const active = new DestinationLight()
+    let candidateDisposeCallbackRuns = 0
+    const FailedShadowCandidate = createLightEffect({
+      name: 'failedShadowCandidateBoundary',
+      schema: {} as const,
+      needsShadows: true,
+      light: ({ sdfTexture }) => {
+        sdfTexture!.renderTarget!.addEventListener('dispose', () => {
+          candidateDisposeCallbackRuns++
+          flatland.spriteGroup.update()
+        })
+        return (context) => vec4(context.color.rgb, context.color.a)
+      },
+    })
+    const replacement = new FailedShadowCandidate()
+    flatland.setLighting(active)
+
+    const world = runtimeWorld(flatland)
+    const contextEntity = Reflect.get(flatland, '_lightingContextEntity')
+    const context = world.read(contextEntity, LightingContext)!
+    context.renderer = {} as never
+    context.camera = flatland.camera
+    context.surfaceSize.set(256, 256)
+    context.scene = flatland.scene
+    const init = vi.spyOn(active, 'init')
+    const resize = vi.spyOn(active, 'resize')
+    const update = vi.spyOn(active, 'update')
+    active.dispose = vi.fn(() => {
+      throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      flatland.setLighting(replacement)
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(candidateDisposeCallbackRuns).toBe(1)
+    expect(init).not.toHaveBeenCalled()
+    expect(resize).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(flatland.lighting).toBe(active)
+    expect(context.effect).toBe(active)
+    expect(replacement._flatland).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
+
+    flatland.spriteGroup.update()
+    expect(init).toHaveBeenCalledOnce()
+    expect(resize).toHaveBeenCalledOnce()
+    expect(update).toHaveBeenCalledOnce()
+
+    active.dispose = vi.fn()
+    flatland.dispose()
+  })
+
   it('preserves the live shadow generation across replacement disposal callbacks', () => {
     const flatland = new Flatland()
     const active = new InitialShadowLight()
