@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url))
 const nxExecutable = resolve(workspaceRoot, 'node_modules/.bin/nx')
+const nxQueryTimeoutMs = 30_000
 const fixtureProjects = [
   'example-three-knightmark',
   'example-react-knightmark',
@@ -33,6 +34,7 @@ describe('benchmark fixture Nx inputs', () => {
       for (const target of ['build', 'typecheck', 'lint'] as const) {
         expect(affectedProjects(file, target)).toEqual(expect.arrayContaining([...fixtureProjects]))
       }
-    }
+    },
+    nxQueryTimeoutMs
   )
 })

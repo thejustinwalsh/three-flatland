@@ -19,6 +19,7 @@ import { BatchMesh, BatchRegistry, BatchSlot, IsBatched } from '../../../package
 import type { RegistryData } from '../../../packages/three-flatland/src/ecs/batchUtils.ts'
 import { entitySlot, liveStoredEntity } from '../../../packages/three-flatland/src/ecs/snapshot.ts'
 import { getSpriteBatchOwnership } from '../../../packages/three-flatland/src/internal/sprite-batch-ownership.ts'
+import { gitMergeBase } from './provenance.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 type TextureType = NonNullable<Sprite2DOptions['texture']>
@@ -799,6 +800,7 @@ function sourceFiles(): string[] {
     'packages/three-flatland/src/internal/sprite-batch-ownership.ts',
     'packages/three-flatland/src/internal/max-batch-size.ts',
     'tools/ecs-bench/src/renderer-evidence.ts',
+    'tools/ecs-bench/src/provenance.ts',
     'pnpm-lock.yaml',
   ]
   const visit = (directory: string): void => {
@@ -827,7 +829,7 @@ function captureProvenance() {
     git: {
       dirty: git('status', '--porcelain').length > 0,
       head: git('rev-parse', 'HEAD'),
-      mergeBase: git('merge-base', 'HEAD', 'main'),
+      mergeBase: gitMergeBase(),
     },
     node: process.version,
     os: { arch: arch(), platform: platform(), release: release() },
