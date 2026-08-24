@@ -13,7 +13,7 @@
 
 - **2D primitives on the Three.js scene graph.** `Sprite2D`, `AnimatedSprite2D`, `SpriteGroup`, and `TileMap2D` as plain `Object3D` subclasses. Transform hierarchy and render order are independent (`sortLayer` + `zIndex`).
 - **TSL-native effect composition.** Effects are TSL node graphs that ride on a shared material. Sprites in a batch stay batched as effects come and go.
-- **Sprite batching via a package-private ECS.** Batch archetypes adapt as sprites and effects change; per-sprite uniforms pack into shared GPU buffers.
+- **Effect-aware sprite batching.** Compatible sprites stay batched as effects change, with per-sprite values packed into shared GPU buffers.
 - **Spritesheet animation with frame-precise timing.** `AnimationController` handles play/pause/onComplete; declare named animations against a sheet.
 - **Tilemap loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/).** Animated tiles supported.
 - **Pixel-perfect by default.** `FlatlandConfig` coordinates texture loading, integer camera scale, and projected-pivot snapping; override the whole pipeline or one subsystem.
@@ -203,7 +203,7 @@ Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland]
 
 - [x] Core sprite system (Sprite2D, materials, loaders)
 - [x] Animation system (AnimatedSprite2D, AnimationController)
-- [x] 2D render pipeline with ECS-driven batching
+- [x] 2D render pipeline with effect-aware sprite batching
 - [x] TSL effect nodes (composable shader nodes)
 - [x] Tilemap support (Tiled, LDtk)
 - [x] React Three Fiber integration

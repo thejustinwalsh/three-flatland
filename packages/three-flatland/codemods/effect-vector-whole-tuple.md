@@ -2,7 +2,7 @@
 title: 'Effect vectors require whole-tuple assignment'
 slug: 'effect-vector-whole-tuple'
 package: 'three-flatland'
-version: '0.1.0-alpha.11'
+version: 'next'
 type: 'breaking'
 audience: 'consumers'
 ---

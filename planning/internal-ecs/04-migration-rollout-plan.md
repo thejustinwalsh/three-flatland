@@ -29,9 +29,10 @@ Implemented and proposed commit sequence:
 4. `refactor(three-flatland): remove koota peer dependency`
 5. `docs(three-flatland): remove koota installation requirement`
 
-The exact split follows diff cohesion. Conventional Commit metadata is authoritative under the
-repository's current release policy; CI generates changesets from commit history. Agents do not
-hand-write changesets. Private tooling changes are not release-visible.
+The exact split follows diff cohesion. Conventional Commit metadata determines the bump under the
+repository's current release policy. CI changeset generation is disabled, so agents hand-author
+release-visible changesets according to `.changeset/README.md`. Private tooling changes are not
+release-visible.
 
 ## Phase 0: approved design and fresh baseline
 
@@ -189,8 +190,9 @@ Internal planning and code comments should document:
 The rendered API does not intentionally break, and removing a required peer dependency is a
 compatibility improvement. The emitted TypeScript surface does change: accidental ECS members are
 removed rather than exposing the private runtime. The migration therefore uses a breaking
-Conventional Commit with a `BREAKING CHANGE:` footer. CI derives the release changeset from that
-commit history.
+Conventional Commit with a `BREAKING CHANGE:` footer and a hand-authored `minor` changeset with an
+explicit `BREAKING CHANGES` section, following the alpha pre-release policy in
+`.changeset/README.md`.
 
 The declaration audit confirmed 24 built declaration leaves currently reference Koota. The migration
 must remove those reachable references and prove the private runtime is not substituted into them.
