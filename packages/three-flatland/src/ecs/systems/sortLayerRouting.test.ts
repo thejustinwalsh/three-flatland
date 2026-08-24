@@ -367,7 +367,9 @@ describe('sortLayer + layers.mask run-key routing', () => {
     runSystems(group)
 
     sprite.material = replacement
-    expect(readRequired(worldFor(group), requiredEntity(sprite), SpriteMaterialRef).materialId).toBe(replacement.batchId)
+    expect(readRequired(worldFor(group), requiredEntity(sprite), SpriteMaterialRef).materialId).toBe(
+      replacement.batchId
+    )
     runSystems(group)
 
     const registry = getRegistry(group)

@@ -1,9 +1,4 @@
-import {
-  trait,
-  type NumericSchema,
-  type NumericStore,
-  type World,
-} from '../ecs/runtime'
+import { trait, type NumericSchema, type NumericStore, type World } from '../ecs/runtime'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type { OrthographicCamera, Texture } from 'three'

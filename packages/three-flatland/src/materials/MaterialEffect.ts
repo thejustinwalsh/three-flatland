@@ -1,9 +1,4 @@
-import {
-  trait,
-  type NumericSchema,
-  type NumericStore,
-  type World,
-} from '../ecs/runtime'
+import { trait, type NumericSchema, type NumericStore, type World } from '../ecs/runtime'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'

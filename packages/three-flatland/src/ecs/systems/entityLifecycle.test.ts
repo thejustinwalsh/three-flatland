@@ -776,7 +776,10 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     runSystems(group)
 
     // Effect should be in ECS trait
-    const traitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<string, number>
+    const traitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<
+      string,
+      number
+    >
     expect(traitData['progress']).toBeCloseTo(0.7)
 
     // Remove sprite — effect values serialized to defaults
@@ -787,7 +790,10 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     group.add(sprite)
     runSystems(group)
 
-    const newTraitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<string, number>
+    const newTraitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<
+      string,
+      number
+    >
     expect(newTraitData['progress']).toBeCloseTo(0.7)
   })
 
@@ -810,7 +816,10 @@ describe('Entity Lifecycle: Effects Survive Cycles', () => {
     runSystems(group)
 
     // New entity should have the updated value
-    const traitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<string, number>
+    const traitData = worldFor(group).read(requiredEntity(sprite), traitFor(DissolveLifecycle)) as Record<
+      string,
+      number
+    >
     expect(traitData['progress']).toBeCloseTo(0.9)
   })
 

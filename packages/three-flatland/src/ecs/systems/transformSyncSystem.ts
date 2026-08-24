@@ -195,7 +195,8 @@ export function transformSyncSystem(world: World): void {
       const owner = ownership.slotEntities[slot] ?? 0
 
       const o = slot * 16
-      const directRoot = !(sprite as unknown as { _autoRegistry: object | null })._autoRegistry && !sprite._hierarchyManaged
+      const directRoot =
+        !(sprite as unknown as { _autoRegistry: object | null })._autoRegistry && !sprite._hierarchyManaged
       const sourceParent =
         (sprite as unknown as { _autoRegistry: object | null })._autoRegistry || sprite._hierarchyManaged
           ? sprite.parent

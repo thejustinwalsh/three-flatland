@@ -78,18 +78,15 @@ describe('public declaration boundary verifier', () => {
     'createWorld',
     'buildBatchQueryView',
     'tileLayer',
-  ])(
-    'rejects the private API identifier %s anywhere in the reachable declaration graph',
-    (identifier) => {
-      const root = fixtureSource(`export interface PublicLeak { ${identifier}: unknown }\n`)
-      expect(() =>
-        execFileSync(process.execPath, [verifier, root, identifier], {
-          encoding: 'utf8',
-          stdio: 'pipe',
-        })
-      ).toThrow(new RegExp(`contains "${identifier}"`))
-    }
-  )
+  ])('rejects the private API identifier %s anywhere in the reachable declaration graph', (identifier) => {
+    const root = fixtureSource(`export interface PublicLeak { ${identifier}: unknown }\n`)
+    expect(() =>
+      execFileSync(process.execPath, [verifier, root, identifier], {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      })
+    ).toThrow(new RegExp(`contains "${identifier}"`))
+  })
 
   it('rejects a reachable internal registry-handle declaration', () => {
     const root = fixtureSource("export type { RegistryHandle } from './internal/registry-handle.js'\n")
