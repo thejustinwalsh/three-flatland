@@ -1,18 +1,38 @@
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import labsConfig from '../labs.config.ts'
 import { resolveLabsInstallation } from './labs-run-support.ts'
 
 const NODE_MAJOR = Number.parseInt(process.versions.node.split('.')[0] ?? '0', 10)
-const PACKAGE_ROOT = resolve(import.meta.dirname, '..')
 const contractRoot = mkdtempSync(resolve(tmpdir(), 'three-flatland-labs-contract-'))
 const marker = resolve(contractRoot, 'teardown-marker')
-const installation = resolveLabsInstallation(createRequire(import.meta.url).resolve('@pmndrs/labs'))
-symlinkSync(resolve(PACKAGE_ROOT, 'node_modules'), resolve(contractRoot, 'node_modules'), 'dir')
+const require = createRequire(import.meta.url)
+const installation = resolveLabsInstallation(require.resolve('@pmndrs/labs'))
+const contractModules = resolve(contractRoot, 'node_modules')
+mkdirSync(resolve(contractModules, '@pmndrs'), { recursive: true })
+mkdirSync(resolve(contractModules, '.bin'), { recursive: true })
+symlinkSync(realpathSync(installation.packageRoot), resolve(contractModules, '@pmndrs/labs'), 'dir')
+const contractTsx = resolve(contractModules, '.bin/tsx')
+writeFileSync(
+  contractTsx,
+  `#!/usr/bin/env node\nawait import(${JSON.stringify(pathToFileURL(realpathSync(require.resolve('tsx/cli'))).href)})\n`
+)
+chmodSync(contractTsx, 0o755)
 writeFileSync(resolve(contractRoot, 'package.json'), JSON.stringify({ private: true, type: 'module' }))
 
 writeFileSync(
