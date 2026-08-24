@@ -147,14 +147,14 @@ describe('SpriteGroup', () => {
     expect(() => renderer!.add(new Sprite2D({ material }))).toThrow(
       'three-flatland: SpriteGroup.add cannot be used after dispose()'
     )
-    expect(() => renderer!.addSprites()).toThrow('three-flatland: SpriteGroup.addSprites cannot be used after dispose()')
+    expect(() => renderer!.addSprites()).toThrow(
+      'three-flatland: SpriteGroup.addSprites cannot be used after dispose()'
+    )
     expect(() => renderer!.removeSprites()).toThrow(
       'three-flatland: SpriteGroup.removeSprites cannot be used after dispose()'
     )
     expect(() => renderer!.clear()).toThrow('three-flatland: SpriteGroup.clear cannot be used after dispose()')
-    expect(() => worldFor(renderer!)).toThrow(
-      'three-flatland: SpriteGroup runtime cannot be used after dispose()'
-    )
+    expect(() => worldFor(renderer!)).toThrow('three-flatland: SpriteGroup runtime cannot be used after dispose()')
     expect(Reflect.get(renderer, '_world')).toBeNull()
     expect(() => renderer!.dispose()).not.toThrow()
     renderer = null
@@ -339,6 +339,54 @@ describe('SpriteGroup', () => {
     expect(world.isAlive(batchEntity)).toBe(false)
     expect(world.view(BatchMeshes)).toHaveLength(0)
     expect(renderer.isEmpty).toBe(true)
+  })
+
+  it('preserves a child adopted by a foreign parent during a throwing clear callback', () => {
+    renderer = new SpriteGroup()
+    const child = new Group()
+    const foreignParent = new Group()
+    renderer.add(child)
+    child.addEventListener('removed', () => {
+      foreignParent.add(child)
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      renderer.clear()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(child.parent).toBe(foreignParent)
+    expect(foreignParent.children).toEqual([child])
+    expect(renderer.children).toEqual([])
+  })
+
+  it('preserves a child adopted by a foreign parent during terminal disposal', () => {
+    renderer = new SpriteGroup()
+    const child = new Group()
+    const foreignParent = new Group()
+    renderer.add(child)
+    child.addEventListener('removed', () => {
+      foreignParent.add(child)
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      renderer.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(child.parent).toBe(foreignParent)
+    expect(foreignParent.children).toEqual([child])
+    expect(renderer.children).toEqual([])
+    expect(() => renderer!.dispose()).not.toThrow()
+    renderer = null
   })
 
   it('finishes terminal disposal after active and pooled mesh listeners throw', () => {

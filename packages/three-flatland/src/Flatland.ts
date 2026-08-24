@@ -287,6 +287,9 @@ export class Flatland extends Group {
   /** Internal sprite group for batching */
   readonly spriteGroup: SpriteGroup
 
+  /** Shared child world retained only so parent teardown survives child-first disposal. */
+  private _sharedWorld: World | null = null
+
   /** Global uniforms shared across all sprite materials */
   readonly globals: GlobalUniforms = new GlobalUniforms()
 
@@ -429,12 +432,14 @@ export class Flatland extends Group {
   private _lightStore: LightStore | null = null
 
   /**
-   * Shadow pipeline lives on the ECS `ShadowPipeline` singleton trait and
-   * is managed end-to-end by `shadowPipelineSystem`. Flatland does not
-   * hold SDFGenerator / OcclusionPass references — it only bootstraps
-   * the singleton entity and registers the system in the schedule.
+   * Shadow pipeline runtime state lives on the ECS `ShadowPipeline` singleton
+   * trait and is managed by `shadowPipelineSystem`. Flatland mirrors the GPU
+   * ownership handles so its public SpriteGroup can dispose the shared world
+   * first without making those resources unreachable to parent teardown.
    */
   private _shadowPipelineEntity: Entity | null = null
+  private _shadowSdfGenerator: SDFGenerator | null = null
+  private _shadowOcclusionPass: OcclusionPass | null = null
 
   /** Active LightEffect instance */
   private _lightEffect: LightEffect | null = null
@@ -551,7 +556,9 @@ export class Flatland extends Group {
   }
 
   private get _runtimeWorld(): World {
-    return getSpriteGroupWorld(this.spriteGroup)
+    const world = getSpriteGroupWorld(this.spriteGroup)
+    this._sharedWorld = world
+    return world
   }
 
   /**
@@ -1026,10 +1033,9 @@ export class Flatland extends Group {
 
   /** Detach without redispatching user-extensible hierarchy events. */
   private _forceDetachChild(child: Object3D): void {
-    const parent = child.parent
-    if (!parent) return
-    const index = parent.children.indexOf(child)
-    if (index !== -1) parent.children.splice(index, 1)
+    if (child.parent !== this.scene) return
+    const index = this.scene.children.indexOf(child)
+    if (index !== -1) this.scene.children.splice(index, 1)
     child.parent = null
   }
 
@@ -1203,7 +1209,11 @@ export class Flatland extends Group {
       if (child !== this.spriteGroup) this._forceDetachChild(child)
     }
     if (this.spriteGroup.parent !== this.scene) {
-      this._forceDetachChild(this.spriteGroup)
+      const parent = this.spriteGroup.parent
+      if (parent) {
+        const index = parent.children.indexOf(this.spriteGroup)
+        if (index !== -1) parent.children.splice(index, 1)
+      }
       this.spriteGroup.parent = this.scene
     }
     if (!this.scene.children.includes(this.spriteGroup)) this.scene.children.push(this.spriteGroup)
@@ -1744,6 +1754,8 @@ export class Flatland extends Group {
     if (pipeline) {
       if (preparedSdfGenerator) pipeline.sdfGenerator = preparedSdfGenerator
       if (preparedOcclusionPass) pipeline.occlusionPass = preparedOcclusionPass
+      this._shadowSdfGenerator = pipeline.sdfGenerator
+      this._shadowOcclusionPass = pipeline.occlusionPass
     }
 
     lightEffect._attach(this, () => {
@@ -2632,46 +2644,18 @@ export class Flatland extends Group {
       }
     }
 
-    // Publish terminal state before resolving teardown handles. World-backed
-    // resources must be captured before the first user cleanup callback:
-    // those callbacks can legally reach the public SpriteGroup and dispose
-    // the shared world (including deleting its lazy-runtime registrar).
+    // Publish terminal state before resolving teardown handles. Flatland
+    // retains its own reference to the shared world and shadow GPU resources,
+    // so a public SpriteGroup disposed before or during this teardown cannot
+    // make parent-owned cleanup unreachable or trigger lazy-world access.
     this._disposed = true
-    const hasWorldState =
-      this._passes.length > 0 ||
-      this._postPassRegistryEntity !== null ||
-      this._lightEffect !== null ||
-      this._lightingContextEntity !== null ||
-      this._shadowPipelineEntity !== null
-    const captureWorld = (): World | null => {
-      if (!hasWorldState) return null
-      try {
-        return this._runtimeWorld
-      } catch (error) {
-        recordError(error)
-        return null
-      }
-    }
-    const world = captureWorld()
-
+    const world = this._sharedWorld
+    this._sharedWorld = null
     const shadowEntity = this._shadowPipelineEntity
-    const captureShadowResources = (): {
-      sdfGenerator: SDFGenerator | null
-      occlusionPass: OcclusionPass | null
-    } | null => {
-      if (!world || !shadowEntity) return null
-      try {
-        const pipeline = world.read(shadowEntity, ShadowPipeline)
-        return {
-          sdfGenerator: pipeline?.sdfGenerator ?? null,
-          occlusionPass: pipeline?.occlusionPass ?? null,
-        }
-      } catch (error) {
-        recordError(error)
-        return null
-      }
-    }
-    const shadowResources = captureShadowResources()
+    const sdfGenerator = this._shadowSdfGenerator
+    const occlusionPass = this._shadowOcclusionPass
+    this._shadowSdfGenerator = null
+    this._shadowOcclusionPass = null
     const destroyEntity = (entity: Entity): void => {
       if (!world || !world.isAlive(entity)) return
       world.destroy(entity)
@@ -2715,15 +2699,12 @@ export class Flatland extends Group {
     const lightStore = this._lightStore
     this._lightStore = null
     if (lightStore) runCleanup(() => lightStore.dispose())
-    // These references were captured before any user callback could dispose
-    // the shared world. World disposal drops trait storage but does not own
-    // the GPU resources stored inside the trait.
+    // These parent-held references survive child-first world disposal. World
+    // disposal drops trait storage but does not own the GPU resources inside.
+    if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
+    if (occlusionPass) runCleanup(() => occlusionPass.dispose())
     if (shadowEntity) {
       this._shadowPipelineEntity = null
-      const sdfGenerator = shadowResources?.sdfGenerator
-      const occlusionPass = shadowResources?.occlusionPass
-      if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
-      if (occlusionPass) runCleanup(() => occlusionPass.dispose())
       runCleanup(() => destroyEntity(shadowEntity))
     }
     this._lights.length = 0

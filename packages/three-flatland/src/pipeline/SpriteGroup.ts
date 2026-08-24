@@ -1042,10 +1042,9 @@ export class SpriteGroup extends ClippingGroup {
 
   /** Detach without redispatching user-extensible hierarchy events. */
   private _forceDetachChild(child: Object3D): void {
-    const parent = child.parent
-    if (!parent) return
-    const index = parent.children.indexOf(child)
-    if (index !== -1) parent.children.splice(index, 1)
+    if (child.parent !== this) return
+    const index = this.children.indexOf(child)
+    if (index !== -1) this.children.splice(index, 1)
     child.parent = null
   }
 

@@ -927,4 +927,29 @@ describe('Flatland material ownership', () => {
 
     flatland.dispose()
   })
+
+  it('preserves an ordinary child adopted by a foreign parent during a throwing clear callback', () => {
+    const flatland = new Flatland()
+    const child = new Group()
+    const foreignParent = new Group()
+    flatland.add(child)
+    child.addEventListener('removed', () => {
+      foreignParent.add(child)
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatland.clear()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(child.parent).toBe(foreignParent)
+    expect(foreignParent.children).toEqual([child])
+    expect(flatland.scene.children).toEqual([flatland.spriteGroup])
+
+    flatland.dispose()
+  })
 })
