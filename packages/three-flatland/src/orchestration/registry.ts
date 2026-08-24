@@ -8,6 +8,7 @@ import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } fro
 import type { BatchQueryView } from '../pipeline/batchQuery'
 import { buildBatchQueryView } from '../internal/batch-query-builder'
 import { getSpriteGroupWorld, isSpriteGroupRuntimeLive } from '../internal/sprite-group-runtime'
+import { spriteWorld } from '../internal/sprite-runtime'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -23,6 +24,14 @@ const REGISTRY_SYMBOL = Symbol.for('three-flatland.registry')
 /** Host shape stored on the renderer under {@link REGISTRY_SYMBOL}. */
 interface RegistryHost {
   scenes: WeakMap<Scene, Registry>
+  retirements: WeakMap<Scene, RegistryRetirement>
+}
+
+/** Reentrant terminal-replacement state shared by one host/scene chain. */
+interface RegistryRetirement {
+  depth: number
+  roots: Set<SpriteGroup>
+  survivors: Set<Sprite2D>
 }
 
 /**
@@ -173,16 +182,28 @@ export function peekRegistry(renderer: RendererLike, scene: Scene): Registry | n
 
 /** Replace terminal orchestration while retaining only still-authored members. */
 function replaceTerminalRegistry(host: RegistryHost, registry: Registry): Registry {
+  let retirement = host.retirements.get(registry.scene)
+  if (!retirement) {
+    retirement = { depth: 0, roots: new Set(), survivors: new Set() }
+    host.retirements.set(registry.scene, retirement)
+  }
+  retirement.depth++
   const replacement = new Registry(registry.renderer, registry.scene)
+  retirement.roots.add(replacement.group)
   // Publish first so a hostile `removed` listener that peeks the tuple sees
   // the live replacement instead of recursively replacing the same corpse.
   host.scenes.set(registry.scene, replacement)
-  retireRegistry(registry, replacement)
-  return replacement
+  try {
+    retireRegistry(registry, retirement)
+  } finally {
+    retirement.depth--
+    if (retirement.depth === 0) finishRegistryRetirement(host, registry.scene, retirement)
+  }
+  return host.scenes.get(registry.scene)!
 }
 
 /** Drop old edges and stage eligible members for transactional re-registration. */
-function retireRegistry(registry: Registry, replacement: Registry): void {
+function retireRegistry(registry: Registry, retirement: RegistryRetirement): void {
   let removalError: unknown
   let removalFailed = false
   if (registry.group.parent === registry.scene) {
@@ -197,7 +218,7 @@ function retireRegistry(registry: Registry, replacement: Registry): void {
   // group below any authored descendant, or below the not-yet-attached live
   // replacement. Canonicalize both ownership roots without redispatching;
   // leave an intentional parent outside this scene/registry alone.
-  if (isBelow(registry.group, registry.scene) || isBelow(registry.group, replacement.group)) {
+  if (isBelow(registry.group, registry.scene) || isBelowAny(registry.group, retirement.roots)) {
     const parent = registry.group.parent!
     const index = parent.children.indexOf(registry.group)
     if (index !== -1) parent.children.splice(index, 1)
@@ -209,7 +230,7 @@ function retireRegistry(registry: Registry, replacement: Registry): void {
     if (runtimeSprite._autoRegistry && runtimeSprite._autoRegistry !== registry) continue
     if (runtimeSprite._autoRegistry === registry) runtimeSprite._autoRegistry = null
     sprite._setBatchSuppressed(false)
-    if (isAuthoredBelow(registry.scene, sprite)) replacement._recoveryCandidates.add(sprite)
+    if (isAuthoredBelow(registry.scene, sprite)) retirement.survivors.add(sprite)
   }
   registry.sprites.clear()
   registry.standalone.clear()
@@ -218,11 +239,35 @@ function retireRegistry(registry: Registry, replacement: Registry): void {
   if (removalFailed) throw removalError
 }
 
+/** Publish survivors to the registry that won the complete replacement chain. */
+function finishRegistryRetirement(host: RegistryHost, scene: Scene, retirement: RegistryRetirement): void {
+  const current = host.scenes.get(scene)
+  if (current) {
+    for (const sprite of retirement.survivors) {
+      const owner = (sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry
+      if (!owner && !spriteWorld(sprite) && isAuthoredBelow(scene, sprite)) current._recoveryCandidates.add(sprite)
+    }
+  }
+  retirement.roots.clear()
+  retirement.survivors.clear()
+  host.retirements.delete(scene)
+}
+
 /** Whether an object is currently parented anywhere below an ownership root. */
 function isBelow(object: SpriteGroup, root: Scene | SpriteGroup): boolean {
   let parent = object.parent
   while (parent) {
     if (parent === root) return true
+    parent = parent.parent
+  }
+  return false
+}
+
+/** Whether an object is below any replacement root in the active chain. */
+function isBelowAny(object: SpriteGroup, roots: Set<SpriteGroup>): boolean {
+  let parent = object.parent
+  while (parent) {
+    if (roots.has(parent as SpriteGroup)) return true
     parent = parent.parent
   }
   return false
@@ -243,7 +288,7 @@ function getOrCreateHost(renderer: RendererLike): RegistryHost {
   const holder = renderer as Record<symbol, unknown>
   let host = holder[REGISTRY_SYMBOL] as RegistryHost | undefined
   if (!host) {
-    host = { scenes: new WeakMap() }
+    host = { scenes: new WeakMap(), retirements: new WeakMap() }
     holder[REGISTRY_SYMBOL] = host
   }
   return host

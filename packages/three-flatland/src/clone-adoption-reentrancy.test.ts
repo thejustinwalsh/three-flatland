@@ -673,6 +673,73 @@ describe('managed clone adoption reentrancy', () => {
   })
 
   it.each([false, true])(
+    'forwards survivors to the registry that wins a three-registry replacement chain (throw=%s)',
+    (throws) => {
+      const source = new Flatland()
+      const renderer = {}
+      const scene = new Scene()
+      const { sprite, clone, texture } = makeManagedClone('sprite', 'default', source)
+      const existingA = new Sprite2D({ texture })
+      const existingB = new Sprite2D({ texture })
+      scene.add(existingA, existingB)
+      flatlandSceneSweep(renderer, scene)
+      const terminalRegistry = peekRegistry(renderer, scene)!
+      const terminalMaterial = existingA.material
+      let intermediate = terminalRegistry
+      let advanced = terminalRegistry
+      terminalRegistry.group.addEventListener('removed', () => {
+        intermediate = peekRegistry(renderer, scene)!
+        intermediate.group.dispose()
+        advanced = peekRegistry(renderer, scene)!
+        if (throws) throw 0
+      })
+      clone.material.addEventListener('dispose', () => {
+        terminalRegistry.group.dispose()
+      })
+      scene.add(clone)
+      expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+
+      const notThrown = Symbol('not thrown')
+      let thrown: unknown = notThrown
+      try {
+        flatlandSceneSweep(renderer, scene)
+      } catch (error) {
+        thrown = error
+      }
+      expect(thrown).toBe(throws ? 0 : notThrown)
+      expect(intermediate).not.toBe(terminalRegistry)
+      expect(advanced).not.toBe(intermediate)
+      expect(intermediate._recoveryCandidates.size).toBe(0)
+
+      if (throws) expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+      const recovered = peekRegistry(renderer, scene)!
+      expect(recovered).toBe(advanced)
+      expect(recovered.sprites).toEqual(new Set([clone, existingA, existingB]))
+      expect(recovered.standalone.size).toBe(0)
+      expect(recovered._recoveryCandidates.size).toBe(0)
+      expect(recovered.group.spriteCount).toBe(3)
+      expect(autoRegistryFor(existingA)).toBe(recovered)
+      expect(autoRegistryFor(existingB)).toBe(recovered)
+      expect(autoRegistryFor(clone)).toBe(recovered)
+      expect(entityFor(existingA)).not.toBeNull()
+      expect(entityFor(existingB)).not.toBeNull()
+      expect(entityFor(clone)).not.toBeNull()
+      expect(existingA.material).not.toBe(terminalMaterial)
+      expect(existingA.material).toBe(existingB.material)
+      expect(existingA.material).toBe(clone.material)
+      expect(scene.children.filter((child) => child.name === 'FlatlandOrchestrator')).toEqual([recovered.group])
+
+      scene.remove(existingA, existingB, clone)
+      recovered.group.dispose()
+      source.dispose()
+      existingA.dispose()
+      existingB.dispose()
+      clone.dispose()
+      sprite.dispose()
+    }
+  )
+
+  it.each([false, true])(
     'stops a terminalized registry sweep before touching the remaining pending clone (throw=%s)',
     (throws) => {
       const source = new Flatland()
