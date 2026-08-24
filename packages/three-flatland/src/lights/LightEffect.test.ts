@@ -281,10 +281,24 @@ describe('LightEffect instances', () => {
     const baseClass: typeof LightEffect = Effect
     expect(baseClass._fieldKeys.tint).toEqual(['tint_0', 'tint_1', 'tint_2'])
     expect(baseClass._fieldMap.get('tint')?.size).toBe(3)
+    const initial = instance.tint
+    expect(initial).toEqual([1, 0, 0])
+    expect(instance.tint).toBe(initial)
+    expect(Object.isFrozen(initial)).toBe(true)
+    expect(() => {
+      ;(initial as unknown as number[])[0] = 9
+    }).toThrow(TypeError)
     expect(instance.tint).toEqual([1, 0, 0])
 
     instance.tint = [0, 1, 0]
-    expect(instance.tint).toEqual([0, 1, 0])
+    const updated = instance.tint
+    expect(updated).toEqual([0, 1, 0])
+    expect(updated).not.toBe(initial)
+    expect(instance.tint).toBe(updated)
+    expect(initial).toEqual([1, 0, 0])
+
+    instance.tint = [0, 1, 0]
+    expect(instance.tint).toBe(updated)
 
     expect(() => instance._setField('tint', [1, 2, 3, 4])).toThrow(/3 numeric components/)
     expect(instance.tint).toEqual([0, 1, 0])

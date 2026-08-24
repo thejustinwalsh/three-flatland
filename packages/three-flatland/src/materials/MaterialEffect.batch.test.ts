@@ -72,8 +72,10 @@ function makeOverflowFixture(texture: Texture): {
   return { sprite, vector }
 }
 
-function pushOverflow(vector: InstanceType<typeof OverflowVectorEffect>): void {
-  ;(vector.vector as unknown as number[]).push(999)
+function corruptStagingWithOverflow(vector: InstanceType<typeof OverflowVectorEffect>): void {
+  // Public tuple snapshots are immutable. Corrupt the internal staging record
+  // directly so the lower-level projection bound remains independently tested.
+  vector._defaults.vector = [1, 2, 999]
 }
 
 function expectSentinelRow(sprite: Sprite2D): void {
@@ -94,7 +96,7 @@ describe('MaterialEffect batched field writes', () => {
 
   it('bounds standalone effect projection by declared tuple size', () => {
     const { sprite, vector } = makeOverflowFixture(makeTexture())
-    pushOverflow(vector)
+    corruptStagingWithOverflow(vector)
 
     sprite._writeEffectDataOwn()
 
@@ -104,7 +106,7 @@ describe('MaterialEffect batched field writes', () => {
 
   it('bounds first-assignment effect projection by declared tuple size', () => {
     const { sprite, vector } = makeOverflowFixture(makeTexture())
-    pushOverflow(vector)
+    corruptStagingWithOverflow(vector)
     group = new SpriteGroup()
 
     group.add(sprite)
@@ -119,7 +121,7 @@ describe('MaterialEffect batched field writes', () => {
     group.add(sprite)
     group.update()
 
-    pushOverflow(vector)
+    corruptStagingWithOverflow(vector)
     sprite.removeEffect(vector)
     sprite.addEffect(vector)
     expectSentinelRow(sprite)

@@ -448,7 +448,7 @@ export class AnimatedSprite2D extends Sprite2D {
         if (typeof value === 'number') {
           clonedEffect._defaults[field.name] = value
         } else {
-          clonedEffect._defaults[field.name] = [...value]
+          clonedEffect._defaults[field.name] = Object.freeze([...value])
         }
       }
       cloned.addEffect(clonedEffect)

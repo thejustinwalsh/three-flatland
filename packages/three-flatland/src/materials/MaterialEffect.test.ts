@@ -352,10 +352,24 @@ describe('MaterialEffect instances', () => {
     })
 
     const flash = new Flash()
+    const initial = flash.color
+    expect(initial).toEqual([1, 0, 0])
+    expect(flash.color).toBe(initial)
+    expect(Object.isFrozen(initial)).toBe(true)
+    expect(() => {
+      ;(initial as unknown as number[])[0] = 9
+    }).toThrow(TypeError)
     expect(flash.color).toEqual([1, 0, 0])
 
     flash.color = [0, 1, 0]
-    expect(flash.color).toEqual([0, 1, 0])
+    const updated = flash.color
+    expect(updated).toEqual([0, 1, 0])
+    expect(updated).not.toBe(initial)
+    expect(flash.color).toBe(updated)
+    expect(initial).toEqual([1, 0, 0])
+
+    flash.color = [0, 1, 0]
+    expect(flash.color).toBe(updated)
   })
 
   it('should have independent instances', () => {
@@ -1386,6 +1400,63 @@ describe('_setField ECS integration', () => {
     expect(array[0]).toBeCloseTo(0.9)
   })
 
+  it('returns immutable memoized vector snapshots while enrolled', () => {
+    const VectorEffect = createMaterialEffect({
+      name: 'enrolled_vector_snapshot',
+      schema: { vector: [1, 2, 3] as const },
+      node: ({ inputColor }) => inputColor,
+    })
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(VectorEffect)
+    const sprite = new Sprite2D({ texture, material })
+    const effect = new VectorEffect()
+    sprite.addEffect(effect)
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+
+    const initial = effect.vector
+    expect(initial).toEqual([1, 2, 3])
+    expect(effect.vector).toBe(initial)
+    expect(Object.isFrozen(initial)).toBe(true)
+    expect(() => {
+      ;(initial as unknown as number[])[1] = 99
+    }).toThrow(TypeError)
+    expect(effect.vector).toEqual([1, 2, 3])
+
+    const trait = traitFor(VectorEffect)
+    const entity = requiredEntity(sprite)
+    const store = world.store(trait)
+    const index = world.index(entity)
+    store.vector_0![index] = 7
+    store.vector_1![index] = 8
+    store.vector_2![index] = 9
+    const ecsUpdated = effect.vector
+    expect(ecsUpdated).toEqual([7, 8, 9])
+    expect(ecsUpdated).not.toBe(initial)
+    expect(effect.vector).toBe(ecsUpdated)
+    expect(initial).toEqual([1, 2, 3])
+
+    effect.vector = [4, 5, 6]
+    const updated = effect.vector
+    expect(updated).toEqual([4, 5, 6])
+    expect(updated).not.toBe(ecsUpdated)
+    expect(effect.vector).toBe(updated)
+    expect(initial).toEqual([1, 2, 3])
+    expect(ecsUpdated).toEqual([7, 8, 9])
+
+    sprite._unenrollFromWorld()
+    const detached = effect.vector
+    expect(detached).toEqual([4, 5, 6])
+    expect(Object.isFrozen(detached)).toBe(true)
+    expect(effect.vector).toBe(detached)
+    expect(() => {
+      ;(detached as unknown as number[])[2] = 99
+    }).toThrow(TypeError)
+    expect(effect.vector).toEqual([4, 5, 6])
+
+    world.dispose()
+  })
+
   it('rejects an oversized standalone vector without corrupting the following packed lane', () => {
     const VectorAndSentinel = createMaterialEffect({
       name: 'vector_and_sentinel',
@@ -1794,7 +1865,7 @@ describe('Sprite2D clone with effects', () => {
 
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
-      schema: { progress: 0 },
+      schema: { progress: 0, offset: [0, 0] as const },
       node: ({ inputColor }) => inputColor,
     })
 
@@ -1803,6 +1874,7 @@ describe('Sprite2D clone with effects', () => {
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new Dissolve()
     dissolve.progress = 0.7
+    dissolve.offset = [3, 4]
     sprite.addEffect(dissolve)
 
     const cloned = sprite.clone()
@@ -1815,6 +1887,13 @@ describe('Sprite2D clone with effects', () => {
     expect(clonedDissolve).not.toBe(dissolve)
     expect(clonedDissolve.name).toBe('dissolve')
     expect((clonedDissolve as any).progress).toBeCloseTo(0.7)
+    const clonedOffset = (clonedDissolve as InstanceType<typeof Dissolve>).offset
+    expect(clonedOffset).toEqual([3, 4])
+    expect(Object.isFrozen(clonedOffset)).toBe(true)
+    expect(() => {
+      ;(clonedOffset as unknown as number[])[0] = 99
+    }).toThrow(TypeError)
+    expect((clonedDissolve as InstanceType<typeof Dissolve>).offset).toEqual([3, 4])
   })
 })
 

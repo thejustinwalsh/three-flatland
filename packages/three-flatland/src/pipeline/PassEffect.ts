@@ -16,7 +16,13 @@ import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
 import type { SpriteGroup } from './SpriteGroup'
 import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
-import { getEffectEntity, getEffectTrait, setEffectEntity, setEffectTrait } from '../internal/effect-runtime'
+import {
+  getEffectEntity,
+  getEffectTrait,
+  memoizeEffectVector,
+  setEffectEntity,
+  setEffectTrait,
+} from '../internal/effect-runtime'
 
 // Re-export schema types for PassEffect consumers
 export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
@@ -206,7 +212,7 @@ export abstract class PassEffect {
   private _storeWorld: World | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. */
-  _defaults: Record<string, number | number[]>
+  _defaults: Record<string, number | readonly number[]>
 
   /** @internal Per-instance constant values (from factory function schema fields). */
   _constants: Record<string, unknown> = createSchemaRecord<unknown>()
@@ -232,12 +238,12 @@ export abstract class PassEffect {
     this.name = ctor.passName
 
     // Build defaults snapshot from schema (uniform fields only)
-    this._defaults = createSchemaRecord<number | number[]>()
+    this._defaults = createSchemaRecord<number | readonly number[]>()
     for (const field of ctor._fields) {
       if (field.size === 1) {
         this._defaults[field.name] = field.default[0]!
       } else {
-        this._defaults[field.name] = [...field.default]
+        this._defaults[field.name] = Object.freeze([...field.default])
       }
     }
 
@@ -267,7 +273,7 @@ export abstract class PassEffect {
       } else {
         Object.defineProperty(this, field.name, {
           get: () => this._getField(field.name),
-          set: (v: number[]) => this._setField(field.name, v),
+          set: (v: readonly number[]) => this._setField(field.name, v),
           enumerable: true,
         })
       }
@@ -346,7 +352,7 @@ export abstract class PassEffect {
    * If attached with an entity, reads from ECS trait. Otherwise reads from defaults.
    * @internal
    */
-  _getField(name: string): number | number[] {
+  _getField(name: string): number | readonly number[] {
     const ctor = passEffectClassOf(this)
     const world = this._storeWorld
     const entity = getEffectEntity(this)
@@ -359,14 +365,29 @@ export abstract class PassEffect {
       if (field.size === 1) {
         return store[keys[0]!]![index]!
       } else {
-        const result = this._defaults[name] as number[]
-        for (let i = 0; i < field.size; i++) {
-          result[i] = store[keys[i]!]![index]!
-        }
-        return result
+        return memoizeEffectVector(
+          this._defaults,
+          name,
+          field.size,
+          store[keys[0]!]![index]!,
+          store[keys[1]!]![index]!,
+          field.size >= 3 ? store[keys[2]!]![index]! : 0,
+          field.size >= 4 ? store[keys[3]!]![index]! : 0
+        )
       }
     }
-    return this._defaults[name]!
+    const staged = this._defaults[name]!
+    if (typeof staged === 'number') return staged
+    const field = ctor._fieldMap.get(name)!
+    return memoizeEffectVector(
+      this._defaults,
+      name,
+      field.size,
+      staged[0]!,
+      staged[1]!,
+      field.size >= 3 ? staged[2]! : 0,
+      field.size >= 4 ? staged[3]! : 0
+    )
   }
 
   /**
@@ -376,7 +397,7 @@ export abstract class PassEffect {
    * 3. Also updates snapshot defaults
    * @internal
    */
-  _setField(name: string, value: number | number[]): void {
+  _setField(name: string, value: number | readonly number[]): void {
     const ctor = passEffectClassOf(this)
     const field = ctor._fieldMap.get(name)!
     let scalar = 0
@@ -409,11 +430,7 @@ export abstract class PassEffect {
     if (field.size === 1) {
       this._defaults[name] = scalar
     } else {
-      const defaults = this._defaults[name] as number[]
-      defaults[0] = c0
-      defaults[1] = c1
-      if (field.size >= 3) defaults[2] = c2
-      if (field.size >= 4) defaults[3] = c3
+      memoizeEffectVector(this._defaults, name, field.size, c0, c1, c2, c3)
     }
 
     // Write to ECS trait if enrolled

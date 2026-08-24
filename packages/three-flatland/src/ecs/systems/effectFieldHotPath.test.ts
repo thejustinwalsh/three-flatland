@@ -98,7 +98,24 @@ describe('global effect field SoA access', () => {
     const snapshot = new SnapshotEffect()
     expect(descriptorReads).toBe(1)
     expect(SnapshotEffect._fields).toEqual([{ name: 'vector', size: 2, default: [1, 2] }])
+    const initial = snapshot.vector
+    expect(initial).toEqual([1, 2])
+    expect(snapshot.vector).toBe(initial)
+    expect(Object.isFrozen(initial)).toBe(true)
+    expect(() => {
+      ;(initial as unknown as number[])[0] = 9
+    }).toThrow(TypeError)
     expect(snapshot.vector).toEqual([1, 2])
+
+    snapshot.vector = [3, 4]
+    const updated = snapshot.vector
+    expect(updated).toEqual([3, 4])
+    expect(updated).not.toBe(initial)
+    expect(snapshot.vector).toBe(updated)
+    expect(initial).toEqual([1, 2])
+
+    snapshot.vector = [3, 4]
+    expect(snapshot.vector).toBe(updated)
   })
 
   it('initializes independent PassEffect metadata for second-level subclasses', () => {
@@ -169,9 +186,24 @@ describe('global effect field SoA access', () => {
     const vector = effect.vector
     expect(effect.vector).toBe(vector)
     expect(vector).toEqual([2, 3, 4])
+    expect(Object.isFrozen(vector)).toBe(true)
+    expect(() => {
+      ;(vector as unknown as number[])[0] = 99
+    }).toThrow(TypeError)
+    expect(effect.vector).toEqual([2, 3, 4])
     expect(() => effect._setField('vector', [99])).toThrow(/3 numeric components/)
     expect(() => effect._setField('vector', [99, 98, 97, 96])).toThrow(/3 numeric components/)
     expect(effect.vector).toEqual([2, 3, 4])
+    const lightStore = world.store(trait)
+    const lightIndex = world.index(entity)
+    lightStore.vector_0![lightIndex] = 12
+    lightStore.vector_1![lightIndex] = 13
+    lightStore.vector_2![lightIndex] = 14
+    const ecsUpdated = effect.vector
+    expect(ecsUpdated).toEqual([12, 13, 14])
+    expect(ecsUpdated).not.toBe(vector)
+    expect(effect.vector).toBe(ecsUpdated)
+    expect(vector).toEqual([2, 3, 4])
     const lightReads = [0, 0, 0]
     effect._setField(
       'vector',
@@ -200,7 +232,12 @@ describe('global effect field SoA access', () => {
     effect.vector = [6, 7, 8]
 
     expect(world.store(trait).scalar[world.index(entity)]).toBe(5)
-    expect(effect.vector).toEqual([6, 7, 8])
+    const updated = effect.vector
+    expect(updated).toEqual([6, 7, 8])
+    expect(updated).not.toBe(ecsUpdated)
+    expect(effect.vector).toBe(updated)
+    expect(vector).toEqual([2, 3, 4])
+    expect(ecsUpdated).toEqual([12, 13, 14])
     expect(readSpy).not.toHaveBeenCalled()
     expect(patchSpy).not.toHaveBeenCalled()
     expect(touchSpy).not.toHaveBeenCalled()
@@ -231,9 +268,25 @@ describe('global effect field SoA access', () => {
     const vector = effect.vector
     expect(effect.vector).toBe(vector)
     expect(vector).toEqual([2, 3, 4, 5])
+    expect(Object.isFrozen(vector)).toBe(true)
+    expect(() => {
+      ;(vector as unknown as number[])[3] = 99
+    }).toThrow(TypeError)
+    expect(effect.vector).toEqual([2, 3, 4, 5])
     expect(() => effect._setField('vector', [99])).toThrow(/4 numeric components/)
     expect(() => effect._setField('vector', [99, 98, 97, 96, 95])).toThrow(/4 numeric components/)
     expect(effect.vector).toEqual([2, 3, 4, 5])
+    const passStore = world.store(trait)
+    const passIndex = world.index(entity)
+    passStore.vector_0![passIndex] = 12
+    passStore.vector_1![passIndex] = 13
+    passStore.vector_2![passIndex] = 14
+    passStore.vector_3![passIndex] = 15
+    const ecsUpdated = effect.vector
+    expect(ecsUpdated).toEqual([12, 13, 14, 15])
+    expect(ecsUpdated).not.toBe(vector)
+    expect(effect.vector).toBe(ecsUpdated)
+    expect(vector).toEqual([2, 3, 4, 5])
     const passReads = [0, 0, 0, 0]
     effect._setField(
       'vector',
@@ -264,7 +317,12 @@ describe('global effect field SoA access', () => {
     effect.vector = [7, 8, 9, 10]
 
     expect(world.store(trait).scalar[world.index(entity)]).toBe(6)
-    expect(effect.vector).toEqual([7, 8, 9, 10])
+    const updated = effect.vector
+    expect(updated).toEqual([7, 8, 9, 10])
+    expect(updated).not.toBe(ecsUpdated)
+    expect(effect.vector).toBe(updated)
+    expect(vector).toEqual([2, 3, 4, 5])
+    expect(ecsUpdated).toEqual([12, 13, 14, 15])
     expect(readSpy).not.toHaveBeenCalled()
     expect(patchSpy).not.toHaveBeenCalled()
     expect(touchSpy).not.toHaveBeenCalled()

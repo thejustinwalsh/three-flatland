@@ -3,6 +3,7 @@ import { Texture } from 'three'
 import { AnimatedSprite2D } from './AnimatedSprite2D'
 import { AlphaMap } from '../events/AlphaMap'
 import type { SpriteSheet, SpriteFrame } from './types'
+import { createMaterialEffect } from '../materials/MaterialEffect'
 
 describe('AnimatedSprite2D', () => {
   let spriteSheet: SpriteSheet
@@ -408,6 +409,30 @@ describe('AnimatedSprite2D', () => {
     expect(sprite).toBeInstanceOf(AnimatedSprite2D)
     expect(sprite.spriteSheet).toBeNull()
     sprite.dispose()
+  })
+
+  it('keeps cloned effect vector snapshots immutable', () => {
+    const Offset = createMaterialEffect({
+      name: 'animated_clone_offset',
+      schema: { offset: [0, 0] as const },
+      node: ({ inputColor }) => inputColor,
+    })
+    const sprite = new AnimatedSprite2D({ spriteSheet })
+    sprite.material.registerEffect(Offset)
+    const offset = new Offset()
+    offset.offset = [5, 6]
+    sprite.addEffect(offset)
+
+    const cloned = sprite.clone()
+    const clonedOffsetEffect = cloned._effects[0] as InstanceType<typeof Offset>
+    const snapshot = clonedOffsetEffect.offset
+    expect(snapshot).toEqual([5, 6])
+    expect(Object.isFrozen(snapshot)).toBe(true)
+    expect(clonedOffsetEffect.offset).toBe(snapshot)
+    expect(() => {
+      ;(snapshot as unknown as number[])[1] = 99
+    }).toThrow(TypeError)
+    expect(clonedOffsetEffect.offset).toEqual([5, 6])
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {
