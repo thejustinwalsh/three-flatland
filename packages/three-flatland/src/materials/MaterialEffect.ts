@@ -8,9 +8,11 @@ import { entitySlot } from '../ecs/snapshot'
 import { validateEffectSchema } from '../internal/effectSchemaValidation'
 import { syncTileMapEffectProjection } from '../internal/tile-map-effect-projection'
 import {
+  beginEffectVectorReadOverride,
   getEffectEntity,
   getEffectTrait,
-  memoizeEffectVector,
+  readEffectVectorSnapshot,
+  restoreEffectVectorReadOverride,
   setEffectEntity,
   setEffectTrait,
 } from '../internal/effect-runtime'
@@ -307,7 +309,7 @@ export abstract class MaterialEffect {
   private _storeWorld: World | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. Keyed by field name. */
-  _defaults: Record<string, number | readonly number[]>
+  _defaults: Record<string, number | number[]>
 
   /**
    * Per-instance constant values (from factory function schema fields).
@@ -327,12 +329,12 @@ export abstract class MaterialEffect {
     this.name = ctor.effectName
 
     // Build defaults snapshot from schema (uniform fields only)
-    this._defaults = createSchemaRecord<number | readonly number[]>()
+    this._defaults = createSchemaRecord<number | number[]>()
     for (const field of ctor._fields) {
       if (field.size === 1) {
         this._defaults[field.name] = field.default[0]!
       } else {
-        this._defaults[field.name] = Object.freeze([...field.default])
+        this._defaults[field.name] = [...field.default]
       }
     }
 
@@ -441,8 +443,8 @@ export abstract class MaterialEffect {
       if (field.size === 1) {
         return store[keys[0]!]![index]!
       } else {
-        return memoizeEffectVector(
-          this._defaults,
+        return readEffectVectorSnapshot(
+          this,
           name,
           field.size,
           store[keys[0]!]![index]!,
@@ -455,8 +457,8 @@ export abstract class MaterialEffect {
     const staged = this._defaults[name]!
     if (typeof staged === 'number') return staged
     const field = ctor._fieldMap.get(name)!
-    return memoizeEffectVector(
-      this._defaults,
+    return readEffectVectorSnapshot(
+      this,
       name,
       field.size,
       staged[0]!,
@@ -509,14 +511,35 @@ export abstract class MaterialEffect {
       }
     }
 
-    const unchanged =
+    const stagingUnchanged =
       field.size === 1
         ? Object.is(previousScalar, scalar)
         : Object.is(previous0, c0) &&
           Object.is(previous1, c1) &&
           (field.size < 3 || Object.is(previous2, c2)) &&
           (field.size < 4 || Object.is(previous3, c3))
-    if (unchanged) return
+
+    const world = this._sprite ? spriteWorld(this._sprite) : null
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
+    let keys: readonly string[] | null = null
+    let store: NumericStore<NumericSchema> | null = null
+    let index = -1
+    if (entity && world?.has(entity, runtimeTrait)) {
+      keys = ctor._fieldKeys[name]!
+      store = this._cacheStore(world)
+      index = entitySlot(entity)
+    }
+
+    const backingUnchanged = store
+      ? field.size === 1
+        ? Object.is(store[keys![0]!]![index], scalar)
+        : Object.is(store[keys![0]!]![index], c0) &&
+          Object.is(store[keys![1]!]![index], c1) &&
+          (field.size < 3 || Object.is(store[keys![2]!]![index], c2)) &&
+          (field.size < 4 || Object.is(store[keys![3]!]![index], c3))
+      : stagingUnchanged
+    if (stagingUnchanged && backingUnchanged) return
 
     // Keep the detach/re-attach snapshot current even while ECS owns the live
     // value. removeEffect() deletes the numeric trait; addEffect() rebuilds it
@@ -524,38 +547,40 @@ export abstract class MaterialEffect {
     if (field.size === 1) {
       this._defaults[name] = scalar
     } else {
-      memoizeEffectVector(this._defaults, name, field.size, c0, c1, c2, c3)
+      const defaults = previous as number[]
+      defaults[0] = c0
+      defaults[1] = c1
+      if (field.size >= 3) defaults[2] = c2
+      if (field.size >= 4) defaults[3] = c3
     }
 
     if (this._tileMap) {
+      const readOverride =
+        field.size === 1
+          ? undefined
+          : beginEffectVectorReadOverride(this, name, field.size, previous0, previous1, previous2, previous3)
       try {
         syncTileMapEffectProjection(this._tileMap, this, name)
       } catch (error) {
-        this._defaults[name] = previous
+        if (field.size === 1) {
+          this._defaults[name] = previousScalar
+        } else {
+          const defaults = previous as number[]
+          defaults[0] = previous0
+          defaults[1] = previous1
+          if (field.size >= 3) defaults[2] = previous2
+          if (field.size >= 4) defaults[3] = previous3
+        }
         throw error
+      } finally {
+        if (field.size > 1) restoreEffectVectorReadOverride(this, readOverride)
       }
     }
 
-    const world = this._sprite ? spriteWorld(this._sprite) : null
-    const entity = getEffectEntity(this)
-    const runtimeTrait = getEffectTrait(ctor)
-    if (entity && world?.has(entity, runtimeTrait)) {
-      const keys = ctor._fieldKeys[name]!
-      const store = this._cacheStore(world)
-      const index = entitySlot(entity)
-
+    if (store && keys && !backingUnchanged) {
       if (field.size === 1) {
-        const next = scalar
-        const values = store[keys[0]!]!
-        if (values[index] === next) return
-        values[index] = next
+        store[keys[0]!]![index] = scalar
       } else {
-        let changed = false
-        for (let i = 0; i < field.size; i++) {
-          const component = i === 0 ? c0 : i === 1 ? c1 : i === 2 ? c2 : c3
-          if (store[keys[i]!]![index] !== component) changed = true
-        }
-        if (!changed) return
         for (let i = 0; i < field.size; i++) {
           store[keys[i]!]![index] = i === 0 ? c0 : i === 1 ? c1 : i === 2 ? c2 : c3
         }

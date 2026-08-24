@@ -8,6 +8,46 @@ import { PassEffect, createPassEffect, type PassEffectFn } from '../../pipeline/
 import { createWorld, type NumericSchema, type NumericTrait } from '../runtime'
 
 describe('global effect field SoA access', () => {
+  it('defers LightEffect and PassEffect snapshot allocation until a changed value is read', () => {
+    const Light = createLightEffect({
+      name: 'lazy_light_vector_snapshot',
+      schema: { vector: [0, 0, 0] as const },
+      light: () => () => null as never,
+    })
+    const Pass = createPassEffect({
+      name: 'lazy_pass_vector_snapshot',
+      schema: { vector: [0, 0, 0, 0] as const },
+      pass: () => (input) => input,
+    })
+    const light = new Light()
+    const pass = new Pass()
+    const lightStaging = light._defaults.vector
+    const passStaging = pass._defaults.vector
+    const freeze = vi.spyOn(Object, 'freeze')
+
+    try {
+      for (let i = 1; i <= 3_000; i++) {
+        light.vector = [i, i + 1, i + 2]
+        pass.vector = [i, i + 1, i + 2, i + 3]
+      }
+
+      expect(light._defaults.vector).toBe(lightStaging)
+      expect(pass._defaults.vector).toBe(passStaging)
+      expect(freeze).not.toHaveBeenCalled()
+
+      expect(light.vector).toEqual([3_000, 3_001, 3_002])
+      expect(pass.vector).toEqual([3_000, 3_001, 3_002, 3_003])
+      expect(freeze).toHaveBeenCalledTimes(2)
+      const lightSnapshot = light.vector
+      const passSnapshot = pass.vector
+      expect(light.vector).toBe(lightSnapshot)
+      expect(pass.vector).toBe(passSnapshot)
+      expect(freeze).toHaveBeenCalledTimes(2)
+    } finally {
+      freeze.mockRestore()
+    }
+  })
+
   it('keeps PassEffect accessors non-configurable and rejects emitted shadow fields', () => {
     class UniformShadow extends PassEffect {
       static readonly passName = 'pass_uniform_shadow'
@@ -204,6 +244,11 @@ describe('global effect field SoA access', () => {
     expect(ecsUpdated).not.toBe(vector)
     expect(effect.vector).toBe(ecsUpdated)
     expect(vector).toEqual([2, 3, 4])
+    effect.vector = [0, 0, 0]
+    expect(lightStore.vector_0![lightIndex]).toBe(0)
+    expect(lightStore.vector_1![lightIndex]).toBe(0)
+    expect(lightStore.vector_2![lightIndex]).toBe(0)
+    expect(effect.vector).toEqual([0, 0, 0])
     const lightReads = [0, 0, 0]
     effect._setField(
       'vector',
@@ -287,6 +332,12 @@ describe('global effect field SoA access', () => {
     expect(ecsUpdated).not.toBe(vector)
     expect(effect.vector).toBe(ecsUpdated)
     expect(vector).toEqual([2, 3, 4, 5])
+    effect.vector = [0, 0, 0, 0]
+    expect(passStore.vector_0![passIndex]).toBe(0)
+    expect(passStore.vector_1![passIndex]).toBe(0)
+    expect(passStore.vector_2![passIndex]).toBe(0)
+    expect(passStore.vector_3![passIndex]).toBe(0)
+    expect(effect.vector).toEqual([0, 0, 0, 0])
     const passReads = [0, 0, 0, 0]
     effect._setField(
       'vector',

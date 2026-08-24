@@ -372,6 +372,32 @@ describe('MaterialEffect instances', () => {
     expect(flash.color).toBe(updated)
   })
 
+  it('keeps changed vector writes allocation-free until the next read', () => {
+    const Effect = createMaterialEffect({
+      name: 'lazy_material_vector_snapshot',
+      schema: { vector: [0, 0, 0] as const },
+      node: ({ inputColor }) => inputColor,
+    })
+    const effect = new Effect()
+    const staging = effect._defaults.vector
+    const freeze = vi.spyOn(Object, 'freeze')
+
+    try {
+      for (let i = 1; i <= 3_000; i++) effect.vector = [i, i + 1, i + 2]
+
+      expect(effect._defaults.vector).toBe(staging)
+      expect(freeze).not.toHaveBeenCalled()
+
+      const snapshot = effect.vector
+      expect(snapshot).toEqual([3_000, 3_001, 3_002])
+      expect(freeze).toHaveBeenCalledOnce()
+      expect(effect.vector).toBe(snapshot)
+      expect(freeze).toHaveBeenCalledOnce()
+    } finally {
+      freeze.mockRestore()
+    }
+  })
+
   it('should have independent instances', () => {
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
@@ -1436,6 +1462,19 @@ describe('_setField ECS integration', () => {
     expect(effect.vector).toBe(ecsUpdated)
     expect(initial).toEqual([1, 2, 3])
 
+    const cloned = sprite.clone()
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof VectorEffect>
+    expect(clonedEffect.vector).toEqual([7, 8, 9])
+
+    effect.vector = [1, 2, 3]
+    expect(store.vector_0![index]).toBe(1)
+    expect(store.vector_1![index]).toBe(2)
+    expect(store.vector_2![index]).toBe(3)
+    const restored = effect.vector
+    expect(restored).toEqual([1, 2, 3])
+    expect(restored).not.toBe(ecsUpdated)
+    expect(ecsUpdated).toEqual([7, 8, 9])
+
     effect.vector = [4, 5, 6]
     const updated = effect.vector
     expect(updated).toEqual([4, 5, 6])
@@ -1454,6 +1493,7 @@ describe('_setField ECS integration', () => {
     }).toThrow(TypeError)
     expect(effect.vector).toEqual([4, 5, 6])
 
+    cloned.dispose()
     world.dispose()
   })
 

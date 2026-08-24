@@ -27,7 +27,7 @@ import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
 import {
   getEffectEntity,
   getEffectTrait,
-  memoizeEffectVector,
+  readEffectVectorSnapshot,
   setEffectEntity,
   setEffectTrait,
 } from '../internal/effect-runtime'
@@ -268,7 +268,7 @@ export abstract class LightEffect {
   private _storeWorld: World | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. */
-  _defaults: Record<string, number | readonly number[]>
+  _defaults: Record<string, number | number[]>
 
   /** @internal Per-instance constant values (from factory function schema fields). */
   _constants: Record<string, unknown> = createSchemaRecord<unknown>()
@@ -303,12 +303,12 @@ export abstract class LightEffect {
     this.name = ctor.lightName
 
     // Build defaults snapshot from schema (uniform fields only)
-    this._defaults = createSchemaRecord<number | readonly number[]>()
+    this._defaults = createSchemaRecord<number | number[]>()
     for (const field of ctor._fields) {
       if (field.size === 1) {
         this._defaults[field.name] = field.default[0]!
       } else {
-        this._defaults[field.name] = Object.freeze([...field.default])
+        this._defaults[field.name] = [...field.default]
       }
     }
 
@@ -571,8 +571,8 @@ export abstract class LightEffect {
       if (field.size === 1) {
         return store[keys[0]!]![index]!
       } else {
-        return memoizeEffectVector(
-          this._defaults,
+        return readEffectVectorSnapshot(
+          this,
           name,
           field.size,
           store[keys[0]!]![index]!,
@@ -585,8 +585,8 @@ export abstract class LightEffect {
     const staged = this._defaults[name]!
     if (typeof staged === 'number') return staged
     const field = ctor._fieldMap.get(name)!
-    return memoizeEffectVector(
-      this._defaults,
+    return readEffectVectorSnapshot(
+      this,
       name,
       field.size,
       staged[0]!,
@@ -634,7 +634,11 @@ export abstract class LightEffect {
     if (field.size === 1) {
       this._defaults[name] = scalar
     } else {
-      memoizeEffectVector(this._defaults, name, field.size, c0, c1, c2, c3)
+      const defaults = this._defaults[name] as number[]
+      defaults[0] = c0
+      defaults[1] = c1
+      if (field.size >= 3) defaults[2] = c2
+      if (field.size >= 4) defaults[3] = c3
     }
 
     // Write to ECS trait if enrolled

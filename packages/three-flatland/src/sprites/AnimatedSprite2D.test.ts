@@ -4,6 +4,8 @@ import { AnimatedSprite2D } from './AnimatedSprite2D'
 import { AlphaMap } from '../events/AlphaMap'
 import type { SpriteSheet, SpriteFrame } from './types'
 import { createMaterialEffect } from '../materials/MaterialEffect'
+import { createWorld } from '../ecs/runtime'
+import { enrollInWorld, requiredEntity, traitFor } from '../ecs/testUtils.type-test'
 
 describe('AnimatedSprite2D', () => {
   let spriteSheet: SpriteSheet
@@ -422,17 +424,27 @@ describe('AnimatedSprite2D', () => {
     const offset = new Offset()
     offset.offset = [5, 6]
     sprite.addEffect(offset)
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+    const store = world.store(traitFor(Offset))
+    const index = world.index(requiredEntity(sprite))
+    store.offset_0![index] = 7
+    store.offset_1![index] = 8
+    expect(offset.offset).toEqual([7, 8])
 
     const cloned = sprite.clone()
     const clonedOffsetEffect = cloned._effects[0] as InstanceType<typeof Offset>
     const snapshot = clonedOffsetEffect.offset
-    expect(snapshot).toEqual([5, 6])
+    expect(snapshot).toEqual([7, 8])
     expect(Object.isFrozen(snapshot)).toBe(true)
     expect(clonedOffsetEffect.offset).toBe(snapshot)
     expect(() => {
       ;(snapshot as unknown as number[])[1] = 99
     }).toThrow(TypeError)
-    expect(clonedOffsetEffect.offset).toEqual([5, 6])
+    expect(clonedOffsetEffect.offset).toEqual([7, 8])
+    cloned.dispose()
+    sprite._unenrollFromWorld()
+    world.dispose()
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {

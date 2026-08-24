@@ -2629,7 +2629,7 @@ export class Sprite2D extends Mesh {
             for (let i = 0; i < field.size; i++) {
               arr.push(traitData[`${field.name}_${i}`]!)
             }
-            effect._defaults[field.name] = Object.freeze(arr)
+            effect._defaults[field.name] = arr
           }
         }
       }
@@ -2788,11 +2788,11 @@ export class Sprite2D extends Mesh {
       const clonedEffect = new EffectClass()
       // Copy snapshot defaults
       for (const field of EffectClass._fields) {
-        const value = effect._defaults[field.name]
+        const value = effect._getField(field.name)
         if (typeof value === 'number') {
           clonedEffect._defaults[field.name] = value
         } else {
-          clonedEffect._defaults[field.name] = Object.freeze([...(value as readonly number[])])
+          clonedEffect._defaults[field.name] = [...(value as readonly number[])]
         }
       }
       // Clone owns this material and is intentionally reproducing a known

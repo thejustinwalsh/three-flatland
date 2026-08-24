@@ -355,6 +355,39 @@ describe('TileMap2D retained material effects', () => {
     map.dispose()
   })
 
+  it('does not publish a vector snapshot from a failed projection transaction', () => {
+    const data = makeMapData()
+    const tile: TileDefinition = {
+      id: 0,
+      uv: { x: 0, y: 0, width: 0.5, height: 0.5 },
+      properties: {},
+    }
+    data.tilesets[0]!.tiles.set(0, tile)
+    const map = new TileMap2D({ data })
+    const effect = new DynamicTileEffect()
+    map.addEffect(effect)
+    let captured: readonly [number, number, number] | undefined
+    tile.properties = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          captured = effect.direction
+          throw new Error('forced vector projection failure')
+        },
+      }
+    )
+
+    expect(() => {
+      effect.direction = [8, 9, 10]
+    }).toThrow('forced vector projection failure')
+    expect(captured).toEqual([2, 3, 4])
+    expect(Object.isFrozen(captured)).toBe(true)
+    expect(effect.direction).toBe(captured)
+    expect(effect._defaults.direction).toEqual([2, 3, 4])
+
+    map.dispose()
+  })
+
   it('rejects a nested effect setter before shared projection scratch can be overwritten', () => {
     const data = makeMapData()
     const tile: TileDefinition = {

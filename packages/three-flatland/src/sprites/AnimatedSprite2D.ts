@@ -444,11 +444,11 @@ export class AnimatedSprite2D extends Sprite2D {
       }
       const clonedEffect = new EffectClass()
       for (const field of EffectClass._fields) {
-        const value = effect._defaults[field.name]!
+        const value = effect._getField(field.name)
         if (typeof value === 'number') {
           clonedEffect._defaults[field.name] = value
         } else {
-          clonedEffect._defaults[field.name] = Object.freeze([...value])
+          clonedEffect._defaults[field.name] = [...value]
         }
       }
       cloned.addEffect(clonedEffect)
