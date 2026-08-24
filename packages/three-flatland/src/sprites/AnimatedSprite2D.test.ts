@@ -568,12 +568,23 @@ describe('AnimatedSprite2D', () => {
       warning.mockRestore()
     }
     const bootstrapVariant = cloned.material
+    const disposeStaging = vi.spyOn(bootstrapVariant, 'dispose')
+    bootstrapVariant.addEventListener('dispose', () => {
+      throw 0
+    })
     expect(bootstrapVariant).not.toBe(source.material)
     expect(cloned._materialIsBootstrapVariant).toBe(true)
     expect(cloned._materialWasRegistryVariant).toBe(false)
-    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      destinationFlatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
 
     const clonedEffect = cloned._effects[0] as InstanceType<typeof VariantEffect>
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
     expect(cloned.material).not.toBe(bootstrapVariant)
     expect(cloned.material).not.toBe(source.material)
     expect(cloned._materialIsBootstrapVariant).toBe(false)
@@ -596,6 +607,9 @@ describe('AnimatedSprite2D', () => {
     expect(unrelatedBootstrap.hasEffect(VariantEffect)).toBe(false)
     expect(unrelatedBootstrap._effectTier).toBe(8)
     expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+    expect(destinationFlatland.spriteGroup.spriteCount).toBe(1)
+    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
 
     const destinationMaterial = cloned.material
     destinationMaterial.dispose()
@@ -612,6 +626,58 @@ describe('AnimatedSprite2D', () => {
     cloned.dispose()
     source.dispose()
     unrelated.dispose()
+  })
+
+  it('commits same-Flatland default clone adoption before rethrowing staging cleanup', () => {
+    const WideEffect = createMaterialEffect({
+      name: 'animated_clone_same_world_default',
+      schema: {
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const flatland = new Flatland()
+    const source = new AnimatedSprite2D({ spriteSheet })
+    flatland.add(source)
+    source.material.registerEffect(WideEffect)
+    source._setupInstanceAttributes()
+    const effect = new WideEffect()
+    effect.offset = [7, 8]
+    source.addEffect(effect)
+    const cloned = source.clone()
+    const staging = cloned.material
+    const disposeStaging = vi.spyOn(staging, 'dispose')
+    staging.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(flatland.spriteGroup.spriteCount).toBe(2)
+    expect(() => flatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+
+    const managedDefault = cloned.material
+    managedDefault.dispose()
+    expect(cloned.material).not.toBe(managedDefault)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect((cloned._effects[0] as InstanceType<typeof WideEffect>).offset).toEqual([7, 8])
+
+    flatland.dispose()
+    cloned.dispose()
+    source.dispose()
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {

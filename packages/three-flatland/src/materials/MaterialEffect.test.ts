@@ -2066,10 +2066,19 @@ describe('Sprite2D clone with effects', () => {
     const cloned = source.clone()
     const stagingMaterial = cloned.material
     const disposeStaging = vi.spyOn(stagingMaterial, 'dispose')
+    stagingMaterial.addEventListener('dispose', () => {
+      throw 0
+    })
     expect(stagingMaterial).not.toBe(source.material)
     expect(cloned._materialIsBootstrapDefault).toBe(true)
-    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      destinationFlatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
 
+    expect(thrown).toBe(0)
     expect(disposeStaging).toHaveBeenCalledTimes(1)
     expect(cloned.material).not.toBe(stagingMaterial)
     expect(cloned.material).not.toBe(source.material)
@@ -2082,6 +2091,10 @@ describe('Sprite2D clone with effects', () => {
     expect((Reflect.get(destinationFlatland, '_spriteMaterials') as Set<Sprite2DMaterial>).has(cloned.material)).toBe(
       true
     )
+    expect(entityFor(cloned)).not.toBeNull()
+    expect(destinationFlatland.spriteGroup.spriteCount).toBe(1)
+    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
     expect(unrelated.material).toBe(unrelatedBootstrap)
     expect(unrelatedBootstrap.hasEffect(WideEffect)).toBe(false)
     expect(unrelatedBootstrap._effectTier).toBe(8)
@@ -2099,6 +2112,61 @@ describe('Sprite2D clone with effects', () => {
     cloned.dispose()
     source.dispose()
     unrelated.dispose()
+  })
+
+  it('commits same-Flatland variant clone adoption before rethrowing staging cleanup', () => {
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const VariantEffect = createMaterialEffect({
+      name: 'sprite_clone_same_world_variant',
+      schema: {
+        amount: [0, 0, 0, 0] as const,
+        padding: [0, 0, 0, 0] as const,
+        tail: [0, 0] as const,
+        variant: () => 'default',
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const flatland = new Flatland()
+    const source = new Sprite2D({ texture })
+    flatland.add(source)
+    const effect = new VariantEffect()
+    effect.amount = [1, 2, 3, 4]
+    effect.variant = 'authored'
+    source.addEffect(effect)
+    const cloned = source.clone()
+    const staging = cloned.material
+    const disposeStaging = vi.spyOn(staging, 'dispose')
+    staging.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(entityFor(cloned)).not.toBeNull()
+    expect(flatland.spriteGroup.spriteCount).toBe(2)
+    expect(() => flatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+
+    const managedVariant = cloned.material
+    managedVariant.dispose()
+    expect(cloned.material).not.toBe(managedVariant)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect((cloned._effects[0] as InstanceType<typeof VariantEffect>).amount).toEqual([1, 2, 3, 4])
+
+    flatland.dispose()
+    cloned.dispose()
+    source.dispose()
   })
 })
 

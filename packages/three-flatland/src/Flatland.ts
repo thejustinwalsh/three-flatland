@@ -75,6 +75,11 @@ import {
 } from './internal/ownership-observers'
 import { disposeRetiredTileMaterialIfPending, holdTileMaterialRetirement } from './internal/tile-material-retirement'
 import { restoreFlatlandMaterialState, retainFlatlandMaterialState } from './internal/flatland-material-state'
+import {
+  clearSpriteCloneBootstrapCommitObservation,
+  consumeCommittedSpriteCloneBootstrapError,
+  observeSpriteCloneBootstrapCommit,
+} from './internal/sprite-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -1099,9 +1104,20 @@ export class Flatland extends Group {
         this._withMaterialTransferHolds([child.material], transferring !== undefined, () => {
           try {
             if (transferring) transferring.remove(child)
+            observeSpriteCloneBootstrapCommit(child)
             this.spriteGroup.add(child)
+            clearSpriteCloneBootstrapCommitObservation(child)
             this._trackSprite(child)
           } catch (error) {
+            if (consumeCommittedSpriteCloneBootstrapError(child, error)) {
+              // SpriteGroup already committed the destination material,
+              // provenance, and ECS enrollment. Finish Flatland ownership,
+              // then surface the exact staging cleanup value without rollback.
+              this._trackSprite(child)
+              this._pendingChannelValidation.add(child)
+              throw error
+            }
+            clearSpriteCloneBootstrapCommitObservation(child)
             this.spriteGroup.remove(child)
             this._untrackSprite(child)
             if (transferring) {

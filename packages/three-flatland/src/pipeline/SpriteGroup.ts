@@ -42,7 +42,7 @@ import {
   clearSpriteGroupWorld,
   registerSpriteGroupRuntime,
 } from '../internal/sprite-group-runtime'
-import { spriteEntity, spriteWorld } from '../internal/sprite-runtime'
+import { spriteEntity, spriteWorld, throwSpriteCloneBootstrapError } from '../internal/sprite-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -460,6 +460,7 @@ export class SpriteGroup extends ClippingGroup {
       sprite._enrollInWorld()
       this._spriteCount++
       this._trackMaterial(sprite)
+      throwSpriteCloneBootstrapError(sprite)
     } else {
       super.add(spriteOrObject)
       spriteOrObject.traverse((object) => {
@@ -512,6 +513,7 @@ export class SpriteGroup extends ClippingGroup {
     sprite._enrollInWorld()
     this._spriteCount++
     this._trackMaterial(sprite)
+    throwSpriteCloneBootstrapError(sprite)
   }
 
   /** Release a retained source descendant from this group's world. @internal */

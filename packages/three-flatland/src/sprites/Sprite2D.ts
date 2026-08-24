@@ -54,6 +54,7 @@ import { reserveIndexedArray } from '../internal/capacity'
 import { markTerminalObject } from '../internal/terminal-object'
 import {
   consumeSpriteCloneBootstrapMaterial,
+  deferSpriteCloneBootstrapError,
   hasSpriteCloneBootstrapMaterial,
   markSpriteCloneBootstrapMaterial,
   publishSpriteRuntime,
@@ -1318,8 +1319,16 @@ export class Sprite2D extends Mesh {
       this._materialWasRegistryDefault = true
       return
     }
-    this._switchToMaterial(material)
-    this._materialWasRegistryDefault = true
+    try {
+      this._switchToMaterial(material)
+    } finally {
+      // Material assignment may commit before a cleanup/finalizer throws.
+      // Publish matching provenance whenever the destination won the swap.
+      if (this.material === material) {
+        this._materialIsBootstrapDefault = false
+        this._materialWasRegistryDefault = true
+      }
+    }
   }
 
   /**
@@ -1334,8 +1343,14 @@ export class Sprite2D extends Mesh {
       this._materialWasRegistryVariant = true
       return
     }
-    this._switchToMaterial(material)
-    this._materialWasRegistryVariant = true
+    try {
+      this._switchToMaterial(material)
+    } finally {
+      if (this.material === material) {
+        this._materialIsBootstrapVariant = false
+        this._materialWasRegistryVariant = true
+      }
+    }
   }
 
   /**
@@ -1854,8 +1869,12 @@ export class Sprite2D extends Mesh {
       // material instances (effect registration / dispose stay
       // isolated); fall back to the module-global shared cache only
       // pre-enrollment.
-      const worldVariant = this._texture ? this._resolveWorldEffectVariant(this._texture, options) : null
-      const newMaterial = worldVariant ?? Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
+      const cloneBootstrap = hasSpriteCloneBootstrapMaterial(this)
+      const worldVariant =
+        !cloneBootstrap && this._texture ? this._resolveWorldEffectVariant(this._texture, options) : null
+      const newMaterial = cloneBootstrap
+        ? this.material
+        : (worldVariant ?? Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options }))
 
       // Preflight and commit the complete union on the destination before the
       // sprite changes. `_registerEffects` is atomic, so a cached variant with
@@ -2981,7 +3000,13 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
       try {
         retireCloneBootstrap.dispose()
       } catch (error) {
-        if (!didError) {
+        const world = spriteWorld(this)
+        if (!didError && world && !spriteEntity(this)) {
+          // SpriteGroup assigned the destination world but has not enrolled
+          // yet. Let it finish provenance, ECS, and material ownership before
+          // surfacing this exact cleanup value.
+          deferSpriteCloneBootstrapError(this, error)
+        } else if (!didError) {
           firstError = error
           didError = true
         }
