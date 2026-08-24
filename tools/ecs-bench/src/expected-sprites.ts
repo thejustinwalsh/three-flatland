@@ -19,7 +19,6 @@ const ROOT = resolve(import.meta.dirname, '../../..')
 function git(...args: string[]): string {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim()
 }
-
 function sha256(contents: string | Buffer): string {
   return createHash('sha256').update(contents).digest('hex')
 }
