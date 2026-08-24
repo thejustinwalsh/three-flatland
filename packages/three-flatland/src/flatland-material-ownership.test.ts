@@ -1,6 +1,6 @@
 import { worldFor, entityFor } from './ecs/testUtils.type-test'
 import { describe, expect, it, vi } from 'vitest'
-import { Texture } from 'three'
+import { Group, Texture } from 'three'
 import { vec4 } from 'three/tsl'
 import { Flatland } from './Flatland'
 import { LightingContext } from './ecs/traits'
@@ -898,6 +898,32 @@ describe('Flatland material ownership', () => {
     expect(materialRefCounts(flatland).size).toBe(0)
     expect((Reflect.get(flatland, '_pendingChannelValidation') as Set<Sprite2D>).size).toBe(0)
     expect(lightingContext(flatland).materials.size).toBe(0)
+
+    flatland.dispose()
+  })
+
+  it('force-detaches an ordinary child reattached by a throwing removed listener during clear', () => {
+    const flatland = new Flatland()
+    const child = new Group()
+    flatland.add(child)
+    child.addEventListener('removed', () => {
+      flatland.scene.add(child)
+      throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      flatland.clear()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(child.parent).toBeNull()
+    expect(flatland.scene.children).toEqual([flatland.spriteGroup])
 
     flatland.dispose()
   })

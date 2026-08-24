@@ -740,6 +740,47 @@ describe('Flatland effect ownership boundaries', () => {
     expect(Reflect.get(flatland.spriteGroup, '_world')).toBeNull()
   })
 
+  it('releases snapshotted shadow resources when light cleanup disposes the shared world', () => {
+    const flatland = new Flatland()
+    const light = new InitialShadowLight()
+    flatland.setLighting(light)
+
+    const world = runtimeWorld(flatland)
+    const shadowEntity = Reflect.get(flatland, '_shadowPipelineEntity')
+    const pipeline = world.read(shadowEntity, ShadowPipeline)!
+    const disposeSdf = vi.spyOn(pipeline.sdfGenerator!, 'dispose')
+    const disposeOcclusion = vi.spyOn(pipeline.occlusionPass!, 'dispose')
+    const disposePipeline = vi.fn()
+    Reflect.set(flatland, '_renderPipeline', { dispose: disposePipeline })
+    light.dispose = vi.fn(() => {
+      flatland.spriteGroup.dispose()
+      throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      flatland.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(world.disposed).toBe(true)
+    expect(disposeSdf).toHaveBeenCalledOnce()
+    expect(disposeOcclusion).toHaveBeenCalledOnce()
+    expect(disposePipeline).toHaveBeenCalledOnce()
+    expect(flatland.lighting).toBeNull()
+    expect(light._flatland).toBeNull()
+    expect(entityFor(light)).toBeNull()
+    expect(Reflect.get(flatland, '_lightingContextEntity')).toBeNull()
+    expect(Reflect.get(flatland, '_shadowPipelineEntity')).toBeNull()
+    expect(Reflect.get(flatland.spriteGroup, '_world')).toBeNull()
+    expect(() => flatland.dispose()).not.toThrow()
+  })
+
   it('disposes the render pipeline after SpriteGroup disposal reports an error', () => {
     const flatland = new Flatland()
     const world = runtimeWorld(flatland)

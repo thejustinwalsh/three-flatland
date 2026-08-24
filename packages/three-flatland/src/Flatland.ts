@@ -1024,6 +1024,15 @@ export class Flatland extends Group {
     if (_flatlandTileMapOwners.get(tileMap) === this) _flatlandTileMapOwners.delete(tileMap)
   }
 
+  /** Detach without redispatching user-extensible hierarchy events. */
+  private _forceDetachChild(child: Object3D): void {
+    const parent = child.parent
+    if (!parent) return
+    const index = parent.children.indexOf(child)
+    if (index !== -1) parent.children.splice(index, 1)
+    child.parent = null
+  }
+
   /**
    * Add objects to Flatland.
    * Sprites are routed to the internal SpriteGroup for batching.
@@ -1184,7 +1193,20 @@ export class Flatland extends Group {
     const sceneChildren = this.scene.children.filter((child) => child !== this.spriteGroup)
 
     for (const sprite of sprites) runCleanup(() => this.remove(sprite))
-    for (const child of sceneChildren) runCleanup(() => this.remove(child))
+    for (const child of sceneChildren) {
+      runCleanup(() => this.remove(child))
+      this._forceDetachChild(child)
+    }
+    // A hostile callback can reattach its child or publish a new one through
+    // the public Scene. Canonical clear retains only Flatland's SpriteGroup.
+    for (const child of this.scene.children.slice()) {
+      if (child !== this.spriteGroup) this._forceDetachChild(child)
+    }
+    if (this.spriteGroup.parent !== this.scene) {
+      this._forceDetachChild(this.spriteGroup)
+      this.spriteGroup.parent = this.scene
+    }
+    if (!this.scene.children.includes(this.spriteGroup)) this.scene.children.push(this.spriteGroup)
     runCleanup(() => this.spriteGroup.clear())
 
     // Canonical removal above should empty every registry. These terminal
@@ -2596,20 +2618,67 @@ export class Flatland extends Group {
   private _dispose(): void {
     let firstError: unknown
     let didError = false
+    const recordError = (error: unknown): void => {
+      if (!didError) {
+        firstError = error
+        didError = true
+      }
+    }
     const runCleanup = (cleanup: () => void): void => {
       try {
         cleanup()
       } catch (error) {
-        if (!didError) {
-          firstError = error
-          didError = true
-        }
+        recordError(error)
       }
+    }
+
+    // Publish terminal state before resolving teardown handles. World-backed
+    // resources must be captured before the first user cleanup callback:
+    // those callbacks can legally reach the public SpriteGroup and dispose
+    // the shared world (including deleting its lazy-runtime registrar).
+    this._disposed = true
+    const hasWorldState =
+      this._passes.length > 0 ||
+      this._postPassRegistryEntity !== null ||
+      this._lightEffect !== null ||
+      this._lightingContextEntity !== null ||
+      this._shadowPipelineEntity !== null
+    const captureWorld = (): World | null => {
+      if (!hasWorldState) return null
+      try {
+        return this._runtimeWorld
+      } catch (error) {
+        recordError(error)
+        return null
+      }
+    }
+    const world = captureWorld()
+
+    const shadowEntity = this._shadowPipelineEntity
+    const captureShadowResources = (): {
+      sdfGenerator: SDFGenerator | null
+      occlusionPass: OcclusionPass | null
+    } | null => {
+      if (!world || !shadowEntity) return null
+      try {
+        const pipeline = world.read(shadowEntity, ShadowPipeline)
+        return {
+          sdfGenerator: pipeline?.sdfGenerator ?? null,
+          occlusionPass: pipeline?.occlusionPass ?? null,
+        }
+      } catch (error) {
+        recordError(error)
+        return null
+      }
+    }
+    const shadowResources = captureShadowResources()
+    const destroyEntity = (entity: Entity): void => {
+      if (!world || !world.isAlive(entity)) return
+      world.destroy(entity)
     }
 
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
-    this._disposed = true
     const devtools = this._devtools
     this._devtools = null
     if (devtools) runCleanup(() => devtools.dispose())
@@ -2618,7 +2687,7 @@ export class Flatland extends Group {
     // retain later effects or prevent the world from reaching terminal state.
     for (const passEffect of this._passes) {
       const entity = getEffectEntity(passEffect)
-      if (entity) runCleanup(() => this._runtimeWorld.destroy(entity))
+      if (entity) runCleanup(() => destroyEntity(entity))
       runCleanup(() => passEffect._detach())
     }
     this._passes.length = 0
@@ -2626,7 +2695,7 @@ export class Flatland extends Group {
     if (this._postPassRegistryEntity) {
       const registryEntity = this._postPassRegistryEntity
       this._postPassRegistryEntity = null
-      runCleanup(() => this._runtimeWorld.destroy(registryEntity))
+      runCleanup(() => destroyEntity(registryEntity))
     }
 
     // Clear lighting
@@ -2635,37 +2704,27 @@ export class Flatland extends Group {
     if (lightEffect) {
       const entity = getEffectEntity(lightEffect)
       runCleanup(() => lightEffect.dispose())
-      if (entity) runCleanup(() => this._runtimeWorld.destroy(entity))
+      if (entity) runCleanup(() => destroyEntity(entity))
       runCleanup(() => lightEffect._detach())
     }
     if (this._lightingContextEntity) {
       const contextEntity = this._lightingContextEntity
       this._lightingContextEntity = null
-      runCleanup(() => this._runtimeWorld.destroy(contextEntity))
+      runCleanup(() => destroyEntity(contextEntity))
     }
     const lightStore = this._lightStore
     this._lightStore = null
     if (lightStore) runCleanup(() => lightStore.dispose())
-    // ShadowPipeline trait data is disposed by shadowPipelineSystem when
-    // the effect detaches. Destroying the world during Flatland.dispose()
-    // drops the singleton entity with it.
-    if (this._shadowPipelineEntity) {
-      const shadowEntity = this._shadowPipelineEntity
+    // These references were captured before any user callback could dispose
+    // the shared world. World disposal drops trait storage but does not own
+    // the GPU resources stored inside the trait.
+    if (shadowEntity) {
       this._shadowPipelineEntity = null
-      let pipeline:
-        | {
-            sdfGenerator: SDFGenerator | null
-            occlusionPass: OcclusionPass | null
-          }
-        | undefined
-      runCleanup(() => {
-        pipeline = this._runtimeWorld.read(shadowEntity, ShadowPipeline)
-      })
-      const sdfGenerator = pipeline?.sdfGenerator
-      const occlusionPass = pipeline?.occlusionPass
+      const sdfGenerator = shadowResources?.sdfGenerator
+      const occlusionPass = shadowResources?.occlusionPass
       if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
       if (occlusionPass) runCleanup(() => occlusionPass.dispose())
-      runCleanup(() => this._runtimeWorld.destroy(shadowEntity))
+      runCleanup(() => destroyEntity(shadowEntity))
     }
     this._lights.length = 0
     for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
