@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Texture } from 'three'
+import { Scene, Texture } from 'three'
 import { Flatland } from './Flatland'
-import { entityFor, worldFor } from './ecs/testUtils.type-test'
+import { autoRegistryFor, entityFor, worldFor } from './ecs/testUtils.type-test'
 import { createMaterialEffect } from './materials/MaterialEffect'
 import type { Sprite2DMaterial } from './materials/Sprite2DMaterial'
 import { AnimatedSprite2D } from './sprites/AnimatedSprite2D'
 import { Sprite2D } from './sprites/Sprite2D'
 import type { SpriteFrame, SpriteSheet } from './sprites/types'
+import { flatlandSceneSweep } from './orchestration/orchestrator'
+import { peekRegistry } from './orchestration/registry'
 
 const CloneEffect = createMaterialEffect({
   name: 'clone_adoption_reentrancy_default',
@@ -202,6 +204,182 @@ describe('managed clone adoption reentrancy', () => {
     expect(spriteOwnership(retryDestination, clone)).toBe(true)
 
     retryDestination.dispose()
+    source.dispose()
+    clone.dispose()
+    sprite.dispose()
+  })
+
+  it.each([
+    ['sprite', 'default', false],
+    ['animated', 'variant', true],
+  ] as const)('replaces a terminal auto registry for a %s %s clone (throw=%s)', (kind, managed, throws) => {
+    const source = new Flatland()
+    const renderer = {}
+    const scene = new Scene()
+    const { sprite, clone } = makeManagedClone(kind, managed, source)
+    const staging = clone.material
+    const disposeStaging = vi.spyOn(staging, 'dispose')
+    let terminalRegistry = peekRegistry(renderer, scene)
+    staging.addEventListener('dispose', () => {
+      terminalRegistry = peekRegistry(renderer, scene)
+      terminalRegistry!.group.dispose()
+      if (throws) throw 0
+    })
+    scene.add(clone)
+
+    const notThrown = Symbol('not thrown')
+    let thrown: unknown = notThrown
+    try {
+      flatlandSceneSweep(renderer, scene)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(throws ? 0 : notThrown)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(terminalRegistry).not.toBeNull()
+    expect(terminalRegistry!.sprites.size).toBe(0)
+    expect(terminalRegistry!.standalone.size).toBe(0)
+    expect(autoRegistryFor(clone)).toBeNull()
+    expect(entityFor(clone)).toBeNull()
+    expect(worldFor(clone)).toBeNull()
+    expect(clone.material).toBe(staging)
+    expect(() => worldFor(terminalRegistry!)).toThrow(/after dispose/)
+
+    expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+    const recovered = peekRegistry(renderer, scene)!
+    expect(recovered).not.toBe(terminalRegistry)
+    expect(recovered.group).not.toBe(terminalRegistry!.group)
+    expect(recovered.sprites).toEqual(new Set([clone]))
+    expect(recovered.standalone).toEqual(new Set([clone]))
+    expect(autoRegistryFor(clone)).toBe(recovered)
+    expect(clone.material).not.toBe(staging)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(scene.children.filter((child) => child.name === 'FlatlandOrchestrator')).toEqual([recovered.group])
+
+    scene.remove(clone)
+    recovered.group.dispose()
+    source.dispose()
+    clone.dispose()
+    sprite.dispose()
+  })
+
+  it('commits one coherent membership when staging cleanup re-adds the clone to the same scene', () => {
+    const source = new Flatland()
+    const renderer = {}
+    const scene = new Scene()
+    const { sprite, clone } = makeManagedClone('sprite', 'default', source)
+    const staging = clone.material
+    const disposeStaging = vi.spyOn(staging, 'dispose')
+    staging.addEventListener('dispose', () => {
+      scene.add(clone)
+    })
+    scene.add(clone)
+
+    expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+    const registry = peekRegistry(renderer, scene)!
+    expect(registry.sprites).toEqual(new Set([clone]))
+    expect(registry.standalone).toEqual(new Set([clone]))
+    expect(autoRegistryFor(clone)).toBe(registry)
+    expect(clone._pendingPrimeScene).toBeNull()
+    expect(clone.parent).toBe(scene)
+    expect(clone.material).not.toBe(staging)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+
+    expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+    expect(registry.sprites).toEqual(new Set([clone]))
+    expect(registry.standalone).toEqual(new Set([clone]))
+    expect(scene.children.filter((child) => child.name === 'FlatlandOrchestrator')).toEqual([registry.group])
+
+    scene.remove(clone)
+    registry.group.dispose()
+    source.dispose()
+    clone.dispose()
+    sprite.dispose()
+  })
+
+  it('does not ghost-register a detached variant clone after scene.clear throws 0 during staging cleanup', () => {
+    const source = new Flatland()
+    const renderer = {}
+    const scene = new Scene()
+    const { sprite, clone } = makeManagedClone('sprite', 'variant', source)
+    const staging = clone.material
+    staging.addEventListener('dispose', () => {
+      scene.clear()
+      throw 0
+    })
+    scene.add(clone)
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatlandSceneSweep(renderer, scene)
+    } catch (error) {
+      thrown = error
+    }
+
+    const registry = peekRegistry(renderer, scene)!
+    expect(thrown).toBe(0)
+    expect(clone.parent).toBeNull()
+    expect(clone.material).toBe(staging)
+    expect(autoRegistryFor(clone)).toBeNull()
+    expect(clone._pendingPrimeScene).toBeNull()
+    expect(registry.sprites.size).toBe(0)
+    expect(registry.standalone.size).toBe(0)
+    expect(() => flatlandSceneSweep(renderer, scene)).not.toThrow()
+    expect(registry.sprites.size).toBe(0)
+    expect(registry.standalone.size).toBe(0)
+    expect(autoRegistryFor(clone)).toBeNull()
+
+    registry.group.dispose()
+    source.dispose()
+    clone.dispose()
+    sprite.dispose()
+  })
+
+  it('publishes a reparented animated default clone only to its authored destination scene', () => {
+    const source = new Flatland()
+    const renderer = {}
+    const sceneA = new Scene()
+    const sceneB = new Scene()
+    const { sprite, clone } = makeManagedClone('animated', 'default', source)
+    const staging = clone.material
+    let rejectedCandidate: Sprite2DMaterial | null = null
+    staging.addEventListener('dispose', () => {
+      rejectedCandidate = clone.material
+      sceneB.add(clone)
+      throw 0
+    })
+    sceneA.add(clone)
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatlandSceneSweep(renderer, sceneA)
+    } catch (error) {
+      thrown = error
+    }
+
+    const registryA = peekRegistry(renderer, sceneA)!
+    expect(thrown).toBe(0)
+    expect(clone.parent).toBe(sceneB)
+    expect(clone.material).toBe(staging)
+    expect(clone._pendingPrimeScene).toBe(sceneB)
+    expect(autoRegistryFor(clone)).toBeNull()
+    expect(registryA.sprites.size).toBe(0)
+    expect(registryA.standalone.size).toBe(0)
+
+    expect(() => flatlandSceneSweep(renderer, sceneB)).not.toThrow()
+    const registryB = peekRegistry(renderer, sceneB)!
+    expect(registryB.sprites).toEqual(new Set([clone]))
+    expect(registryB.standalone).toEqual(new Set([clone]))
+    expect(autoRegistryFor(clone)).toBe(registryB)
+    expect(clone.material).not.toBe(staging)
+    expect(clone.material).not.toBe(rejectedCandidate)
+    expect(registryA.sprites.size).toBe(0)
+    expect(registryA.standalone.size).toBe(0)
+
+    sceneB.remove(clone)
+    registryA.group.dispose()
+    registryB.group.dispose()
     source.dispose()
     clone.dispose()
     sprite.dispose()

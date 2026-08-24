@@ -56,6 +56,11 @@ export function getSpriteGroupWorld(group: object): World {
   return world
 }
 
+/** Test the package-private terminal latch without materializing a world. */
+export function isSpriteGroupRuntimeLive(group: object): boolean {
+  return runtimes.has(group)
+}
+
 export function clearSpriteGroupWorld(group: object): void {
   const initialize = runtimes.get(group)
   if (initialize) {

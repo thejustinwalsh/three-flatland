@@ -7,7 +7,7 @@ import { BatchRegistry } from '../ecs/traits'
 import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
 import type { BatchQueryView } from '../pipeline/batchQuery'
 import { buildBatchQueryView } from '../internal/batch-query-builder'
-import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
+import { getSpriteGroupWorld, isSpriteGroupRuntimeLive } from '../internal/sprite-group-runtime'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -149,6 +149,11 @@ export class Registry {
 export function getOrCreateRegistry(renderer: RendererLike, scene: Scene): Registry {
   const host = getOrCreateHost(renderer)
   let registry = host.scenes.get(scene)
+  if (registry && !isSpriteGroupRuntimeLive(registry.group)) {
+    retireRegistry(registry)
+    host.scenes.delete(scene)
+    registry = undefined
+  }
   if (!registry) {
     registry = new Registry(renderer, scene)
     host.scenes.set(scene, registry)
@@ -159,7 +164,25 @@ export function getOrCreateRegistry(renderer: RendererLike, scene: Scene): Regis
 /** Get the registry for a tuple if one exists; never creates. */
 export function peekRegistry(renderer: RendererLike, scene: Scene): Registry | null {
   const host = (renderer as Record<symbol, unknown>)[REGISTRY_SYMBOL] as RegistryHost | undefined
-  return host?.scenes.get(scene) ?? null
+  const registry = host?.scenes.get(scene)
+  if (!registry) return null
+  if (isSpriteGroupRuntimeLive(registry.group)) return registry
+  retireRegistry(registry)
+  host!.scenes.delete(scene)
+  return null
+}
+
+/** Drop every strong/semantic edge held by a terminal auto registry. */
+function retireRegistry(registry: Registry): void {
+  if (registry.group.parent === registry.scene) registry.scene.remove(registry.group)
+  for (const sprite of registry.sprites) {
+    const runtimeSprite = sprite as unknown as { _autoRegistry: Registry | null }
+    if (runtimeSprite._autoRegistry === registry) runtimeSprite._autoRegistry = null
+    sprite._setBatchSuppressed(false)
+  }
+  registry.sprites.clear()
+  registry.standalone.clear()
+  registry._autoEvalDirty = false
 }
 
 function getOrCreateHost(renderer: RendererLike): RegistryHost {
