@@ -35,8 +35,10 @@ deterministic headed browser A/B now satisfy their gates:
 Final evidence is recorded in the [kernel and renderer decision](./05-baseline-and-kernel-decision.md),
 the [trusted Node timing summary](./results/renderer-labs-summary.md), and the
 [headed browser summary](./results/browser-evidence-summary.md). The browser archive retains all 24
-complete production/profile reports. The [final evidence manifest](./results/final-evidence-manifest.md)
-records source boundaries, artifact checksums, and the acceptance role of each capture.
+complete production/profile reports. The [final example walkthrough](./results/example-smoke-summary.md)
+records the 28/28 live application and starter check. The
+[final evidence manifest](./results/final-evidence-manifest.md) records source boundaries, artifact
+checksums, and the acceptance role of each capture.
 
 ## Proposed decision in one page
 
