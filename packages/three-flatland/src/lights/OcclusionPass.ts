@@ -74,6 +74,8 @@ export interface OcclusionPassOptions {
  * @internal
  */
 export class OcclusionPass {
+  private _disposed = false
+
   private _resolutionScale: number
   private _clearColor: Color
   private _clearAlpha: number
@@ -300,10 +302,28 @@ export class OcclusionPass {
   }
 
   dispose(): void {
-    unregisterDebugTexture('occlusion.mask')
-    this._rt.dispose()
-    for (const mat of this._occlusionMaterials.values()) mat.dispose()
+    if (this._disposed) return
+    this._disposed = true
+
+    const materials = Array.from(this._occlusionMaterials.values())
     this._occlusionMaterials.clear()
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    runCleanup(() => unregisterDebugTexture('occlusion.mask'))
+    runCleanup(() => this._rt.dispose())
+    for (const material of materials) runCleanup(() => material.dispose())
+    if (didError) throw firstError
   }
 }
 

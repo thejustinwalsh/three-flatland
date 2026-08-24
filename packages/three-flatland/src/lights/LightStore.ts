@@ -60,6 +60,8 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * @internal
  */
 export class LightStore {
+  private _disposed = false
+
   /** Maximum number of lights this store can handle */
   readonly maxLights: number
 
@@ -218,8 +220,25 @@ export class LightStore {
 
   /** Dispose of GPU resources. */
   dispose(): void {
-    this._lightsTexture.dispose()
-    unregisterDebugArray('lightStore.data')
-    unregisterDebugTexture('lightStore.lights')
+    if (this._disposed) return
+    this._disposed = true
+
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    runCleanup(() => this._lightsTexture.dispose())
+    runCleanup(() => unregisterDebugArray('lightStore.data'))
+    runCleanup(() => unregisterDebugTexture('lightStore.lights'))
+    if (didError) throw firstError
   }
 }

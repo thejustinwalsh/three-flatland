@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { NearestFilter, LinearFilter } from 'three'
+import { NearestFilter, LinearFilter, Texture } from 'three'
 import { SDFGenerator } from './SDFGenerator'
 
 // Reach into the private RTs the same way other tests cast to read internals.
@@ -11,6 +11,10 @@ interface SDFInternals {
   _sdfBlurRT: { texture: { minFilter: number; magFilter: number; version: number } }
   _pingRT: { texture: { minFilter: number; magFilter: number } }
   _pongRT: { texture: { minFilter: number; magFilter: number } }
+}
+
+interface DisposableResource {
+  addEventListener(type: 'dispose', listener: () => void): void
 }
 
 describe('SDFGenerator.setFilter', () => {
@@ -77,5 +81,66 @@ describe('SDFGenerator.setFilter', () => {
     expect(() => gen.setFilter(LinearFilter)).not.toThrow()
     expect(internals._sdfRT.texture.version).toBe(versionAfterFirst)
     gen.dispose()
+  })
+})
+
+describe('SDFGenerator.dispose', () => {
+  it('preserves the first falsy error while disposing every resource exactly once under reentry', () => {
+    const gen = new SDFGenerator()
+    const occlusionTexture = new Texture()
+    const internals = gen as unknown as {
+      _ensureSeedMaterial(texture: Texture): void
+      _pingRT: DisposableResource
+      _pongRT: DisposableResource
+      _sdfRT: DisposableResource
+      _sdfBlurRT: DisposableResource
+      _seedMaterial: DisposableResource
+      _jfaMaterialA: DisposableResource
+      _jfaMaterialB: DisposableResource
+      _finalMaterialA: DisposableResource
+      _finalMaterialB: DisposableResource
+      _blurHMaterial: DisposableResource
+      _blurVMaterial: DisposableResource
+    }
+    internals._ensureSeedMaterial(occlusionTexture)
+    const resources = [
+      internals._pingRT,
+      internals._pongRT,
+      internals._sdfRT,
+      internals._sdfBlurRT,
+      internals._seedMaterial,
+      internals._jfaMaterialA,
+      internals._jfaMaterialB,
+      internals._finalMaterialA,
+      internals._finalMaterialB,
+      internals._blurHMaterial,
+      internals._blurVMaterial,
+    ]
+    const disposeCounts = resources.map(() => 0)
+    resources.forEach((resource, index) => {
+      resource.addEventListener('dispose', () => {
+        disposeCounts[index]++
+        if (index === 0) {
+          gen.dispose()
+          throw 0
+        }
+      })
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      gen.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(disposeCounts).toEqual(resources.map(() => 1))
+    expect(() => gen.dispose()).not.toThrow()
+    expect(disposeCounts).toEqual(resources.map(() => 1))
+    occlusionTexture.dispose()
   })
 })

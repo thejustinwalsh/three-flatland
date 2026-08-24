@@ -60,6 +60,8 @@ let _rendererState: ReturnType<typeof RendererUtils.resetRendererState>
 
 /** @internal */
 export class SDFGenerator {
+  private _disposed = false
+
   /** Final SDF output texture. Reference is stable across resizes. */
   get sdfTexture(): Texture {
     return this._sdfRT.texture
@@ -295,21 +297,41 @@ export class SDFGenerator {
   }
 
   dispose(): void {
-    unregisterDebugTexture('sdf.jfaPing')
-    unregisterDebugTexture('sdf.jfaPong')
-    unregisterDebugTexture('sdf.distanceField')
-    unregisterDebugTexture('sdf.blurScratch')
-    this._pingRT.dispose()
-    this._pongRT.dispose()
-    this._sdfRT.dispose()
-    this._sdfBlurRT.dispose()
-    this._seedMaterial?.dispose()
-    this._jfaMaterialA.dispose()
-    this._jfaMaterialB.dispose()
-    this._finalMaterialA.dispose()
-    this._finalMaterialB.dispose()
-    this._blurHMaterial.dispose()
-    this._blurVMaterial.dispose()
+    if (this._disposed) return
+    this._disposed = true
+
+    const seedMaterial = this._seedMaterial
+    this._seedMaterial = null
+    this._occlusionTex = null
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    runCleanup(() => unregisterDebugTexture('sdf.jfaPing'))
+    runCleanup(() => unregisterDebugTexture('sdf.jfaPong'))
+    runCleanup(() => unregisterDebugTexture('sdf.distanceField'))
+    runCleanup(() => unregisterDebugTexture('sdf.blurScratch'))
+    runCleanup(() => this._pingRT.dispose())
+    runCleanup(() => this._pongRT.dispose())
+    runCleanup(() => this._sdfRT.dispose())
+    runCleanup(() => this._sdfBlurRT.dispose())
+    if (seedMaterial) runCleanup(() => seedMaterial.dispose())
+    runCleanup(() => this._jfaMaterialA.dispose())
+    runCleanup(() => this._jfaMaterialB.dispose())
+    runCleanup(() => this._finalMaterialA.dispose())
+    runCleanup(() => this._finalMaterialB.dispose())
+    runCleanup(() => this._blurHMaterial.dispose())
+    runCleanup(() => this._blurVMaterial.dispose())
+    if (didError) throw firstError
   }
 
   /**

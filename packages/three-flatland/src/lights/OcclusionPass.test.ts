@@ -88,6 +88,53 @@ describe('OcclusionPass', () => {
     expect(() => pass.dispose()).not.toThrow()
   })
 
+  it('clears its cache and disposes every resource exactly once after a reentrant falsy failure', async () => {
+    const { Texture } = await import('three')
+    const pass = new OcclusionPass()
+    const firstTexture = new Texture()
+    const secondTexture = new Texture()
+    const internals = pass as unknown as {
+      _getOrCreateOcclusionMaterial(texture: unknown): {
+        addEventListener(type: 'dispose', listener: () => void): void
+      }
+      _occlusionMaterials: Map<unknown, unknown>
+    }
+    const firstMaterial = internals._getOrCreateOcclusionMaterial(firstTexture)
+    const secondMaterial = internals._getOrCreateOcclusionMaterial(secondTexture)
+    const resources = [pass.renderTarget, firstMaterial, secondMaterial]
+    const disposeCounts = resources.map(() => 0)
+    let cacheSizeDuringFailure = -1
+    resources.forEach((resource, index) => {
+      resource.addEventListener('dispose', () => {
+        disposeCounts[index]++
+        if (index === 0) {
+          cacheSizeDuringFailure = internals._occlusionMaterials.size
+          pass.dispose()
+          throw 0
+        }
+      })
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      pass.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(cacheSizeDuringFailure).toBe(0)
+    expect(internals._occlusionMaterials.size).toBe(0)
+    expect(disposeCounts).toEqual([1, 1, 1])
+    expect(() => pass.dispose()).not.toThrow()
+    expect(disposeCounts).toEqual([1, 1, 1])
+    firstTexture.dispose()
+    secondTexture.dispose()
+  })
+
   it('caches occlusion materials per source texture', async () => {
     const { Texture } = await import('three')
     const { Sprite2DMaterial } = await import('../materials/Sprite2DMaterial')

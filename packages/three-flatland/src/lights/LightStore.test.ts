@@ -217,4 +217,29 @@ describe('LightStore', () => {
     // Should not throw
     store.dispose()
   })
+
+  it('is terminal and preserves a falsy texture disposal error under reentry', () => {
+    const store = new LightStore()
+    let disposeCount = 0
+    store.lightsTexture.addEventListener('dispose', () => {
+      disposeCount++
+      store.dispose()
+      throw false
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      store.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(false)
+    expect(disposeCount).toBe(1)
+    expect(() => store.dispose()).not.toThrow()
+    expect(disposeCount).toBe(1)
+  })
 })
