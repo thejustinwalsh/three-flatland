@@ -388,6 +388,71 @@ describe('TileMap2D retained material effects', () => {
     map.dispose()
   })
 
+  it('reuses TileMap vector transaction state and keeps snapshots lazy across steady writes', () => {
+    const map = new TileMap2D({ data: makeMapData() })
+    const effect = new DynamicTileEffect()
+    map.addEffect(effect)
+    effect.direction = [3, 4, 5]
+    const direction: [number, number, number] = [0, 0, 0]
+    const weakMapSet = vi.spyOn(WeakMap.prototype, 'set')
+    const freeze = vi.spyOn(Object, 'freeze')
+    let setCallsAfterWrites = -1
+    let freezeCallsAfterWrites = -1
+    let setCallsAfterFirstRead = -1
+    let freezeCallsAfterFirstRead = -1
+    let setCallsAfterUnchangedRead = -1
+    let freezeCallsAfterUnchangedRead = -1
+    let setCallsAfterNextWrite = -1
+    let freezeCallsAfterNextWrite = -1
+    let setCallsAfterNextRead = -1
+    let freezeCallsAfterNextRead = -1
+    let first: readonly [number, number, number] | undefined
+    let unchanged: readonly [number, number, number] | undefined
+    let next: readonly [number, number, number] | undefined
+
+    try {
+      for (let i = 1; i <= 3_000; i++) {
+        direction[0] = i
+        direction[1] = i + 1
+        direction[2] = i + 2
+        effect.direction = direction
+      }
+      setCallsAfterWrites = weakMapSet.mock.calls.length
+      freezeCallsAfterWrites = freeze.mock.calls.length
+
+      first = effect.direction
+      setCallsAfterFirstRead = weakMapSet.mock.calls.length
+      freezeCallsAfterFirstRead = freeze.mock.calls.length
+      unchanged = effect.direction
+      setCallsAfterUnchangedRead = weakMapSet.mock.calls.length
+      freezeCallsAfterUnchangedRead = freeze.mock.calls.length
+
+      effect.direction = [4_000, 4_001, 4_002]
+      setCallsAfterNextWrite = weakMapSet.mock.calls.length
+      freezeCallsAfterNextWrite = freeze.mock.calls.length
+      next = effect.direction
+      setCallsAfterNextRead = weakMapSet.mock.calls.length
+      freezeCallsAfterNextRead = freeze.mock.calls.length
+    } finally {
+      freeze.mockRestore()
+      weakMapSet.mockRestore()
+      map.dispose()
+    }
+    expect(setCallsAfterWrites).toBe(0)
+    expect(freezeCallsAfterWrites).toBe(0)
+    expect(first).toEqual([3_000, 3_001, 3_002])
+    expect(setCallsAfterFirstRead).toBe(1)
+    expect(freezeCallsAfterFirstRead).toBe(1)
+    expect(unchanged).toBe(first)
+    expect(setCallsAfterUnchangedRead).toBe(1)
+    expect(freezeCallsAfterUnchangedRead).toBe(1)
+    expect(setCallsAfterNextWrite).toBe(1)
+    expect(freezeCallsAfterNextWrite).toBe(1)
+    expect(next).toEqual([4_000, 4_001, 4_002])
+    expect(setCallsAfterNextRead).toBe(1)
+    expect(freezeCallsAfterNextRead).toBe(2)
+  })
+
   it('rejects a nested effect setter before shared projection scratch can be overwritten', () => {
     const data = makeMapData()
     const tile: TileDefinition = {

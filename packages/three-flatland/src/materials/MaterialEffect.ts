@@ -555,11 +555,12 @@ export abstract class MaterialEffect {
     }
 
     if (this._tileMap) {
-      const readOverride =
-        field.size === 1
-          ? undefined
-          : beginEffectVectorReadOverride(this, name, field.size, previous0, previous1, previous2, previous3)
+      let readOverrideActive = false
       try {
+        if (field.size > 1) {
+          beginEffectVectorReadOverride(this, name, field.size, previous0, previous1, previous2, previous3)
+          readOverrideActive = true
+        }
         syncTileMapEffectProjection(this._tileMap, this, name)
       } catch (error) {
         if (field.size === 1) {
@@ -573,7 +574,7 @@ export abstract class MaterialEffect {
         }
         throw error
       } finally {
-        if (field.size > 1) restoreEffectVectorReadOverride(this, readOverride)
+        if (readOverrideActive) restoreEffectVectorReadOverride(this)
       }
     }
 
