@@ -1033,6 +1033,7 @@ export class Flatland extends Group {
    * rather than this Group, enabling proper rendering with Flatland's camera.
    */
   add(...objects: Object3D[]): this {
+    this._assertUsable('add')
     for (const child of objects) {
       if (child instanceof Sprite2D) {
         if (isTerminalObject(child)) {
@@ -1116,6 +1117,7 @@ export class Flatland extends Group {
    * This overrides Group.remove() to properly remove from internal scene/spriteGroup.
    */
   remove(...objects: Object3D[]): this {
+    this._assertUsable('remove')
     for (const child of objects) {
       if (child instanceof Sprite2D) {
         this._pendingChannelValidation.delete(child)
@@ -1157,6 +1159,7 @@ export class Flatland extends Group {
    * Overrides Group.clear() to clear the internal scene.
    */
   clear(): this {
+    this._assertUsable('clear')
     let firstError: unknown
     let didError = false
     const runCleanup = (cleanup: () => void): void => {
@@ -1918,6 +1921,10 @@ export class Flatland extends Group {
   /** Set in dispose() so a still-resolving lazy devtools import() bails. */
   private _disposed = false
 
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: Flatland.${member} cannot be used after dispose()`)
+  }
+
   /**
    * Dev-only check: for the currently attached lighting effect's declared
    * channel `requires`, ensure every lit sprite has at least one
@@ -2024,6 +2031,9 @@ export class Flatland extends Group {
    * Render Flatland.
    */
   render(renderer: WebGPURenderer): void {
+    // Keep the steady render path to one predictable branch; mutation entry
+    // points share the descriptive helper outside the frame-critical path.
+    if (this._disposed) throw new Error('three-flatland: Flatland.render cannot be used after dispose()')
     // Drain pending lighting-channel validation before doing any real work.
     // Anything missing gets logged once and has `lit` force-cleared on that
     // sprite so it can't fall back to zeroed channelDefaults and poison the
@@ -2570,6 +2580,7 @@ export class Flatland extends Group {
    * Dispose of all resources.
    */
   dispose(): void {
+    if (this._disposed) return
     if (this._lightingTransitioning) {
       throw new Error('three-flatland: dispose() cannot run reentrantly during a lighting transition')
     }

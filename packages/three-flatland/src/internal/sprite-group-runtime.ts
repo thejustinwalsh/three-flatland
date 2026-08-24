@@ -9,7 +9,8 @@ export function registerSpriteGroupRuntime(group: object, initialize: () => Worl
 }
 
 export function getSpriteGroupWorld(group: object): World {
-  const initialize = runtimes.get(group)!
+  const initialize = runtimes.get(group)
+  if (!initialize) throw new Error('three-flatland: SpriteGroup runtime cannot be used after dispose()')
   const world = initialize.world ?? initialize()
   initialize.world = world
   return world

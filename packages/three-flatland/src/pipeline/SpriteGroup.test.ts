@@ -1,6 +1,6 @@
 import { worldFor, entityFor } from '../ecs/testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Texture, type Group, type Object3D } from 'three'
+import { Group, Texture, type Object3D } from 'three'
 import { SpriteGroup } from './SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
@@ -115,6 +115,48 @@ describe('SpriteGroup', () => {
     expect(world.capacity).toBe(0)
     expect(registry.spriteArr).toHaveLength(0)
     expect(registry.batchSlots).toHaveLength(0)
+    renderer = null
+  })
+
+  it('keeps disposal terminal and idempotent after cleanup reports an error', () => {
+    renderer = new SpriteGroup({ expectedSprites: 1 })
+    const world = worldFor(renderer) as World
+    renderer.add(new Sprite2D({ material }))
+    renderer.update()
+    const batch = renderer.children[0]!
+    const disposeGeometry = vi.spyOn((batch as { geometry: { dispose(): void } }).geometry, 'dispose')
+
+    batch.addEventListener('removed', () => {
+      Group.prototype.add.call(renderer, batch)
+      throw 0
+    })
+
+    let thrown: unknown
+    try {
+      renderer.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(disposeGeometry).toHaveBeenCalledOnce()
+    expect(world.disposed).toBe(true)
+    expect(batch.parent).toBeNull()
+    expect(renderer.children).toEqual([])
+    expect(Reflect.get(renderer, '_world')).toBeNull()
+    expect(() => renderer!.add(new Sprite2D({ material }))).toThrow(
+      'three-flatland: SpriteGroup.add cannot be used after dispose()'
+    )
+    expect(() => renderer!.addSprites()).toThrow('three-flatland: SpriteGroup.addSprites cannot be used after dispose()')
+    expect(() => renderer!.removeSprites()).toThrow(
+      'three-flatland: SpriteGroup.removeSprites cannot be used after dispose()'
+    )
+    expect(() => renderer!.clear()).toThrow('three-flatland: SpriteGroup.clear cannot be used after dispose()')
+    expect(() => worldFor(renderer!)).toThrow(
+      'three-flatland: SpriteGroup runtime cannot be used after dispose()'
+    )
+    expect(Reflect.get(renderer, '_world')).toBeNull()
+    expect(() => renderer!.dispose()).not.toThrow()
     renderer = null
   })
 

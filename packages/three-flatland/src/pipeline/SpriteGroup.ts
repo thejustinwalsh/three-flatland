@@ -87,6 +87,9 @@ export class SpriteGroup extends ClippingGroup {
    */
   private _world: World | null = null
 
+  /** Terminal lifecycle latch. Disposal is idempotent and never permits a replacement world. */
+  private _disposed = false
+
   private readonly _expectedEntityCapacity: number
   private readonly _expectedBatchCapacity: number
   private _registryData: RegistryData | null = null
@@ -288,6 +291,7 @@ export class SpriteGroup extends ClippingGroup {
   }
 
   #runtimeWorld(): World {
+    this._assertUsable('runtime')
     if (!this._world) {
       this._world = createWorld()
       this._batchAssignSystem = createBatchAssignSystem(this._world)
@@ -419,12 +423,17 @@ export class SpriteGroup extends ClippingGroup {
     return this._world
   }
 
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: SpriteGroup.${member} cannot be used after dispose()`)
+  }
+
   /**
    * Add a sprite to the renderer.
    */
   override add(...objects: Object3D[]): this
   override add(sprite: Sprite2D): this
   override add(spriteOrObject: Sprite2D | Object3D, ...rest: Object3D[]): this {
+    this._assertUsable('add')
     // If called with multiple arguments, delegate to parent
     if (rest.length > 0) {
       return super.add(spriteOrObject, ...rest)
@@ -619,6 +628,7 @@ export class SpriteGroup extends ClippingGroup {
    * Add multiple sprites to the renderer.
    */
   addSprites(...sprites: Sprite2D[]): this {
+    this._assertUsable('addSprites')
     for (const sprite of sprites) {
       this.add(sprite)
     }
@@ -631,6 +641,7 @@ export class SpriteGroup extends ClippingGroup {
   override remove(...objects: Object3D[]): this
   override remove(sprite: Sprite2D): this
   override remove(spriteOrObject: Sprite2D | Object3D, ...rest: Object3D[]): this {
+    this._assertUsable('remove')
     // If called with multiple arguments, delegate to parent
     if (rest.length > 0) {
       return super.remove(spriteOrObject, ...rest)
@@ -663,6 +674,7 @@ export class SpriteGroup extends ClippingGroup {
    * Remove multiple sprites from the renderer.
    */
   removeSprites(...sprites: Sprite2D[]): this {
+    this._assertUsable('removeSprites')
     for (const sprite of sprites) {
       this._releaseDirectEnrollment(sprite)
     }
@@ -915,6 +927,12 @@ export class SpriteGroup extends ClippingGroup {
    * Clear all sprites.
    */
   override clear(): this {
+    this._assertUsable('clear')
+    return this._clear()
+  }
+
+  /** Terminal-safe clear path used after the disposal latch has been published. */
+  private _clear(): this {
     let firstError: unknown
     let didError = false
     const runCleanup = (cleanup: () => void): void => {
@@ -963,13 +981,16 @@ export class SpriteGroup extends ClippingGroup {
       }
     }
 
-    // Remove all batch children from scene graph
-    while (this.children.length > 0) {
-      const child = this.children[0]
-      if (child) {
-        super.remove(child)
-      }
+    // Remove a stable snapshot so hostile `removed` listeners cannot keep a
+    // length-driven loop alive by reattaching the child before they throw.
+    const ownedChildren = this.children.slice()
+    for (const child of ownedChildren) {
+      runCleanup(() => super.remove(child))
+      this._forceDetachChild(child)
     }
+    // A listener can bypass this class's terminal add guard through the base
+    // prototype. Terminal clear still owns an empty scene-graph result.
+    for (const child of this.children.slice()) this._forceDetachChild(child)
 
     // Clear registry state
     if (registry) {
@@ -1019,6 +1040,15 @@ export class SpriteGroup extends ClippingGroup {
     return (this._world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined) ?? null
   }
 
+  /** Detach without redispatching user-extensible hierarchy events. */
+  private _forceDetachChild(child: Object3D): void {
+    const parent = child.parent
+    if (!parent) return
+    const index = parent.children.indexOf(child)
+    if (index !== -1) parent.children.splice(index, 1)
+    child.parent = null
+  }
+
   /**
    * Clone for devtools/serialization compatibility.
    * SpriteGroup manages an ECS world that cannot be meaningfully cloned.
@@ -1045,6 +1075,8 @@ export class SpriteGroup extends ClippingGroup {
    * Dispose of all resources.
    */
   dispose(): void {
+    if (this._disposed) return
+    this._disposed = true
     let firstError: unknown
     let didError = false
     const runCleanup = (cleanup: () => void): void => {
@@ -1058,7 +1090,7 @@ export class SpriteGroup extends ClippingGroup {
       }
     }
 
-    runCleanup(() => this.clear())
+    runCleanup(() => this._clear())
     const registry = this._registryData
     if (registry) {
       // clear() preserves reservations for reuse; terminal disposal releases

@@ -2,6 +2,7 @@ import { entityFor, traitFor, worldFor } from './ecs/testUtils.type-test'
 import { describe, expect, it, vi } from 'vitest'
 import { vec4 } from 'three/tsl'
 import { Flatland } from './Flatland'
+import { Sprite2D } from './sprites/Sprite2D'
 import { createLightEffect } from './lights/LightEffect'
 import { createPassEffect } from './pipeline/PassEffect'
 import type { PassEffect } from './pipeline/PassEffect'
@@ -330,6 +331,39 @@ describe('Flatland effect ownership boundaries', () => {
     expect(entityFor(replacement)).not.toBeNull()
 
     destination.dispose()
+  })
+
+  it('rejects core operations after a first-error-safe terminal dispose', () => {
+    const flatland = new Flatland()
+    const world = runtimeWorld(flatland)
+    const disposeSpriteGroup = flatland.spriteGroup.dispose.bind(flatland.spriteGroup)
+    const cleanupError = { source: 'SpriteGroup.dispose' }
+
+    vi.spyOn(flatland.spriteGroup, 'dispose').mockImplementationOnce(() => {
+      disposeSpriteGroup()
+      throw cleanupError
+    })
+
+    let thrown: unknown
+    try {
+      flatland.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(cleanupError)
+    expect(world.disposed).toBe(true)
+    expect(Reflect.get(flatland.spriteGroup, '_world')).toBeNull()
+    const candidate = new Sprite2D()
+    expect(() => flatland.add(candidate)).toThrow('three-flatland: Flatland.add cannot be used after dispose()')
+    expect(() => flatland.remove()).toThrow('three-flatland: Flatland.remove cannot be used after dispose()')
+    expect(() => flatland.clear()).toThrow('three-flatland: Flatland.clear cannot be used after dispose()')
+    expect(() => flatland.render(null as never)).toThrow(
+      'three-flatland: Flatland.render cannot be used after dispose()'
+    )
+    expect(() => flatland.dispose()).not.toThrow()
+    expect(Reflect.get(flatland.spriteGroup, '_world')).toBeNull()
+    candidate.dispose()
   })
 
   it('rejects same-pass addPass reentry before allocating an entity or registry', () => {
