@@ -39,9 +39,9 @@
   },
   "provenance": {
     "captureStatus": "measured-unreviewed",
-    "lockfileSha256": "35208220e7fa7b483aecfbab3edd91d679e0ab44399bb881b2002848ae5a924b",
+    "lockfileSha256": "617e0f1f16a7dcb68c1455cc6d7edc1b67f868d71a26818074994f32e48d02e8",
     "productionSourceSha256": "ced9f87dc153df8f78844f4ef9398295d95b22b71cb94c7b5471e9cd92261d50",
-    "revision": "c25f74c3e37bb9b521d416a81d749c925df00df2",
+    "revision": "24a74640673cf55cdda85e024968897b5598b11e",
     "sourceTreeDirty": false,
     "toolVersions": {
       "esbuild": "0.28.1",
