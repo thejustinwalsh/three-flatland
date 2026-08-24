@@ -38,7 +38,10 @@ the [trusted Node timing summary](./results/renderer-labs-summary.md), and the
 complete production/profile reports. The [final example walkthrough](./results/example-smoke-summary.md)
 records the 28/28 live application and starter check. The
 [final evidence manifest](./results/final-evidence-manifest.md) records source boundaries, artifact
-checksums, and the acceptance role of each capture.
+checksums, and the acceptance role of each capture. The standalone
+[API audit](./results/api-audit.html) compares every package export root and declaration surface,
+records the supported breaking changes, and separates the accepted alpha boundary from the remaining
+pre-stable declaration cleanup.
 
 ## Proposed decision in one page
 
