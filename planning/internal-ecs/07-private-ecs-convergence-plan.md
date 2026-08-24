@@ -114,6 +114,8 @@ Exit condition: identical transform/visibility behavior for direct roots, nested
 
 Every migration extends the smallest relevant enforcement layer:
 
+- Create or update the feature record in the [private ECS evolution ledger](./09-private-ecs-evolution-ledger.md) before implementation, then add the accepted commit, pull request, and evidence result before merge.
+- Preserve the [Koota](https://github.com/pmndrs/koota) design attribution in every public explanation or release note about the private ECS. Describe the runtime as a Flatland-specific specialization, not as a replacement for Koota's application ECS.
 - Add frame-critical numeric files to `ecs/systems/hotPathContract.test.ts`; object reads require a named allowlist and a comment explaining the heavyweight owner.
 - Keep `ecs/privateArchitectureContract.test.ts` green and extend it only for durable, source-verifiable invariants. Do not substitute source regexes for lifecycle tests.
 - Add focused tests that inspect the real GPU row, uniform node, packed ownership table, or pass chain—not only the public getter.
@@ -126,9 +128,9 @@ Every migration extends the smallest relevant enforcement layer:
 Keep the follow-ups independent:
 
 1. Koota package/declaration cleanup and definitive true-consumer attribution: complete.
-2. Render/pass graph consolidation.
+2. Animated-sprite playback SoA.
 3. Frozen capacity plan.
-4. Animated-sprite playback SoA.
+4. Render/pass graph consolidation.
 5. Tile animation compaction.
 6. Lighting-context split only if its measurement gate justifies a change.
 

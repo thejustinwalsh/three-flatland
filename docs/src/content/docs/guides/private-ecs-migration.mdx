@@ -7,6 +7,12 @@ import { Tabs, TabItem } from 'starlight-theme/components'
 
 The ECS that coordinates batching, effects, lighting, and tilemaps is now private to `three-flatland`. Upgrade existing projects by removing engine-ECS coupling, then update values and ownership at the public object boundary.
 
+Flatland's private renderer ECS grew from its earlier
+[Koota](https://github.com/pmndrs/koota) integration. Koota's typed traits, structure-of-arrays
+storage, and query model made the specialized design possible, and Koota remains a good fit for
+application-owned gameplay state. This migration removes a package-level renderer dependency; it
+does not replace Koota as a general-purpose ECS.
+
 ## Remove the Koota peer dependency
 
 `three-flatland` no longer requires Koota. Remove `koota` from your application when it was installed only to satisfy the former peer dependency. Keep it when your game has its own Koota world or systems.

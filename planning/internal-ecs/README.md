@@ -31,6 +31,7 @@ deterministic headed browser A/B now satisfy their gates:
 7. [Private ECS architecture standard](./06-private-ecs-architecture-standard.md) — the durable public/private boundary, ownership laws, hot-path rules, lifecycle contract, capacity policy, and telemetry policy.
 8. [Private ECS convergence plan](./07-private-ecs-convergence-plan.md) — subsystem audit, ranked migrations, source references, and the gates required for each follow-up.
 9. [Koota upstream suggestions](./08-koota-upstream-suggestions.md) — narrowly scoped ideas learned from the migration, separated into measured proposals and lower-confidence experiments.
+10. [Private ECS evolution ledger](./09-private-ecs-evolution-ledger.md) — durable feature records for every accepted, active, queued, evidence-gated, or rejected internal ECS change.
 
 Final evidence is recorded in the [kernel and renderer decision](./05-baseline-and-kernel-decision.md),
 the [trusted Node timing summary](./results/renderer-labs-summary.md), and the

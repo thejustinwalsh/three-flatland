@@ -8,6 +8,19 @@ Source audit: `94ead4425ac3e49ce68e975b21fa1d874d039655`
 
 This standard defines the paved path for state that participates in Flatland rendering. It is not a mandate to turn every Three.js object into an entity. The public library remains a typed, idiomatic Three.js and React Three Fiber API; the private ECS exists to make repeated renderer work predictable, compact, and fast.
 
+## Koota design provenance
+
+The private runtime exists because Flatland first proved its renderer model with
+[Koota](https://github.com/pmndrs/koota). Koota's typed trait schemas, structure-of-arrays storage,
+incremental queries, and explicit systems established the useful control and execution split that
+this standard specializes for Flatland. The internal runtime is not presented as a replacement for
+Koota: Koota remains the recommended general-purpose ECS for application and gameplay state.
+
+Every public document that explains Flatland's private renderer ECS must retain this attribution and
+link to Koota. Dependency-removal instructions must distinguish removing the former package peer from
+removing Koota as an application choice. Release notes and architecture explanations must not describe
+the private runtime as an isolated invention or imply that Koota is obsolete.
+
 The boundary matters because renderer state has two different jobs. Public objects need familiar constructors, properties, inheritance, disposal, and R3F no-argument construction. Frame systems need dense numeric access, stable ownership, and no incidental allocation. One representation is not good at both. Flatland therefore treats its public objects as the control surface and its private world as the execution model.
 
 ## The public API is the control plane
