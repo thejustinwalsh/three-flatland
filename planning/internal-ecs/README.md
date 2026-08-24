@@ -1,8 +1,8 @@
 # Internal ECS design gate
 
-Status: **approved — implementation frozen; final Node, consumer, and live browser evidence pending**
+Status: **approved — implementation and final release evidence accepted**
 
-Date: 2026-08-22
+Date: 2026-08-24
 
 ## Decision requested
 
@@ -11,9 +11,8 @@ Approve or revise the proposal to replace Koota inside `three-flatland` with a p
 The recommendation is **not** to publish another general ECS and **not** to recreate Koota. The proposed runtime keeps the useful part of Koota's model—typed trait schemas with tag, structure-of-arrays, and object-backed forms—while removing the general features Flatland does not use.
 
 The replacement was required to prove all of the following before Koota was removed. The private
-runtime, core migration, and dependency cleanup satisfy their implementation gates. The final
-frozen-source Node matrix, consumer budgets, and deterministic live browser A/B must be recaptured
-before release:
+runtime, core migration, dependency cleanup, final Node matrix, reviewed consumer budgets, and
+deterministic headed browser A/B now satisfy their gates:
 
 1. It is behaviorally equivalent for Flatland's entity lifecycle, batching, effect traits, and change events.
 2. It is faster in the representative structural and steady-state workloads.
@@ -32,6 +31,12 @@ before release:
 7. [Private ECS architecture standard](./06-private-ecs-architecture-standard.md) — the durable public/private boundary, ownership laws, hot-path rules, lifecycle contract, capacity policy, and telemetry policy.
 8. [Private ECS convergence plan](./07-private-ecs-convergence-plan.md) — subsystem audit, ranked migrations, source references, and the gates required for each follow-up.
 9. [Koota upstream suggestions](./08-koota-upstream-suggestions.md) — narrowly scoped ideas learned from the migration, separated into measured proposals and lower-confidence experiments.
+
+Final evidence is recorded in the [kernel and renderer decision](./05-baseline-and-kernel-decision.md),
+the [trusted Node timing summary](./results/renderer-labs-summary.md), and the
+[headed browser summary](./results/browser-evidence-summary.md). The browser archive retains all 24
+complete production/profile reports. The [final evidence manifest](./results/final-evidence-manifest.md)
+records source boundaries, artifact checksums, and the acceptance role of each capture.
 
 ## Proposed decision in one page
 
@@ -65,7 +70,7 @@ const BatchSlot = trait({
   batchEntity: -1,
   batchIdx: -1,
   slot: -1,
-});
+})
 ```
 
 This removes the relation engine while retaining O(1) access to both the batch entity and the batch's GPU-buffer index.

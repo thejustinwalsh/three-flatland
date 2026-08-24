@@ -1,8 +1,8 @@
 # Internal ECS migration and rollout plan
 
-Status: core migration implementation frozen; final Node, consumer, and live browser evidence pending
+Status: implementation and final evidence accepted; release stack assembly pending
 
-Date: 2026-08-22
+Date: 2026-08-24
 
 ## Branch and PR shape
 
@@ -19,7 +19,7 @@ stack has now landed on the migration branch:
 
 The cleanup commits remove Koota from the package manifest, starters, public declarations, and
 published output. Their atomic history keeps dependency and documentation cleanup independently
-reversible while the live browser evidence is completed.
+reversible. The final Node, consumer, and 24-report headed browser evidence is complete.
 
 Implemented and proposed commit sequence:
 

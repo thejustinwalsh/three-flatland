@@ -1,8 +1,8 @@
 # Internal ECS benchmark and validation plan
 
-Status: kernel, private-runtime, and package gates accepted; final frozen-source Node, consumer, and live browser evidence pending
+Status: kernel, package, final Node, consumer, and headed browser evidence accepted
 
-Date: 2026-08-22
+Date: 2026-08-24
 
 ## Principle
 
@@ -100,11 +100,15 @@ Use the established 16,384-sprite schedule workload and add a 60,000-sprite scal
 
 The source-level harness is implemented in `tools/ecs-bench/src/renderer-evidence.ts` and is wired as
 `@three-flatland/ecs-bench:benchmark:renderer`. `--quick` runs a smoke-sized version of all cases for
-tool validation. The historical production capture in `results/renderer-production.json` covers all
-eight cases at both 16,384 and 60,000 sprites, including three GC-controlled lifecycle cycles per
-case. Runtime lifecycle fixes landed after that capture, so it is not final release evidence. Its
-raw report preserves the harness-emitted `measured-unreviewed` state; the frozen implementation must
-be recaptured before the decision record can accept updated claims.
+tool validation. The accepted final capture in `results/renderer-production.json` covers all eight
+cases at both 16,384 and 60,000 sprites, including three GC-controlled lifecycle cycles per case.
+The generator preserves `measured-unreviewed` in the raw report because it cannot approve itself;
+this plan and the decision record provide the independent review and acceptance boundary.
+
+Production Node timing uses the pinned `@pmndrs/labs` fixture summarized in
+[`results/renderer-labs-summary.md`](./results/renderer-labs-summary.md). The source-level renderer
+harness remains authoritative for topology, ownership, memory/GC, and per-system attribution, but
+its instrumented wall-time medians are diagnostic rather than the timing verdict.
 
 Canonical non-quick cases use the production `SpriteGroup` tier ladder with no fixed-capacity
 override. A 16,384-sprite one-material bulk enrollment must initially commit one batch; 60,000 must
@@ -325,8 +329,9 @@ artifacts and then fails `pending`; review copies the inspected clean candidate 
 path, commits that reviewed artifact, and a second clean run verifies it. The deterministic test
 suite exercises all four fixtures and the attribution, provenance, exact-budget, and output
 safeguards. The previously accepted budget records the earlier source snapshot. The final
-frozen-source run must replace it with a reviewed candidate, then reproduce that candidate with
-zero-byte deltas across all four fixtures.
+frozen-source run replaced it with a reviewed clean candidate and a second clean capture reproduced
+zero-byte deltas across all four fixtures. Subsequent budget changes must repeat the same
+capture-review-commit-recapture sequence.
 
 ## Behavioral reference tests
 
