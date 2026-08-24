@@ -166,6 +166,55 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     expect(pipeline?.initialized ?? true).toBe(false)
   })
 
+  it('does not retire a disabled shadow generation again during parent disposal', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const flatland = makeFlatland()
+    const light = new LitWithShadows()
+    flatland.setLighting(light)
+    const pipeline = getPipeline(flatland)!
+    const disposeSdf = vi.spyOn(pipeline.sdfGenerator!, 'dispose')
+    const disposeOcclusion = vi.spyOn(pipeline.occlusionPass!, 'dispose')
+
+    light.enabled = false
+    shadowPipelineSystem(worldFor(flatland))
+    flatland.dispose()
+
+    expect(disposeSdf).toHaveBeenCalledOnce()
+    expect(disposeOcclusion).toHaveBeenCalledOnce()
+    expect(() => flatland.dispose()).not.toThrow()
+  })
+
+  it('preserves an exact falsy shadow teardown error while retiring both resources once', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const flatland = makeFlatland()
+    const light = new LitWithShadows()
+    flatland.setLighting(light)
+    const pipeline = getPipeline(flatland)!
+    const disposeSdf = vi.spyOn(pipeline.sdfGenerator!, 'dispose').mockImplementation(() => {
+      throw 0
+    })
+    const disposeOcclusion = vi.spyOn(pipeline.occlusionPass!, 'dispose')
+
+    light.enabled = false
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      shadowPipelineSystem(worldFor(flatland))
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(disposeSdf).toHaveBeenCalledOnce()
+    expect(disposeOcclusion).toHaveBeenCalledOnce()
+    expect(pipeline.sdfGenerator).toBeNull()
+    expect(pipeline.occlusionPass).toBeNull()
+    expect(Reflect.get(flatland, '_shadowSdfGenerator')).toBeNull()
+    expect(Reflect.get(flatland, '_shadowOcclusionPass')).toBeNull()
+    expect(() => flatland.dispose()).not.toThrow()
+    expect(disposeSdf).toHaveBeenCalledOnce()
+    expect(disposeOcclusion).toHaveBeenCalledOnce()
+  })
+
   it('lightEffectSystem sources the SDF handle from ShadowPipeline (no mirror)', async () => {
     // Contract: there is exactly one SDFGenerator owner (ShadowPipeline).
     // Consumers (lightEffectSystem building the effect runtime context)
@@ -222,5 +271,59 @@ describe('shadowPipelineSystem + ShadowPipeline trait', () => {
     flatland.dispose()
 
     expect(disposeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['parent-first', false],
+    ['rejected-child-first', true],
+  ] as const)('disposes the current shadow generation exactly once after a %s disable cycle', (_label, childFirst) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const flatland = makeFlatland()
+    const light = new LitWithShadows()
+    flatland.setLighting(light)
+
+    const lctx = getSingleton(flatland, LightingContext)
+    lctx.renderer = mockRenderer(256, 256)
+    lctx.surfaceSize.set(256, 256)
+    lctx.camera = flatland.camera
+    lctx.scene = null
+
+    const pipeline = getPipeline(flatland)!
+    const originalSdf = pipeline.sdfGenerator!
+    const originalOcclusion = pipeline.occlusionPass!
+    const disposeOriginalSdf = vi.spyOn(originalSdf, 'dispose')
+    const disposeOriginalOcclusion = vi.spyOn(originalOcclusion, 'dispose')
+
+    light.enabled = false
+    shadowPipelineSystem(worldFor(flatland))
+    expect(disposeOriginalSdf).toHaveBeenCalledOnce()
+    expect(disposeOriginalOcclusion).toHaveBeenCalledOnce()
+    expect(pipeline.sdfGenerator).toBeNull()
+    expect(pipeline.occlusionPass).toBeNull()
+    expect(Reflect.get(flatland, '_shadowSdfGenerator')).toBeNull()
+    expect(Reflect.get(flatland, '_shadowOcclusionPass')).toBeNull()
+
+    light.enabled = true
+    shadowPipelineSystem(worldFor(flatland))
+    const replacementSdf = pipeline.sdfGenerator!
+    const replacementOcclusion = pipeline.occlusionPass!
+    expect(replacementSdf).not.toBe(originalSdf)
+    expect(replacementOcclusion).not.toBe(originalOcclusion)
+    expect(Reflect.get(flatland, '_shadowSdfGenerator')).toBe(replacementSdf)
+    expect(Reflect.get(flatland, '_shadowOcclusionPass')).toBe(replacementOcclusion)
+    const disposeReplacementSdf = vi.spyOn(replacementSdf, 'dispose')
+    const disposeReplacementOcclusion = vi.spyOn(replacementOcclusion, 'dispose')
+
+    if (childFirst) {
+      expect(() => flatland.spriteGroup.dispose()).toThrow('call Flatland.dispose() instead')
+      expect(worldFor(flatland).disposed).toBe(false)
+    }
+    flatland.dispose()
+
+    expect(disposeOriginalSdf).toHaveBeenCalledOnce()
+    expect(disposeOriginalOcclusion).toHaveBeenCalledOnce()
+    expect(disposeReplacementSdf).toHaveBeenCalledOnce()
+    expect(disposeReplacementOcclusion).toHaveBeenCalledOnce()
+    expect(() => flatland.dispose()).not.toThrow()
   })
 })

@@ -1,5 +1,6 @@
 import { entityFor, traitFor, worldFor } from './ecs/testUtils.type-test'
 import { describe, expect, it, vi } from 'vitest'
+import { Group } from 'three'
 import { vec4 } from 'three/tsl'
 import { Flatland } from './Flatland'
 import { Sprite2D } from './sprites/Sprite2D'
@@ -361,9 +362,62 @@ describe('Flatland effect ownership boundaries', () => {
     expect(() => flatland.render(null as never)).toThrow(
       'three-flatland: Flatland.render cannot be used after dispose()'
     )
+    expect(() => flatland.setRenderPipeline({} as never, {} as never)).toThrow(
+      'three-flatland: Flatland.setRenderPipeline cannot be used after dispose()'
+    )
+    expect(() => flatland.clearRenderPipeline()).toThrow(
+      'three-flatland: Flatland.clearRenderPipeline cannot be used after dispose()'
+    )
+    expect(() => flatland.addPass(new OwnedPass())).toThrow(
+      'three-flatland: addPass() cannot run after Flatland.dispose()'
+    )
+    expect(() => flatland.removePass(new OwnedPass())).toThrow(
+      'three-flatland: Flatland.removePass cannot be used after dispose()'
+    )
+    expect(() => flatland.clearPasses()).toThrow('three-flatland: Flatland.clearPasses cannot be used after dispose()')
+    expect(() => flatland.resize(1, 1)).toThrow('three-flatland: Flatland.resize cannot be used after dispose()')
+    expect(() => {
+      flatland.viewSize = flatland.viewSize
+    }).toThrow('three-flatland: Flatland.viewSize cannot be used after dispose()')
+    expect(flatland.renderPipeline).toBeNull()
     expect(() => flatland.dispose()).not.toThrow()
     expect(Reflect.get(flatland.spriteGroup, '_world')).toBeNull()
     candidate.dispose()
+  })
+
+  it('rejects direct disposal of an owned SpriteGroup before any child or parent mutation', () => {
+    const flatland = new Flatland()
+    const child = new Group()
+    const sceneChildren = flatland.scene.children.slice()
+
+    expect(() => flatland.spriteGroup.dispose()).toThrow(
+      'three-flatland: Flatland.spriteGroup.dispose() cannot run while its Flatland is live; call Flatland.dispose() instead'
+    )
+    expect(Reflect.get(flatland.spriteGroup, '_disposed')).toBe(false)
+    expect(flatland.scene.children).toEqual(sceneChildren)
+    expect(() => flatland.add(child)).not.toThrow()
+    expect(child.parent).toBe(flatland.scene)
+    expect(() => flatland.clear()).not.toThrow()
+    expect(child.parent).toBeNull()
+    expect(() => flatland.dispose()).not.toThrow()
+    expect(() => flatland.dispose()).not.toThrow()
+  })
+
+  it('publishes parent terminal state before owned SpriteGroup cleanup callbacks', () => {
+    const flatland = new Flatland()
+    const trigger = new Group()
+    const candidate = new Group()
+    flatland.spriteGroup.add(trigger)
+    trigger.addEventListener('removed', () => {
+      expect(() => flatland.add(candidate)).toThrow('cannot be used after dispose()')
+      expect(() => flatland.setRenderPipeline({} as never, {} as never)).toThrow('cannot be used after dispose()')
+    })
+
+    flatland.dispose()
+
+    expect(candidate.parent).toBeNull()
+    expect(flatland.scene.children).toEqual([flatland.spriteGroup])
+    expect(flatland.renderPipeline).toBeNull()
   })
 
   it('rejects same-pass addPass reentry before allocating an entity or registry', () => {
@@ -664,6 +718,61 @@ describe('Flatland effect ownership boundaries', () => {
     secondDestination.dispose()
   })
 
+  it('rolls back a lighting replacement when old-light disposal tries to dispose its owned SpriteGroup', () => {
+    const flatland = new Flatland()
+    const active = new DestinationLight()
+    const replacement = new ContextualLight()
+    flatland.setLighting(active)
+    const world = runtimeWorld(flatland)
+    const activeEntity = entityFor(active)
+    active.dispose = vi.fn(() => {
+      flatland.spriteGroup.dispose()
+    })
+
+    expect(() => flatland.setLighting(replacement)).toThrow(
+      'three-flatland: Flatland.spriteGroup.dispose() cannot run while its Flatland is live; call Flatland.dispose() instead'
+    )
+
+    expect(world.disposed).toBe(false)
+    expect(flatland.lighting).toBe(active)
+    expect(active._flatland).toBe(flatland)
+    expect(entityFor(active)).toBe(activeEntity)
+    expect(world.isAlive(activeEntity!)).toBe(true)
+    expect(replacement._flatland).toBeNull()
+    expect(entityFor(replacement)).toBeNull()
+    expect(replacement._storeWorld).toBeNull()
+    expect(replacement._lightFn).toBeNull()
+    const child = new Group()
+    expect(() => flatland.add(child)).not.toThrow()
+    expect(child.parent).toBe(flatland.scene)
+    expect(() => flatland.dispose()).not.toThrow()
+    expect(world.disposed).toBe(true)
+    expect(flatland.lighting).toBeNull()
+    expect(active._flatland).toBeNull()
+    expect(entityFor(active)).toBeNull()
+  })
+
+  it('keeps active lighting authoritative when clear-light disposal tries to dispose its owned SpriteGroup', () => {
+    const flatland = new Flatland()
+    const active = new DestinationLight()
+    flatland.setLighting(active)
+    const world = runtimeWorld(flatland)
+    const activeEntity = entityFor(active)
+    active.dispose = vi.fn(() => {
+      flatland.spriteGroup.dispose()
+    })
+
+    expect(() => flatland.setLighting(null)).toThrow('call Flatland.dispose() instead')
+
+    expect(world.disposed).toBe(false)
+    expect(flatland.lighting).toBe(active)
+    expect(active._flatland).toBe(flatland)
+    expect(entityFor(active)).toBe(activeEntity)
+    expect(world.isAlive(activeEntity!)).toBe(true)
+    expect(() => flatland.dispose()).not.toThrow()
+    expect(world.disposed).toBe(true)
+  })
+
   it('rejects Flatland disposal from a lighting builder before any terminal mutation', () => {
     const source = new Flatland()
     const destination = new Flatland()
@@ -784,7 +893,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(() => flatland.dispose()).not.toThrow()
   })
 
-  it('releases shadow resources after its public SpriteGroup was already disposed', () => {
+  it('retains shadow ownership when direct SpriteGroup disposal is rejected', () => {
     const flatland = new Flatland()
     const light = new InitialShadowLight()
     flatland.setLighting(light)
@@ -797,12 +906,15 @@ describe('Flatland effect ownership boundaries', () => {
     const disposePipeline = vi.fn()
     Reflect.set(flatland, '_renderPipeline', { dispose: disposePipeline })
 
-    flatland.spriteGroup.dispose()
+    expect(() => flatland.spriteGroup.dispose()).toThrow(
+      'three-flatland: Flatland.spriteGroup.dispose() cannot run while its Flatland is live; call Flatland.dispose() instead'
+    )
 
-    expect(world.disposed).toBe(true)
+    expect(world.disposed).toBe(false)
     expect(disposeSdf).not.toHaveBeenCalled()
     expect(disposeOcclusion).not.toHaveBeenCalled()
     expect(() => flatland.dispose()).not.toThrow()
+    expect(world.disposed).toBe(true)
     expect(disposeSdf).toHaveBeenCalledOnce()
     expect(disposeOcclusion).toHaveBeenCalledOnce()
     expect(disposePipeline).toHaveBeenCalledOnce()

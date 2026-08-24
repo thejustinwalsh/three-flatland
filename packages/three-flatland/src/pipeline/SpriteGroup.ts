@@ -37,7 +37,11 @@ import { releaseLightEffectRuntimeContext } from '../ecs/systems/lightEffectSyst
 import { validateMaxBatchSize } from '../internal/max-batch-size'
 import { clampEntityReservation, reserveIndexedArray, validateExpectedSprites } from '../internal/capacity'
 import { reserveWorld } from '../internal/reserved-world'
-import { clearSpriteGroupWorld, registerSpriteGroupRuntime } from '../internal/sprite-group-runtime'
+import {
+  assertSpriteGroupCanDispose,
+  clearSpriteGroupWorld,
+  registerSpriteGroupRuntime,
+} from '../internal/sprite-group-runtime'
 import { spriteEntity, spriteWorld } from '../internal/sprite-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
@@ -1075,6 +1079,7 @@ export class SpriteGroup extends ClippingGroup {
    */
   dispose(): void {
     if (this._disposed) return
+    assertSpriteGroupCanDispose(this)
     this._disposed = true
     let firstError: unknown
     let didError = false

@@ -64,7 +64,7 @@ import { getRendererViewportDepthRange, setRendererViewport } from './cameras/re
 import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 import { validateExpectedSprites } from './internal/capacity'
 import { isTerminalObject } from './internal/terminal-object'
-import { getSpriteGroupWorld } from './internal/sprite-group-runtime'
+import { getSpriteGroupWorld, registerSpriteGroupDisposeGuard } from './internal/sprite-group-runtime'
 import { getEffectEntity, getEffectTrait, setEffectEntity } from './internal/effect-runtime'
 import {
   subscribeSpriteDispose,
@@ -287,7 +287,7 @@ export class Flatland extends Group {
   /** Internal sprite group for batching */
   readonly spriteGroup: SpriteGroup
 
-  /** Shared child world retained only so parent teardown survives child-first disposal. */
+  /** Shared child world retained so parent teardown survives reentrant child disposal. */
   private _sharedWorld: World | null = null
 
   /** Global uniforms shared across all sprite materials */
@@ -440,6 +440,13 @@ export class Flatland extends Group {
   private _shadowPipelineEntity: Entity | null = null
   private _shadowSdfGenerator: SDFGenerator | null = null
   private _shadowOcclusionPass: OcclusionPass | null = null
+  private readonly _onShadowPipelineResourcesChanged = (
+    sdfGenerator: SDFGenerator | null,
+    occlusionPass: OcclusionPass | null
+  ): void => {
+    this._shadowSdfGenerator = sdfGenerator
+    this._shadowOcclusionPass = occlusionPass
+  }
 
   /** Active LightEffect instance */
   private _lightEffect: LightEffect | null = null
@@ -486,6 +493,13 @@ export class Flatland extends Group {
 
     // Create sprite group
     this.spriteGroup = new SpriteGroup({ expectedSprites })
+    registerSpriteGroupDisposeGuard(this.spriteGroup, () => {
+      if (!this._disposed) {
+        throw new Error(
+          'three-flatland: Flatland.spriteGroup.dispose() cannot run while its Flatland is live; call Flatland.dispose() instead'
+        )
+      }
+    })
     this.scene.add(this.spriteGroup)
 
     // Store view size and aspect. Omitted/invalid aspect = auto-derive from
@@ -627,6 +641,7 @@ export class Flatland extends Group {
   }
 
   set pixelPerfect(value: boolean) {
+    this._assertUsable('pixelPerfect')
     if (value === this._pixelPerfect) return
     const previous = this._internalCamera
     this._pixelPerfect = value
@@ -654,6 +669,7 @@ export class Flatland extends Group {
    * property-removal path used by React Three Fiber.
    */
   set camera(value: OrthographicCamera) {
+    this._assertUsable('camera')
     const internalOwner = _flatlandInternalCameras.get(value)
     const thisIsR3FManaged = '__r3f' in (this as Flatland & { __r3f?: unknown })
     const ownerIsR3FManaged =
@@ -693,6 +709,7 @@ export class Flatland extends Group {
    * Set the view size.
    */
   set viewSize(value: number) {
+    this._assertUsable('viewSize')
     if (!this._isValidViewSize(value)) return
     this._viewSize = value
     this._updateCameraFrustum()
@@ -704,6 +721,7 @@ export class Flatland extends Group {
   }
 
   set viewWidth(value: number | undefined) {
+    this._assertUsable('viewWidth')
     if (value !== undefined && !this._isValidViewSize(value)) return
     if (value === this._viewWidth) return
     this._viewWidth = value
@@ -747,6 +765,7 @@ export class Flatland extends Group {
    * when an `aspect` JSX prop is removed. Invalid numeric values are ignored.
    */
   set aspect(value: number | 'auto') {
+    this._assertUsable('aspect')
     if (value === 'auto') {
       this._autoAspect = true
       this._autoSurfaceSize = true
@@ -783,6 +802,7 @@ export class Flatland extends Group {
    * Set the render target.
    */
   set renderTarget(value: RenderTarget | null) {
+    this._assertUsable('renderTarget')
     this._renderTarget = this._prepareRenderTarget(value)
     if (!this._autoSurfaceSize) {
       this._surfaceSizeDirty = true
@@ -827,6 +847,7 @@ export class Flatland extends Group {
   }
 
   set outputNode(value: Node) {
+    this._assertUsable('outputNode')
     this._outputNode = value
     if (this._renderPipeline && value) {
       this._renderPipeline.outputNode = value
@@ -1280,6 +1301,7 @@ export class Flatland extends Group {
    * intermediate resample.
    */
   setRenderPipeline(renderPipeline: RenderPipeline, passNode: PassNode): void {
+    this._assertUsable('setRenderPipeline')
     this._restoreManagedPassSize()
     this._renderPipeline = renderPipeline
     this._passNode = passNode
@@ -1294,6 +1316,7 @@ export class Flatland extends Group {
    * Clear the render pipeline setup.
    */
   clearRenderPipeline(): void {
+    this._assertUsable('clearRenderPipeline')
     this._restoreManagedPassSize()
     this._renderPipeline = null
     this._passNode = null
@@ -1331,6 +1354,7 @@ export class Flatland extends Group {
    * ```
    */
   addPass(passEffect: PassEffect, order?: number): this {
+    if (this._disposed) throw new Error('three-flatland: addPass() cannot run after Flatland.dispose()')
     if (this._passTransitioning) {
       throw new Error('three-flatland: addPass() cannot run reentrantly on the same Flatland')
     }
@@ -1463,6 +1487,7 @@ export class Flatland extends Group {
    * @returns this (for chaining)
    */
   removePass(passEffect: PassEffect): this {
+    this._assertUsable('removePass')
     const idx = this._passes.indexOf(passEffect)
     if (idx === -1) return this
 
@@ -1486,6 +1511,7 @@ export class Flatland extends Group {
    * @returns this (for chaining)
    */
   clearPasses(): this {
+    this._assertUsable('clearPasses')
     for (const passEffect of this._passes) {
       const passEntity = getEffectEntity(passEffect)
       if (passEntity) {
@@ -1519,6 +1545,7 @@ export class Flatland extends Group {
    * @internal
    */
   _markPostPassDirty(): void {
+    if (this._disposed) return
     if (this._postPassRegistryEntity) {
       this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
     }
@@ -1591,6 +1618,9 @@ export class Flatland extends Group {
       const previous = this._lightEffect
       if (previous) {
         previous.dispose()
+        if (this._sharedWorld?.disposed) {
+          throw new Error('three-flatland: Flatland.spriteGroup.dispose() cannot run during setLighting()')
+        }
         const previousEntity = getEffectEntity(previous)
         if (previousEntity) this._runtimeWorld.destroy(previousEntity)
         previous._detach()
@@ -1633,6 +1663,11 @@ export class Flatland extends Group {
     let shadowCreated = false
     let contextEntity = this._lightingContextEntity
     let contextCreated = false
+    const assertLightingWorldLive = (): void => {
+      if (world.disposed) {
+        throw new Error('three-flatland: Flatland.spriteGroup.dispose() cannot run during setLighting()')
+      }
+    }
 
     const discardPrepared = (): void => {
       lightEffect._lightFn = null
@@ -1682,6 +1717,7 @@ export class Flatland extends Group {
       }
 
       fn = lightEffect._buildLightFn(preparedLightStore, this._worldSizeUniform, this._worldOffsetUniform, sdfTexture)
+      assertLightingWorldLive()
       wrappedLightFn = wrapWithLightFlags(fn)
       requiredChannels = new Set(ctor.requires ?? [])
 
@@ -1705,7 +1741,7 @@ export class Flatland extends Group {
         world.add(effectEntity, runtimeTrait(traitValues))
       }
       if (!shadowEntity) {
-        shadowEntity = world.spawn(ShadowPipeline)
+        shadowEntity = world.spawn(ShadowPipeline({ onResourcesChanged: this._onShadowPipelineResourcesChanged }))
         shadowCreated = true
       }
       if (!contextEntity) {
@@ -1738,6 +1774,7 @@ export class Flatland extends Group {
       // User disposal remains pre-publication. A throw rolls every candidate
       // allocation/cache back and leaves the current owner/context authoritative.
       previous?.dispose()
+      assertLightingWorldLive()
       if (this._lightEffect !== previous || lightEffect._flatland !== null || getEffectEntity(lightEffect) !== null) {
         throw new Error('three-flatland: lighting ownership changed during previous-effect disposal')
       }
@@ -1754,8 +1791,8 @@ export class Flatland extends Group {
     if (pipeline) {
       if (preparedSdfGenerator) pipeline.sdfGenerator = preparedSdfGenerator
       if (preparedOcclusionPass) pipeline.occlusionPass = preparedOcclusionPass
-      this._shadowSdfGenerator = pipeline.sdfGenerator
-      this._shadowOcclusionPass = pipeline.occlusionPass
+      pipeline.onResourcesChanged = this._onShadowPipelineResourcesChanged
+      this._onShadowPipelineResourcesChanged(pipeline.sdfGenerator, pipeline.occlusionPass)
     }
 
     lightEffect._attach(this, () => {
@@ -1798,6 +1835,7 @@ export class Flatland extends Group {
    * @internal Called by LightEffect.enabled setter and _onDirty callback.
    */
   _markLightingDirty(): void {
+    if (this._disposed) return
     if (this._lightingContextEntity) {
       const lctx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext)
       if (lctx) {
@@ -1808,6 +1846,7 @@ export class Flatland extends Group {
 
   /** @internal Re-apply the active effect resolution scale. */
   _markLightingResizeDirty(): void {
+    if (this._disposed) return
     if (this._lastSyncedWidth > 0 && this._lastSyncedHeight > 0) {
       this._queueLightEffectResize(this._lastSyncedWidth, this._lastSyncedHeight)
     }
@@ -1835,6 +1874,7 @@ export class Flatland extends Group {
    * @internal
    */
   _rebuildLightFn(): void {
+    if (this._disposed) return
     if (this._shaderRebuildPending) return
     this._shaderRebuildPending = true
     queueMicrotask(() => {
@@ -1844,6 +1884,7 @@ export class Flatland extends Group {
   }
 
   private _doRebuildLightFn(): void {
+    if (this._disposed) return
     const lightEffect = this._lightEffect
     if (!lightEffect || !this._lightStore || !this._lightingContextEntity) return
     const lctx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext)
@@ -1930,7 +1971,9 @@ export class Flatland extends Group {
    */
   private _ensureShadowPipelineEntity(): void {
     if (this._shadowPipelineEntity) return
-    this._shadowPipelineEntity = this._runtimeWorld.spawn(ShadowPipeline)
+    this._shadowPipelineEntity = this._runtimeWorld.spawn(
+      ShadowPipeline({ onResourcesChanged: this._onShadowPipelineResourcesChanged })
+    )
   }
 
   /**
@@ -2067,7 +2110,7 @@ export class Flatland extends Group {
   render(renderer: WebGPURenderer): void {
     // Keep the steady render path to one predictable branch; mutation entry
     // points share the descriptive helper outside the frame-critical path.
-    if (this._disposed) throw new Error('three-flatland: Flatland.render cannot be used after dispose()')
+    this._assertUsable('render')
     // Drain pending lighting-channel validation before doing any real work.
     // Anything missing gets logged once and has `lit` force-cleared on that
     // sprite so it can't fall back to zeroed channelDefaults and poison the
@@ -2471,6 +2514,7 @@ export class Flatland extends Group {
    * automatic sync that will pick up the real size once it exists.
    */
   resize(width: number, height: number): void {
+    this._assertUsable('resize')
     if (!this._isValidSize(width, height)) return
     this._autoAspect = false
     this._autoSurfaceSize = false
@@ -2652,14 +2696,32 @@ export class Flatland extends Group {
     const world = this._sharedWorld
     this._sharedWorld = null
     const shadowEntity = this._shadowPipelineEntity
-    const sdfGenerator = this._shadowSdfGenerator
-    const occlusionPass = this._shadowOcclusionPass
+    this._shadowPipelineEntity = null
+    let sdfGenerator = this._shadowSdfGenerator
+    let occlusionPass = this._shadowOcclusionPass
     this._shadowSdfGenerator = null
     this._shadowOcclusionPass = null
     const destroyEntity = (entity: Entity): void => {
       if (!world || !world.isAlive(entity)) return
       world.destroy(entity)
     }
+    // Atomically transfer the live generation out of the trait before any
+    // user callback can run a shadow system during teardown. If reentrant
+    // child disposal already dropped the trait, the synchronized parent
+    // handles above remain authoritative.
+    runCleanup(() => {
+      if (!world || !shadowEntity || !world.isAlive(shadowEntity)) return
+      const pipeline = world.read(shadowEntity, ShadowPipeline)
+      if (!pipeline) return
+      sdfGenerator = pipeline.sdfGenerator
+      occlusionPass = pipeline.occlusionPass
+      pipeline.sdfGenerator = null
+      pipeline.occlusionPass = null
+      pipeline.onResourcesChanged = null
+      pipeline.initialized = false
+      pipeline.width = 0
+      pipeline.height = 0
+    })
 
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
@@ -2699,12 +2761,13 @@ export class Flatland extends Group {
     const lightStore = this._lightStore
     this._lightStore = null
     if (lightStore) runCleanup(() => lightStore.dispose())
-    // These parent-held references survive child-first world disposal. World
-    // disposal drops trait storage but does not own the GPU resources inside.
-    if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
-    if (occlusionPass) runCleanup(() => occlusionPass.dispose())
+    // These parent-held references survive reentrant child world disposal.
+    // World disposal drops trait storage but does not own the GPU resources.
+    const ownedSdfGenerator = sdfGenerator
+    const ownedOcclusionPass = occlusionPass
+    if (ownedSdfGenerator) runCleanup(() => ownedSdfGenerator.dispose())
+    if (ownedOcclusionPass) runCleanup(() => ownedOcclusionPass.dispose())
     if (shadowEntity) {
-      this._shadowPipelineEntity = null
       runCleanup(() => destroyEntity(shadowEntity))
     }
     this._lights.length = 0

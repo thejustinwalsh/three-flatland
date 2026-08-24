@@ -281,11 +281,11 @@ export const LightEffectTrait = trait(() => ({
  * than each effect owning its own SDFGenerator, the pipeline is shared
  * at the world level.
  *
- * Lifecycle: `shadowPipelineSystem` owns this trait end-to-end — it
- * allocates the generators when the active effect declares
- * `needsShadows`, resizes them as the viewport changes, runs the
- * per-frame pre-pass, and disposes on detach. Flatland does not touch
- * these fields.
+ * Lifecycle: `shadowPipelineSystem` owns the active trait fields — it
+ * allocates the generators when the active effect declares `needsShadows`,
+ * resizes them as the viewport changes, runs the per-frame pre-pass, and
+ * disposes on detach. The resource-change callback transfers teardown
+ * ownership to Flatland without adding work to the steady frame path.
  *
  * Fast-path contract: every field here is either a nullable object
  * reference or a small scalar. Consumers read via `world.read(entity, ShadowPipeline)`
@@ -297,6 +297,8 @@ export const ShadowPipeline = trait(() => ({
   sdfGenerator: null as SDFGenerator | null,
   /** Occluder silhouette pre-pass. Null while inactive. */
   occlusionPass: null as OcclusionPass | null,
+  /** Boundary-only notification when the owned resource generation changes. */
+  onResourcesChanged: null as ((sdfGenerator: SDFGenerator | null, occlusionPass: OcclusionPass | null) => void) | null,
   /** Last SDF render-target width (post-resolution-scale). */
   width: 0,
   /** Last SDF render-target height (post-resolution-scale). */

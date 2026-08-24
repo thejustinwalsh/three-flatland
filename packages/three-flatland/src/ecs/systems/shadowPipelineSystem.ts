@@ -62,17 +62,32 @@ export function shadowPipelineSystem(world: World): void {
 
   // Teardown path: active effect doesn't need shadows but we hold state.
   if (!needsShadows) {
-    if (pipeline.sdfGenerator) {
-      pipeline.sdfGenerator.dispose()
-      pipeline.sdfGenerator = null
+    const sdfGenerator = pipeline.sdfGenerator
+    const occlusionPass = pipeline.occlusionPass
+    const onResourcesChanged = pipeline.onResourcesChanged
+    pipeline.sdfGenerator = null
+    pipeline.occlusionPass = null
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
     }
-    if (pipeline.occlusionPass) {
-      pipeline.occlusionPass.dispose()
-      pipeline.occlusionPass = null
+    if ((sdfGenerator || occlusionPass) && onResourcesChanged) {
+      runCleanup(() => onResourcesChanged(null, null))
     }
+    if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
+    if (occlusionPass) runCleanup(() => occlusionPass.dispose())
     pipeline.initialized = false
     pipeline.width = 0
     pipeline.height = 0
+    if (didError) throw firstError
     return
   }
 
@@ -94,9 +109,11 @@ export function shadowPipelineSystem(world: World): void {
   // each frame — no mirrored state on LightingContext.
   if (!pipeline.sdfGenerator) {
     pipeline.sdfGenerator = new SDFGenerator()
+    pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
   if (!pipeline.occlusionPass) {
     pipeline.occlusionPass = new OcclusionPass()
+    pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
 
   // Size from the active LightEffect processing surface (the physical render
