@@ -64,7 +64,12 @@ import { getRendererViewportDepthRange, setRendererViewport } from './cameras/re
 import { resolvePixelPerfect, type RenderingSetting } from './config/RenderingConfig'
 import { validateExpectedSprites } from './internal/capacity'
 import { isTerminalObject } from './internal/terminal-object'
-import { getSpriteGroupWorld, registerSpriteGroupDisposeGuard } from './internal/sprite-group-runtime'
+import {
+  adoptSpriteIntoGroup,
+  getSpriteGroupWorld,
+  registerSpriteGroupDisposeGuard,
+  rollbackSpriteGroupAdoption,
+} from './internal/sprite-group-runtime'
 import { getEffectEntity, getEffectTrait, setEffectEntity } from './internal/effect-runtime'
 import {
   subscribeSpriteDispose,
@@ -1101,13 +1106,15 @@ export class Flatland extends Group {
         const previousOwner = _flatlandSpriteOwners.get(child)
         const transferring = previousOwner && previousOwner !== this ? previousOwner : undefined
         this._assertCanAdoptMaterials([child.material], transferring)
-        this._withMaterialTransferHolds([child.material], transferring !== undefined, () => {
+        const adopted = this._withMaterialTransferHolds([child.material], transferring !== undefined, () => {
           try {
             if (transferring) transferring.remove(child)
             observeSpriteCloneBootstrapCommit(child)
-            this.spriteGroup.add(child)
+            const committed = adoptSpriteIntoGroup(this.spriteGroup, child)
             clearSpriteCloneBootstrapCommitObservation(child)
+            if (!committed) return false
             this._trackSprite(child)
+            return true
           } catch (error) {
             if (consumeCommittedSpriteCloneBootstrapError(child, error)) {
               // SpriteGroup already committed the destination material,
@@ -1118,8 +1125,16 @@ export class Flatland extends Group {
               throw error
             }
             clearSpriteCloneBootstrapCommitObservation(child)
-            this.spriteGroup.remove(child)
-            this._untrackSprite(child)
+            try {
+              rollbackSpriteGroupAdoption(this.spriteGroup, child)
+            } catch {
+              // Preserve the exact primary adoption failure.
+            }
+            try {
+              this._untrackSprite(child)
+            } catch {
+              // Preserve the exact primary adoption failure.
+            }
             if (transferring) {
               try {
                 transferring.add(child)
@@ -1130,6 +1145,7 @@ export class Flatland extends Group {
             throw error
           }
         })
+        if (!adopted) continue
         // Defer validation to `render()` — by the time that runs, R3F has
         // mounted any MaterialEffect children (NormalMapProvider, etc.)
         // and imperative callers have finished their `addEffect` chain, so

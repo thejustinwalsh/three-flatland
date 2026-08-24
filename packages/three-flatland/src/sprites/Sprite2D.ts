@@ -593,6 +593,8 @@ export class Sprite2D extends Mesh {
   _batchEnrollmentBlockedMaterial: Sprite2DMaterial | null = null
   /** Terminal object-disposal latch; disposed sprites cannot be re-enrolled. @internal */
   _disposed = false
+  /** Changes before terminal cleanup can invoke user code. @internal */
+  private _lifecycleRevision = 0
 
   /**
    * True while the material is the construction-time bootstrap default
@@ -2599,6 +2601,25 @@ export class Sprite2D extends Mesh {
     }
   }
 
+  /** Restore the pre-adoption staging material without redispatching user callbacks. @internal */
+  private _rollbackManagedMaterialResolution(
+    material: Sprite2DMaterial,
+    bootstrapDefault: boolean,
+    registryDefault: boolean,
+    bootstrapVariant: boolean,
+    registryVariant: boolean
+  ): void {
+    this._materialRef = material
+    this._materialIsBootstrapDefault = bootstrapDefault
+    this._materialWasRegistryDefault = registryDefault
+    this._materialIsBootstrapVariant = bootstrapVariant
+    this._materialWasRegistryVariant = registryVariant
+    if (!this._disposed) {
+      this._setupInstanceAttributes()
+      this._writeEffectDataOwn()
+    }
+  }
+
   /**
    * Unenroll this sprite from its ECS world.
    * Serializes trait values back to snapshot, then destroys the entity.
@@ -2715,6 +2736,7 @@ export class Sprite2D extends Mesh {
    */
   dispose() {
     if (this._disposed) return
+    this._lifecycleRevision++
     this._disposed = true
     markTerminalObject(this)
     let firstError: unknown

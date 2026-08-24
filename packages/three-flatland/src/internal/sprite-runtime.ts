@@ -5,7 +5,7 @@ const entities = new WeakMap<object, Entity>()
 const cloneBootstrapMaterials = new WeakSet<object>()
 const pendingCloneBootstrapErrors = new WeakMap<object, unknown>()
 const committedCloneBootstrapErrors = new WeakMap<object, unknown>()
-const observedCloneBootstrapCommits = new WeakSet<object>()
+const observedCloneBootstrapCommits = new WeakMap<object, number>()
 
 /** Mark a package-owned clone staging material for retirement on replacement/dispose. @internal */
 export function markSpriteCloneBootstrapMaterial(sprite: object): void {
@@ -29,20 +29,22 @@ export function deferSpriteCloneBootstrapError(sprite: object, error: unknown): 
 
 /** Observe one Flatland adoption so its outer ownership layer can recognize the commit error. @internal */
 export function observeSpriteCloneBootstrapCommit(sprite: object): void {
-  observedCloneBootstrapCommits.add(sprite)
+  observedCloneBootstrapCommits.set(sprite, (observedCloneBootstrapCommits.get(sprite) ?? 0) + 1)
 }
 
 /** Stop observing an adoption that returned or failed before the deferred commit error. @internal */
 export function clearSpriteCloneBootstrapCommitObservation(sprite: object): void {
-  observedCloneBootstrapCommits.delete(sprite)
+  const depth = observedCloneBootstrapCommits.get(sprite)
+  if (depth === undefined || depth <= 1) observedCloneBootstrapCommits.delete(sprite)
+  else observedCloneBootstrapCommits.set(sprite, depth - 1)
 }
 
 /** Rethrow the exact deferred value after SpriteGroup enrollment commits. @internal */
-export function throwSpriteCloneBootstrapError(sprite: object): void {
+export function throwSpriteCloneBootstrapError(sprite: object, committed = true): void {
   if (!pendingCloneBootstrapErrors.has(sprite)) return
   const error = pendingCloneBootstrapErrors.get(sprite)
   pendingCloneBootstrapErrors.delete(sprite)
-  if (observedCloneBootstrapCommits.has(sprite)) committedCloneBootstrapErrors.set(sprite, error)
+  if (committed && observedCloneBootstrapCommits.has(sprite)) committedCloneBootstrapErrors.set(sprite, error)
   throw error
 }
 
@@ -52,7 +54,7 @@ export function consumeCommittedSpriteCloneBootstrapError(sprite: object, error:
     return false
   }
   committedCloneBootstrapErrors.delete(sprite)
-  observedCloneBootstrapCommits.delete(sprite)
+  clearSpriteCloneBootstrapCommitObservation(sprite)
   return true
 }
 
@@ -77,4 +79,28 @@ export function spriteWorld(sprite: object): World | null {
 
 export function spriteEntity(sprite: object): Entity | null {
   return entities.get(sprite) ?? null
+}
+
+/** Read the private terminal lifecycle generation without widening Sprite2D's public declaration. */
+export function spriteLifecycleRevision(sprite: object): number {
+  return Reflect.get(sprite, '_lifecycleRevision') as number
+}
+
+/** Restore pre-adoption material state through Sprite2D's private transaction seam. */
+export function rollbackSpriteManagedMaterialResolution(
+  sprite: object,
+  material: object,
+  bootstrapDefault: boolean,
+  registryDefault: boolean,
+  bootstrapVariant: boolean,
+  registryVariant: boolean
+): void {
+  const rollback = Reflect.get(sprite, '_rollbackManagedMaterialResolution') as (
+    material: object,
+    bootstrapDefault: boolean,
+    registryDefault: boolean,
+    bootstrapVariant: boolean,
+    registryVariant: boolean
+  ) => void
+  rollback.call(sprite, material, bootstrapDefault, registryDefault, bootstrapVariant, registryVariant)
 }

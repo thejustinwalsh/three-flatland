@@ -40,9 +40,16 @@ import { reserveWorld } from '../internal/reserved-world'
 import {
   assertSpriteGroupCanDispose,
   clearSpriteGroupWorld,
+  registerSpriteGroupAdoption,
   registerSpriteGroupRuntime,
 } from '../internal/sprite-group-runtime'
-import { spriteEntity, spriteWorld, throwSpriteCloneBootstrapError } from '../internal/sprite-runtime'
+import {
+  rollbackSpriteManagedMaterialResolution,
+  spriteEntity,
+  spriteLifecycleRevision,
+  spriteWorld,
+  throwSpriteCloneBootstrapError,
+} from '../internal/sprite-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -93,6 +100,8 @@ export class SpriteGroup extends ClippingGroup {
 
   /** Terminal lifecycle latch. Disposal is idempotent and never permits a replacement world. */
   private _disposed = false
+  private _lifecycleRevision = 0
+  private readonly _adoptionsInProgress = new WeakSet<Sprite2D>()
 
   private readonly _expectedEntityCapacity: number
   private readonly _expectedBatchCapacity: number
@@ -239,6 +248,11 @@ export class SpriteGroup extends ClippingGroup {
     this._expectedBatchCapacity = expectedBatchCapacity
     this._expectedEntityCapacity = expectedEntityCapacity
     registerSpriteGroupRuntime(this, () => this.#runtimeWorld())
+    registerSpriteGroupAdoption(
+      this,
+      (sprite) => this._adoptDirectSprite(sprite),
+      (sprite) => this._rollbackSpriteAdoption(sprite)
+    )
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
@@ -443,24 +457,7 @@ export class SpriteGroup extends ClippingGroup {
       return super.add(spriteOrObject, ...rest)
     }
     if (isSprite2D(spriteOrObject)) {
-      const sprite = spriteOrObject
-      if (sprite._disposed) return this
-      if (sprite._batchEnrollmentBlockedMaterial === sprite.material) return this
-      const targetWorld = this.#runtimeWorld()
-      // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
-      if (spriteEntity(sprite) && spriteWorld(sprite) === targetWorld) return this
-      const autoRegistry = (sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry
-      if (autoRegistry && autoRegistry.group !== this) {
-        sprite._releaseAutoOrchestration()
-      }
-      if (spriteEntity(sprite)) this._releasePreviousWorldEnrollment(sprite)
-      // Assign ECS world, resolve world-scoped default material, enroll
-      assignWorld(sprite, targetWorld)
-      this._resolveDefaultMaterial(sprite)
-      sprite._enrollInWorld()
-      this._spriteCount++
-      this._trackMaterial(sprite)
-      throwSpriteCloneBootstrapError(sprite)
+      this._adoptDirectSprite(spriteOrObject)
     } else {
       super.add(spriteOrObject)
       spriteOrObject.traverse((object) => {
@@ -468,6 +465,151 @@ export class SpriteGroup extends ClippingGroup {
       })
     }
     return this
+  }
+
+  /** Commit one direct enrollment, returning false for a reentrant or terminalized adoption. @internal */
+  private _adoptDirectSprite(sprite: Sprite2D, hierarchy = false): boolean {
+    if (sprite._disposed || sprite._batchEnrollmentBlockedMaterial === sprite.material) return false
+    if (this._adoptionsInProgress.has(sprite)) return false
+    const targetWorld = this.#runtimeWorld()
+    // Skip if already enrolled (R3F insertBefore re-adds during reconciliation).
+    if (spriteEntity(sprite) && spriteWorld(sprite) === targetWorld) return true
+
+    this._adoptionsInProgress.add(sprite)
+    const groupRevision = this._lifecycleRevision
+    const spriteRevision = spriteLifecycleRevision(sprite)
+    const previousMaterial = sprite.material
+    const bootstrapDefault = sprite._materialIsBootstrapDefault
+    const registryDefault = sprite._materialWasRegistryDefault
+    const bootstrapVariant = sprite._materialIsBootstrapVariant
+    const registryVariant = sprite._materialWasRegistryVariant
+    let committed = false
+    let countPublished = false
+    try {
+      const autoRegistry = (sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry
+      if (autoRegistry && autoRegistry.group !== this) sprite._releaseAutoOrchestration()
+      if (spriteEntity(sprite)) this._releasePreviousWorldEnrollment(sprite)
+      assignWorld(sprite, targetWorld)
+      this._resolveDefaultMaterial(sprite)
+
+      const lifecycleChanged =
+        this._lifecycleRevision !== groupRevision || spriteLifecycleRevision(sprite) !== spriteRevision
+      if (!lifecycleChanged && !this._disposed && !sprite._disposed) sprite._enrollInWorld()
+      if (
+        lifecycleChanged ||
+        this._disposed ||
+        sprite._disposed ||
+        spriteWorld(sprite) !== targetWorld ||
+        !spriteEntity(sprite)
+      ) {
+        let rollbackError: unknown
+        let rollbackFailed = false
+        try {
+          this._rollbackIncompleteAdoption(
+            sprite,
+            previousMaterial,
+            bootstrapDefault,
+            registryDefault,
+            bootstrapVariant,
+            registryVariant
+          )
+        } catch (error) {
+          rollbackError = error
+          rollbackFailed = true
+        }
+        // A hostile staging listener's exact value remains the primary
+        // failure even if best-effort rollback also encountered a problem.
+        throwSpriteCloneBootstrapError(sprite, false)
+        if (rollbackFailed) throw rollbackError
+        return false
+      }
+
+      this._spriteCount++
+      countPublished = true
+      this._trackMaterial(sprite)
+      if (hierarchy) {
+        sprite._hierarchyManaged = true
+        sprite._hierarchyOwner = this
+        this._hierarchySprites.add(sprite)
+      }
+      committed = true
+      throwSpriteCloneBootstrapError(sprite)
+      return true
+    } catch (error) {
+      if (!committed) {
+        if (countPublished) {
+          this._spriteCount--
+          if (hierarchy) {
+            this._hierarchySprites.delete(sprite)
+            sprite._hierarchyManaged = false
+            sprite._hierarchyOwner = null
+          }
+        }
+        try {
+          this._rollbackIncompleteAdoption(
+            sprite,
+            previousMaterial,
+            bootstrapDefault,
+            registryDefault,
+            bootstrapVariant,
+            registryVariant
+          )
+        } catch {
+          // Preserve the exact primary failure after complete best-effort rollback.
+        }
+      }
+      throw error
+    } finally {
+      this._adoptionsInProgress.delete(sprite)
+    }
+  }
+
+  /** Roll back without public lifecycle guards or user-extensible material callbacks. */
+  private _rollbackIncompleteAdoption(
+    sprite: Sprite2D,
+    material: Sprite2D['material'],
+    bootstrapDefault: boolean,
+    registryDefault: boolean,
+    bootstrapVariant: boolean,
+    registryVariant: boolean
+  ): void {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    if (spriteEntity(sprite)) runCleanup(() => sprite._unenrollFromWorld())
+    if (!spriteEntity(sprite) && spriteWorld(sprite)) runCleanup(() => sprite._releaseWorldOwnership())
+    if (sprite.material !== material) {
+      runCleanup(() =>
+        rollbackSpriteManagedMaterialResolution(
+          sprite,
+          material,
+          bootstrapDefault,
+          registryDefault,
+          bootstrapVariant,
+          registryVariant
+        )
+      )
+    }
+    if (didError) throw firstError
+  }
+
+  /** Terminal-safe rollback used by Flatland when outer ownership publication fails. @internal */
+  private _rollbackSpriteAdoption(sprite: Sprite2D): void {
+    if (sprite._hierarchyOwner === this) {
+      this._releaseHierarchySprite(sprite)
+      return
+    }
+    if (spriteEntity(sprite) && spriteWorld(sprite) === this._world) this._releaseDirectEnrollment(sprite)
+    else if (!spriteEntity(sprite) && spriteWorld(sprite)) sprite._releaseWorldOwnership()
   }
 
   /** Enroll a sprite while leaving it under its authored Object3D parent. @internal */
@@ -505,15 +647,7 @@ export class SpriteGroup extends ClippingGroup {
       return
     }
 
-    assignWorld(sprite, targetWorld)
-    this._resolveDefaultMaterial(sprite)
-    sprite._hierarchyManaged = true
-    sprite._hierarchyOwner = this
-    this._hierarchySprites.add(sprite)
-    sprite._enrollInWorld()
-    this._spriteCount++
-    this._trackMaterial(sprite)
-    throwSpriteCloneBootstrapError(sprite)
+    this._adoptDirectSprite(sprite, true)
   }
 
   /** Release a retained source descendant from this group's world. @internal */
@@ -1082,6 +1216,7 @@ export class SpriteGroup extends ClippingGroup {
   dispose(): void {
     if (this._disposed) return
     assertSpriteGroupCanDispose(this)
+    this._lifecycleRevision++
     this._disposed = true
     let firstError: unknown
     let didError = false
