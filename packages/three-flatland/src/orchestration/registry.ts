@@ -193,15 +193,17 @@ function retireRegistry(registry: Registry, replacement: Registry): void {
       removalFailed = true
     }
   }
-  // A public `removed` listener can synchronously re-add this exact terminal
-  // group. Retire it from the source scene without redispatching callbacks;
-  // leave an intentional foreign-parent reparent alone.
-  if (registry.group.parent === registry.scene) {
-    const index = registry.scene.children.indexOf(registry.group)
-    if (index !== -1) registry.scene.children.splice(index, 1)
+  // A public `removed` listener can synchronously hide this exact terminal
+  // group below any authored descendant, or below the not-yet-attached live
+  // replacement. Canonicalize both ownership roots without redispatching;
+  // leave an intentional parent outside this scene/registry alone.
+  if (isBelow(registry.group, registry.scene) || isBelow(registry.group, replacement.group)) {
+    const parent = registry.group.parent!
+    const index = parent.children.indexOf(registry.group)
+    if (index !== -1) parent.children.splice(index, 1)
     registry.group.parent = null
   }
-  const candidates = new Set([...registry.sprites, ...registry.standalone])
+  const candidates = new Set([...registry.sprites, ...registry.standalone, ...registry._recoveryCandidates])
   for (const sprite of candidates) {
     const runtimeSprite = sprite as unknown as { _autoRegistry: Registry | null }
     if (runtimeSprite._autoRegistry && runtimeSprite._autoRegistry !== registry) continue
@@ -211,8 +213,19 @@ function retireRegistry(registry: Registry, replacement: Registry): void {
   }
   registry.sprites.clear()
   registry.standalone.clear()
+  registry._recoveryCandidates.clear()
   registry._autoEvalDirty = false
   if (removalFailed) throw removalError
+}
+
+/** Whether an object is currently parented anywhere below an ownership root. */
+function isBelow(object: SpriteGroup, root: Scene | SpriteGroup): boolean {
+  let parent = object.parent
+  while (parent) {
+    if (parent === root) return true
+    parent = parent.parent
+  }
+  return false
 }
 
 /** Keep terminal-registry recovery scoped to the exact authored scene. */
