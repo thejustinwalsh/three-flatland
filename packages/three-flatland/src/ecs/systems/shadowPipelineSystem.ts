@@ -45,6 +45,12 @@ export function shadowPipelineSystem(world: World): void {
   const ctx = world.read(ctxEntities[0]!, LightingContext)
   if (!ctx) return
 
+  // Flatland depublishes both handles while an old effect's extensible
+  // dispose() callback is running. Treat that transactional state like a
+  // missing context so a direct system call cannot retire or replace the
+  // still-authoritative shadow generation.
+  if (!ctx.effect && !ctx.lightStore) return
+
   const pipelineEntities = world.view(ShadowPipelines)
   if (pipelineEntities.length === 0) return
   const pipeline = world.read(pipelineEntities[0]!, ShadowPipeline)

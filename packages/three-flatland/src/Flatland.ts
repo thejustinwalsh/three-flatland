@@ -98,6 +98,24 @@ interface LightingContextData {
   worldOffset: Vector2
 }
 
+function depublishLightingContext(context: LightingContextData): void {
+  context.effect = null
+  context.lightStore = null
+  context.wrappedLightFn = null
+  context.dirty = false
+  context.initialized = false
+  context.resizePending = false
+  context.renderer = null
+  context.camera = null
+  context.scene = null
+}
+
+function suspendLightingContext(context: LightingContextData): LightingContextData {
+  const snapshot = { ...context }
+  depublishLightingContext(context)
+  return snapshot
+}
+
 // R3F restores a removed JSX property from a no-arg instance of the class.
 // Remember every camera created for that default state so assigning one back
 // can restore this instance's own managed camera instead of adopting a foreign
@@ -1616,39 +1634,51 @@ export class Flatland extends Group {
 
     if (!lightEffect) {
       const previous = this._lightEffect
-      if (previous) {
-        previous.dispose()
-        if (this._sharedWorld?.disposed) {
-          throw new Error('three-flatland: Flatland.spriteGroup.dispose() cannot run during setLighting()')
+      const world = this._runtimeWorld
+      const contextEntity = this._lightingContextEntity
+      const context = contextEntity
+        ? (world.read(contextEntity, LightingContext) as LightingContextData | undefined)
+        : undefined
+      const contextSnapshot = context && previous ? suspendLightingContext(context) : null
+      if (previous) this._setLightingSystemsScheduled(world, false)
+      let committed = false
+      try {
+        if (previous) {
+          previous.dispose()
+          if (this._sharedWorld?.disposed) {
+            throw new Error('three-flatland: Flatland.spriteGroup.dispose() cannot run during setLighting()')
+          }
+          const previousEntity = getEffectEntity(previous)
+          if (previousEntity) world.destroy(previousEntity)
+          previous._detach()
         }
-        const previousEntity = getEffectEntity(previous)
-        if (previousEntity) this._runtimeWorld.destroy(previousEntity)
-        previous._detach()
+        this._lightEffect = null
+        if (contextEntity) {
+          const preservedCtx = contextSnapshot ?? context
+          world.patch(contextEntity, LightingContext, {
+            effect: null,
+            lightStore: preservedCtx?.lightStore ?? null,
+            lights: preservedCtx?.lights ?? [],
+            wrappedLightFn: null,
+            requiredChannels: new Set<ChannelName>(),
+            materials: preservedCtx?.materials ?? new Set<Sprite2DMaterial>(),
+            dirty: true,
+            initialized: false,
+            surfaceSize: preservedCtx?.surfaceSize ?? new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
+            resizePending: false,
+            renderer: preservedCtx?.renderer ?? null,
+            camera: preservedCtx?.camera ?? null,
+            scene: preservedCtx?.scene ?? null,
+            worldSize: preservedCtx?.worldSize ?? new Vector2(),
+            worldOffset: preservedCtx?.worldOffset ?? new Vector2(),
+          })
+        }
+        committed = true
+        return this
+      } finally {
+        if (!committed && context && contextSnapshot) Object.assign(context, contextSnapshot)
+        if (previous && !world.disposed) this._setLightingSystemsScheduled(world, true)
       }
-      this._lightEffect = null
-      if (this._lightingContextEntity) {
-        const existingCtx = this._runtimeWorld.read(this._lightingContextEntity, LightingContext) as
-          | LightingContextData
-          | undefined
-        this._runtimeWorld.patch(this._lightingContextEntity, LightingContext, {
-          effect: null,
-          lightStore: existingCtx?.lightStore ?? null,
-          lights: existingCtx?.lights ?? [],
-          wrappedLightFn: null,
-          requiredChannels: new Set<ChannelName>(),
-          materials: existingCtx?.materials ?? new Set<Sprite2DMaterial>(),
-          dirty: true,
-          initialized: false,
-          surfaceSize: existingCtx?.surfaceSize ?? new Vector2(this._lastSyncedWidth, this._lastSyncedHeight),
-          resizePending: false,
-          renderer: existingCtx?.renderer ?? null,
-          camera: existingCtx?.camera ?? null,
-          scene: existingCtx?.scene ?? null,
-          worldSize: existingCtx?.worldSize ?? new Vector2(),
-          worldOffset: existingCtx?.worldOffset ?? new Vector2(),
-        })
-      }
-      return this
     }
 
     const previous = this._lightEffect
@@ -1663,6 +1693,9 @@ export class Flatland extends Group {
     let shadowCreated = false
     let contextEntity = this._lightingContextEntity
     let contextCreated = false
+    let suspendedContext: LightingContextData | null = null
+    let suspendedContextSnapshot: LightingContextData | null = null
+    let lightingSystemsSuspended = false
     const assertLightingWorldLive = (): void => {
       if (world.disposed) {
         throw new Error('three-flatland: Flatland.spriteGroup.dispose() cannot run during setLighting()')
@@ -1771,16 +1804,30 @@ export class Flatland extends Group {
         throw new Error('three-flatland: lighting ownership changed during effect preparation')
       }
 
-      // User disposal remains pre-publication. A throw rolls every candidate
-      // allocation/cache back and leaves the current owner/context authoritative.
+      // User disposal remains pre-publication. Depublish the old runtime
+      // context and remove lighting systems from the schedule first: a hostile
+      // dispose() callback may force a SpriteGroup update, but it cannot run
+      // the old effect or shadow pipeline during this transaction.
+      if (previous && contextEntity) {
+        suspendedContext = (world.read(contextEntity, LightingContext) as LightingContextData | undefined) ?? null
+        if (suspendedContext) suspendedContextSnapshot = suspendLightingContext(suspendedContext)
+        this._setLightingSystemsScheduled(world, false)
+        lightingSystemsSuspended = true
+      }
       previous?.dispose()
       assertLightingWorldLive()
       if (this._lightEffect !== previous || lightEffect._flatland !== null || getEffectEntity(lightEffect) !== null) {
         throw new Error('three-flatland: lighting ownership changed during previous-effect disposal')
       }
     } catch (error) {
+      if (suspendedContext && suspendedContextSnapshot) Object.assign(suspendedContext, suspendedContextSnapshot)
+      if (lightingSystemsSuspended && !world.disposed) this._setLightingSystemsScheduled(world, true)
       discardPrepared()
       throw error
+    }
+    if (lightingSystemsSuspended) {
+      this._setLightingSystemsScheduled(world, true)
+      lightingSystemsSuspended = false
     }
 
     const previousEntity = previous ? getEffectEntity(previous) : null
@@ -1805,6 +1852,7 @@ export class Flatland extends Group {
     this._lightEffect = lightEffect
 
     const existingCtx = world.read(contextEntity!, LightingContext) as LightingContextData | undefined
+    const preservedCtx = suspendedContextSnapshot ?? existingCtx
     world.patch(contextEntity!, LightingContext, {
       effect: lightEffect,
       lightStore: preparedLightStore,
@@ -1814,13 +1862,13 @@ export class Flatland extends Group {
       materials: this._spriteMaterials,
       dirty: true,
       initialized: false,
-      surfaceSize: existingCtx?.surfaceSize ?? new Vector2(),
+      surfaceSize: preservedCtx?.surfaceSize ?? new Vector2(),
       resizePending: false,
-      renderer: existingCtx?.renderer ?? null,
-      camera: existingCtx?.camera ?? null,
-      scene: existingCtx?.scene ?? null,
-      worldSize: existingCtx?.worldSize ?? new Vector2(),
-      worldOffset: existingCtx?.worldOffset ?? new Vector2(),
+      renderer: preservedCtx?.renderer ?? null,
+      camera: preservedCtx?.camera ?? null,
+      scene: preservedCtx?.scene ?? null,
+      worldSize: preservedCtx?.worldSize ?? new Vector2(),
+      worldOffset: preservedCtx?.worldOffset ?? new Vector2(),
     })
     if (this._lastSyncedWidth > 0 && this._lastSyncedHeight > 0) {
       this._queueLightEffectResize(this._lastSyncedWidth, this._lastSyncedHeight)
@@ -1942,19 +1990,29 @@ export class Flatland extends Group {
   private _ensureLightingSystems(): void {
     if (this._lightingSystemsRegistered) return
     this._lightingSystemsRegistered = true
+    this._setLightingSystemsScheduled(this._runtimeWorld, true)
+  }
 
-    // Get the schedule from BatchRegistry
-    const registry = this._getRegistry()
-    if (!registry?.schedule) return
+  /** Temporarily remove or restore lighting systems around extensible lifecycle callbacks. */
+  private _setLightingSystemsScheduled(world: World, scheduled: boolean): void {
+    if (!this._lightingSystemsRegistered) return
+    const registryEntity = world.view(BatchRegistries)[0]
+    if (!registryEntity) return
+    const registry = world.read(registryEntity, BatchRegistry) as RegistryData | undefined
+    const schedule = registry?.schedule
+    if (!schedule) return
 
-    // Prepend the light setup systems before sprite systems. shadowPipelineSystem
-    // is APPENDED instead so it runs LAST — after conditionalTransformSyncSystem
-    // has written current-frame instance matrices and flushDirtyRangesSystem has
-    // uploaded them. This way the occluder pre-pass sees freshly-uploaded matrices
-    // (fixes the 1-frame shadow lag on moving casters). The schedule's per-frame
-    // idempotency + OcclusionPass._rendering guard handle the reentrant
-    // renderer.render → updateMatrixWorld → schedule.run, so appending is safe.
-    registry.schedule
+    if (!scheduled) {
+      schedule.remove(lightSyncSystem)
+      schedule.remove(lightEffectSystem)
+      schedule.remove(lightMaterialAssignSystem)
+      schedule.remove(shadowPipelineSystem)
+      return
+    }
+
+    // Prepend light setup before sprite systems. shadowPipelineSystem is
+    // appended so it sees current-frame matrices and flushed dirty ranges.
+    schedule
       .add(shadowPipelineSystem, { track: PERF_TRACK.Lighting, name: 'shadowPipeline' })
       .prepend(lightMaterialAssignSystem, {
         track: PERF_TRACK.Lighting,
@@ -2695,6 +2753,8 @@ export class Flatland extends Group {
     this._disposed = true
     const world = this._sharedWorld
     this._sharedWorld = null
+    const contextEntity = this._lightingContextEntity
+    this._lightingContextEntity = null
     const shadowEntity = this._shadowPipelineEntity
     this._shadowPipelineEntity = null
     let sdfGenerator = this._shadowSdfGenerator
@@ -2722,6 +2782,19 @@ export class Flatland extends Group {
       pipeline.width = 0
       pipeline.height = 0
     })
+    // Make the complete lighting runtime terminal before the first extensible
+    // cleanup callback. Context depublishing blocks direct system calls, while
+    // schedule removal blocks callbacks that force a SpriteGroup update.
+    runCleanup(() => {
+      if (world) this._setLightingSystemsScheduled(world, false)
+    })
+    runCleanup(() => {
+      if (!world || !contextEntity || !world.isAlive(contextEntity)) return
+      const context = world.read(contextEntity, LightingContext) as LightingContextData | undefined
+      if (context) depublishLightingContext(context)
+    })
+    if (contextEntity) runCleanup(() => destroyEntity(contextEntity))
+    if (shadowEntity) runCleanup(() => destroyEntity(shadowEntity))
 
     // Tear down debug producers first — releases the scene.onAfterRender
     // hook so subsequent renders during dispose don't try to dispatch.
@@ -2753,11 +2826,6 @@ export class Flatland extends Group {
       if (entity) runCleanup(() => destroyEntity(entity))
       runCleanup(() => lightEffect._detach())
     }
-    if (this._lightingContextEntity) {
-      const contextEntity = this._lightingContextEntity
-      this._lightingContextEntity = null
-      runCleanup(() => destroyEntity(contextEntity))
-    }
     const lightStore = this._lightStore
     this._lightStore = null
     if (lightStore) runCleanup(() => lightStore.dispose())
@@ -2767,9 +2835,6 @@ export class Flatland extends Group {
     const ownedOcclusionPass = occlusionPass
     if (ownedSdfGenerator) runCleanup(() => ownedSdfGenerator.dispose())
     if (ownedOcclusionPass) runCleanup(() => ownedOcclusionPass.dispose())
-    if (shadowEntity) {
-      runCleanup(() => destroyEntity(shadowEntity))
-    }
     this._lights.length = 0
     for (const unsubscribe of this._spriteMaterialSubscriptions.values()) runCleanup(unsubscribe)
     for (const unsubscribe of this._spriteDisposeSubscriptions.values()) runCleanup(unsubscribe)

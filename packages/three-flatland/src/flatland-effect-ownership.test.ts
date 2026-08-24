@@ -9,6 +9,7 @@ import { createPassEffect } from './pipeline/PassEffect'
 import type { PassEffect } from './pipeline/PassEffect'
 import { LightEffectTrait, LightingContext, PostPassRegistry, PostPassTrait, ShadowPipeline } from './ecs/traits'
 import { select, type NumericSchema, type NumericTrait, type World } from './ecs/runtime'
+import { shadowPipelineSystem } from './ecs/systems/shadowPipelineSystem'
 
 const OwnedPass = createPassEffect({
   name: 'ownedPassBoundary',
@@ -891,6 +892,136 @@ describe('Flatland effect ownership boundaries', () => {
     expect(Reflect.get(flatland, '_sharedWorld')).toBeNull()
     expect(Reflect.get(flatland.spriteGroup, '_world')).toBeNull()
     expect(() => flatland.dispose()).not.toThrow()
+  })
+
+  it('revokes shadow allocation eligibility before user light cleanup runs', () => {
+    const flatland = new Flatland()
+    const light = new InitialShadowLight()
+    flatland.setLighting(light)
+    const init = vi.spyOn(light, 'init')
+    const resize = vi.spyOn(light, 'resize')
+    const update = vi.spyOn(light, 'update')
+
+    const world = runtimeWorld(flatland)
+    const contextEntity = Reflect.get(flatland, '_lightingContextEntity')
+    const context = world.read(contextEntity, LightingContext)!
+    context.renderer = {} as never
+    context.camera = flatland.camera
+    context.surfaceSize.set(256, 256)
+    context.scene = null
+    const shadowEntity = Reflect.get(flatland, '_shadowPipelineEntity')
+    const pipeline = world.read(shadowEntity, ShadowPipeline)!
+    const disposeSdf = vi.spyOn(pipeline.sdfGenerator!, 'dispose')
+    const disposeOcclusion = vi.spyOn(pipeline.occlusionPass!, 'dispose')
+    let replacementSdf: unknown = null
+    let replacementOcclusion: unknown = null
+    light.dispose = vi.fn(() => {
+      flatland.spriteGroup.update()
+      shadowPipelineSystem(world)
+      replacementSdf = pipeline.sdfGenerator
+      replacementOcclusion = pipeline.occlusionPass
+    })
+
+    flatland.dispose()
+
+    expect(replacementSdf).toBeNull()
+    expect(replacementOcclusion).toBeNull()
+    expect(init).not.toHaveBeenCalled()
+    expect(resize).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(disposeSdf).toHaveBeenCalledOnce()
+    expect(disposeOcclusion).toHaveBeenCalledOnce()
+    expect(world.disposed).toBe(true)
+    expect(() => flatland.dispose()).not.toThrow()
+  })
+
+  it('suspends old lighting during replacement disposal and restores it after rollback', () => {
+    const flatland = new Flatland()
+    const active = new DestinationLight()
+    const replacement = new ContextualLight()
+    flatland.setLighting(active)
+
+    const world = runtimeWorld(flatland)
+    const contextEntity = Reflect.get(flatland, '_lightingContextEntity')
+    const context = world.read(contextEntity, LightingContext)!
+    const renderer = {} as never
+    context.renderer = renderer
+    context.camera = flatland.camera
+    context.surfaceSize.set(256, 256)
+    context.scene = flatland.scene
+    const init = vi.spyOn(active, 'init')
+    const resize = vi.spyOn(active, 'resize')
+    const update = vi.spyOn(active, 'update')
+    let failDisposal = true
+    active.dispose = vi.fn(() => {
+      flatland.spriteGroup.update()
+      if (failDisposal) throw 0
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      flatland.setLighting(replacement)
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(0)
+    expect(init).not.toHaveBeenCalled()
+    expect(resize).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(flatland.lighting).toBe(active)
+    expect(world.read(contextEntity, LightingContext)).toBe(context)
+    expect(context.effect).toBe(active)
+    expect(context.renderer).toBe(renderer)
+
+    flatland.spriteGroup.update()
+    expect(init).toHaveBeenCalledOnce()
+    expect(resize).toHaveBeenCalledOnce()
+    expect(update).toHaveBeenCalledOnce()
+
+    failDisposal = false
+    flatland.setLighting(replacement)
+    expect(init).toHaveBeenCalledOnce()
+    expect(resize).toHaveBeenCalledOnce()
+    expect(update).toHaveBeenCalledOnce()
+    expect(flatland.lighting).toBe(replacement)
+    expect(context.effect).toBe(replacement)
+    expect(context.renderer).toBe(renderer)
+
+    flatland.dispose()
+  })
+
+  it('preserves the live shadow generation across replacement disposal callbacks', () => {
+    const flatland = new Flatland()
+    const active = new InitialShadowLight()
+    const replacement = new InitialShadowLight()
+    flatland.setLighting(active)
+
+    const world = runtimeWorld(flatland)
+    const shadowEntity = Reflect.get(flatland, '_shadowPipelineEntity')
+    const pipeline = world.read(shadowEntity, ShadowPipeline)!
+    const sdfGenerator = pipeline.sdfGenerator
+    const occlusionPass = pipeline.occlusionPass
+    const disposeSdf = vi.spyOn(sdfGenerator!, 'dispose')
+    const disposeOcclusion = vi.spyOn(occlusionPass!, 'dispose')
+    active.dispose = vi.fn(() => {
+      shadowPipelineSystem(world)
+    })
+
+    flatland.setLighting(replacement)
+
+    expect(pipeline.sdfGenerator).toBe(sdfGenerator)
+    expect(pipeline.occlusionPass).toBe(occlusionPass)
+    expect(disposeSdf).not.toHaveBeenCalled()
+    expect(disposeOcclusion).not.toHaveBeenCalled()
+    expect(flatland.lighting).toBe(replacement)
+
+    flatland.dispose()
+    expect(disposeSdf).toHaveBeenCalledOnce()
+    expect(disposeOcclusion).toHaveBeenCalledOnce()
   })
 
   it('retains shadow ownership when direct SpriteGroup disposal is rejected', () => {
