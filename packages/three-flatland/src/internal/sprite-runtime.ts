@@ -2,6 +2,22 @@ import type { Entity, World } from '../ecs/runtime'
 
 const worlds = new WeakMap<object, World>()
 const entities = new WeakMap<object, Entity>()
+const cloneBootstrapMaterials = new WeakSet<object>()
+
+/** Mark a package-owned clone staging material for retirement on replacement/dispose. @internal */
+export function markSpriteCloneBootstrapMaterial(sprite: object): void {
+  cloneBootstrapMaterials.add(sprite)
+}
+
+/** Test whether the sprite still owns its clone staging material. @internal */
+export function hasSpriteCloneBootstrapMaterial(sprite: object): boolean {
+  return cloneBootstrapMaterials.has(sprite)
+}
+
+/** Clear clone staging ownership, returning whether it was active. @internal */
+export function consumeSpriteCloneBootstrapMaterial(sprite: object): boolean {
+  return cloneBootstrapMaterials.delete(sprite)
+}
 
 export function stageSpriteWorld(sprite: object, world: World): void {
   const current = worlds.get(sprite)

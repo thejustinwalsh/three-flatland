@@ -17,6 +17,7 @@ import {
   PIXEL_PERFECT_MASK,
   EFFECT_BIT_OFFSET,
 } from '../sprites/Sprite2D'
+import { Flatland } from '../Flatland'
 
 // Default low bits set by the coordinated pixel-art preset.
 const DEFAULT_FLAGS = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK | PIXEL_PERFECT_MASK
@@ -396,6 +397,49 @@ describe('MaterialEffect instances', () => {
     } finally {
       freeze.mockRestore()
     }
+  })
+
+  it('keeps ordinary scalar reads off the TileMap override lookup path', () => {
+    const Effect = createMaterialEffect({
+      name: 'direct_material_scalar_read',
+      schema: { amount: 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const detached = new Effect()
+    let detachedGets = -1
+    const detachedGet = vi.spyOn(WeakMap.prototype, 'get')
+    try {
+      for (let i = 0; i < 100; i++) void detached.amount
+      detachedGets = detachedGet.mock.calls.length
+    } finally {
+      detachedGet.mockRestore()
+    }
+    expect(detachedGets).toBe(0)
+
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Effect)
+    const sprite = new Sprite2D({ texture, material })
+    const enrolled = new Effect()
+    sprite.addEffect(enrolled)
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+    let enrolledGets = -1
+    const enrolledGet = vi.spyOn(WeakMap.prototype, 'get')
+    try {
+      for (let i = 0; i < 100; i++) void enrolled.amount
+      enrolledGets = enrolledGet.mock.calls.length
+    } finally {
+      enrolledGet.mockRestore()
+    }
+    // Entity + trait resolution are the two existing ECS lookups; there is
+    // no third lookup for a TileMap-only transactional override.
+    expect(enrolledGets).toBe(200)
+
+    sprite.dispose()
+    world.dispose()
+    material.dispose()
   })
 
   it('should have independent instances', () => {
@@ -1992,6 +2036,69 @@ describe('Sprite2D clone with effects', () => {
 
     cloned.dispose()
     sprite.dispose()
+  })
+
+  it('re-resolves a registry-default clone into another Flatland without touching bootstrap schema', () => {
+    const texture = new Texture()
+    texture.image = { width: 32, height: 32 }
+    const WideEffect = createMaterialEffect({
+      name: 'sprite_clone_cross_world_wide',
+      schema: {
+        direction: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const unrelated = new Sprite2D({ texture })
+    const unrelatedBootstrap = unrelated.material
+    const sourceFlatland = new Flatland()
+    const destinationFlatland = new Flatland()
+    const source = new Sprite2D({ texture })
+    sourceFlatland.add(source)
+    source.material.registerEffect(WideEffect)
+    source._setupInstanceAttributes()
+    const effect = new WideEffect()
+    effect.direction = [7, 8]
+    source.addEffect(effect)
+    expect(source._materialWasRegistryDefault).toBe(true)
+
+    const cloned = source.clone()
+    const stagingMaterial = cloned.material
+    const disposeStaging = vi.spyOn(stagingMaterial, 'dispose')
+    expect(stagingMaterial).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapDefault).toBe(true)
+    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).not.toBe(stagingMaterial)
+    expect(cloned.material).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapDefault).toBe(false)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(cloned.material._effectTier).toBeGreaterThan(8)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect((cloned._effects[0] as InstanceType<typeof WideEffect>).direction).toEqual([7, 8])
+    expect((Reflect.get(sourceFlatland, '_spriteMaterials') as Set<Sprite2DMaterial>).has(source.material)).toBe(true)
+    expect((Reflect.get(destinationFlatland, '_spriteMaterials') as Set<Sprite2DMaterial>).has(cloned.material)).toBe(
+      true
+    )
+    expect(unrelated.material).toBe(unrelatedBootstrap)
+    expect(unrelatedBootstrap.hasEffect(WideEffect)).toBe(false)
+    expect(unrelatedBootstrap._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+
+    const destinationMaterial = cloned.material
+    destinationMaterial.dispose()
+    expect(cloned.material).not.toBe(destinationMaterial)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(cloned.material.hasEffect(WideEffect)).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+
+    destinationFlatland.dispose()
+    sourceFlatland.dispose()
+    cloned.dispose()
+    source.dispose()
+    unrelated.dispose()
   })
 })
 

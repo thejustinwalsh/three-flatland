@@ -7,6 +7,7 @@ import { createMaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createWorld } from '../ecs/runtime'
 import { enrollInWorld, requiredEntity, traitFor } from '../ecs/testUtils.type-test'
+import { Flatland } from '../Flatland'
 
 describe('AnimatedSprite2D', () => {
   let spriteSheet: SpriteSheet
@@ -520,6 +521,97 @@ describe('AnimatedSprite2D', () => {
 
     cloned.dispose()
     sprite.dispose()
+  })
+
+  it('re-resolves a registry variant clone across Flatlands with constants and authored state intact', () => {
+    const VariantEffect = createMaterialEffect({
+      name: 'animated_clone_cross_world_variant',
+      schema: {
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+        variant: () => 'default',
+        resource: () => ({ kind: 'default' }),
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const unrelated = new AnimatedSprite2D({ spriteSheet })
+    const unrelatedBootstrap = unrelated.material
+    const sourceFlatland = new Flatland()
+    const destinationFlatland = new Flatland()
+    const source = new AnimatedSprite2D({ spriteSheet })
+    sourceFlatland.add(source)
+    const resource = { kind: 'authored' }
+    const effect = new VariantEffect()
+    effect.offset = [7, 8]
+    effect.variant = 'authored'
+    effect.resource = resource
+    source.addEffect(effect)
+    const alphaMap = new AlphaMap(new Uint8Array([255]), 1, 1)
+    source.visible = false
+    source.lit = true
+    source.receiveShadows = false
+    source.castsShadow = true
+    source.shadowRadius = 7
+    source.alphaMap = alphaMap
+    source.alphaThreshold = 0.25
+    source.hitRadius = 2
+    source.hitTestMode = 'alpha'
+    expect(source._materialWasRegistryVariant).toBe(true)
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cloned: AnimatedSprite2D
+    try {
+      cloned = source.clone()
+      expect(warning).not.toHaveBeenCalled()
+    } finally {
+      warning.mockRestore()
+    }
+    const bootstrapVariant = cloned.material
+    expect(bootstrapVariant).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapVariant).toBe(true)
+    expect(cloned._materialWasRegistryVariant).toBe(false)
+    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof VariantEffect>
+    expect(cloned.material).not.toBe(bootstrapVariant)
+    expect(cloned.material).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapVariant).toBe(false)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(cloned.material._effectTier).toBeGreaterThan(8)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect(clonedEffect.offset).toEqual([7, 8])
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+    expect(cloned.visible).toBe(false)
+    expect(cloned.lit).toBe(true)
+    expect(cloned.receiveShadows).toBe(false)
+    expect(cloned.castsShadow).toBe(true)
+    expect(cloned.shadowRadius).toBe(7)
+    expect(cloned.alphaMap).toBe(alphaMap)
+    expect(cloned.alphaThreshold).toBe(0.25)
+    expect(cloned.hitRadius).toBe(2)
+    expect(cloned.hitTestMode).toBe('alpha')
+    expect(unrelated.material).toBe(unrelatedBootstrap)
+    expect(unrelatedBootstrap.hasEffect(VariantEffect)).toBe(false)
+    expect(unrelatedBootstrap._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+
+    const destinationMaterial = cloned.material
+    destinationMaterial.dispose()
+    expect(cloned.material).not.toBe(destinationMaterial)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(cloned.material.hasEffect(VariantEffect)).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect(clonedEffect.offset).toEqual([7, 8])
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+
+    destinationFlatland.dispose()
+    sourceFlatland.dispose()
+    cloned.dispose()
+    source.dispose()
+    unrelated.dispose()
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {

@@ -309,6 +309,9 @@ export abstract class MaterialEffect {
   /** World owning `_numericStore`; effects may be detached and re-enrolled elsewhere. */
   private _storeWorld: World | null = null
 
+  /** Active TileMap projection transaction depth; keeps ordinary scalar reads direct. */
+  private _readOverrideDepth = 0
+
   /** @internal Snapshot defaults for pre-enrollment staging. Keyed by field name. */
   _defaults: Record<string, number | number[]>
 
@@ -434,15 +437,16 @@ export abstract class MaterialEffect {
   _getField(name: string): number | readonly number[] {
     const ctor = materialEffectClassOf(this)
     const world = this._storeWorld
-    const entity = getEffectEntity(this)
-    const runtimeTrait = getEffectTrait(ctor)
-    if (entity && world?.has(entity, runtimeTrait)) {
+    const entity = world ? getEffectEntity(this) : null
+    const runtimeTrait = world ? getEffectTrait(ctor) : null
+    if (entity && world && runtimeTrait && world.has(entity, runtimeTrait)) {
       const field = ctor._fieldMap.get(name)!
       const keys = ctor._fieldKeys[name]!
       const store = this._cacheStore(world)
       const index = entitySlot(entity)
       if (field.size === 1) {
-        return readEffectScalarValue(this, name, store[keys[0]!]![index]!)
+        const value = store[keys[0]!]![index]!
+        return this._readOverrideDepth > 0 ? readEffectScalarValue(this, name, value) : value
       } else {
         return readEffectVectorSnapshot(
           this,
@@ -456,7 +460,9 @@ export abstract class MaterialEffect {
       }
     }
     const staged = this._defaults[name]!
-    if (typeof staged === 'number') return readEffectScalarValue(this, name, staged)
+    if (typeof staged === 'number') {
+      return this._readOverrideDepth > 0 ? readEffectScalarValue(this, name, staged) : staged
+    }
     const field = ctor._fieldMap.get(name)!
     return readEffectVectorSnapshot(
       this,
@@ -568,6 +574,7 @@ export abstract class MaterialEffect {
           previous3
         )
         readOverrideActive = true
+        this._readOverrideDepth++
         syncTileMapEffectProjection(this._tileMap, this, name)
       } catch (error) {
         if (field.size === 1) {
@@ -581,7 +588,10 @@ export abstract class MaterialEffect {
         }
         throw error
       } finally {
-        if (readOverrideActive) restoreEffectReadOverride(this)
+        if (readOverrideActive) {
+          restoreEffectReadOverride(this)
+          this._readOverrideDepth--
+        }
       }
     }
 

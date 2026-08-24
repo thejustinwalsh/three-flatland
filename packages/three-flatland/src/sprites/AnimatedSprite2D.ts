@@ -6,6 +6,7 @@ import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteSheet, SpriteAnimation, SpriteFrame } from './types'
 import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
+import { markSpriteCloneBootstrapMaterial } from '../internal/sprite-runtime'
 
 /**
  * Options for creating an AnimatedSprite2D.
@@ -418,11 +419,13 @@ export class AnimatedSprite2D extends Sprite2D {
       if (anim) animations.push(anim)
     }
 
+    const materialWasRegistryManaged = this._materialWasRegistryDefault || this._materialWasRegistryVariant
+    const cloneMaterial = materialWasRegistryManaged ? this.material.clone() : this.material
     const cloned = new AnimatedSprite2D({
       spriteSheet: this._spriteSheet,
-      // Reuse the source's complete schema instead of resolving an unrelated
-      // texture bootstrap material that clone registration could invalidate.
-      material: this.material,
+      // Stage a managed source through a private schema-complete material;
+      // destination enrollment will resolve its own world-scoped instance.
+      material: cloneMaterial,
       animations,
       animation: this.currentAnimation ?? undefined,
       anchor: this.anchor,
@@ -434,6 +437,7 @@ export class AnimatedSprite2D extends Sprite2D {
       zIndex: this.zIndex,
       pixelPerfect: this.pixelPerfect,
     })
+    if (materialWasRegistryManaged) markSpriteCloneBootstrapMaterial(cloned)
 
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
@@ -475,6 +479,12 @@ export class AnimatedSprite2D extends Sprite2D {
         cloned._setupInstanceAttributes()
       }
       cloned.addEffect(clonedEffect)
+    }
+
+    if (this._materialIsBootstrapDefault || this._materialWasRegistryDefault) {
+      cloned._materialIsBootstrapDefault = true
+    } else if (this._materialIsBootstrapVariant || this._materialWasRegistryVariant) {
+      cloned._materialIsBootstrapVariant = true
     }
 
     return cloned as this

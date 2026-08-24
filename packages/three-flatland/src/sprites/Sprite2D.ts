@@ -52,7 +52,14 @@ import type { Registry } from '../orchestration/registry'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 import { reserveIndexedArray } from '../internal/capacity'
 import { markTerminalObject } from '../internal/terminal-object'
-import { publishSpriteRuntime, spriteEntity, spriteWorld } from '../internal/sprite-runtime'
+import {
+  consumeSpriteCloneBootstrapMaterial,
+  hasSpriteCloneBootstrapMaterial,
+  markSpriteCloneBootstrapMaterial,
+  publishSpriteRuntime,
+  spriteEntity,
+  spriteWorld,
+} from '../internal/sprite-runtime'
 import { getEffectTrait, setEffectEntity } from '../internal/effect-runtime'
 import { notifySpriteDispose, notifySpriteMaterialChange } from '../internal/ownership-observers'
 
@@ -1278,6 +1285,9 @@ export class Sprite2D extends Mesh {
    */
   private _switchToMaterial(newMaterial: Sprite2DMaterial): void {
     const current = this.material
+    const globalUniforms = current.globalUniforms
+    const requiredChannels = current.requiredChannels
+    const colorTransform = current.colorTransform
     this.material = newMaterial
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
@@ -1285,12 +1295,12 @@ export class Sprite2D extends Mesh {
     this._materialWasRegistryVariant = false
 
     // Carry over global uniforms
-    if (current.globalUniforms) {
-      newMaterial.globalUniforms = current.globalUniforms
+    if (globalUniforms) {
+      newMaterial.globalUniforms = globalUniforms
     }
     // Carry over required channels and color transform
-    newMaterial.requiredChannels = current.requiredChannels
-    newMaterial.colorTransform = current.colorTransform
+    newMaterial.requiredChannels = requiredChannels
+    newMaterial.colorTransform = colorTransform
 
     // The public material interceptor already carried this sprite's effects,
     // rebuilt its source attribute schema, and refreshed standalone values.
@@ -2732,8 +2742,12 @@ export class Sprite2D extends Mesh {
     // Dispose owned geometry (each sprite has its own)
     const geometry = this._geometry
     if (geometry) runCleanup(() => geometry.dispose())
-    // Material is NOT disposed here — materials are shared resources.
-    // Users/frameworks manage material lifecycle separately.
+    if (consumeSpriteCloneBootstrapMaterial(this)) {
+      const material = this.material
+      runCleanup(() => material.dispose())
+    }
+    // User/shared materials are not disposed here. The package-owned clone
+    // staging material above is the deliberate exception.
     if (didError) throw firstError
   }
 
@@ -2758,13 +2772,14 @@ export class Sprite2D extends Mesh {
   override clone(recursive?: boolean): this {
     // Ignore recursive parameter - we create a fresh sprite
     void recursive
-    // Enter construction with the source's already-complete material schema,
-    // preserving Three.js clone sharing semantics. A texture-only constructor
-    // would resolve an unrelated bootstrap material; registering this clone's
-    // effects there could widen its shader layout underneath existing sprites.
+    const materialWasRegistryManaged = this._materialWasRegistryDefault || this._materialWasRegistryVariant
+    // A managed source material belongs to its current Flatland/world. Stage
+    // through a private schema-complete clone so a destination can resolve its
+    // own default/variant without touching either world or a shared bootstrap.
+    const cloneMaterial = materialWasRegistryManaged ? this.material.clone() : this.material
     const cloned = new Sprite2D({
       texture: this._texture ?? undefined,
-      material: this.material,
+      material: cloneMaterial,
       frame: this._frame ?? undefined,
       anchor: this._anchor,
       tint: this.tint,
@@ -2779,6 +2794,7 @@ export class Sprite2D extends Mesh {
       castsShadow: this.castsShadow,
       shadowRadius: this._shadowRadius,
     })
+    if (materialWasRegistryManaged) markSpriteCloneBootstrapMaterial(cloned)
 
     // Clone effect instances
     for (const effect of this._effects) {
@@ -2808,6 +2824,12 @@ export class Sprite2D extends Mesh {
         cloned._setupInstanceAttributes()
       }
       cloned.addEffect(clonedEffect)
+    }
+
+    if (this._materialIsBootstrapDefault || this._materialWasRegistryDefault) {
+      cloned._materialIsBootstrapDefault = true
+    } else if (this._materialIsBootstrapVariant || this._materialWasRegistryVariant) {
+      cloned._materialIsBootstrapVariant = true
     }
 
     cloned.position.copy(this.position)
@@ -2866,7 +2888,7 @@ Object.defineProperty(Sprite2D.prototype, 'visible', {
 // A direct `sprite.material = ...` assignment is the only way user code
 // can set the material — there is no other setter — so it's treated as
 // an explicit, permanent choice: it clears the bootstrap/registry-default
-// bookkeeping (`_materialIsBootstrapDefault` / `_materialWasRegistryDefault`)
+// bookkeeping (default and effect-variant bootstrap/registry status)
 // so auto-orchestration's `registerSprite` (orchestration/orchestrator.ts)
 // won't silently resolve the sprite back to a shared default material on
 // the next scene-add sweep, discarding the caller's material. Internal
@@ -2893,12 +2915,21 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     }
     const finalizeOwnership =
       interceptionArmed && previousMaterial ? notifySpriteMaterialChange(this, previousMaterial, value) : undefined
+    const retireCloneBootstrap =
+      interceptionArmed && previousMaterial && previousMaterial !== value && hasSpriteCloneBootstrapMaterial(this)
+        ? previousMaterial
+        : null
     let firstError: unknown
     let didError = false
+    let didAssign = false
     try {
       this._materialRef = value
+      didAssign = true
       this._materialIsBootstrapDefault = false
       this._materialWasRegistryDefault = false
+      this._materialIsBootstrapVariant = false
+      this._materialWasRegistryVariant = false
+      if (retireCloneBootstrap) consumeSpriteCloneBootstrapMaterial(this)
       this._batchEnrollmentBlockedMaterial = null
       const world = spriteWorld(this)
       const entity = spriteEntity(this)
@@ -2944,6 +2975,16 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
       if (!didError) {
         firstError = error
         didError = true
+      }
+    }
+    if (didAssign && retireCloneBootstrap) {
+      try {
+        retireCloneBootstrap.dispose()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
       }
     }
     if (didError) throw firstError
