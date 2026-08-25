@@ -241,6 +241,61 @@ describe('AnimatedSprite2D', () => {
     second.dispose()
   })
 
+  it('coalesces identical callback-free timelines behind the group boundary', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const first = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const second = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const firstUpdate = vi.spyOn(first.controller, 'update')
+    const secondUpdate = vi.spyOn(second.controller, 'update')
+    group.addSprites(first, second)
+
+    group.advanceAnimations(100)
+
+    expect(firstUpdate.mock.calls.length + secondUpdate.mock.calls.length).toBe(1)
+    expect(first.controller.getState()).toEqual(second.controller.getState())
+    expect(first.frame).toBe(frames.get('idle_1'))
+    expect(second.frame).toBe(frames.get('idle_1'))
+
+    group.dispose()
+    first.dispose()
+    second.dispose()
+  })
+
+  it('keeps callbacks and multi-frame catch-up on the exact controller path', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const callback = vi.fn()
+    const withCallback = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const catchUp = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    withCallback.play('idle', { startFrame: 0, onFrame: callback })
+    const callbackUpdate = vi.spyOn(withCallback.controller, 'update')
+    const catchUpUpdate = vi.spyOn(catchUp.controller, 'update')
+    group.addSprites(withCallback, catchUp)
+
+    group.advanceAnimations(250)
+
+    expect(callbackUpdate).toHaveBeenCalledOnce()
+    expect(catchUpUpdate).toHaveBeenCalledOnce()
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(withCallback.controller.getState()).toMatchObject({ frameIndex: 0, elapsed: 50 })
+    expect(catchUp.controller.getState()).toMatchObject({ frameIndex: 0, elapsed: 50 })
+
+    group.dispose()
+    withCallback.dispose()
+    catchUp.dispose()
+  })
+
   it('rejects non-finite and reentrant group animation steps', () => {
     const group = new SpriteGroup()
     const sprite = new AnimatedSprite2D({

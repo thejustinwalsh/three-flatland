@@ -34,6 +34,7 @@ export class AnimationController {
   private loopCount: number = 0
   private speed: number = 1
   private direction: 1 | -1 = 1 // For ping-pong
+  private timelineShareable: boolean = false
 
   // Current play options
   private options: PlayOptions = {}
@@ -84,7 +85,7 @@ export class AnimationController {
   /**
    * Play an animation.
    */
-  play(name: string, options: PlayOptions = {}): this {
+  play(name: string, options?: PlayOptions): this {
     const animation = this.animations.get(name)
     if (!animation) {
       console.warn(`Animation not found: ${name}`)
@@ -93,20 +94,26 @@ export class AnimationController {
 
     // If same animation and already playing, optionally restart
     if (this.current?.name === name && this.playing && !this.paused) {
-      if (options.startFrame === undefined) {
+      if (options?.startFrame === undefined) {
         return this // Continue playing
       }
     }
+    if (options?.speed !== undefined && !Number.isFinite(options.speed)) {
+      throw new Error('AnimationController.play speed must be finite')
+    }
+
+    const resolvedOptions = options ?? {}
 
     this.current = animation
-    this.frameIndex = options.startFrame ?? 0
+    this.frameIndex = resolvedOptions.startFrame ?? 0
     this.elapsed = 0
     this.playing = true
     this.paused = false
     this.loopCount = 0
-    this.speed = options.speed ?? 1
+    this.speed = resolvedOptions.speed ?? 1
     this.direction = 1
-    this.options = options
+    this.options = resolvedOptions
+    this.timelineShareable = options === undefined
 
     return this
   }
@@ -136,6 +143,7 @@ export class AnimationController {
     this.current = null
     this.frameIndex = 0
     this.elapsed = 0
+    this.timelineShareable = false
     return this
   }
 
@@ -171,8 +179,13 @@ export class AnimationController {
     const pingPong = animation.pingPong ?? false
     const maxLoops = animation.loopCount ?? -1
 
-    // Accumulate time
-    this.elapsed += deltaMs * this.speed
+    // Accumulate time only after proving the multiplication cannot poison the
+    // controller or turn the catch-up loop into an infinite loop.
+    const nextElapsed = this.elapsed + deltaMs * this.speed
+    if (!Number.isFinite(nextElapsed)) {
+      throw new Error('AnimationController.update resulting elapsed time must be finite')
+    }
+    this.elapsed = nextElapsed
 
     // Check if we need to advance frames
     while (this.playing) {
@@ -303,6 +316,9 @@ export class AnimationController {
    * Set playback speed.
    */
   setSpeed(speed: number): this {
+    if (!Number.isFinite(speed)) {
+      throw new Error('AnimationController.setSpeed speed must be finite')
+    }
     this.speed = speed
     return this
   }
@@ -329,5 +345,6 @@ export class AnimationController {
     this.animations.clear()
     this.current = null
     this.options = {}
+    this.timelineShareable = false
   }
 }

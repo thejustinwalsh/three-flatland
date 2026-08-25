@@ -51,7 +51,13 @@ import {
   spriteWorld,
   throwSpriteCloneBootstrapError,
 } from '../internal/sprite-runtime'
-import { isAnimatedSprite } from '../internal/animation-runtime'
+import {
+  advanceAnimationGroup,
+  createAnimationGroupState,
+  disposeAnimationGroupState,
+  isAnimatedSprite,
+  resetAnimationGroupState,
+} from '../internal/animation-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -868,7 +874,7 @@ export class SpriteGroup extends ClippingGroup {
    */
   private _inSystems = false
   private _advancingAnimations = false
-  private readonly _animationScratch: AnimatedSprite2D[] = []
+  private readonly _animationState = createAnimationGroupState()
 
   /**
    * Advance every currently enrolled `AnimatedSprite2D` with one caller-owned
@@ -888,7 +894,8 @@ export class SpriteGroup extends ClippingGroup {
     const registry = this._getRegistry()
     if (!world || !registry) return
 
-    const scratch = this._animationScratch
+    const animationState = this._animationState
+    const scratch: AnimatedSprite2D[] = animationState.sprites
     scratch.length = 0
     for (const sprite of registry.spriteArr) {
       if (sprite && isAnimatedSprite(sprite)) scratch.push(sprite)
@@ -896,12 +903,9 @@ export class SpriteGroup extends ClippingGroup {
 
     this._advancingAnimations = true
     try {
-      for (const sprite of scratch) {
-        if (spriteWorld(sprite) !== world || !spriteEntity(sprite)) continue
-        sprite.update(deltaMs)
-      }
+      advanceAnimationGroup(animationState, world, deltaMs)
     } finally {
-      scratch.length = 0
+      resetAnimationGroupState(animationState)
       this._advancingAnimations = false
     }
   }
@@ -1300,6 +1304,7 @@ export class SpriteGroup extends ClippingGroup {
     this._batchRemoveSystem = null
     this._batchSortSystem = null
     this._sceneGraphSyncSystem = null
+    disposeAnimationGroupState(this._animationState)
     if (didError) throw firstError
   }
 }
