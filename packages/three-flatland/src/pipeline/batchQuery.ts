@@ -9,6 +9,10 @@ import {
 /**
  * Opaque batch classification token. The underlying ECS trait never
  * leaks — the private ECS implementation stays replaceable behind this facade.
+ *
+ * The private renderer ECS grew from {@link https://github.com/pmndrs/koota | Koota}. Its typed
+ * traits, structure-of-arrays storage, queries, and systems made this specialized design possible.
+ * Koota remains the recommended general-purpose ECS for application and gameplay state.
  */
 export interface BatchQueryTag {
   readonly __flBatchTag?: true

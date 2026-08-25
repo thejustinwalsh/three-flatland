@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const sourceRoot = new URL('../', import.meta.url)
 const packageRoot = new URL('../../', import.meta.url)
+const repositoryRoot = new URL('../../../../', import.meta.url)
 
 function productionTypeScriptFiles(directory: URL): URL[] {
   const files: URL[] = []
@@ -14,6 +15,20 @@ function productionTypeScriptFiles(directory: URL): URL[] {
       continue
     }
     if (!entry.name.endsWith('.ts') || /\.(?:test|type-test)(?:-d)?\.ts$/.test(entry.name)) continue
+    files.push(child)
+  }
+  return files
+}
+
+function markdownFiles(directory: URL): URL[] {
+  const files: URL[] = []
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const child = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory)
+    if (entry.isDirectory()) {
+      files.push(...markdownFiles(child))
+      continue
+    }
+    if (!/\.mdx?$/.test(entry.name)) continue
     files.push(child)
   }
   return files
@@ -43,6 +58,42 @@ describe('private ECS architecture contract', () => {
       expect(JSON.stringify(exportsMap)).not.toContain('src/ecs/runtime')
       expect(JSON.stringify(exportsMap)).not.toContain('dist/ecs/runtime')
     }
+  })
+
+  it('preserves Koota provenance in public private-ECS documentation', () => {
+    const publicDocumentation = [
+      new URL('README.md', repositoryRoot),
+      new URL('packages/three-flatland/README.md', repositoryRoot),
+      new URL('packages/three-flatland/CHANGELOG.md', repositoryRoot),
+      ...markdownFiles(new URL('packages/three-flatland/codemods/', repositoryRoot)),
+      ...markdownFiles(new URL('docs/src/content/docs/', repositoryRoot)),
+      ...markdownFiles(new URL('.changeset/', repositoryRoot)),
+    ]
+    const privateEcsDocument =
+      /\b(?:private|internal)\s+(?:(?:typed|data-oriented|renderer)\s+)*(?:ECS|runtime|renderer core)\b|\bKoota-backed renderer coordination\b/i
+    const missingAttribution: string[] = []
+    let checkedDocuments = 0
+
+    for (const file of publicDocumentation) {
+      const source = readFileSync(file, 'utf8')
+      if (!privateEcsDocument.test(source) && !/(?:private-ecs|koota-free)/.test(file.pathname)) continue
+      checkedDocuments++
+
+      const linksKoota = source.includes('https://github.com/pmndrs/koota')
+      const recordsFoundation =
+        /\b(?:made|makes)\b[^.]*\b(?:design|specialization)\b[^.]*\bpossible\b/i.test(source) ||
+        /\b(?:grew|grows)\s+from\b/i.test(source) ||
+        /\bdesign foundation\b/i.test(source)
+      const preservesRole =
+        /\b(?:recommended|good fit)\b[^.]*\b(?:general-purpose|application|gameplay)\b[^.]*\bECS\b/i.test(source)
+
+      if (!linksKoota || !recordsFoundation || !preservesRole) {
+        missingAttribution.push(fileURLToPath(file))
+      }
+    }
+
+    expect(checkedDocuments).toBeGreaterThan(0)
+    expect(missingAttribution).toEqual([])
   })
 
   it('keeps animated-tile frame updates on reusable typed-array projections', () => {

@@ -100,7 +100,7 @@ This mixed model is intentional. It keeps the public library recognizable as Thr
 The standard is enforced by several independent gates:
 
 - `packages/three-flatland/src/ecs/systems/hotPathContract.test.ts` audits numeric hot paths and requires explicit object-trait allowlists.
-- `packages/three-flatland/src/ecs/privateArchitectureContract.test.ts` rejects Koota production imports, public ECS/runtime subpaths, and animated-tile scratch allocation.
+- `packages/three-flatland/src/ecs/privateArchitectureContract.test.ts` rejects Koota production imports, public ECS/runtime subpaths, and animated-tile scratch allocation. It also requires every public private-ECS document and release note to retain the Koota link, design provenance, and general-purpose recommendation.
 - `scripts/verify-public-declaration-boundary.mjs` walks emitted public declaration roots and rejects private runtime or ownership-helper leaks.
 - Runtime lifecycle, batch ownership, effect projection, hierarchy, and schedule tests prove behavior rather than relying only on source scans.
 - `TileMap2D.effects.test.ts` and `flatland-material-ownership.test.ts` prove retained effect configuration, packed chunk-schema rebuilds, live sprite material swaps, shared-material reference counts, lighting transfer, and bounded repeated clear/rebuild cycles.

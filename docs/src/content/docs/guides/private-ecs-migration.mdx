@@ -9,9 +9,9 @@ The ECS that coordinates batching, effects, lighting, and tilemaps is now privat
 
 Flatland's private renderer ECS grew from its earlier
 [Koota](https://github.com/pmndrs/koota) integration. Koota's typed traits, structure-of-arrays
-storage, and query model made the specialized design possible, and Koota remains a good fit for
-application-owned gameplay state. This migration removes a package-level renderer dependency; it
-does not replace Koota as a general-purpose ECS.
+storage, and query model made the specialized design possible. Koota remains the recommended
+general-purpose ECS for application and gameplay state. This migration removes a package-level
+renderer dependency; it does not replace Koota.
 
 ## Remove the Koota peer dependency
 
@@ -192,6 +192,7 @@ Reacquire both layers and materials after changing `data` or `chunkSize`. After 
       return <flatland args={args}>{/* scene */}</flatland>
     }
     ```
+
   </TabItem>
 </Tabs>
 

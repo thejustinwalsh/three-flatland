@@ -27,6 +27,12 @@ three-flatland exposes 2D primitives as plain `Object3D` subclasses on the Three
 - **React Three Fiber integration.** `three-flatland/react` re-exports the core surface with JSX type augmentation. `extend()`-friendly classes, `attachEffect` lifecycle helper.
 - **Tree-shakeable subpath exports.** Import per-category, deep imports for surgical bundles.
 
+The private data-oriented renderer core grew from three-flatland's original
+[Koota](https://github.com/pmndrs/koota) integration. Koota's typed traits, structure-of-arrays
+storage, queries, and systems made this specialized design possible. Koota remains the recommended
+general-purpose ECS for application and gameplay state; the renderer specialization does not replace
+it.
+
 ## Install
 
 ```bash

@@ -1,8 +1,12 @@
 ---
-"three-flatland": minor
+'three-flatland': minor
 ---
 
 Replace Koota-backed renderer coordination with the private typed runtime while preserving batch assignment, hierarchy, picking, material, lighting, pass, and disposal behavior.
+
+This specialization grew from [Koota](https://github.com/pmndrs/koota): its typed traits,
+structure-of-arrays storage, queries, and systems made the renderer design possible. Koota remains
+the recommended general-purpose ECS for application and gameplay state.
 
 **BREAKING CHANGES**
 
