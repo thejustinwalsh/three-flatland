@@ -35,6 +35,7 @@
   "scripts": {
     "build": "node ../../scripts/sync-agents-pairs.ts --templates && tsdown",
     "typecheck": "tsc --noEmit",
+    "test": "node ../../scripts/sync-agents-pairs.ts --templates && vitest run",
     "clean": "rm -rf dist",
     "prepack": "node ../../scripts/sync-agents-pairs.ts --templates && rm -rf templates/three/dist templates/react/dist"
   },
