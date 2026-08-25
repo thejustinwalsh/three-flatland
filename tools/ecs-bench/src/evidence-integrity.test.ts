@@ -76,6 +76,19 @@ function measureCurrentKernelSizes(): EvidenceReport {
 const currentSizeReport = measureCurrentKernelSizes()
 
 describe('checked-in ECS evidence', () => {
+  it('keeps every final-manifest checksum synchronized with its artifact', () => {
+    const manifest = readFileSync(resolve(resultDirectory, 'final-evidence-manifest.md'), 'utf8')
+    const checksums = [...manifest.matchAll(/^\| `([^`]+)`\s+\| `([a-f0-9]{64})`\s+\|$/gm)]
+
+    expect(checksums.length).toBeGreaterThan(0)
+    for (const [, artifact, expected] of checksums) {
+      const actual = createHash('sha256')
+        .update(readFileSync(resolve(resultDirectory, artifact!)))
+        .digest('hex')
+      expect(actual, artifact).toBe(expected)
+    }
+  })
+
   it.each(['kernel-baseline.json', 'kernel-size.json', 'numeric-storage.json'])(
     '%s matches the current harness source',
     (name) => {
