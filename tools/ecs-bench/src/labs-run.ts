@@ -55,7 +55,9 @@ const fields: TrustedProvenance = {
     repositoryFile('tools/ecs-bench/benches/hierarchy-transform.bench.ts'),
     repositoryFile('tools/ecs-bench/benches/light-store-sync.bench.ts'),
     repositoryFile('tools/ecs-bench/benches/renderer-frame.bench.ts'),
+    repositoryFile('tools/ecs-bench/benches/shadow-occluder-projection.bench.ts'),
     repositoryFile('tools/ecs-bench/benches/tile-animation.bench.ts'),
+    repositoryFile('tools/ecs-bench/benches/visible-instance-compaction.bench.ts'),
   ]),
   runner: sha256Files([
     repositoryFile('tools/ecs-bench/src/labs-run.ts'),
