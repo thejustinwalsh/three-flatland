@@ -116,6 +116,47 @@ describe('LightStore', () => {
     }
   })
 
+  it('should clear only slots made stale when the live count shrinks', () => {
+    const store = new LightStore({ maxLights: 6 })
+    const lights = Array.from({ length: 4 }, (_, index) => new Light2D({ type: 'point', intensity: index + 1 }))
+
+    store.sync(lights)
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+    const neverLiveOffset = 4 * 4
+    data[lineSize + neverLiveOffset + 1] = 17
+    data[3 * lineSize + neverLiveOffset + 1] = 19
+
+    store.sync(lights.slice(0, 1))
+
+    for (let index = 1; index < 4; index++) {
+      const offset = index * 4
+      expect(data[lineSize + offset + 1]).toBe(0)
+      expect(data[3 * lineSize + offset + 1]).toBe(0)
+    }
+    expect(data[lineSize + neverLiveOffset + 1]).toBe(17)
+    expect(data[3 * lineSize + neverLiveOffset + 1]).toBe(19)
+  })
+
+  it('should not rewrite never-live capacity when the live count is stable', () => {
+    const store = new LightStore({ maxLights: 4 })
+    const light = new Light2D({ type: 'point', intensity: 1 })
+
+    store.sync([light])
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+    const neverLiveOffset = 2 * 4
+    data[lineSize + neverLiveOffset + 1] = 23
+    data[3 * lineSize + neverLiveOffset + 1] = 29
+
+    store.sync([light])
+
+    expect(data[lineSize + neverLiveOffset + 1]).toBe(23)
+    expect(data[3 * lineSize + neverLiveOffset + 1]).toBe(29)
+  })
+
   it('should encode light types correctly', () => {
     const store = new LightStore({ maxLights: 8 })
     const lights = [

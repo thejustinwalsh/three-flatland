@@ -35,7 +35,7 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * Thin DataTexture storage for 2D lights.
  *
  * Stores per-light data in a DataTexture (width=maxLights, height=4 rows,
- * RGBAFormat, FloatType). Supports up to `maxLights` (default 256, configurable).
+ * RGBAFormat, FloatType). Supports up to `maxLights` (default 1024, configurable).
  *
  * DataTexture layout:
  * | Row | R      | G         | B             | A              |
@@ -70,6 +70,7 @@ export class LightStore {
   private _lightsTexture: DataTexture
   private _lightsTextureNode: Node<'vec4'>
   private _countNode: UniformNode<'float', number>
+  private _previousCount = 0
 
   /**
    * @param options - Optional configuration.
@@ -190,14 +191,17 @@ export class LightStore {
       data[3 * lineSize + offset + 3] = light._categoryBucket
     }
 
-    // Zero out unused slots (enabled=0)
-    for (let i = count; i < this.maxLights; i++) {
+    // Retire only slots that were live in the previous projection. The backing
+    // array starts zeroed, so never-live capacity does not need frame-by-frame
+    // clearing.
+    for (let i = count; i < this._previousCount; i++) {
       const offset = i * 4
       // Row 1: intensity = 0
       data[lineSize + offset + 1] = 0
       // Row 3: enabled = 0
       data[3 * lineSize + offset + 1] = 0
     }
+    this._previousCount = count
 
     this._lightsTexture.needsUpdate = true
     touchDebugArray('lightStore.data')
