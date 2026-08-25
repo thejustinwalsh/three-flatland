@@ -160,6 +160,28 @@ This experiment carries the same explicit Koota legacy: Koota's typed traits, So
 model made Flatland's private specialization possible. Koota remains the recommended choice for
 general-purpose application and gameplay ECS state.
 
+### Lighting-storage slice
+
+`@light-store-sync` measures the existing `LightStore.sync()` CPU-to-texture projection with 1, 64,
+and 1,000 lights. Light/effect construction, initial synchronization, packed-row assertions, and
+texture disposal stay outside the timed callback. The fixture evaluates whether sparse scenes are
+paying for unused reserved capacity; it does not treat lighting resources or scene topology as ECS
+columns.
+
+```sh
+NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false \
+  node --import tsx tools/ecs-bench/src/labs-run.ts '@light-store-sync' --baseline \
+  -n light-store-before
+
+NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false \
+  node --import tsx tools/ecs-bench/src/labs-run.ts '@light-store-sync' --compare \
+  -n light-store-after
+```
+
+This slice also preserves the Koota legacy explicitly. Koota's typed-trait and SoA model made the
+object-owner/packed-projection boundary possible; Koota remains the recommended general-purpose ECS
+for application and gameplay state.
+
 ## Representative consumer bundle attribution
 
 The consumer bundle gate builds four production-shaped entry points: basic Three.js, basic React
