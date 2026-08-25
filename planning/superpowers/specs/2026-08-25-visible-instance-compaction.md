@@ -6,9 +6,10 @@ Ledger: `ECS-008`
 
 ## Goal
 
-Reduce CPU transform work, instance uploads, and submitted instances when a large sprite world is
-mostly outside the active camera. Preserve the existing `Sprite2D`, `SpriteGroup`, `Flatland`, Three.js,
-and react-three-fiber contracts.
+Reduce instance uploads and submitted instances when a large sprite world is mostly outside the active
+camera. Reduce CPU transform work only if a camera-correct visibility boundary can run before the ECS
+schedule. Preserve the existing `Sprite2D`, `SpriteGroup`, `Flatland`, Three.js, and react-three-fiber
+contracts.
 
 This work does not assume that ECS membership alone solves culling. The current `SpriteBatch` uses an
 infinite bounding sphere because material batches are spatially unbounded, and the private ECS schedule
@@ -61,6 +62,9 @@ Advantages:
 
 Risks:
 
+- Three.js supplies the camera only after `SpriteGroup.updateMatrixWorld()` has already run the ECS
+  schedule, so this candidate cannot skip the current frame's transform projection without a separate
+  camera-aware pre-schedule boundary,
 - copies every visible row when the camera or relevant source revision changes,
 - requires a second packed GPU projection or a safe buffer swap,
 - setter-side direct writes must keep canonical and currently published projections coherent.
@@ -113,8 +117,11 @@ Scenarios:
 | 60,000     | 100%             | static                         | large dense-regression guard             |
 | 60,000     | 20% / 5%         | static camera and 10% movement | large sparse world and incremental churn |
 
-The timed region includes visibility resolution, compaction or reassignment, dirty-range publication,
-and batch count updates. Setup, assertions, and fixture mutation remain outside the timed yield.
+The Labs timed region includes the existing CPU schedule plus visibility resolution, compaction or
+reassignment, dirty-range publication, and batch count updates. Setup, assertions, and fixture mutation
+remain outside the timed yield. For candidate A, Labs is a CPU-cost guard rather than evidence of saved
+GPU work: per-draw camera resolution occurs after the schedule. The headed WebGPU capture owns the
+submission and frame-time verdict.
 
 Every sample verifies:
 
@@ -130,8 +137,12 @@ react-three-fiber; they do not replace the Labs CPU verdict.
 
 ## Acceptance gates
 
-- At 5% and 20% occupancy, 16,384 and 60,000 populations improve p50 by at least 15% with `p < .05`
-  and outside Labs' effective noise band.
+- At 5% and 20% occupancy, headed WebGPU p50 improves by at least 15% with `p < .05` and outside Labs'
+  effective noise band at 16,384 and 60,000 populations. The submitted instance count must fall to the
+  exact visible count.
+- Candidate A's Labs CPU result may be neutral, because it cannot skip the already-completed transform
+  schedule. Any repeatable CPU regression above 3% rejects it. No CPU transform-speed claim is allowed
+  unless a separate camera-aware pre-schedule design proves multi-camera correctness.
 - The 100%-visible cases remain neutral within the effective noise band. Any repeatable regression above
   3% rejects the candidate.
 - Steady static frames allocate nothing after warm-up.
