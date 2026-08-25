@@ -127,16 +127,26 @@ The goal is smaller, clearer ownership—not numeric storage for its own sake. P
 
 Exit condition: a field-by-field owner map, no mirrored authoritative values, nested-world and retained-world disposal proofs, and clean-frame allocation measurements.
 
-### P2 — profile-driven hierarchy refinement: active
+### P2 — profile-driven hierarchy refinement: accepted
 
-The hierarchy profile has now opened this work. At 16,384 sprites, stable depth-three authored
-hierarchy costs about 7.7 ms versus 5.8 ms for direct roots, while one moving shared root costs about
-11.1 ms. The current candidate is deliberately narrower than a hierarchy ECS conversion: cache each
-unique source-parent path's changed/visible projection once per frame while retaining Three.js
-`Object3D` identity, sprite-local snapshots, and root-relative batch projection. Do not add public
-transform flags or numeric copies of authored matrices.
+The hierarchy profile opened this work, and the accepted implementation remains deliberately
+narrower than a hierarchy ECS conversion. It caches each unique source-parent path's
+changed/visible projection once per frame while retaining Three.js `Object3D` identity,
+sprite-local snapshots, and root-relative batch projection. Standard `Sprite2D.updateMatrix`
+dispatch uses the cache; a custom or monkeypatched virtual method disables it for the rest of that
+frame so hostile callbacks retain exact per-row ordering and visibility semantics.
 
-Exit condition: identical transform/visibility behavior for direct roots, nested groups, reparenting, identity roots, sort swaps, and stale slot reuse, with a demonstrated frame-time improvement.
+The clean Labs comparison at 16,384 sprites kept direct roots neutral (-5.1% p50 inside a +/-9%
+noise band), improved stable depth-three hierarchy by 4.0% p50 (`p < .001`, +/-3%), and improved one
+moving shared root by 11.6% p50 (`p < .001`, +/-8%). The independent-leaf-motion case remained noisy
+and is not an accepted speed claim. Average measured heap deltas were slightly lower for the two
+trusted hierarchy cases (52,901 -> 51,610 bytes and 351,983 -> 335,313 bytes), so the earlier
+cleared-`Map` allocation regression is absent from the frame-stamped `WeakMap` design. Do not add
+public transform flags or numeric copies of authored matrices.
+
+Exit condition: complete. Identical transform/visibility behavior is covered for direct roots,
+nested groups, reparenting, identity roots, sort swaps, stale slot reuse, and hostile virtual
+callbacks, with a demonstrated frame-time improvement for shared hierarchy paths.
 
 ## Static and behavioral gates
 
