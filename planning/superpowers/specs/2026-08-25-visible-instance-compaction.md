@@ -1,0 +1,177 @@
+# Camera-visible instance compaction
+
+Status: **active, evidence-gated**
+
+Ledger: `ECS-008`
+
+## Goal
+
+Reduce CPU transform work, instance uploads, and submitted instances when a large sprite world is
+mostly outside the active camera. Preserve the existing `Sprite2D`, `SpriteGroup`, `Flatland`, Three.js,
+and react-three-fiber contracts.
+
+This work does not assume that ECS membership alone solves culling. The current `SpriteBatch` uses an
+infinite bounding sphere because material batches are spatially unbounded, and the private ECS schedule
+does not receive a camera. The accepted design must establish a camera-correct render projection without
+making camera state authoritative in the ECS.
+
+## Koota lineage
+
+[Koota](https://github.com/pmndrs/koota) made this design direction possible. Its typed traits, queries,
+and structure-of-arrays model established the separation between authoritative object state and dense
+iteration. Flatland applies that lesson to a renderer-owned workload; Koota remains the recommended
+general-purpose ECS for application and gameplay state.
+
+## Current boundary
+
+- `Sprite2D` and the Three.js hierarchy own transforms, visibility, layers, hit-test behavior, and public
+  identity.
+- The private world projects renderer-facing state into batch slots.
+- `SpriteSpatialGrid` already tracks world-space sprite bounds for batch-root picking.
+- `SpriteBatch` sets an infinite bounding sphere and submits a contiguous prefix through `count`.
+- `SpriteGroup.frustumCulling` exists, but no per-sprite camera-visible compaction currently changes the
+  submitted prefix.
+- Standalone `SpriteGroup` can be rendered through arbitrary Three.js cameras. `Flatland` additionally
+  owns an orthographic camera, but the implementation cannot make that special case the general rule.
+
+## Hypothesis
+
+A sparse-world projection can win when no more than 20% of 16,384–60,000 sprites are visible. The same
+projection can lose in dense scenes because visibility tests, row remapping, or spatial partitioning add
+work that the current contiguous batch avoids.
+
+Acceptance therefore requires a sparse-world win and a dense-world neutral result. A design that only
+makes an artificial culling microbenchmark faster is rejected.
+
+## Candidate projections
+
+Evaluate these in order. Only one may become authoritative for rendered-row membership.
+
+### A. Per-draw visible-row compaction
+
+Use the camera passed to `SpriteBatch.onBeforeRender` to query the existing spatial grid and build a
+reusable visible-row projection immediately before the draw. Canonical batch slots remain untouched;
+visible rows copy into a separate grow-only render buffer and set the mesh count for that camera.
+
+Advantages:
+
+- exact for multiple cameras and nested render passes,
+- no increase in material batch count,
+- reuses the existing spatial index.
+
+Risks:
+
+- copies every visible row when the camera or relevant source revision changes,
+- requires a second packed GPU projection or a safe buffer swap,
+- setter-side direct writes must keep canonical and currently published projections coherent.
+
+### B. Spatially partitioned material batches
+
+Extend the run key with a stable world-cell partition so Three.js can cull finite batch bounds. The
+private ECS reassigns sprites when their cell changes.
+
+Advantages:
+
+- uses Three.js's ordinary camera culling,
+- avoids row copies for static worlds.
+
+Risks:
+
+- increases draw calls and material/batch bookkeeping,
+- moving sprites can churn between cells,
+- transparent sort ordering must remain globally correct across partitions.
+
+### C. GPU row indirection
+
+Keep canonical rows in storage and upload only a dense list of visible source indices. The vertex path
+reads instance data through that indirection.
+
+Advantages:
+
+- minimal CPU copying when visibility changes,
+- preserves material batch topology.
+
+Risks:
+
+- depends on a stable Three.js/TSL path for indexed storage reads,
+- changes shader composition and may increase every vertex's cost,
+- must work for every effect-buffer tier and synth/tight geometry path.
+
+Do not implement C unless A and B fail their acceptance gates and the required Three.js primitives are
+available without private renderer patches.
+
+## Benchmark plan
+
+Add `tools/ecs-bench/benches/visible-instance-compaction.bench.ts` using pinned `@pmndrs/labs`.
+
+Scenarios:
+
+| Population | Camera occupancy | Motion                         | Purpose                                  |
+| ---------- | ---------------- | ------------------------------ | ---------------------------------------- |
+| 16,384     | 100%             | static and all-moving          | dense-regression guard                   |
+| 16,384     | 20% / 5%         | static camera and panning      | ordinary sparse-world threshold          |
+| 60,000     | 100%             | static                         | large dense-regression guard             |
+| 60,000     | 20% / 5%         | static camera and 10% movement | large sparse world and incremental churn |
+
+The timed region includes visibility resolution, compaction or reassignment, dirty-range publication,
+and batch count updates. Setup, assertions, and fixture mutation remain outside the timed yield.
+
+Every sample verifies:
+
+- exact visible sprite identities and count,
+- identical packed row values for every visible sprite,
+- camera layers, hierarchy visibility, alpha, effects, flip, and sort order,
+- picking-grid identity before and after compaction,
+- no stale rows after removal, reparenting, material routing, or disposal.
+
+Use saved clean baseline and candidate Labs results with full source, lock, fixture, and runner hashes.
+Browser captures validate actual submitted-instance counts and visual parity for Three.js and
+react-three-fiber; they do not replace the Labs CPU verdict.
+
+## Acceptance gates
+
+- At 5% and 20% occupancy, 16,384 and 60,000 populations improve p50 by at least 15% with `p < .05`
+  and outside Labs' effective noise band.
+- The 100%-visible cases remain neutral within the effective noise band. Any repeatable regression above
+  3% rejects the candidate.
+- Steady static frames allocate nothing after warm-up.
+- Camera-only motion does not mutate authoritative sprite transforms or picking ownership.
+- Multiple cameras in one renderer frame produce independent correct projections.
+- Submitted instances equal the visible set; the feature must reduce actual render work rather than only
+  skip CPU bookkeeping.
+- Full package, declaration, size, changeset, paired-example, and live WebGPU gates remain green.
+
+## Compatibility and lifecycle matrix
+
+Cover standalone `SpriteGroup`, `Flatland`, automatic orchestration, Three.js and react-three-fiber,
+orthographic and perspective cameras, camera layers, hierarchy clipping, transparent sorting, shadow
+passes, hit-test proxying, material/effect tier changes, add/remove/reparent, cross-world transfer,
+multiple renders per frame, render-target passes, cloning, and terminal disposal.
+
+User-extensible callbacks may dispose or reparent a sprite, group, batch, camera, or material during
+projection. Preparation must remain two-phase: validate and build against a lifecycle revision, then
+publish through a no-throw commit or roll back without exposing partial row membership.
+
+## Public and size boundary
+
+No entity, selector, camera-query, typed storage, remap buffer, or culling revision becomes public.
+`SpriteGroup.frustumCulling` remains the existing opt-in/out surface unless evidence proves that a new
+public control is required. Any public change requires a separate alpha API review and migration note.
+
+The accepted consumer-size snapshot may move only after clean capture and review. The shipped-runtime
+aggregate must remain below its existing minified/gzip/Brotli caps.
+
+## Execution order
+
+1. Freeze the current infinite-bound behavior as a baseline fixture.
+2. Implement candidate A behind a package-private strategy seam.
+3. Run deterministic behavior, allocation, and Labs gates.
+4. If A fails, remove it before testing B. Do not accumulate strategies in production.
+5. Run paired Three.js/react-three-fiber sparse-world examples only for the winning candidate.
+6. Record the accepted or rejected result in `ECS-008` with raw evidence and exact commit.
+
+## Stop conditions
+
+Reject the feature if dense scenes regress, multiple-camera correctness requires a public camera owner,
+row compaction duplicates too much GPU storage, or the measured gain comes only from skipping assertions
+or uploads outside the timed region.
