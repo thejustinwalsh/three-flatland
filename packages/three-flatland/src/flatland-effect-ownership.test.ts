@@ -6,8 +6,8 @@ import { Flatland } from './Flatland'
 import { Sprite2D } from './sprites/Sprite2D'
 import { createLightEffect } from './lights/LightEffect'
 import { createPassEffect } from './pipeline/PassEffect'
-import type { PassEffect } from './pipeline/PassEffect'
-import { LightEffectTrait, LightingContext, PostPassRegistry, PostPassTrait, ShadowPipeline } from './ecs/traits'
+import type { PassEffect, PassEffectFn } from './pipeline/PassEffect'
+import { LightEffectTrait, LightingContext, ShadowPipeline } from './ecs/traits'
 import { select, type NumericSchema, type NumericTrait, type World } from './ecs/runtime'
 import { shadowPipelineSystem } from './ecs/systems/shadowPipelineSystem'
 
@@ -127,6 +127,15 @@ function numericTrait(instance: { constructor: unknown }): NumericTrait<NumericS
   return traitFor(instance.constructor as Function) as NumericTrait<NumericSchema>
 }
 
+function postPassGraph(flatland: Flatland): {
+  readonly effects: PassEffect[]
+  nextOrder: number
+  readonly dirty: boolean
+  project(): readonly PassEffectFn[] | null
+} {
+  return Reflect.get(flatland, '_postPassGraph')
+}
+
 describe('Flatland effect ownership boundaries', () => {
   it('atomically rejects adding a pass already owned by another Flatland', () => {
     const source = new Flatland()
@@ -142,8 +151,8 @@ describe('Flatland effect ownership boundaries', () => {
     const destinationEntity = entityFor(destinationPass)!
     const sourceValue = sourceWorld.read(sharedEntity, numericTrait(shared))!.amount
     const destinationValue = destinationWorld.read(destinationEntity, numericTrait(destinationPass))!.amount
-    const destinationRegistry = Reflect.get(destination, '_postPassRegistryEntity')
-    const destinationNextOrder = Reflect.get(destination, '_nextPassOrder')
+    const destinationGraph = postPassGraph(destination)
+    const destinationNextOrder = destinationGraph.nextOrder
 
     expect(() => destination.addPass(shared, 11)).toThrow(/PassEffect is already attached to another Flatland/)
 
@@ -153,7 +162,6 @@ describe('Flatland effect ownership boundaries', () => {
     expect(shared._storeWorld).toBe(sourceWorld)
     expect(source.passes).toEqual([shared])
     expect(sourceWorld.isAlive(sharedEntity)).toBe(true)
-    expect(sourceWorld.has(sharedEntity, PostPassTrait)).toBe(true)
     expect(sourceWorld.has(sharedEntity, numericTrait(shared))).toBe(true)
     expect(sourceWorld.read(sharedEntity, numericTrait(shared))!.amount).toBe(sourceValue)
 
@@ -163,11 +171,10 @@ describe('Flatland effect ownership boundaries', () => {
     expect(destinationPass._order).toBe(3)
     expect(destinationPass._storeWorld).toBe(destinationWorld)
     expect(destinationWorld.isAlive(destinationEntity)).toBe(true)
-    expect(destinationWorld.has(destinationEntity, PostPassTrait)).toBe(true)
     expect(destinationWorld.has(destinationEntity, numericTrait(destinationPass))).toBe(true)
     expect(destinationWorld.read(destinationEntity, numericTrait(destinationPass))!.amount).toBe(destinationValue)
-    expect(Reflect.get(destination, '_postPassRegistryEntity')).toBe(destinationRegistry)
-    expect(Reflect.get(destination, '_nextPassOrder')).toBe(destinationNextOrder)
+    expect(postPassGraph(destination)).toBe(destinationGraph)
+    expect(destinationGraph.nextOrder).toBe(destinationNextOrder)
 
     source.dispose()
     destination.dispose()
@@ -238,9 +245,8 @@ describe('Flatland effect ownership boundaries', () => {
 
     const world = runtimeWorld(flatland)
     const activeEntity = entityFor(active)!
-    const registryEntity = Reflect.get(flatland, '_postPassRegistryEntity')
-    const registry = world.read(registryEntity, PostPassRegistry)
-    const nextOrder = Reflect.get(flatland, '_nextPassOrder')
+    const graph = postPassGraph(flatland)
+    const nextOrder = graph.nextOrder
 
     expect(() => flatland.addPass(replacement)).toThrow('pass builder failed')
 
@@ -248,9 +254,9 @@ describe('Flatland effect ownership boundaries', () => {
     expect(active._flatland).toBe(flatland)
     expect(entityFor(active)).toBe(activeEntity)
     expect(world.isAlive(activeEntity)).toBe(true)
-    expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBe(registryEntity)
-    expect(world.read(registryEntity, PostPassRegistry)).toBe(registry)
-    expect(Reflect.get(flatland, '_nextPassOrder')).toBe(nextOrder)
+    expect(postPassGraph(flatland)).toBe(graph)
+    expect(graph.effects).toEqual([active])
+    expect(graph.nextOrder).toBe(nextOrder)
     expect(replacement._flatland).toBeNull()
     expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
@@ -273,10 +279,8 @@ describe('Flatland effect ownership boundaries', () => {
     flatland.addPass(active, 4)
 
     const world = runtimeWorld(flatland)
-    const registryEntity = Reflect.get(flatland, '_postPassRegistryEntity')
-    const registry = world.read(registryEntity, PostPassRegistry)!
-    const nextOrder = Reflect.get(flatland, '_nextPassOrder')
-    const activeEntities = [...world.view(select(PostPassTrait))]
+    const graph = postPassGraph(flatland)
+    const nextOrder = graph.nextOrder
     const spawn = vi.spyOn(world, 'spawn').mockImplementationOnce(() => {
       throw new Error('pass entity capacity failed')
     })
@@ -284,10 +288,10 @@ describe('Flatland effect ownership boundaries', () => {
     expect(() => flatland.addPass(replacement)).toThrow('pass entity capacity failed')
 
     expect(flatland.passes).toEqual([active])
-    expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBe(registryEntity)
-    expect(world.read(registryEntity, PostPassRegistry)).toBe(registry)
-    expect(Reflect.get(flatland, '_nextPassOrder')).toBe(nextOrder)
-    expect([...world.view(select(PostPassTrait))]).toEqual(activeEntities)
+    expect(postPassGraph(flatland)).toBe(graph)
+    expect(graph.effects).toEqual([active])
+    expect(graph.nextOrder).toBe(nextOrder)
+    expect(world.isAlive(entityFor(active)!)).toBe(true)
     expect(replacement._flatland).toBeNull()
     expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
@@ -317,7 +321,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(Reflect.get(source.spriteGroup, '_world')).toBeNull()
     expect(Reflect.get(source, '_disposed')).toBe(true)
     expect(source.passes).toEqual([])
-    expect(Reflect.get(source, '_postPassRegistryEntity')).toBeNull()
+    expect(postPassGraph(source).effects).toEqual([])
     expect(replacement._flatland).toBeNull()
     expect(entityFor(replacement)).toBeNull()
     expect(replacement._storeWorld).toBeNull()
@@ -421,7 +425,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(flatland.renderPipeline).toBeNull()
   })
 
-  it('rejects same-pass addPass reentry before allocating an entity or registry', () => {
+  it('rejects same-pass addPass reentry before allocating an entity or publishing graph membership', () => {
     const source = new Flatland()
     const destination = new Flatland()
     const sourceWorld = runtimeWorld(source)
@@ -432,9 +436,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(() => source.addPass(pass)).toThrow(/addPass\(\) cannot run reentrantly on the same Flatland/)
 
     expect(source.passes).toEqual([])
-    expect([...sourceWorld.view(select(PostPassTrait))]).toEqual([])
-    expect([...sourceWorld.view(select(PostPassRegistry))]).toEqual([])
-    expect(Reflect.get(source, '_postPassRegistryEntity')).toBeNull()
+    expect(postPassGraph(source).effects).toEqual([])
     expect(pass._flatland).toBeNull()
     expect(entityFor(pass)).toBeNull()
     expect(pass._storeWorld).toBeNull()
@@ -455,21 +457,15 @@ describe('Flatland effect ownership boundaries', () => {
     const source = new Flatland()
     const destination = new Flatland()
     const sourceWorld = runtimeWorld(source)
-    const destinationWorld = runtimeWorld(destination)
     const pass = new CrossFlatlandPass()
     crossPassFlatland = destination
     crossPassCandidate = pass
 
     expect(() => source.addPass(pass)).toThrow(/PassEffect is already being prepared by another Flatland/)
 
-    for (const [flatland, world] of [
-      [source, sourceWorld],
-      [destination, destinationWorld],
-    ] as const) {
+    for (const flatland of [source, destination]) {
       expect(flatland.passes).toEqual([])
-      expect([...world.view(select(PostPassTrait))]).toEqual([])
-      expect([...world.view(select(PostPassRegistry))]).toEqual([])
-      expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBeNull()
+      expect(postPassGraph(flatland).effects).toEqual([])
     }
     expect(pass._flatland).toBeNull()
     expect(entityFor(pass)).toBeNull()
@@ -479,14 +475,13 @@ describe('Flatland effect ownership boundaries', () => {
     crossPassFlatland = null
     crossPassCandidate = null
     source.addPass(pass)
-    const registryEntity = Reflect.get(source, '_postPassRegistryEntity')
     expect(source.passes).toEqual([pass])
     expect(pass._flatland).toBe(source)
     expect(entityFor(pass)).not.toBeNull()
     expect(sourceWorld.isAlive(entityFor(pass)!)).toBe(true)
-    expect([...sourceWorld.view(select(PostPassTrait))]).toEqual([entityFor(pass)])
-    expect([...sourceWorld.view(select(PostPassRegistry))]).toEqual([registryEntity])
-    expect([...destinationWorld.view(select(PostPassRegistry))]).toEqual([])
+    expect(sourceWorld.has(entityFor(pass)!, numericTrait(pass))).toBe(true)
+    expect(postPassGraph(source).effects).toEqual([pass])
+    expect(postPassGraph(destination).effects).toEqual([])
 
     source.dispose()
     destination.dispose()
@@ -838,7 +833,7 @@ describe('Flatland effect ownership boundaries', () => {
     expect(flatland.lighting).toBeNull()
     expect(light._flatland).toBeNull()
     expect(entityFor(light)).toBeNull()
-    expect(Reflect.get(flatland, '_postPassRegistryEntity')).toBeNull()
+    expect(postPassGraph(flatland).effects).toEqual([])
     expect(Reflect.get(flatland, '_lightingContextEntity')).toBeNull()
     expect(Reflect.get(flatland, '_lightStore')).toBeNull()
     expect(Reflect.get(flatland, '_shadowPipelineEntity')).toBeNull()

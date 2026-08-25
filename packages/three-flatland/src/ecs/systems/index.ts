@@ -4,7 +4,6 @@ export { createBatchRemoveSystem, deferredDestroySystem } from './batchRemoveSys
 export { transformSyncSystem } from './transformSyncSystem'
 export { createBatchSortSystem } from './batchSortSystem'
 export { createSceneGraphSyncSystem } from './sceneGraphSyncSystem'
-export { postPassSystem } from './postPassSystem'
 export { lightSyncSystem } from './lightSyncSystem'
 export { lightEffectSystem } from './lightEffectSystem'
 export { lightMaterialAssignSystem } from './lightMaterialAssignSystem'

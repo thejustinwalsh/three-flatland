@@ -17,8 +17,6 @@ export {
   BatchMeta,
   BatchRegistry,
   type BatchRun,
-  PostPassTrait,
-  PostPassRegistry,
   LightEffectTrait,
   LightingContext,
 } from './traits'
@@ -56,7 +54,6 @@ export {
   createSceneGraphSyncSystem,
   deferredDestroySystem,
   transformSyncSystem,
-  postPassSystem,
   lightSyncSystem,
   lightEffectSystem,
   lightMaterialAssignSystem,

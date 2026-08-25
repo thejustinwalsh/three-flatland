@@ -24,11 +24,13 @@ No hierarchy migration is planned without profile evidence. New hierarchy work m
 
 Keep this subsystem as the template for other schema-driven state. Any new material-effect field must remain typed publicly, numeric internally when uniform-sized, bounded by its declared lane count, and synchronized to the current batch projection before the setter returns.
 
-### Light and pass effects: partially conform
+### Pass effects conform; lighting ownership remains under audit
 
-`LightEffect` and `PassEffect` use the same typed schema, generated numeric traits, cached stores, and stable TSL uniform projection (`packages/three-flatland/src/lights/LightEffect.ts:162-351,565-650`; `packages/three-flatland/src/pipeline/PassEffect.ts:87-294,332-466`). Their public field paths therefore follow the standard.
+`LightEffect` and `PassEffect` use the same typed schema, generated numeric traits, cached stores, and stable TSL uniform projection (`packages/three-flatland/src/lights/LightEffect.ts`; `packages/three-flatland/src/pipeline/PassEffect.ts`). Their public field paths therefore follow the standard.
 
-The world-level ownership remains mixed inside broad object traits. `LightEffectTrait`, `PostPassTrait`, `PostPassRegistry`, `ShadowPipeline`, and `LightingContext` combine functions/resources with order, enabled, dirty, size, and lifecycle scalars (`packages/three-flatland/src/ecs/traits.ts:247-349`). `postPassSystem` also constructs and sorts temporary arrays whenever the graph is dirty (`packages/three-flatland/src/ecs/systems/postPassSystem.ts:14-39`). That allocation is structural rather than per-frame, but the pass list in `Flatland` and the ECS pass entities form overlapping ownership surfaces.
+Pass topology now has one package-private `PostPassGraph` owner. `PassEffect` owns its enabled flag, order, and built TSL function; the graph owns membership, dirtiness, and reusable ordered/function projections; private ECS entities retain only declared numeric effect fields. The duplicated `PostPassTrait`, `PostPassRegistry`, and `postPassSystem` representations are gone. This also fixes the previous stale-enabled split, where the public effect flag changed without updating its duplicated topology trait.
+
+Lighting still mixes object resources and lifecycle state inside `LightEffectTrait`, `ShadowPipeline`, and `LightingContext`. That boundary remains evidence-gated rather than being converted for symmetry.
 
 ### Animated sprites: public API is sound, execution state is object-local
 
@@ -44,9 +46,9 @@ Material configuration is now retained by `TileMap2D` rather than being applied 
 
 Chunk topology, tilesets, meshes, and collision resources should remain object-owned. Only timer/frame/dirty numeric state and repeated lookup indirection are candidates for denser storage.
 
-### Render and pass graph: ownership needs consolidation
+### Render and pass graph: pass ownership consolidated
 
-`Flatland` owns public pass and lighting instances while the world also owns pass/effect entities and singleton registries (`packages/three-flatland/src/Flatland.ts:387-414,987-1207,1248-1460`). The systems correctly centralize ordered execution, shadow resources, and per-world light runtime contexts, but graph edits touch several representations. The current code has extensive atomic ownership tests; the next step is to make one graph record authoritative rather than adding another abstraction.
+`Flatland` owns public pass and lighting instances. Pass topology now changes through one private graph transaction, while effect entities exist only for uniform numeric fields. The graph reuses its ordered projection across dirty rebuilds and returns immediately on clean frames. Atomic builder, capacity, cross-owner, enable, remove, clear, and disposal tests cover the ownership boundary.
 
 Resource-set cleanup is no longer part of that ambiguity: canonical sprite/tile/light removal updates Flatland and `LightingContext`, live material replacement is ref-counted, and `clear()` drains the coupled registries first-error-safe while preserving the internal `SpriteGroup`. R3F lighting cleanup is owner-checked so stale cleanup cannot clear a newer effect.
 
@@ -64,13 +66,13 @@ Commit `5f128a15` replaced the additive Koota estimate with a true-consumer A/B 
 
 The dependency, publication, declaration, combined-runtime-cap, and no-duplicate-runtime exit conditions are complete. Consumer growth is gated against reviewed per-fixture absolute minified/gzip/Brotli budgets; any one-byte increase fails while reductions pass without automatic ratcheting. The final frozen-source capture replaced the earlier budget and reproduced with zero-byte deltas. Release evidence retains the exact mixed historical result rather than inferring savings from the isolated Koota kernel.
 
-### P0 — consolidate render/pass graph ownership
+### P0 — consolidate render/pass graph ownership: implementation complete
 
-Define one private graph owner for ordered pass nodes and the active lighting node. Keep `PassEffect` and `LightEffect` as public handles, node functions and GPU resources as object traits, and order/enabled/dirty/lifecycle flags in numeric traits or graph-owned typed arrays. Replace overlapping `_passes`, per-pass object-trait scalars, and rebuilt result arrays with a persistent ordered projection updated only by atomic graph transactions.
+One private graph now owns ordered pass nodes. `PassEffect` remains the public handle and authoritative owner of its TSL function, order, and enabled state; declared uniform fields remain numeric private traits. The implementation replaces overlapping pass arrays, per-pass topology traits, the registry singleton, and rebuilt result arrays with a persistent projection updated only by graph transactions.
 
 The transaction must prebuild user node functions before publication, reject cross-Flatland ownership before mutation, preserve the old chain when a builder throws, and release GPU resources first-error-safe on removal or disposal. Profile the dirty rebuild separately from frame execution; do not optimize a structural edit by making the steady frame path more complex.
 
-Exit condition: one authoritative graph, atomic add/remove/reorder/enable/lighting swap tests, nested-world lifecycle tests, zero allocation on clean frames, and identical TSL compiler output for the Three and React fixtures.
+Completed source gates include one authoritative graph; atomic builder/capacity/cross-owner rollback; add/remove/clear/enable/disposal behavior; reusable dirty projections and constant clean-frame checks; the full package suite; and the existing shader compiler coverage. Final package size and paired example gates remain part of the enclosing release stack rather than a reason to duplicate graph ownership.
 
 ### P0 — frozen capacity plan: implementation complete
 

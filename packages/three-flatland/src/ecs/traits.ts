@@ -241,22 +241,6 @@ export const BatchRegistry = trait(() => ({
 }))
 
 // ============================================
-// Post-processing pass traits
-// ============================================
-
-/** AoS — holds a post-processing pass function, order, and enabled state. */
-export const PostPassTrait = trait(() => ({
-  fn: null as ((input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4'>) | null,
-  order: 0,
-  enabled: true,
-}))
-
-/** World-level singleton for post-processing pass dirty tracking. */
-export const PostPassRegistry = trait(() => ({
-  dirty: false as boolean,
-}))
-
-// ============================================
 // Lighting effect traits
 // ============================================
 

@@ -31,19 +31,11 @@ import type { Sprite2DMaterial, ColorTransformFn } from './materials/Sprite2DMat
 import type { MaterialEffect } from './materials/MaterialEffect'
 import type Node from 'three/src/nodes/core/Node.js'
 import type PassNode from 'three/src/nodes/display/PassNode.js'
-import {
-  PostPassTrait,
-  PostPassRegistry,
-  LightEffectTrait,
-  LightingContext,
-  ShadowPipeline,
-  BatchRegistry,
-} from './ecs/traits'
+import { LightEffectTrait, LightingContext, ShadowPipeline, BatchRegistry } from './ecs/traits'
 
 const BatchRegistries = select(BatchRegistry)
 import { SDFGenerator } from './lights/SDFGenerator'
 import { OcclusionPass } from './lights/OcclusionPass'
-import { postPassSystem } from './ecs/systems/postPassSystem'
 import { lightSyncSystem } from './ecs/systems/lightSyncSystem'
 import { lightEffectSystem } from './ecs/systems/lightEffectSystem'
 import { lightMaterialAssignSystem } from './ecs/systems/lightMaterialAssignSystem'
@@ -85,6 +77,7 @@ import {
   consumeCommittedSpriteCloneBootstrapError,
   observeSpriteCloneBootstrapCommit,
 } from './internal/sprite-runtime'
+import { PostPassGraph } from './internal/post-pass-graph'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -441,17 +434,11 @@ export class Flatland extends Group {
   private _worldSizeUniform = uniform(new Vector2(1, 1))
   private _worldOffsetUniform = uniform(new Vector2(0, 0))
 
-  /** Active PassEffect instances */
-  private _passes: PassEffect[] = []
+  /** Canonical pass topology and reusable ordered render projection. */
+  private readonly _postPassGraph = new PostPassGraph()
 
   /** Reject nested addPass transactions on this Flatland. */
   private _passTransitioning = false
-
-  /** Auto-increment counter for insertion-ordered passes */
-  private _nextPassOrder = 0
-
-  /** ECS: registry singleton entity */
-  private _postPassRegistryEntity: Entity | null = null
 
   /** Active Light2D objects */
   private _lights: Light2D[] = []
@@ -1377,15 +1364,6 @@ export class Flatland extends Group {
   }
 
   /**
-   * Ensure the PostPassRegistry singleton entity exists in the world.
-   */
-  private _ensurePostPassRegistry(): void {
-    if (!this._postPassRegistryEntity) {
-      this._postPassRegistryEntity = this._runtimeWorld.spawn(PostPassRegistry({ dirty: false }))
-    }
-  }
-
-  /**
    * Add a post-processing pass to the pipeline.
    * Passes are applied in insertion order (or explicit order). Automatically enables post-processing.
    *
@@ -1430,16 +1408,16 @@ export class Flatland extends Group {
         'three-flatland: PassEffect is already attached to another Flatland; remove it before attaching it here'
       )
     }
-    if (this._passes.includes(passEffect)) return this
+    const graph = this._postPassGraph
+    if (graph.effects.includes(passEffect)) return this
 
     // User builders are preparation, not publication. Build while the effect
     // is still detached so a throw cannot consume insertion order, create a
-    // registry singleton, or strand an owner without an ECS entity.
+    // graph membership, or strand an owner without an ECS entity.
     const previousPassFn = passEffect._passFn
     const lifecycleRevision = this._lifecycleRevision
-    let fn: ReturnType<PassEffect['_buildPassFn']>
     try {
-      fn = passEffect._buildPassFn()
+      passEffect._buildPassFn()
     } catch (error) {
       passEffect._passFn = previousPassFn
       throw error
@@ -1448,11 +1426,11 @@ export class Flatland extends Group {
       passEffect._passFn = previousPassFn
       throw new Error('three-flatland: dispose() cannot run reentrantly during addPass()')
     }
-    if (this._passes.includes(passEffect) || passEffect._flatland !== null || getEffectEntity(passEffect) !== null) {
+    if (graph.effects.includes(passEffect) || passEffect._flatland !== null || getEffectEntity(passEffect) !== null) {
       passEffect._passFn = previousPassFn
       throw new Error('three-flatland: PassEffect ownership changed during pass preparation')
     }
-    const resolvedOrder = order ?? this._nextPassOrder
+    const resolvedOrder = order ?? graph.nextOrder
     const ctor = passEffect.constructor as typeof PassEffect
     let traitValues: Record<string, number> | null = null
     if (ctor._fields.length > 0) {
@@ -1471,41 +1449,29 @@ export class Flatland extends Group {
     }
 
     const world = this._runtimeWorld
-    const previousRegistryEntity = this._postPassRegistryEntity
     const previousOrder = passEffect._order
-    const previousNextOrder = this._nextPassOrder
+    const previousNextOrder = graph.nextOrder
+    const previousGraphDirty = graph.dirty
     const previousPipelineEnabled = this._renderPipelineEnabled
     let entity: Entity | null = null
-    let registryEntity = previousRegistryEntity
-    let registryCreated = false
     let attached = false
     try {
-      // Fully populate a provisional entity before publishing ownership/order.
-      entity = world.spawn(PostPassTrait({ fn, order: resolvedOrder, enabled: passEffect.enabled }))
-      if (traitValues) {
-        const runtimeTrait = getEffectTrait(ctor)
-        world.add(entity, runtimeTrait(traitValues))
-      }
-      if (!registryEntity) {
-        registryEntity = world.spawn(PostPassRegistry({ dirty: false }))
-        registryCreated = true
-      }
+      // The entity owns declared numeric effect fields only. Pass topology and
+      // TSL functions stay with the package-private graph/object owner.
+      entity = traitValues ? world.spawn(getEffectTrait(ctor)(traitValues)) : world.spawn()
 
       passEffect._attach(this)
       attached = true
       passEffect._order = resolvedOrder
       setEffectEntity(passEffect, entity)
-      this._postPassRegistryEntity = registryEntity
-      world.patch(registryEntity, PostPassRegistry, { dirty: true })
-      this._passes.push(passEffect)
-      if (order === undefined) this._nextPassOrder++
+      graph.add(passEffect)
+      if (order === undefined) graph.nextOrder++
       this._renderPipelineEnabled = true
     } catch (error) {
-      const publishedIndex = this._passes.indexOf(passEffect)
-      if (publishedIndex >= 0) this._passes.splice(publishedIndex, 1)
-      this._nextPassOrder = previousNextOrder
+      graph.remove(passEffect)
+      graph.nextOrder = previousNextOrder
+      graph.restoreDirty(previousGraphDirty)
       this._renderPipelineEnabled = previousPipelineEnabled
-      this._postPassRegistryEntity = previousRegistryEntity
       if (attached) {
         try {
           passEffect._detach()
@@ -1517,11 +1483,6 @@ export class Flatland extends Group {
       if (entity && world.isAlive(entity)) {
         try {
           world.destroy(entity)
-        } catch {}
-      }
-      if (registryCreated && registryEntity && world.isAlive(registryEntity)) {
-        try {
-          world.destroy(registryEntity)
         } catch {}
       }
       throw error
@@ -1538,19 +1499,14 @@ export class Flatland extends Group {
    */
   removePass(passEffect: PassEffect): this {
     this._assertUsable('removePass')
-    const idx = this._passes.indexOf(passEffect)
-    if (idx === -1) return this
+    if (!this._postPassGraph.effects.includes(passEffect)) return this
 
     const passEntity = getEffectEntity(passEffect)
     if (passEntity) {
       this._runtimeWorld.destroy(passEntity)
     }
     passEffect._detach()
-    this._passes.splice(idx, 1)
-
-    if (this._postPassRegistryEntity) {
-      this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
-    }
+    this._postPassGraph.remove(passEffect)
     return this
   }
 
@@ -1562,19 +1518,14 @@ export class Flatland extends Group {
    */
   clearPasses(): this {
     this._assertUsable('clearPasses')
-    for (const passEffect of this._passes) {
+    for (const passEffect of this._postPassGraph.effects) {
       const passEntity = getEffectEntity(passEffect)
       if (passEntity) {
         this._runtimeWorld.destroy(passEntity)
       }
       passEffect._detach()
     }
-    this._passes.length = 0
-    this._nextPassOrder = 0
-
-    if (this._postPassRegistryEntity) {
-      this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
-    }
+    this._postPassGraph.clear()
 
     if (this._autoRenderPipeline) {
       this._renderPipelineEnabled = false
@@ -1586,7 +1537,7 @@ export class Flatland extends Group {
    * Get the current post-processing passes.
    */
   get passes(): readonly PassEffect[] {
-    return this._passes
+    return this._postPassGraph.effects
   }
 
   /**
@@ -1596,9 +1547,7 @@ export class Flatland extends Group {
    */
   _markPostPassDirty(): void {
     if (this._disposed) return
-    if (this._postPassRegistryEntity) {
-      this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
-    }
+    this._postPassGraph.markDirty()
   }
 
   // ============================================
@@ -2399,10 +2348,10 @@ export class Flatland extends Group {
    */
   private _ensureRenderPipeline(renderer: WebGPURenderer): void {
     // Nothing to do if render pipeline disabled and no passes
-    if (!this._renderPipelineEnabled && this._passes.length === 0) return
+    if (!this._renderPipelineEnabled && this._postPassGraph.effects.length === 0) return
 
     // Auto-initialize RenderPipeline if we have passes but no instance yet
-    if (!this._renderPipeline && this._passes.length > 0) {
+    if (!this._renderPipeline && this._postPassGraph.effects.length > 0) {
       const rp = new RenderPipeline(renderer)
       const scenePass = pass(this.scene, this._camera)
       this._installManagedPassSize(scenePass)
@@ -2411,18 +2360,14 @@ export class Flatland extends Group {
       this._autoRenderPipeline = true
       this._renderPipelineEnabled = true
 
-      // Mark dirty so the system rebuilds
-      if (this._postPassRegistryEntity) {
-        this._runtimeWorld.patch(this._postPassRegistryEntity, PostPassRegistry, { dirty: true })
-      }
+      this._postPassGraph.markDirty()
     }
 
     this._syncPassSamplingViewport(renderer)
 
     this._syncRenderPipelineOutputTransform()
 
-    // Run postPassSystem to get sorted passes (returns null if not dirty)
-    const sortedPasses = postPassSystem(this._runtimeWorld)
+    const sortedPasses = this._postPassGraph.project()
     if (sortedPasses && this._renderPipeline && this._passNode) {
       // PassNode's target stays full-surface sized, so sample only the active
       // canvas or pixel-camera viewport. Full-surface paths retain (1,1)/(0,0).
@@ -2846,18 +2791,12 @@ export class Flatland extends Group {
 
     // Clear every pass independently. One hostile destroy/detach hook must not
     // retain later effects or prevent the world from reaching terminal state.
-    for (const passEffect of this._passes) {
+    for (const passEffect of this._postPassGraph.effects) {
       const entity = getEffectEntity(passEffect)
       if (entity) runCleanup(() => destroyEntity(entity))
       runCleanup(() => passEffect._detach())
     }
-    this._passes.length = 0
-    this._nextPassOrder = 0
-    if (this._postPassRegistryEntity) {
-      const registryEntity = this._postPassRegistryEntity
-      this._postPassRegistryEntity = null
-      runCleanup(() => destroyEntity(registryEntity))
-    }
+    this._postPassGraph.dispose()
 
     // Clear lighting
     const lightEffect = this._lightEffect
