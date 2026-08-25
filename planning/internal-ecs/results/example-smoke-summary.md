@@ -2,15 +2,28 @@
 
 Status: **accepted**
 
-Source revision: `c7b55928bb9a035ebc301d14aaf4e80beb2eef78`
+Interactive walkthrough revision: `c7b55928bb9a035ebc301d14aaf4e80beb2eef78`
 
 Runtime source freeze: `c25f74c3e37bb9b521d416a81d749c925df00df2`
+
+Final converted-surface recertification: `158e510065908aec3836e4076f1f68c82c232bc1`
 
 Captured: 2026-08-24 on Google Chrome `151.0.7922.172`, headed, with the host WebGPU adapter.
 
 Raw evidence: [`example-smoke-evidence.tar.gz`](./example-smoke-evidence.tar.gz)
 
 Archive SHA-256: `6406f7bf72285bdde68d0d39d6c0b9445d04d4b7f4b382533f12ed9d801be903`
+
+Final render evidence: [`current-example-render-smoke.tar.gz`](./current-example-render-smoke.tar.gz)
+
+Final render evidence SHA-256: `7b2a7aa6576396fb06c3a56becf0cc32ca7c2686942647833ea488187a39a7dd`
+
+## Koota lineage
+
+[Koota](https://github.com/pmndrs/koota) made this renderer design possible. Its typed traits,
+structure-of-arrays storage, queries, and systems provided the foundation from which the specialized private renderer
+runtime was derived. The private runtime is narrowly optimized for renderer-owned coordination; it does not supersede
+Koota, which remains the recommended general-purpose ECS for application and gameplay state.
 
 ## Result
 
@@ -42,3 +55,16 @@ All 28 application surfaces passed: 13 Three.js examples, their 13 React Three F
 - The archive includes all 29 reviewed PNGs (28 Vitexec states plus the React starter production state), per-surface logs, the machine-readable result file, and the exact external verifier sources.
 
 This walkthrough supplements the cache-bypassed typecheck, build, and typed-lint matrix for all 28 surfaces. It is a release-freeze gate, not a per-commit CI workload.
+
+## Final converted-surface recertification
+
+After the pass-graph, animated-tile, bounded-lighting, grouped-animation, and hierarchy-path conversions landed, all 28
+surfaces were launched again serially at `158e510065908aec3836e4076f1f68c82c232bc1` with system Chrome and WebGPU.
+Each surface received 2.5 seconds to settle, then had to present a nonzero canvas without a Vite error overlay. All 28
+passed and every resulting PNG was inspected visually.
+
+The Three.js Knightmark page contains a small FPS graph canvas alongside its 1280×720 scene canvas. Its initial capture
+selected the graph; the verifier was corrected to select the largest canvas and the archived screenshot is the full
+rendered Knightmark scene. The Three.js and React lighting pages each logged the known nonfatal cancelled `HEAD` request
+for the optional baked normal-map sibling; both rendered the expected lit dungeon without a page error. No other runtime
+or visual anomaly was observed.

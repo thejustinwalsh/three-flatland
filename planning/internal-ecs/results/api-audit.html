@@ -423,6 +423,7 @@
         <span class="chip"><strong>Base</strong> <span class="mono">bd19dd506f64</span></span>
         <span class="chip"><strong>Audit head</strong> <span class="mono">969b677d9eac</span></span>
         <span class="chip"><strong>Source freeze</strong> <span class="mono">969b677d9eac</span></span>
+        <span class="chip"><strong>Live recertification</strong> <span class="mono">158e51006590</span></span>
         <span class="chip"><strong>Package</strong> <span class="mono">three-flatland@0.1.0-alpha.10</span></span>
       </div>
     </header>
@@ -478,7 +479,9 @@
           <div class="metric"><strong>26</strong><span>export-map keys, unchanged</span></div>
           <div class="metric"><strong>112 → 105</strong><span>reachable declaration files</span></div>
           <div class="metric"><strong>7</strong><span>private implementation declarations removed</span></div>
-          <div class="metric"><strong>28 / 28</strong><span>application surfaces built, typed, and linted</span></div>
+          <div class="metric">
+            <strong>28 / 28</strong><span>surfaces built, typed, linted, and live-rendered</span>
+          </div>
         </div>
       </section>
 
@@ -797,6 +800,9 @@ createWorld, buildBatchQueryView, tileLayer, and named slot/member mutation APIs
             <h3>Consumer and runtime checks</h3>
             <ul class="clean">
               <li>Current-head uncached typecheck, production build, and typed lint for all 28 application surfaces</li>
+              <li>
+                <a href="./example-smoke-summary.md">Current-head WebGPU render and visual recertification, 28 / 28</a>
+              </li>
               <li><a href="../09-private-ecs-evolution-ledger.md">Durable private-runtime evolution ledger</a></li>
               <li><a href="../07-private-ecs-convergence-plan.md">Evidence decisions and scoped Labs verdicts</a></li>
               <li><a href="./renderer-labs-summary.md">Foundational Labs renderer timing verdict</a></li>
@@ -810,7 +816,10 @@ createWorld, buildBatchQueryView, tileLayer, and named slot/member mutation APIs
           The audit and source-freeze head is <code>969b677d9eacf050a677a565f0bf2199275acf13</code>. The focused
           render/pass, animation, tile, lighting, and hierarchy comparisons are recorded in the evolution ledger and
           convergence plan. Deterministic consumer evidence was captured twice, reviewed, accepted, and then reproduced
-          with zero deltas from a clean tree at this stack tip.
+          with zero deltas from a clean tree at this stack tip. All 28 application surfaces were subsequently launched
+          and visually reviewed at <code>158e510065908aec3836e4076f1f68c82c232bc1</code>; the intervening commits
+          changed evidence, documentation, fixture generation, and test/size policy without changing the frozen package
+          runtime.
         </p>
       </section>
     </main>
