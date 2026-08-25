@@ -21,8 +21,8 @@ const config = require(configPath)
 
 // WASM binaries measured as raw + brotli file sizes
 const wasmEntries = [
-  { name: '@three-flatland/skia/wasm/wgpu', path: 'packages/skia/dist/skia-wgpu/skia-wgpu.opt.wasm' },
-  { name: '@three-flatland/skia/wasm/gl', path: 'packages/skia/dist/skia-gl/skia-gl.opt.wasm' },
+  { name: '@three-flatland/skia/wasm/wgpu', path: 'packages/skia/lib/skia-wgpu.wasm' },
+  { name: '@three-flatland/skia/wasm/gl', path: 'packages/skia/lib/skia-gl.wasm' },
 ]
 
 function brotliSize(buf) {
@@ -53,10 +53,13 @@ const tmpCjsConfig = resolve(root, '.size-limit-filtered.cjs')
 const lines = [
   `const original = require('./.size-limit.cjs')`,
   `const byName = Object.fromEntries(original.map((e) => [e.name, e]))`,
-  `const nodeExternal = (config) => { config.external = [...(config.external || []), 'node:*']; return config }`,
+  // tsdown's unbundled output can retain bare imports after inlining constants.
+  // The package's `sideEffects: false` contract makes their removal intentional;
+  // keep size reports focused on actionable warnings.
+  `const measurementDefaults = (config) => { config.external = [...(config.external || []), 'node:*']; config.logOverride = { ...(config.logOverride || {}), 'ignored-bare-import': 'silent' }; return config }`,
   `module.exports = ${JSON.stringify(jsonSafe, null, 2)}.map((e) => {`,
   `  const inner = byName[e.name] && byName[e.name].modifyEsbuildConfig`,
-  `  e.modifyEsbuildConfig = inner ? (c) => nodeExternal(inner(c)) : nodeExternal`,
+  `  e.modifyEsbuildConfig = inner ? (c) => measurementDefaults(inner(c)) : measurementDefaults`,
   `  return e`,
   `})`,
 ]
@@ -84,7 +87,8 @@ function getWasmEntries() {
 function sortResults(results) {
   function sortKey(name) {
     if (name.startsWith('three-flatland')) return `0_${name}`
-    if (name.startsWith('@three-flatland')) return `1_${name.replace('(raw)', '(0raw)').replace('(brotli)', '(1brotli)')}`
+    if (name.startsWith('@three-flatland'))
+      return `1_${name.replace('(raw)', '(0raw)').replace('(brotli)', '(1brotli)')}`
     if (name.startsWith('minis/')) return `2_${name}`
     return `3_${name}`
   }
@@ -102,6 +106,10 @@ try {
     const results = JSON.parse(output)
     results.push(...getWasmEntries())
     process.stdout.write(JSON.stringify(sortResults(results)))
+  } else if (!isJson) {
+    for (const result of getWasmEntries()) {
+      console.log(`${result.name}: ${(result.size / 1000).toFixed(2)} kB`)
+    }
   }
 } catch (e) {
   if (isJson && e.stdout) {

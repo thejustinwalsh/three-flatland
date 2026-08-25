@@ -206,7 +206,7 @@ const allChecks = [
   // ── @three-flatland/skia (needs ESM + plugins for import.meta / .json / .wasm) ──
   ...[['', 'core'], ['/three', 'full'], ['/react', 'full']].map(([sub, label]) => ({
     name: `@three-flatland/skia${sub} (${label})`,
-    path: `packages/skia/dist${sub || ''}/index.js`,
+    path: `packages/skia/dist/ts${sub || ''}/index.js`,
     import: '*',
     ignore: corePeerDeps,
     modifyEsbuildConfig(config) {
