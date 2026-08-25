@@ -45,15 +45,18 @@ describe('private ECS architecture contract', () => {
     }
   })
 
-  it('keeps animated-tile frame updates on reusable scratch sets', () => {
+  it('keeps animated-tile frame updates on reusable typed-array projections', () => {
     const source = readFileSync(new URL('../tilemap/TileLayer.ts', import.meta.url), 'utf8')
-    const start = source.indexOf('  update(deltaMs: number): void {')
-    const end = source.indexOf('\n  /**\n   * Get tile GID', start)
+    const projectionStart = source.indexOf('class TileAnimationProjection')
+    const start = source.indexOf('  update(deltaMs: number): void {', projectionStart)
+    const end = source.indexOf('\n  clear(): void {', start)
 
+    expect(projectionStart).toBeGreaterThanOrEqual(0)
     expect(start).toBeGreaterThanOrEqual(0)
     expect(end).toBeGreaterThan(start)
-    expect(source.slice(start, end)).not.toMatch(/\bnew Set\b/)
-    expect(source).toContain('private readonly _changedAnimationGids = new Set<number>()')
-    expect(source).toContain('private readonly _dirtyAnimationChunks = new Set<string>()')
+    expect(source.slice(start, end)).not.toMatch(/\bnew (?:Array|Map|Set)\b/)
+    expect(source).toContain('private _positionAnimationIds = new Uint32Array(0)')
+    expect(source).toContain('private _changedAnimations = new Uint8Array(0)')
+    expect(source).toContain('private _dirtyChunks = new Uint8Array(0)')
   })
 })

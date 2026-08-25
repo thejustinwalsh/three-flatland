@@ -128,23 +128,81 @@ describe('TileMap2D pixelPerfect', () => {
 })
 
 describe('TileLayer animation updates', () => {
-  it('reuses layer-owned scratch sets while advancing animated tiles', () => {
+  type AnimationProjectionView = {
+    size: number
+    _elapsed: Float64Array
+    _frameIndices: Uint32Array
+    _positionAnimationIds: Uint32Array
+    _changedAnimations: Uint8Array
+    _dirtyChunks: Uint8Array
+  }
+
+  function projection(layer: object): AnimationProjectionView {
+    return Reflect.get(layer, '_tileAnimations') as AnimationProjectionView
+  }
+
+  it('reuses exact typed-array projection storage while advancing animated tiles', () => {
     const map = new TileMap2D({ data: makeAnimatedMapData() })
-    const layer = map.getLayers()[0]! as unknown as {
-      update(deltaMs: number): void
-      _changedAnimationGids: Set<number>
-      _dirtyAnimationChunks: Set<string>
-    }
-    const changedAnimationGids = layer._changedAnimationGids
-    const dirtyAnimationChunks = layer._dirtyAnimationChunks
+    const layer = map.getLayers()[0]!
+    const state = projection(layer)
+    const positions = state._positionAnimationIds
+    const changed = state._changedAnimations
+    const dirty = state._dirtyChunks
 
     layer.update(1)
     layer.update(1)
 
-    expect(layer._changedAnimationGids).toBe(changedAnimationGids)
-    expect(layer._dirtyAnimationChunks).toBe(dirtyAnimationChunks)
-    expect(changedAnimationGids.size).toBeGreaterThan(0)
-    expect(dirtyAnimationChunks.size).toBeGreaterThan(0)
+    expect(projection(layer)).toBe(state)
+    expect(state._positionAnimationIds).toBe(positions)
+    expect(state._changedAnimations).toBe(changed)
+    expect(state._dirtyChunks).toBe(dirty)
+    expect(state.size).toBe(12)
+    expect(changed[0]).toBe(1)
+    expect(dirty[0]).toBe(1)
+
+    map.dispose()
+    expect(state.size).toBe(0)
+    expect(state._positionAnimationIds).toHaveLength(0)
+  })
+
+  it('catches up across variable-duration frames after a large delta', () => {
+    const data = makeAnimatedMapData()
+    data.tilesets[0]!.tiles.get(0)!.animation = [
+      { tileId: 0, duration: 10 },
+      { tileId: 1, duration: 20 },
+      { tileId: 2, duration: 30 },
+    ]
+    const map = new TileMap2D({ data })
+    const layer = map.getLayers()[0]!
+    const state = projection(layer)
+    const mesh = layer.children[0]! as InstancedMesh
+    const uv = mesh.geometry.getAttribute('instanceUV')
+
+    layer.update(35)
+
+    expect(state._frameIndices[0]).toBe(2)
+    expect(state._elapsed[0]).toBe(5)
+    expect(uv.getX(0)).toBeCloseTo(0.5)
+    expect(uv.getX(11)).toBeCloseTo(0.5)
+
+    // A complete 60 ms cycle returns to the same frame and preserves its
+    // within-frame offset without publishing a redundant UV change.
+    layer.update(60)
+    expect(state._frameIndices[0]).toBe(2)
+    expect(state._elapsed[0]).toBe(5)
+    expect(state._changedAnimations[0]).toBe(0)
+
+    map.dispose()
+  })
+
+  it('rejects non-finite deltas without mutating the animation clocks', () => {
+    const map = new TileMap2D({ data: makeAnimatedMapData() })
+    const layer = map.getLayers()[0]!
+    const state = projection(layer)
+
+    expect(() => layer.update(Number.POSITIVE_INFINITY)).toThrow('TileLayer.update deltaMs must be finite')
+    expect(state._elapsed[0]).toBe(0)
+    expect(state._frameIndices[0]).toBe(0)
 
     map.dispose()
   })

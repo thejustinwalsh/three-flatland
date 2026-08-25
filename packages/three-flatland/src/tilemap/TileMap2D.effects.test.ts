@@ -133,13 +133,13 @@ describe('TileMap2D retained material effects', () => {
     const effect = new DynamicTileEffect()
     map.addEffect(effect)
     const layer = map.getLayerAt(0)!
-    expect((Reflect.get(layer, 'animatedTilePositions') as Map<unknown, unknown>).size).toBe(1)
+    expect((Reflect.get(layer, '_tileAnimations') as { size: number }).size).toBe(1)
 
     layer.setTileAt(0, 0, 2)
 
     const buffer = firstChunk(map).geometry.getAttribute('effectBuf0') as InstancedBufferAttribute
     expect(buffer.array[0]).toBe(6)
-    expect((Reflect.get(layer, 'animatedTilePositions') as Map<unknown, unknown>).size).toBe(0)
+    expect((Reflect.get(layer, '_tileAnimations') as { size: number }).size).toBe(0)
     map.dispose()
   })
 

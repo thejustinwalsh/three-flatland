@@ -20,7 +20,7 @@ import {
 } from '../debug/debug-sink'
 import { LIT_FLAG_MASK, RECEIVE_SHADOWS_MASK, CAST_SHADOW_MASK, PIXEL_PERFECT_MASK } from '../materials/effectFlagBits'
 import type { Tileset } from './Tileset'
-import type { TileLayerData } from './types'
+import type { TileAnimationFrame, TileLayerData } from './types'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
 import { registerTileLayerOperations } from '../internal/tile-layer-operations'
 import { copyFlatlandMaterialState } from '../internal/flatland-material-state'
@@ -47,6 +47,186 @@ interface CleanupResult {
 
 interface MaterialReplacement extends CleanupResult {
   previous: Sprite2DMaterial
+}
+
+interface TileAnimationDefinition {
+  durations: Float64Array
+  packedUvs: Float32Array
+  cycleDuration: number
+}
+
+/**
+ * Dense, layer-private projection for animated tile playback.
+ *
+ * Koota proved the value of separating stable object ownership from packed
+ * numeric iteration. This renderer-specific projection keeps that legacy:
+ * animation clocks and tile locations are exact typed arrays, while chunks
+ * and GPU resources remain ordinary Three.js objects owned by TileLayer.
+ */
+class TileAnimationProjection {
+  private readonly _animationIds = new Map<number, number>()
+  private readonly _definitions: TileAnimationDefinition[] = []
+  private readonly _chunks: ChunkData[] = []
+  private readonly _stagedAnimationIds: number[] = []
+  private readonly _stagedChunkIds: number[] = []
+  private readonly _stagedInstanceIndices: number[] = []
+
+  private _elapsed = new Float64Array(0)
+  private _frameIndices = new Uint32Array(0)
+  private _positionAnimationIds = new Uint32Array(0)
+  private _positionChunkIds = new Uint32Array(0)
+  private _positionInstanceIndices = new Uint32Array(0)
+  private _changedAnimations = new Uint8Array(0)
+  private _dirtyChunks = new Uint8Array(0)
+  private _dirtyChunkIds = new Uint32Array(0)
+  private _sealed = false
+
+  constructor(
+    private readonly _tileset: Tileset,
+    private readonly _texFlipY: boolean
+  ) {}
+
+  get size(): number {
+    return this._positionAnimationIds.length
+  }
+
+  addPosition(baseGid: number, animation: readonly TileAnimationFrame[], chunkId: number, instanceIndex: number): void {
+    if (this._sealed) throw new Error('Tile animation projection cannot grow after publication')
+    let animationId = this._animationIds.get(baseGid)
+    if (animationId === undefined) {
+      animationId = this._definitions.length
+      this._animationIds.set(baseGid, animationId)
+      const durations = new Float64Array(animation.length)
+      const packedUvs = new Float32Array(animation.length * 4)
+      let cycleDuration = 0
+      for (let frameIndex = 0; frameIndex < animation.length; frameIndex++) {
+        const frame = animation[frameIndex]!
+        durations[frameIndex] = frame.duration
+        cycleDuration += frame.duration
+        this._writePackedUv(packedUvs, frameIndex * 4, this._tileset.getUV(frame.tileId + this._tileset.firstGid))
+      }
+      this._definitions.push({ durations, packedUvs, cycleDuration })
+    }
+    this._stagedAnimationIds.push(animationId)
+    this._stagedChunkIds.push(chunkId)
+    this._stagedInstanceIndices.push(instanceIndex)
+  }
+
+  addChunk(chunk: ChunkData): void {
+    if (this._sealed) throw new Error('Tile animation projection cannot grow after publication')
+    this._chunks.push(chunk)
+  }
+
+  seal(): void {
+    if (this._sealed) return
+    this._sealed = true
+    this._elapsed = new Float64Array(this._definitions.length)
+    this._frameIndices = new Uint32Array(this._definitions.length)
+    this._positionAnimationIds = Uint32Array.from(this._stagedAnimationIds)
+    this._positionChunkIds = Uint32Array.from(this._stagedChunkIds)
+    this._positionInstanceIndices = Uint32Array.from(this._stagedInstanceIndices)
+    this._changedAnimations = new Uint8Array(this._definitions.length)
+    this._dirtyChunks = new Uint8Array(this._chunks.length)
+    this._dirtyChunkIds = new Uint32Array(this._chunks.length)
+    this._stagedAnimationIds.length = 0
+    this._stagedChunkIds.length = 0
+    this._stagedInstanceIndices.length = 0
+    this._animationIds.clear()
+  }
+
+  update(deltaMs: number): void {
+    if (this._positionAnimationIds.length === 0) return
+    if (!Number.isFinite(deltaMs)) {
+      throw new Error('TileLayer.update deltaMs must be finite')
+    }
+
+    const changed = this._changedAnimations
+    const dirty = this._dirtyChunks
+    changed.fill(0)
+    dirty.fill(0)
+    let changedCount = 0
+    let dirtyCount = 0
+
+    for (let animationId = 0; animationId < this._definitions.length; animationId++) {
+      const definition = this._definitions[animationId]!
+      const previousFrame = this._frameIndices[animationId]!
+      let frameIndex = previousFrame
+      let elapsed = this._elapsed[animationId]! + deltaMs
+      if (elapsed >= definition.cycleDuration) elapsed %= definition.cycleDuration
+      while (elapsed >= definition.durations[frameIndex]!) {
+        elapsed -= definition.durations[frameIndex]!
+        frameIndex = (frameIndex + 1) % definition.durations.length
+      }
+      this._elapsed[animationId] = elapsed
+      this._frameIndices[animationId] = frameIndex
+      if (frameIndex !== previousFrame) {
+        changed[animationId] = 1
+        changedCount++
+      }
+    }
+
+    if (changedCount === 0) return
+
+    for (let position = 0; position < this._positionAnimationIds.length; position++) {
+      const animationId = this._positionAnimationIds[position]!
+      if (changed[animationId] === 0) continue
+      const chunkId = this._positionChunkIds[position]!
+      const chunk = this._chunks[chunkId]
+      if (!chunk) continue
+      const definition = this._definitions[animationId]!
+      const frameOffset = this._frameIndices[animationId]! * 4
+      const instanceOffset = this._positionInstanceIndices[position]! * 16
+      chunk.instanceData[instanceOffset] = definition.packedUvs[frameOffset]!
+      chunk.instanceData[instanceOffset + 1] = definition.packedUvs[frameOffset + 1]!
+      chunk.instanceData[instanceOffset + 2] = definition.packedUvs[frameOffset + 2]!
+      chunk.instanceData[instanceOffset + 3] = definition.packedUvs[frameOffset + 3]!
+      if (dirty[chunkId] === 0) {
+        dirty[chunkId] = 1
+        this._dirtyChunkIds[dirtyCount++] = chunkId
+      }
+    }
+
+    for (let index = 0; index < dirtyCount; index++) {
+      const chunk = this._chunks[this._dirtyChunkIds[index]!]
+      if (!chunk) continue
+      const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
+      uvAttr.data.needsUpdate = true
+    }
+  }
+
+  clear(): void {
+    this._animationIds.clear()
+    this._definitions.length = 0
+    this._chunks.length = 0
+    this._stagedAnimationIds.length = 0
+    this._stagedChunkIds.length = 0
+    this._stagedInstanceIndices.length = 0
+    this._elapsed = new Float64Array(0)
+    this._frameIndices = new Uint32Array(0)
+    this._positionAnimationIds = new Uint32Array(0)
+    this._positionChunkIds = new Uint32Array(0)
+    this._positionInstanceIndices = new Uint32Array(0)
+    this._changedAnimations = new Uint8Array(0)
+    this._dirtyChunks = new Uint8Array(0)
+    this._dirtyChunkIds = new Uint32Array(0)
+    this._sealed = true
+  }
+
+  private _writePackedUv(
+    buffer: Float32Array,
+    offset: number,
+    uv: { x: number; y: number; width: number; height: number }
+  ): void {
+    buffer[offset] = uv.x
+    buffer[offset + 2] = uv.width
+    if (this._texFlipY) {
+      buffer[offset + 1] = 1 - uv.y - uv.height
+      buffer[offset + 3] = uv.height
+    } else {
+      buffer[offset + 1] = uv.y + uv.height
+      buffer[offset + 3] = -uv.height
+    }
+  }
 }
 
 /**
@@ -133,26 +313,8 @@ export class TileLayer extends Group {
    */
   private tileIndexMap: Map<number, { chunkKey: string; instanceIndex: number }> = new Map()
 
-  /**
-   * Animated tile tracking.
-   * Maps tile data array index to animation data.
-   */
-  private animatedTilePositions: Map<
-    number,
-    {
-      gid: number
-      baseGid: number
-      chunkKey: string
-      instanceIndex: number
-    }
-  > = new Map()
-
-  /** Animation state (keyed by base GID) */
-  private animationTimers: Map<number, { elapsed: number; frameIndex: number }> = new Map()
-
-  /** Reused animation-update scratch; cleared and filled without per-frame allocation. */
-  private readonly _changedAnimationGids = new Set<number>()
-  private readonly _dirtyAnimationChunks = new Set<string>()
+  /** Dense renderer-private animation clocks, locations, and dirty tracking. */
+  private _tileAnimations: TileAnimationProjection
 
   /** Internal retirement is idempotent across reentrant disposal callbacks. */
   private readonly _retiredChunkGeometries = new WeakSet<BufferGeometry>()
@@ -343,6 +505,7 @@ export class TileLayer extends Group {
 
     // Detect whether the texture uses flipY (loaded images = true, DataTextures = false)
     this.texFlipY = tileset.texture?.flipY ?? false
+    this._tileAnimations = new TileAnimationProjection(tileset, this.texFlipY)
 
     this._material = new Sprite2DMaterial({
       map: tileset.texture ?? undefined,
@@ -616,18 +779,16 @@ export class TileLayer extends Group {
 
   private _buildInstancesTransaction(revision: number): CleanupResult {
     const previous = {
-      animatedTilePositions: this.animatedTilePositions,
-      animationTimers: this.animationTimers,
       children: [...this.children],
       chunks: this.chunks,
+      tileAnimations: this._tileAnimations,
       tileIndexMap: this.tileIndexMap,
       totalInstanceCount: this._totalInstanceCount,
     }
 
     this.chunks = new Map()
     this.tileIndexMap = new Map()
-    this.animatedTilePositions = new Map()
-    this.animationTimers = new Map()
+    this._tileAnimations = new TileAnimationProjection(this.tileset, this.texFlipY)
     this._totalInstanceCount = 0
 
     try {
@@ -640,8 +801,8 @@ export class TileLayer extends Group {
       }
       this.chunks = previous.chunks
       this.tileIndexMap = previous.tileIndexMap
-      this.animatedTilePositions = previous.animatedTilePositions
-      this.animationTimers = previous.animationTimers
+      this._tileAnimations.clear()
+      this._tileAnimations = previous.tileAnimations
       this._totalInstanceCount = previous.totalInstanceCount
       this._restoreChildren(previous.children)
       throw error
@@ -666,6 +827,7 @@ export class TileLayer extends Group {
     }
 
     const cleanup = this._retireChunks(previous.chunks)
+    previous.tileAnimations.clear()
     if (this._disposed || this._lifecycleRevision !== revision) {
       if (cleanup.didError) throw cleanup.error
       throw new Error('TileLayer projection was terminated during cleanup')
@@ -728,6 +890,7 @@ export class TileLayer extends Group {
 
     // Create an InstancedMesh per chunk
     for (const [chunkKey, tiles] of chunkTiles) {
+      const chunkId = this.chunks.size
       const count = tiles.length
 
       // Allocate interleaved core buffer — 16 floats per instance
@@ -885,16 +1048,7 @@ export class TileLayer extends Group {
         // Track animated tiles
         if (this.tileset.isAnimated(tile.gid)) {
           const animation = this.tileset.getAnimation(tile.gid)!
-          this.animatedTilePositions.set(tile.dataIndex, {
-            gid: animation[0]!.tileId + this.tileset.firstGid,
-            baseGid: tile.gid,
-            chunkKey,
-            instanceIndex: i,
-          })
-
-          if (!this.animationTimers.has(tile.gid)) {
-            this.animationTimers.set(tile.gid, { elapsed: 0, frameIndex: 0 })
-          }
+          this._tileAnimations.addPosition(tile.gid, animation, chunkId, i)
         }
       }
 
@@ -919,15 +1073,18 @@ export class TileLayer extends Group {
       // takes priority over geometry.boundingSphere in Frustum.intersectsObject().
       mesh.computeBoundingSphere()
 
-      this.chunks.set(chunkKey, {
+      const chunk = {
         mesh,
         instanceData,
         effectBufs,
         instanceCount: count,
-      })
+      }
+      this.chunks.set(chunkKey, chunk)
+      this._tileAnimations.addChunk(chunk)
       this.add(mesh)
       this._totalInstanceCount += count
     }
+    this._tileAnimations.seal()
   }
 
   /**
@@ -935,60 +1092,7 @@ export class TileLayer extends Group {
    */
   update(deltaMs: number): void {
     this._assertMutable('update')
-    if (this.animatedTilePositions.size === 0) return
-
-    // Update animation timers
-    const changedGids = this._changedAnimationGids
-    changedGids.clear()
-    const dirtyChunks = this._dirtyAnimationChunks
-    dirtyChunks.clear()
-
-    for (const [gid, timer] of this.animationTimers) {
-      const animation = this.tileset.getAnimation(gid)
-      if (!animation) continue
-
-      timer.elapsed += deltaMs
-      const currentFrame = animation[timer.frameIndex]!
-
-      if (timer.elapsed >= currentFrame.duration) {
-        timer.elapsed -= currentFrame.duration
-        timer.frameIndex = (timer.frameIndex + 1) % animation.length
-        changedGids.add(gid)
-      }
-    }
-
-    if (changedGids.size === 0) return
-
-    for (const [, data] of this.animatedTilePositions) {
-      if (!changedGids.has(data.baseGid)) continue
-
-      const timer = this.animationTimers.get(data.baseGid)!
-      const animation = this.tileset.getAnimation(data.baseGid)!
-      const newGid = animation[timer.frameIndex]!.tileId + this.tileset.firstGid
-
-      const chunk = this.chunks.get(data.chunkKey)
-      if (!chunk) continue
-
-      const i = data.instanceIndex
-      const uv = this.tileset.getUV(newGid)
-      // UV lives at offset 0 within each instance's 16-float stride.
-      this.writeUV(chunk.instanceData, i * 16 + 0, uv)
-
-      data.gid = newGid
-      dirtyChunks.add(data.chunkKey)
-    }
-
-    for (const chunkKey of dirtyChunks) {
-      const chunk = this.chunks.get(chunkKey)
-      if (chunk) {
-        // Any attribute view into the interleaved buffer re-uploads the
-        // full stride when we flip `data.needsUpdate`.
-        const uvAttr = chunk.mesh.geometry.getAttribute('instanceUV') as InterleavedBufferAttribute
-        if (uvAttr && (uvAttr.data as { needsUpdate?: boolean })) {
-          ;(uvAttr.data as { needsUpdate: boolean }).needsUpdate = true
-        }
-      }
-    }
+    this._tileAnimations.update(deltaMs)
   }
 
   /**
@@ -1202,8 +1306,7 @@ export class TileLayer extends Group {
     this.chunks.clear()
     if (disposeMaterial) runCleanup(() => this._material.dispose())
     this.tileIndexMap.clear()
-    this.animatedTilePositions.clear()
-    this.animationTimers.clear()
+    this._tileAnimations.clear()
     this.#clearEffectValues()
     this._totalInstanceCount = 0
     if (didError) throw firstError
