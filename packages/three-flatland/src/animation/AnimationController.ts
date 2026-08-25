@@ -1,6 +1,5 @@
 import type { Animation, AnimationState, PlayOptions } from './types'
 import type { SpriteFrame } from '../sprites/types'
-import { createAnimationPlaybackState, type AnimationPlaybackState } from '../internal/animation-runtime'
 
 type FrameCallback = (frame: SpriteFrame) => void
 type EventCallback = (event: string, frameIndex: number) => void
@@ -26,106 +25,24 @@ type EventCallback = (event: string, frameIndex: number) => void
  * ```
  */
 export class AnimationController {
-  private animations = new Map<string, { animation: Animation; definition: number }>()
-  private definitions: Array<Animation | undefined> = []
-  private _playback: AnimationPlaybackState
+  private animations: Map<string, Animation> = new Map()
+  private current: Animation | null = null
+  private frameIndex: number = 0
+  private elapsed: number = 0
+  private playing: boolean = false
+  private paused: boolean = false
+  private loopCount: number = 0
+  private speed: number = 1
+  private direction: 1 | -1 = 1 // For ping-pong
 
   // Current play options
   private options: PlayOptions = {}
-
-  constructor() {
-    this._playback = createAnimationPlaybackState(this)
-  }
-
-  private _read(field: keyof Omit<AnimationPlaybackState, 'store' | 'index' | 'revision'>): number {
-    const playback = this._playback
-    return playback.store ? playback.store[field][playback.index]! : playback[field]
-  }
-
-  private _write(field: keyof Omit<AnimationPlaybackState, 'store' | 'index' | 'revision'>, value: number): void {
-    const playback = this._playback
-    playback.revision++
-    if (playback.store) playback.store[field][playback.index] = value
-    else playback[field] = value
-  }
-
-  private _commitFrame(frameIndex: number, elapsed: number): void {
-    const playback = this._playback
-    const store = playback.store
-    if (store) {
-      const index = playback.index
-      store.frameIndex[index] = frameIndex
-      store.elapsed[index] = elapsed
-      return
-    }
-    playback.frameIndex = frameIndex
-    playback.elapsed = elapsed
-  }
-
-  private _commitElapsed(elapsed: number): void {
-    const playback = this._playback
-    if (playback.store) playback.store.elapsed[playback.index] = elapsed
-    else playback.elapsed = elapsed
-  }
-
-  private _commitDirection(direction: number): void {
-    const playback = this._playback
-    if (playback.store) playback.store.direction[playback.index] = direction
-    else playback.direction = direction
-  }
-
-  private _commitLoop(loopCount: number, elapsed: number, direction: number): void {
-    const playback = this._playback
-    const store = playback.store
-    if (store) {
-      const index = playback.index
-      store.loopCount[index] = loopCount
-      store.elapsed[index] = elapsed
-      store.direction[index] = direction
-      return
-    }
-    playback.loopCount = loopCount
-    playback.elapsed = elapsed
-    playback.direction = direction
-  }
-
-  private _commitComplete(frameIndex: number, elapsed: number, direction: number, loopCount: number): void {
-    const playback = this._playback
-    const store = playback.store
-    if (store) {
-      const index = playback.index
-      store.frameIndex[index] = frameIndex
-      store.elapsed[index] = elapsed
-      store.direction[index] = direction
-      store.playing[index] = 0
-      store.loopCount[index] = loopCount
-      return
-    }
-    playback.frameIndex = frameIndex
-    playback.elapsed = elapsed
-    playback.direction = direction
-    playback.playing = 0
-    playback.loopCount = loopCount
-  }
-
-  private _current(): Animation | null {
-    const definition = this._read('definition')
-    return definition < 0 ? null : (this.definitions[definition] ?? null)
-  }
 
   /**
    * Add an animation definition.
    */
   addAnimation(animation: Animation): this {
-    const existing = this.animations.get(animation.name)
-    if (existing) {
-      existing.animation = animation
-      this.definitions[existing.definition] = animation
-    } else {
-      const definition = this.definitions.length
-      this.definitions.push(animation)
-      this.animations.set(animation.name, { animation, definition })
-    }
+    this.animations.set(animation.name, animation)
     return this
   }
 
@@ -143,11 +60,8 @@ export class AnimationController {
    * Remove an animation.
    */
   removeAnimation(name: string): this {
-    const existing = this.animations.get(name)
-    if (!existing) return this
     this.animations.delete(name)
-    this.definitions[existing.definition] = undefined
-    if (this._read('definition') === existing.definition) {
+    if (this.current?.name === name) {
       this.stop()
     }
     return this
@@ -157,7 +71,7 @@ export class AnimationController {
    * Get an animation by name.
    */
   getAnimation(name: string): Animation | undefined {
-    return this.animations.get(name)?.animation
+    return this.animations.get(name)
   }
 
   /**
@@ -171,28 +85,27 @@ export class AnimationController {
    * Play an animation.
    */
   play(name: string, options: PlayOptions = {}): this {
-    const entry = this.animations.get(name)
-    if (!entry) {
+    const animation = this.animations.get(name)
+    if (!animation) {
       console.warn(`Animation not found: ${name}`)
       return this
     }
 
     // If same animation and already playing, optionally restart
-    if (this._read('definition') === entry.definition && this._read('playing') === 1 && this._read('paused') === 0) {
+    if (this.current?.name === name && this.playing && !this.paused) {
       if (options.startFrame === undefined) {
         return this // Continue playing
       }
     }
 
-    this._write('definition', entry.definition)
-    this._write('frameIndex', options.startFrame ?? 0)
-    this._write('elapsed', 0)
-    this._write('playing', 1)
-    this._write('paused', 0)
-    this._write('loopCount', 0)
-    this._write('speed', options.speed ?? 1)
-    this._write('direction', 1)
-    this._write('loopMode', options.loop === undefined ? -1 : options.loop ? 1 : 0)
+    this.current = animation
+    this.frameIndex = options.startFrame ?? 0
+    this.elapsed = 0
+    this.playing = true
+    this.paused = false
+    this.loopCount = 0
+    this.speed = options.speed ?? 1
+    this.direction = 1
     this.options = options
 
     return this
@@ -202,7 +115,7 @@ export class AnimationController {
    * Pause the current animation.
    */
   pause(): this {
-    this._write('paused', 1)
+    this.paused = true
     return this
   }
 
@@ -210,7 +123,7 @@ export class AnimationController {
    * Resume a paused animation.
    */
   resume(): this {
-    this._write('paused', 0)
+    this.paused = false
     return this
   }
 
@@ -218,11 +131,11 @@ export class AnimationController {
    * Stop the current animation.
    */
   stop(): this {
-    this._write('playing', 0)
-    this._write('paused', 0)
-    this._write('definition', -1)
-    this._write('frameIndex', 0)
-    this._write('elapsed', 0)
+    this.playing = false
+    this.paused = false
+    this.current = null
+    this.frameIndex = 0
+    this.elapsed = 0
     return this
   }
 
@@ -230,10 +143,9 @@ export class AnimationController {
    * Go to a specific frame.
    */
   gotoFrame(index: number): this {
-    const current = this._current()
-    if (current && index >= 0 && index < current.frames.length) {
-      this._write('frameIndex', index)
-      this._write('elapsed', 0)
+    if (this.current && index >= 0 && index < this.current.frames.length) {
+      this.frameIndex = index
+      this.elapsed = 0
     }
     return this
   }
@@ -245,116 +157,104 @@ export class AnimationController {
    * @param onEvent Callback when frame event fires
    */
   update(deltaMs: number, onFrame?: FrameCallback, onEvent?: EventCallback): void {
-    const playback = this._playback
-    const store = playback.store
-    const index = playback.index
-    const definition = store ? store.definition[index]! : playback.definition
-    let frameIndex = store ? store.frameIndex[index]! : playback.frameIndex
-    let elapsed = store ? store.elapsed[index]! : playback.elapsed
-    const speed = store ? store.speed[index]! : playback.speed
-    let direction = store ? store.direction[index]! : playback.direction
-    let playing = store ? store.playing[index]! : playback.playing
-    const paused = store ? store.paused[index]! : playback.paused
-    let loopCount = store ? store.loopCount[index]! : playback.loopCount
-    const loopMode = store ? store.loopMode[index]! : playback.loopMode
-    const animation = definition < 0 ? undefined : this.definitions[definition]
-    if (!animation || playing === 0 || paused === 1) return
+    if (!this.current || !this.playing || this.paused) {
+      return
+    }
 
-    const transaction = ++playback.revision
+    const animation = this.current
     const frames = animation.frames
-    if (frames.length === 0) return
     const fps = animation.fps ?? 12
-    const loop = loopMode === -1 ? (animation.loop ?? true) : loopMode === 1
+    const loop = this.options.loop ?? animation.loop ?? true
     const pingPong = animation.pingPong ?? false
     const maxLoops = animation.loopCount ?? -1
 
     // Accumulate time
-    elapsed += deltaMs * speed
+    this.elapsed += deltaMs * this.speed
 
     // Check if we need to advance frames
-    while (playing === 1) {
-      const currentAnimFrame = frames[frameIndex]
+    while (this.playing) {
+      // Per-frame durations can differ. Recompute after each transition so a
+      // large delta catches up against the duration of the frame it is
+      // actually consuming rather than reusing the entry frame's duration.
+      const currentAnimFrame = frames[this.frameIndex]
       const frameDuration = currentAnimFrame?.duration ?? 1000 / fps
-      if (!(frameDuration > 0) || elapsed < frameDuration) break
-      elapsed -= frameDuration
+      if (!(frameDuration > 0) || this.elapsed < frameDuration) break
+      this.elapsed -= frameDuration
 
       // Determine next frame
-      let nextFrame = frameIndex + direction
-      let completed = false
-      let loopCompleted = false
+      let nextFrame = this.frameIndex + this.direction
 
       // Handle ping-pong
       if (pingPong) {
-        if (frames.length === 1) {
-          nextFrame = 0
-          loopCompleted = true
-        } else if (nextFrame >= frames.length) {
-          direction = -1
-          this._commitDirection(direction)
+        if (nextFrame >= frames.length) {
+          this.direction = -1
           nextFrame = frames.length - 2
         } else if (nextFrame < 0) {
-          direction = 1
+          this.direction = 1
           nextFrame = 1
-          loopCompleted = true
+          this.handleLoopComplete(loop, maxLoops)
         }
       } else {
         // Handle normal loop/end
         if (nextFrame >= frames.length) {
-          nextFrame = loop ? 0 : frames.length - 1
-          loopCompleted = loop
-          completed = !loop
+          if (this.handleLoopComplete(loop, maxLoops)) {
+            nextFrame = 0
+          } else {
+            // Animation complete
+            nextFrame = frames.length - 1
+            this.playing = false
+            this.options.onComplete?.()
+          }
         }
-      }
-
-      if (loopCompleted) {
-        loopCount++
-        this._commitLoop(loopCount, elapsed, direction)
-        this.options.onLoop?.(loopCount)
-        if (playback.revision !== transaction) return
-        if (!loop || (maxLoops !== -1 && loopCount >= maxLoops)) completed = true
-      }
-
-      if (completed) {
-        playing = 0
-        frameIndex = pingPong ? 0 : frames.length - 1
-        this._commitComplete(frameIndex, elapsed, direction, loopCount)
-        this.options.onComplete?.()
-        return
       }
 
       // Apply frame change
-      if (nextFrame !== frameIndex) {
-        frameIndex = nextFrame
-        this._commitFrame(frameIndex, elapsed)
+      if (nextFrame !== this.frameIndex && this.playing) {
+        this.frameIndex = nextFrame
 
-        const newFrame = frames[nextFrame]
+        const newFrame = frames[this.frameIndex]
         if (newFrame) {
           // Fire frame callback
           onFrame?.(newFrame.frame)
-          this.options.onFrame?.(nextFrame, newFrame)
+          this.options.onFrame?.(this.frameIndex, newFrame)
 
           // Fire event if present
           if (newFrame.event) {
-            onEvent?.(newFrame.event, nextFrame)
-            this.options.onEvent?.(newFrame.event, nextFrame)
+            onEvent?.(newFrame.event, this.frameIndex)
+            this.options.onEvent?.(newFrame.event, this.frameIndex)
           }
-          if (playback.revision !== transaction) return
         }
       }
     }
-    this._commitElapsed(elapsed)
+  }
+
+  /**
+   * Handle loop completion.
+   * @returns true if should continue looping
+   */
+  private handleLoopComplete(loop: boolean, maxLoops: number): boolean {
+    if (!loop) {
+      return false
+    }
+
+    this.loopCount++
+    this.options.onLoop?.(this.loopCount)
+
+    if (maxLoops !== -1 && this.loopCount >= maxLoops) {
+      return false
+    }
+
+    return true
   }
 
   /**
    * Get current frame.
    */
   getCurrentFrame(): SpriteFrame | null {
-    const current = this._current()
-    const frameIndex = this._read('frameIndex')
-    if (!current || frameIndex >= current.frames.length) {
+    if (!this.current || this.frameIndex >= this.current.frames.length) {
       return null
     }
-    return current.frames[frameIndex]?.frame ?? null
+    return this.current.frames[this.frameIndex]?.frame ?? null
   }
 
   /**
@@ -362,13 +262,13 @@ export class AnimationController {
    */
   getState(): AnimationState {
     return {
-      animation: this._current()?.name ?? null,
-      frameIndex: this._read('frameIndex'),
-      elapsed: this._read('elapsed'),
-      playing: this._read('playing') === 1,
-      paused: this._read('paused') === 1,
-      loopCount: this._read('loopCount'),
-      speed: this._read('speed'),
+      animation: this.current?.name ?? null,
+      frameIndex: this.frameIndex,
+      elapsed: this.elapsed,
+      playing: this.playing,
+      paused: this.paused,
+      loopCount: this.loopCount,
+      speed: this.speed,
     }
   }
 
@@ -377,30 +277,30 @@ export class AnimationController {
    */
   isPlaying(name?: string): boolean {
     if (name) {
-      return this._read('playing') === 1 && this._read('paused') === 0 && this._current()?.name === name
+      return this.playing && !this.paused && this.current?.name === name
     }
-    return this._read('playing') === 1 && this._read('paused') === 0
+    return this.playing && !this.paused
   }
 
   /**
    * Get current animation name.
    */
   get currentAnimation(): string | null {
-    return this._current()?.name ?? null
+    return this.current?.name ?? null
   }
 
   /**
    * Get playback speed.
    */
   getSpeed(): number {
-    return this._read('speed')
+    return this.speed
   }
 
   /**
    * Set playback speed.
    */
   setSpeed(speed: number): this {
-    this._write('speed', speed)
+    this.speed = speed
     return this
   }
 
@@ -408,7 +308,7 @@ export class AnimationController {
    * Get animation duration in milliseconds.
    */
   getAnimationDuration(name: string): number {
-    const animation = this.animations.get(name)?.animation
+    const animation = this.animations.get(name)
     if (!animation) return 0
 
     const fps = animation.fps ?? 12
@@ -424,9 +324,7 @@ export class AnimationController {
    */
   dispose(): void {
     this.animations.clear()
-    this.definitions.length = 0
-    this._write('definition', -1)
-    this._write('playing', 0)
+    this.current = null
     this.options = {}
   }
 }

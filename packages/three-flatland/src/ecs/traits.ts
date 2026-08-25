@@ -53,23 +53,6 @@ export const SpriteMaterialRef = trait({ materialId: 0 })
  */
 export const CameraLayersMask = trait({ mask: 1 })
 
-/**
- * Dense playback state for enrolled AnimatedSprite2D instances.
- * Animation definitions, frames, and callbacks remain object-owned; this
- * trait holds only the repeatedly updated numeric state.
- */
-export const AnimationPlayback = trait({
-  definition: -1,
-  frameIndex: 0,
-  elapsed: 0,
-  speed: 1,
-  direction: 1,
-  playing: 0,
-  paused: 0,
-  loopCount: 0,
-  loopMode: -1,
-})
-
 // ============================================
 // Tags
 // ============================================

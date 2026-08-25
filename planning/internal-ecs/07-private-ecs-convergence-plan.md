@@ -34,7 +34,7 @@ The world-level ownership remains mixed inside broad object traits. `LightEffect
 
 `AnimatedSprite2D` keeps the expected Three/R3F surface and binds frame/event callbacks once (`packages/three-flatland/src/sprites/AnimatedSprite2D.ts:67-135,341-357`). Playback state lives in one `AnimationController` object per sprite and advances through explicit user calls. Definitions and frame objects should remain object-owned, but elapsed time, frame index, speed, direction, play state, and loop count are dense numeric state when thousands of sprites animate together.
 
-This subsystem has not yet adopted private-world scheduling or numeric SoA. It should migrate only with a standalone compatibility path and a benchmark that includes many shared animation definitions.
+The first enrolled numeric-SoA experiment is complete and rejected: the workload reads and writes a full playback row, then projects a frame to GPU state, so splitting that row across numeric columns made the trusted 1k and 16k cases materially slower. Independent playback remains object-local. The next experiment must remove repeated definition/timeline work rather than relocate it, with a standalone compatibility path and many shared animation definitions in the benchmark.
 
 ### Tilemaps: retained material ownership and batch-local GPU projection
 
@@ -80,11 +80,11 @@ The capacity hint does not redefine `maxBatchSize`. That property keeps its exis
 
 Completed gates include constructor and R3F `args` type coverage, direct JSX-property rejection, bounded growth tests, dispose/reuse coverage, and the frozen-source under-estimate, exact-estimate, and over-estimate capture in [`results/expected-sprites.json`](./results/expected-sprites.json).
 
-### P1 — schedule dense animated-sprite playback
+### P1 — coalesce shared animation-definition work
 
-Split animation definitions from playback state. Keep `Animation`, `SpriteFrame`, spritesheet, callbacks, and event payloads object-owned. Store enrolled playback scalars in numeric traits and advance them in one world system over a persistent selector. Project a frame change through the existing `setFrame`/batch UV path. Standalone sprites continue to use `update(deltaMs)` with identical semantics.
+Keep `Animation`, `SpriteFrame`, spritesheet, callbacks, event payloads, and independent controller rows object-owned. The rejected blanket-SoA prototype proved that full-row playback does not benefit from columnar storage in this runtime. Test shared-definition or shared-timeline scheduling instead: compute a common transition once only when sprites deliberately share phase/speed/loop semantics, then project the committed frame through the existing `setFrame`/batch UV path. Standalone and independent sprites continue to use `update(deltaMs)` with identical semantics.
 
-Avoid one entity per animation frame and avoid copying shared definitions into each entity. The system needs a stable definition handle and must dispatch events without allocating closures or result arrays per sprite. Public controller methods remain the command surface and commit atomically to either staged or enrolled state.
+Avoid one entity per animation frame, avoid copying shared definitions into each entity, and do not add a bulk selector that merely calls every existing controller. A viable design must remove repeated computation or projection and must dispatch events without allocating closures or result arrays per sprite. Public controller methods remain the command surface and commit atomically.
 
 Exit condition: behavioral parity for loop, ping-pong, speed, pause/resume, large delta, per-frame duration, events, sprite-sheet swap, detach/re-enroll, and clone; allocation and frame-time measurements at 1k, 16k, and 60k animated sprites.
 
@@ -128,7 +128,7 @@ Every migration extends the smallest relevant enforcement layer:
 Keep the follow-ups independent:
 
 1. Koota package/declaration cleanup and definitive true-consumer attribution: complete.
-2. Animated-sprite playback SoA.
+2. Animation shared-definition/timeline experiment (blanket SoA rejected).
 3. Frozen capacity plan.
 4. Render/pass graph consolidation.
 5. Tile animation compaction.

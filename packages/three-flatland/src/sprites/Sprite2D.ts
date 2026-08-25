@@ -62,7 +62,6 @@ import {
   spriteWorld,
 } from '../internal/sprite-runtime'
 import { getEffectTrait, setEffectEntity } from '../internal/effect-runtime'
-import { bindSpriteAnimationPlayback, unbindSpriteAnimationPlayback } from '../internal/animation-runtime'
 import { notifySpriteDispose, notifySpriteMaterialChange } from '../internal/ownership-observers'
 
 let nextEffectConstantIdentity = 1
@@ -2590,7 +2589,6 @@ export class Sprite2D extends Mesh {
       reserveIndexedArray(registry.spriteArr, w.capacity, null)
       registry.spriteArr[eid] = this
     }
-    bindSpriteAnimationPlayback(this, w, this.#entity)
 
     // Add effect traits for active effects
     for (const effect of this._effects) {
@@ -2639,7 +2637,6 @@ export class Sprite2D extends Mesh {
 
     // Read current values from SoA arrays before swapping refs back
     const eid = this._idx
-    if (this.#world) unbindSpriteAnimationPlayback(this, this.#world, this.#entity)
     const uvX = this._uvX[eid]!,
       uvY = this._uvY[eid]!,
       uvW = this._uvW[eid]!,

@@ -33,7 +33,6 @@ import {
 } from '../ecs/systems'
 import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransformSyncSystem'
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
-import { animationPlaybackSystem } from '../ecs/systems/animationPlaybackSystem'
 import { releaseLightEffectRuntimeContext } from '../ecs/systems/lightEffectSystem'
 import { validateMaxBatchSize } from '../internal/max-batch-size'
 import { clampEntityReservation, reserveIndexedArray, validateExpectedSprites } from '../internal/capacity'
@@ -866,29 +865,6 @@ export class SpriteGroup extends ClippingGroup {
    * the BucketedDirtyTracker on each instance attribute coalesces uploads.
    */
   private _inSystems = false
-  private _advancingAnimations = false
-  private readonly _animationScratch: Entity[] = []
-
-  /**
-   * Advance all enrolled AnimatedSprite2D instances with one dense private-world pass.
-   * Time remains caller-owned; ordinary rendering never advances animation implicitly.
-   */
-  advanceAnimations(deltaMs: number): void {
-    this._assertUsable('advanceAnimations')
-    if (this._advancingAnimations) {
-      throw new Error('three-flatland: SpriteGroup.advanceAnimations cannot be used reentrantly')
-    }
-    if (!this._world) return
-    const registry = this._getRegistry()
-    if (!registry) return
-
-    this._advancingAnimations = true
-    try {
-      animationPlaybackSystem(this._world, registry, deltaMs, this._animationScratch)
-    } finally {
-      this._advancingAnimations = false
-    }
-  }
 
   override updateMatrixWorld(force?: boolean): void {
     if (!this._inSystems) this._reconcileHierarchySprites()

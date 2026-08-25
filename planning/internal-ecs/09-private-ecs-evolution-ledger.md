@@ -34,30 +34,31 @@ stays in the ledger with its evidence so the same design is not repeated without
 | --- | --- | --- | --- | --- |
 | ECS-001 | Renderer batching kernel | accepted | Private world traits plus batch-owned packed slot tables | PR #232; kernel, renderer, memory, size, package, example, and publication gates |
 | ECS-002 | Construction-time capacity planning | accepted | World and registry capacity reserved from `expectedSprites` | PR #233; under/exact/over estimate, reuse, disposal, size, and R3F constructor gates |
-| ECS-003 | Animated-sprite playback SoA | active | Enrolled playback scalars in typed traits; definitions remain object-owned | Behavioral parity plus allocation and frame-time measurements at 1k, 16k, and 60k sprites |
+| ECS-003 | Animation playback convergence | active | Object-local independent playback retained; shared-definition scheduling under evidence | Behavioral parity plus allocation and frame-time measurements at 1k, 16k, and 60k sprites |
 | ECS-004 | Render/pass graph consolidation | queued | One private graph owner with a persistent ordered projection | Atomic graph edits, clean-frame allocation, nested-world lifecycle, and identical TSL output |
 | ECS-005 | Tile-animation compaction | queued | Layer-local typed timer/frame arrays and dense dirty-ID projection | Catch-up semantics, shared timers, chunk lifecycle, allocation, and large animated-tile timing |
 | ECS-006 | Lighting-context numeric split | evidence-gated | No change unless a field-by-field owner audit and measurements justify numeric companions | Nested-world disposal, resize ordering, allocation, and access-cost evidence |
 | ECS-007 | Hierarchy refinement | evidence-gated | Current object-owned tracker and batch-local matrix projection remain authoritative | Opens only when profiles show ancestor comparison or snapshot storage dominates frame time |
 
-## ECS-003: Animated-sprite playback SoA
+## ECS-003: Animation playback convergence
 
 | Field | Record |
 | --- | --- |
-| Decision | Schedule enrolled animated sprites through one persistent private-world selector. |
-| Numeric state | Elapsed time, current frame, speed, direction, play state, loop mode/count, and definition handle. |
+| Decision | Reject a blanket enrolled-playback SoA conversion. Retain object-local state for independent controllers and test definition-grouped/shared-timeline scheduling separately. |
+| Numeric state | Independent elapsed time, current frame, speed, direction, play state, and loop count remain controller-local unless a later shared-timeline design proves a real repeated-work reduction. |
 | Object state | `Animation`, `SpriteFrame`, spritesheets, callbacks, event payload definitions, and standalone controller state. |
 | Public boundary | Keep `AnimatedSprite2D` and its controller methods as the command surface. No entity, trait, store, selector, or runtime type becomes reachable from package declarations. |
 | Projection | A committed frame transition uses the existing frame/UV update path so packed GPU rows remain the only render projection. |
 | Compatibility | Standalone sprites continue to support explicit `update(deltaMs)`. Enroll, detach, clone, and spritesheet replacement preserve current semantics. |
-| Performance hypothesis | Shared definitions plus one dense numeric schedule remove per-sprite controller traversal and repeated object-property access for large animated populations. |
+| Performance hypothesis | The remaining opportunity is computing shared definition/timeline transitions once and coalescing identical projection work. Merely moving full-row controller state into columnar storage is hostile to this access pattern. |
 | Required behavior | Loop, ping-pong, speed, pause/resume, large delta, per-frame duration, events, spritesheet swap, detach/re-enroll, cloning, disposal, and reentrant callbacks. |
 | Required evidence | Warm allocation profile and trusted Labs comparison at 1k, 16k, and 60k animated sprites; deterministic GPU-row and event checks; package size and all-example gates. |
 | Public attribution | Any guide or release note credits Koota's typed-trait and query model as the foundation that made this specialization possible. |
 | Branch | `feat/animated-sprite-playback-soa` |
 | Pull request | Pending |
-| Baseline | Frozen enrolled-playback fixture commit `6ad4618b`; clean Labs capture pending. An earlier standalone-only probe was rejected before implementation because it did not cross the target ownership boundary. |
-| Result | Implementation pending. |
+| Baseline | Frozen enrolled-playback fixture commit `6ad4618b`; clean object-state p50: 1k 0.140 ms, 16,384 4.62 ms, 60k 20.17 ms average. The saved baseline reported 9.4% clock drift, so only the paired Labs verdict—not raw movement—was used. |
+| Rejected experiment | Commit `9c086a86` moved nine playback scalars into enrolled numeric SoA and added a persistent-selector bulk pass. Labs classified it slower at 1k (+39.8% p50, `p < .001`) and 16,384 (+64.5%, `p < .001`); 60k was directionally +56% but skipped as noisy. The implementation was removed. Raw ignored results are `animation-enrolled-object-state` and `animation-enrolled-soa-prototype`. |
+| Result | Active: benchmark shared-definition/timeline scheduling without regressing independent `update(deltaMs)` or duplicating GPU-row writes. |
 
 ## ECS-004: Render/pass graph consolidation
 

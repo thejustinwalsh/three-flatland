@@ -8,8 +8,6 @@ import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createWorld } from '../ecs/runtime'
 import { enrollInWorld, requiredEntity, traitFor } from '../ecs/testUtils.type-test'
 import { Flatland } from '../Flatland'
-import { SpriteGroup } from '../pipeline/SpriteGroup'
-import { AnimationPlayback } from '../ecs/traits'
 
 describe('AnimatedSprite2D', () => {
   let spriteSheet: SpriteSheet
@@ -213,99 +211,6 @@ describe('AnimatedSprite2D', () => {
     const initialFrame = sprite.frame
     sprite.update(150) // Should advance to frame 1
     expect(sprite.frame).not.toBe(initialFrame)
-    sprite.dispose()
-  })
-
-  it('stores enrolled playback in the private world and restores standalone state on detach', () => {
-    const sprite = new AnimatedSprite2D({
-      spriteSheet,
-      animationSet: { animations: { idle: { frames: ['idle_0', 'idle_1'], fps: 10 } } },
-      animation: 'idle',
-    })
-    const world = createWorld()
-    enrollInWorld(sprite, world)
-    const entity = requiredEntity(sprite)
-    expect(world.has(entity, AnimationPlayback)).toBe(true)
-
-    sprite.speed = 2
-    sprite.update(50)
-    expect(sprite.frame?.name).toBe('idle_1')
-    expect(world.store(AnimationPlayback).frameIndex[world.index(entity)]).toBe(1)
-
-    sprite._unenrollFromWorld()
-    expect(world.has(entity, AnimationPlayback)).toBe(false)
-    expect(sprite.controller.getState()).toMatchObject({ frameIndex: 1, speed: 2 })
-    sprite.update(50)
-    expect(sprite.frame?.name).toBe('idle_0')
-
-    sprite.dispose()
-    world.dispose()
-  })
-
-  it('advances enrolled sprites through one explicit group pass', () => {
-    const group = new SpriteGroup()
-    const first = new AnimatedSprite2D({
-      spriteSheet,
-      animationSet: { animations: { idle: { frames: ['idle_0', 'idle_1'], fps: 10 } } },
-      animation: 'idle',
-    })
-    const second = first.clone()
-    group.add(first, second)
-
-    group.advanceAnimations(100)
-    expect(first.frame?.name).toBe('idle_1')
-    expect(second.frame?.name).toBe('idle_1')
-
-    group.remove(first)
-    group.advanceAnimations(100)
-    expect(first.frame?.name).toBe('idle_1')
-    expect(second.frame?.name).toBe('idle_0')
-
-    group.dispose()
-    first.dispose()
-    second.dispose()
-  })
-
-  it('uses a stable target set when animation callbacks remove another sprite', () => {
-    const group = new SpriteGroup()
-    const removed = new AnimatedSprite2D({ spriteSheet })
-    removed.addAnimationFromFrames('idle', ['idle_0', 'idle_1'], { fps: 10 }).play('idle')
-    const remover = new AnimatedSprite2D({ spriteSheet })
-    remover.addAnimation({
-      name: 'idle',
-      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
-      fps: 10,
-    })
-    remover.play('idle', { onFrame: () => group.remove(removed) })
-    group.add(remover, removed)
-
-    group.advanceAnimations(100)
-    expect(remover.frame?.name).toBe('idle_1')
-    expect(removed.frame?.name).toBe('idle_0')
-    expect(group.spriteCount).toBe(1)
-
-    group.dispose()
-    remover.dispose()
-    removed.dispose()
-  })
-
-  it('rejects nested bulk advancement and remains reusable', () => {
-    const group = new SpriteGroup()
-    const sprite = new AnimatedSprite2D({ spriteSheet })
-    sprite.addAnimation({
-      name: 'idle',
-      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
-      fps: 10,
-    })
-    sprite.play('idle', { onFrame: () => group.advanceAnimations(100) })
-    group.add(sprite)
-
-    expect(() => group.advanceAnimations(100)).toThrow('advanceAnimations cannot be used reentrantly')
-    sprite.play('idle', { startFrame: 0 })
-    expect(() => group.advanceAnimations(100)).not.toThrow()
-    expect(sprite.frame?.name).toBe('idle_1')
-
-    group.dispose()
     sprite.dispose()
   })
 

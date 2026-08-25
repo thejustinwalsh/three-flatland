@@ -7,7 +7,6 @@ import type { SpriteSheet, SpriteAnimation, SpriteFrame } from './types'
 import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
 import { markSpriteCloneBootstrapMaterial } from '../internal/sprite-runtime'
-import { registerAnimatedSprite } from '../internal/animation-runtime'
 
 /**
  * Options for creating an AnimatedSprite2D.
@@ -99,7 +98,6 @@ export class AnimatedSprite2D extends Sprite2D {
     })
 
     this.controller = new AnimationController()
-    registerAnimatedSprite(this, this.controller)
     this.name = 'AnimatedSprite2D'
 
     // If no options, we're being created by R3F - properties will be set via setters
