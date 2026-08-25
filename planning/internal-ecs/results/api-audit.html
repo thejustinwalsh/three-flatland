@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <title>three-flatland internal ECS API audit</title>
+    <title>three-flatland renderer architecture API audit</title>
     <style>
       :root {
         --bg: #111418;
@@ -413,16 +413,16 @@
   <body>
     <header>
       <p class="eyebrow">Release reference · 2026-08-24</p>
-      <h1>Internal ECS API audit</h1>
+      <h1>Renderer architecture API audit</h1>
       <p class="lede">
-        Public-package comparison for the internal Flatland ECS migration. This report separates intentional alpha
-        breaking changes from private implementation detail and records the remaining work required before a stable API
-        freeze.
+        Public-package comparison for Flatland's renderer-specialized data architecture. This report separates
+        intentional alpha breaking changes from private implementation detail, records the Koota foundation that made
+        the design possible, and names the remaining work before a stable API freeze.
       </p>
       <div class="meta" aria-label="Audit revisions">
         <span class="chip"><strong>Base</strong> <span class="mono">bd19dd506f64</span></span>
-        <span class="chip"><strong>Audit head</strong> <span class="mono">bed55d1f040a</span></span>
-        <span class="chip"><strong>Runtime freeze</strong> <span class="mono">c25f74c3e37b</span></span>
+        <span class="chip"><strong>Audit head</strong> <span class="mono">969b677d9eac</span></span>
+        <span class="chip"><strong>Source freeze</strong> <span class="mono">969b677d9eac</span></span>
         <span class="chip"><strong>Package</strong> <span class="mono">three-flatland@0.1.0-alpha.10</span></span>
       </div>
     </header>
@@ -452,6 +452,12 @@
               break.
             </p>
             <p>
+              <a href="https://github.com/pmndrs/koota">Koota</a> made this design possible. Its typed traits, SoA
+              storage, queries, and systems established the architectural foundation that Flatland specialized for a
+              renderer-owned workload. Koota remains our recommended general-purpose ECS for application and gameplay
+              state; this private renderer path does not supersede it.
+            </p>
+            <p>
               This is an alpha-release approval, not a stable-API freeze. One inherited declaration hygiene class
               remains: <code>@internal</code> members and wildcard helper modules are still type-addressable. They are
               excluded from generated API docs but should be erased or explicitly stabilized before leaving alpha.
@@ -463,7 +469,7 @@
               <li><span class="good">No release blocker</span> in the ECS boundary.</li>
               <li><span class="break">Breaking changes</span> are intentional and documented.</li>
               <li><span class="warn">Pre-stable work</span> remains for broad internal declarations.</li>
-              <li>Runtime evidence remains tied to <code>c25f74c3</code>.</li>
+              <li>Source and deterministic evidence are current at <code>969b677d</code>.</li>
             </ul>
           </aside>
         </div>
@@ -472,7 +478,7 @@
           <div class="metric"><strong>26</strong><span>export-map keys, unchanged</span></div>
           <div class="metric"><strong>112 → 105</strong><span>reachable declaration files</span></div>
           <div class="metric"><strong>7</strong><span>private implementation declarations removed</span></div>
-          <div class="metric"><strong>28 / 28</strong><span>live application surfaces passed</span></div>
+          <div class="metric"><strong>28 / 28</strong><span>application surfaces built, typed, and linted</span></div>
         </div>
       </section>
 
@@ -567,6 +573,16 @@
                 </td>
                 <td>Behavior clarified</td>
                 <td>Migration guide and lifecycle tests</td>
+              </tr>
+              <tr>
+                <td>Renderer projections</td>
+                <td>
+                  Render/pass ownership, synchronized animation playback, animated tile timers, bounded light storage,
+                  and stable hierarchy paths use private data-oriented projections while Three.js objects retain public
+                  ownership.
+                </td>
+                <td class="good">Private implementation</td>
+                <td>Evolution ledger, focused Labs comparisons, lifecycle and adversarial tests</td>
               </tr>
             </tbody>
           </table>
@@ -734,8 +750,8 @@ createWorld, buildBatchQueryView, tileLayer, and named slot/member mutation APIs
             <span class="label warn">Required before stable</span>
             <h3>Erase or stabilize remaining <code>@internal</code> declarations</h3>
             <p>
-              Generated API pages correctly omit internal members, but TypeScript declarations still contain 221
-              <code>@internal</code> annotations across 21 reachable files. This is mostly inherited renderer plumbing
+              Generated API pages correctly omit internal members, but TypeScript declarations still contain 240
+              <code>@internal</code> annotations across 28 reachable files. This is mostly inherited renderer plumbing
               rather than ECS handles, yet a consumer can still name some underscore members. Before the stable API
               freeze, move cross-module state behind private fields or erased friend seams, or deliberately document the
               members that become supported.
@@ -780,10 +796,10 @@ createWorld, buildBatchQueryView, tileLayer, and named slot/member mutation APIs
           <article class="card">
             <h3>Consumer and runtime checks</h3>
             <ul class="clean">
-              <li><a href="./example-smoke-summary.md">28-surface live walkthrough</a></li>
-              <li><a href="./browser-evidence-summary.md">24-report headed browser matrix</a></li>
-              <li><a href="./renderer-labs-summary.md">Labs renderer timing verdict</a></li>
-              <li><a href="./final-evidence-manifest.md">Final evidence manifest and checksums</a></li>
+              <li>Current-head uncached typecheck, production build, and typed lint for all 28 application surfaces</li>
+              <li><a href="../09-private-ecs-evolution-ledger.md">Durable private-runtime evolution ledger</a></li>
+              <li><a href="../07-private-ecs-convergence-plan.md">Evidence decisions and scoped Labs verdicts</a></li>
+              <li><a href="./renderer-labs-summary.md">Foundational Labs renderer timing verdict</a></li>
               <li><a href="./expected-sprites.json">Capacity planning evidence</a></li>
               <li><a href="./consumer-bundle-budget.json">Reviewed consumer bundle budget</a></li>
             </ul>
@@ -791,9 +807,10 @@ createWorld, buildBatchQueryView, tileLayer, and named slot/member mutation APIs
         </div>
         <p>
           The API comparison base is <code>origin/main</code> at <code>bd19dd506f64cbb060e69148e01fc7b9ceb4bee8</code>.
-          The audit head is <code>bed55d1f040a1d3a16696024130e8e3bb2beaa36</code>. Runtime measurements remain anchored
-          to <code>c25f74c3e37bb9b521d416a81d749c925df00df2</code>; later commits change only private benchmark tooling,
-          evidence provenance, documentation, and walkthrough artifacts.
+          The audit and source-freeze head is <code>969b677d9eacf050a677a565f0bf2199275acf13</code>. The focused
+          render/pass, animation, tile, lighting, and hierarchy comparisons are recorded in the evolution ledger and
+          convergence plan. Deterministic consumer evidence was captured twice, reviewed, accepted, and then reproduced
+          with zero deltas from a clean tree at this stack tip.
         </p>
       </section>
     </main>
