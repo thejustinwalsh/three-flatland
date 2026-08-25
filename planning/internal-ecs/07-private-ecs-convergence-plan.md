@@ -36,7 +36,14 @@ Lighting still mixes object resources and lifecycle state inside `LightEffectTra
 
 `AnimatedSprite2D` keeps the expected Three/R3F surface and binds frame/event callbacks once (`packages/three-flatland/src/sprites/AnimatedSprite2D.ts:67-135,341-357`). Playback state lives in one `AnimationController` object per sprite and advances through explicit user calls. Definitions and frame objects should remain object-owned, but elapsed time, frame index, speed, direction, play state, and loop count are dense numeric state when thousands of sprites animate together.
 
-The first enrolled numeric-SoA experiment is complete and rejected: the workload reads and writes a full playback row, then projects a frame to GPU state, so splitting that row across numeric columns made the trusted 1k and 16k cases materially slower. Independent playback remains object-local. The next experiment must remove repeated definition/timeline work rather than relocate it, with a standalone compatibility path and many shared animation definitions in the benchmark.
+The first enrolled numeric-SoA experiment is complete and rejected for direct controller updates: the
+workload read and wrote a full playback row, then projected a frame to GPU state, so splitting that row
+across numeric columns made the trusted 1k and 16k cases materially slower. That prototype also
+contained a group scheduler, but its benchmark still called every sprite's `update(deltaMs)` and
+therefore never measured the scheduler. Independent playback remains object-local. The corrected
+experiment first freezes an object-backed `SpriteGroup.advanceAnimations(deltaMs)` baseline, then
+measures any shared-definition/timeline candidate through that exact same entry point. A candidate
+must remove repeated work rather than merely relocate it and must preserve standalone compatibility.
 
 ### Tilemaps: retained material ownership and batch-local GPU projection
 

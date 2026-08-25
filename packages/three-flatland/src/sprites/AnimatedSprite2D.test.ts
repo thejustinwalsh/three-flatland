@@ -8,6 +8,7 @@ import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createWorld } from '../ecs/runtime'
 import { enrollInWorld, requiredEntity, traitFor } from '../ecs/testUtils.type-test'
 import { Flatland } from '../Flatland'
+import { SpriteGroup } from '../pipeline/SpriteGroup'
 
 describe('AnimatedSprite2D', () => {
   let spriteSheet: SpriteSheet
@@ -211,6 +212,57 @@ describe('AnimatedSprite2D', () => {
     const initialFrame = sprite.frame
     sprite.update(150) // Should advance to frame 1
     expect(sprite.frame).not.toBe(initialFrame)
+    sprite.dispose()
+  })
+
+  it('advances enrolled animations as one caller-owned group step', () => {
+    const group = new SpriteGroup()
+    const first = new AnimatedSprite2D({
+      spriteSheet,
+      animationSet: { animations: { idle: { frames: ['idle_0', 'idle_1'], fps: 10 } } },
+      animation: 'idle',
+    })
+    const second = first.clone()
+    group.addSprites(first, second)
+
+    group.advanceAnimations(100)
+
+    expect(first.controller.getState().frameIndex).toBe(1)
+    expect(second.controller.getState().frameIndex).toBe(1)
+
+    group.remove(second)
+    group.advanceAnimations(100)
+
+    expect(first.controller.getState().frameIndex).toBe(0)
+    expect(second.controller.getState().frameIndex).toBe(1)
+
+    group.dispose()
+    first.dispose()
+    second.dispose()
+  })
+
+  it('rejects non-finite and reentrant group animation steps', () => {
+    const group = new SpriteGroup()
+    const sprite = new AnimatedSprite2D({
+      spriteSheet,
+      animationSet: { animations: { idle: { frames: ['idle_0', 'idle_1'], fps: 10 } } },
+      animation: 'idle',
+    })
+    sprite.play('idle', {
+      startFrame: 0,
+      onFrame: () => group.advanceAnimations(100),
+    })
+    group.add(sprite)
+
+    expect(() => group.advanceAnimations(Number.NaN)).toThrow('SpriteGroup.advanceAnimations deltaMs must be finite')
+    expect(() => group.advanceAnimations(100)).toThrow(
+      'three-flatland: SpriteGroup.advanceAnimations cannot be used reentrantly'
+    )
+
+    sprite.play('idle', { startFrame: 0 })
+    expect(() => group.advanceAnimations(100)).not.toThrow()
+
+    group.dispose()
     sprite.dispose()
   })
 

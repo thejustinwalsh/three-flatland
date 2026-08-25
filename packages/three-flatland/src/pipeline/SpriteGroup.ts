@@ -3,6 +3,7 @@ import { ClippingGroup } from 'three/webgpu'
 import { createWorld, select, type Entity, type World } from '../ecs/runtime'
 import type { Registry } from '../orchestration/registry'
 import type { Sprite2D } from '../sprites/Sprite2D'
+import type { AnimatedSprite2D } from '../sprites/AnimatedSprite2D'
 import type { ClipRect, SpriteGroupOptions, RenderStats } from './types'
 import type { SpriteBatch } from './SpriteBatch'
 import { assignWorld } from '../ecs/world'
@@ -50,6 +51,7 @@ import {
   spriteWorld,
   throwSpriteCloneBootstrapError,
 } from '../internal/sprite-runtime'
+import { isAnimatedSprite } from '../internal/animation-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
@@ -865,6 +867,44 @@ export class SpriteGroup extends ClippingGroup {
    * the BucketedDirtyTracker on each instance attribute coalesces uploads.
    */
   private _inSystems = false
+  private _advancingAnimations = false
+  private readonly _animationScratch: AnimatedSprite2D[] = []
+
+  /**
+   * Advance every currently enrolled `AnimatedSprite2D` with one caller-owned
+   * delta. Ordinary rendering never advances animation implicitly, and direct
+   * `AnimatedSprite2D.update(deltaMs)` calls remain supported.
+   */
+  advanceAnimations(deltaMs: number): void {
+    this._assertUsable('advanceAnimations')
+    if (!Number.isFinite(deltaMs)) {
+      throw new Error('SpriteGroup.advanceAnimations deltaMs must be finite')
+    }
+    if (this._advancingAnimations) {
+      throw new Error('three-flatland: SpriteGroup.advanceAnimations cannot be used reentrantly')
+    }
+
+    const world = this._world
+    const registry = this._getRegistry()
+    if (!world || !registry) return
+
+    const scratch = this._animationScratch
+    scratch.length = 0
+    for (const sprite of registry.spriteArr) {
+      if (sprite && isAnimatedSprite(sprite)) scratch.push(sprite)
+    }
+
+    this._advancingAnimations = true
+    try {
+      for (const sprite of scratch) {
+        if (spriteWorld(sprite) !== world || !spriteEntity(sprite)) continue
+        sprite.update(deltaMs)
+      }
+    } finally {
+      scratch.length = 0
+      this._advancingAnimations = false
+    }
+  }
 
   override updateMatrixWorld(force?: boolean): void {
     if (!this._inSystems) this._reconcileHierarchySprites()

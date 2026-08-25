@@ -112,10 +112,12 @@ clues only and must not overrule a neutral Labs comparison.
 
 ### Animated-sprite playback slice
 
-The same trusted Labs configuration includes `@animation-playback`: explicit
-`AnimatedSprite2D.update(deltaMs)` over 1,000, 16,384, and 60,000 sprites sharing one four-frame
-definition. Construction, assertions, disposal, and texture teardown remain outside the measured
-callback. This slice exists to judge the private playback-state migration; it does not replace the
+The same trusted Labs configuration includes `@animation-playback`:
+`SpriteGroup.advanceAnimations(deltaMs)` over 1,000, 16,384, and 60,000 sprites sharing one
+four-frame definition. The accepted baseline is deliberately object-backed and delegates to each
+sprite's existing `update(deltaMs)` method; a candidate must preserve that public behavior while
+proving any bulk projection win behind the group boundary. Construction, assertions, disposal, and
+texture teardown remain outside the measured callback. This slice does not replace the
 renderer-frame cases or claim that application simulation is renderer-owned.
 
 Run an unsaved development smoke with `@animation-smoke`. For evidence, use the provenance wrapper

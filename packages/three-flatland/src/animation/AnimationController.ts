@@ -157,6 +157,9 @@ export class AnimationController {
    * @param onEvent Callback when frame event fires
    */
   update(deltaMs: number, onFrame?: FrameCallback, onEvent?: EventCallback): void {
+    if (!Number.isFinite(deltaMs)) {
+      throw new Error('AnimationController.update deltaMs must be finite')
+    }
     if (!this.current || !this.playing || this.paused) {
       return
     }

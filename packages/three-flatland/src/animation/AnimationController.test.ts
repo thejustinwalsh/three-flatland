@@ -259,6 +259,16 @@ describe('AnimationController', () => {
     expect(controller.getState()).toMatchObject({ frameIndex: 2, elapsed: 10, playing: true })
   })
 
+  it('rejects a non-finite delta before mutating playback state', () => {
+    controller.play('test')
+    const before = controller.getState()
+
+    expect(() => controller.update(Number.POSITIVE_INFINITY)).toThrow(
+      'AnimationController.update deltaMs must be finite'
+    )
+    expect(controller.getState()).toEqual(before)
+  })
+
   it('should respect loop count', () => {
     const loopCountAnim: Animation = {
       name: 'loopcount',

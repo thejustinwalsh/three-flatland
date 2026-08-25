@@ -82,7 +82,7 @@ function createContext(count: number): Context {
 }
 
 function advance(context: Context): void {
-  for (const sprite of context.sprites) sprite.update(DELTA_MS)
+  context.group.advanceAnimations(DELTA_MS)
   context.expectedFrame = (context.expectedFrame + 1) & 3
 }
 
@@ -99,7 +99,7 @@ function assertPlayback(context: Context): void {
 }
 
 function register(count: number, tags = ''): void {
-  bench(`manual playback ${count.toLocaleString()} ${tags}`.trim(), function* () {
+  bench(`group playback ${count.toLocaleString()} ${tags}`.trim(), function* () {
     const context = createContext(count)
     try {
       yield {
