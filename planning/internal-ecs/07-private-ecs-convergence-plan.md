@@ -127,9 +127,14 @@ The goal is smaller, clearer ownership—not numeric storage for its own sake. P
 
 Exit condition: a field-by-field owner map, no mirrored authoritative values, nested-world and retained-world disposal proofs, and clean-frame allocation measurements.
 
-### P2 — profile-driven hierarchy refinement
+### P2 — profile-driven hierarchy refinement: active
 
-Keep the current hierarchy model unless profiles show ancestor comparison or per-sprite matrix snapshots dominate. If they do, investigate generation-stamped ancestor invalidation and pooled snapshot storage while retaining Three.js `Object3D` identity and root-relative batch projection. Do not add public transform flags.
+The hierarchy profile has now opened this work. At 16,384 sprites, stable depth-three authored
+hierarchy costs about 7.7 ms versus 5.8 ms for direct roots, while one moving shared root costs about
+11.1 ms. The current candidate is deliberately narrower than a hierarchy ECS conversion: cache each
+unique source-parent path's changed/visible projection once per frame while retaining Three.js
+`Object3D` identity, sprite-local snapshots, and root-relative batch projection. Do not add public
+transform flags or numeric copies of authored matrices.
 
 Exit condition: identical transform/visibility behavior for direct roots, nested groups, reparenting, identity roots, sort swaps, and stale slot reuse, with a demonstrated frame-time improvement.
 

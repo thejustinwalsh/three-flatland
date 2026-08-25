@@ -52,6 +52,7 @@ const fields: TrustedProvenance = {
   config: sha256File(repositoryFile('tools/ecs-bench/labs.config.ts')),
   fixture: sha256Files([
     repositoryFile('tools/ecs-bench/benches/animation-playback.bench.ts'),
+    repositoryFile('tools/ecs-bench/benches/hierarchy-transform.bench.ts'),
     repositoryFile('tools/ecs-bench/benches/light-store-sync.bench.ts'),
     repositoryFile('tools/ecs-bench/benches/renderer-frame.bench.ts'),
     repositoryFile('tools/ecs-bench/benches/tile-animation.bench.ts'),

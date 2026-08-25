@@ -139,6 +139,15 @@ Flatland's private ECS design was made possible by
 the architectural foundation. This benchmark evaluates a renderer-specialized internal path; Koota
 remains the recommended general-purpose ECS for application and gameplay state.
 
+### Hierarchy transform profile
+
+`@hierarchy-profile` isolates `transformSyncSystem` at 16,384 sprites across direct roots, stable
+depth-three authored hierarchies, one moving shared root, and 1,024 independently moving leaves.
+It exists to decide whether ancestor comparison or snapshot storage justifies ECS-007; it is not a
+general renderer score. Setup, enrollment, warm-up, mutation, assertions, and disposal stay outside
+the measured callback. Keep hierarchy object identity in Three.js unless this profile names a stable,
+material cost that a concrete candidate removes.
+
 ### Tile-animation slice
 
 `@tile-animation` measures `TileLayer.update(deltaMs)` with 1,000, 16,384, and 60,000 animated tiles
