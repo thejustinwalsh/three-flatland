@@ -56,7 +56,8 @@ stays in the ledger with its evidence so the same design is not repeated without
 | Public attribution | Any guide or release note credits Koota's typed-trait and query model as the foundation that made this specialization possible. |
 | Branch | `feat/animated-sprite-playback-soa` |
 | Pull request | Pending |
-| Result | Pending baseline and implementation. |
+| Baseline | Frozen enrolled-playback fixture commit `6ad4618b`; clean Labs capture pending. An earlier standalone-only probe was rejected before implementation because it did not cross the target ownership boundary. |
+| Result | Implementation pending. |
 
 ## ECS-004: Render/pass graph consolidation
 
