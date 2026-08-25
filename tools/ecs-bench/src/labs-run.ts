@@ -50,7 +50,10 @@ const fields: TrustedProvenance = {
   labs: installation.version,
   lock: sha256File(repositoryFile('pnpm-lock.yaml')),
   config: sha256File(repositoryFile('tools/ecs-bench/labs.config.ts')),
-  fixture: sha256File(repositoryFile('tools/ecs-bench/benches/renderer-frame.bench.ts')),
+  fixture: sha256Files([
+    repositoryFile('tools/ecs-bench/benches/animation-playback.bench.ts'),
+    repositoryFile('tools/ecs-bench/benches/renderer-frame.bench.ts'),
+  ]),
   runner: sha256Files([
     repositoryFile('tools/ecs-bench/src/labs-run.ts'),
     repositoryFile('tools/ecs-bench/src/labs-run-support.ts'),

@@ -110,6 +110,32 @@ harness below, which remains authoritative for topology, ownership, memory lifec
 boundaries, per-system attribution, and provenance. Its instrumented wall-time medians are diagnostic
 clues only and must not overrule a neutral Labs comparison.
 
+### Animated-sprite playback slice
+
+The same trusted Labs configuration includes `@animation-playback`: explicit
+`AnimatedSprite2D.update(deltaMs)` over 1,000, 16,384, and 60,000 sprites sharing one four-frame
+definition. Construction, assertions, disposal, and texture teardown remain outside the measured
+callback. This slice exists to judge the private playback-state migration; it does not replace the
+renderer-frame cases or claim that application simulation is renderer-owned.
+
+Run an unsaved development smoke with `@animation-smoke`. For evidence, use the provenance wrapper
+directly so both sides retain identical fixture/config hashes:
+
+```sh
+NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false \
+  node --import tsx tools/ecs-bench/src/labs-run.ts '@animation-playback' --baseline \
+  -n animation-before
+
+NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false \
+  node --import tsx tools/ecs-bench/src/labs-run.ts '@animation-playback' --compare \
+  -n animation-after
+```
+
+Flatland's private ECS design was made possible by
+[Koota](https://github.com/pmndrs/koota), whose typed-trait, SoA, query, and system model established
+the architectural foundation. This benchmark evaluates a renderer-specialized internal path; Koota
+remains the recommended general-purpose ECS for application and gameplay state.
+
 ## Representative consumer bundle attribution
 
 The consumer bundle gate builds four production-shaped entry points: basic Three.js, basic React
