@@ -30,15 +30,15 @@ stays in the ledger with its evidence so the same design is not repeated without
 
 ## Feature index
 
-| ID      | Feature                             | Status         | Authoritative state                                                                       | Evidence boundary                                                                              |
-| ------- | ----------------------------------- | -------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| ECS-001 | Renderer batching kernel            | accepted       | Private world traits plus batch-owned packed slot tables                                  | PR #232; kernel, renderer, memory, size, package, example, and publication gates               |
-| ECS-002 | Construction-time capacity planning | accepted       | World and registry capacity reserved from `expectedSprites`                               | PR #233; under/exact/over estimate, reuse, disposal, size, and R3F constructor gates           |
-| ECS-003 | Animation playback convergence      | active         | Object-local independent playback retained; shared-definition scheduling under evidence   | Behavioral parity plus allocation and frame-time measurements at 1k, 16k, and 60k sprites      |
-| ECS-004 | Render/pass graph consolidation     | accepted       | One private graph owner with a persistent ordered projection                              | Atomic graph edits, clean-frame allocation, nested-world lifecycle, and identical TSL output   |
-| ECS-005 | Tile-animation compaction           | accepted       | Layer-local typed timer/frame arrays and dense dirty-ID projection                        | Catch-up semantics, shared timers, chunk lifecycle, allocation, and large animated-tile timing |
-| ECS-006 | Lighting-context numeric split      | evidence-gated | No change unless a field-by-field owner audit and measurements justify numeric companions | Nested-world disposal, resize ordering, allocation, and access-cost evidence                   |
-| ECS-007 | Hierarchy refinement                | evidence-gated | Current object-owned tracker and batch-local matrix projection remain authoritative       | Opens only when profiles show ancestor comparison or snapshot storage dominates frame time     |
+| ID      | Feature                             | Status         | Authoritative state                                                                     | Evidence boundary                                                                              |
+| ------- | ----------------------------------- | -------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| ECS-001 | Renderer batching kernel            | accepted       | Private world traits plus batch-owned packed slot tables                                | PR #232; kernel, renderer, memory, size, package, example, and publication gates               |
+| ECS-002 | Construction-time capacity planning | accepted       | World and registry capacity reserved from `expectedSprites`                             | PR #233; under/exact/over estimate, reuse, disposal, size, and R3F constructor gates           |
+| ECS-003 | Animation playback convergence      | active         | Object-local independent playback retained; shared-definition scheduling under evidence | Behavioral parity plus allocation and frame-time measurements at 1k, 16k, and 60k sprites      |
+| ECS-004 | Render/pass graph consolidation     | accepted       | One private graph owner with a persistent ordered projection                            | Atomic graph edits, clean-frame allocation, nested-world lifecycle, and identical TSL output   |
+| ECS-005 | Tile-animation compaction           | accepted       | Layer-local typed timer/frame arrays and dense dirty-ID projection                      | Catch-up semantics, shared timers, chunk lifecycle, allocation, and large animated-tile timing |
+| ECS-006 | Lighting storage refinement         | active         | Object-owned lighting lifecycle plus one packed `LightStore` GPU projection             | Low/dense light sync timing, stale-slot cleanup, nested-world disposal, and shader parity      |
+| ECS-007 | Hierarchy refinement                | evidence-gated | Current object-owned tracker and batch-local matrix projection remain authoritative     | Opens only when profiles show ancestor comparison or snapshot storage dominates frame time     |
 
 ## ECS-003: Animation playback convergence
 
@@ -99,7 +99,25 @@ stays in the ledger with its evidence so the same design is not repeated without
 | Evidence               | Labs candidate p50: 1k 8.17 µs (-76.6%), 16,384 104.25 µs (-78.7%), 60k 370.23 µs (-78.8%); all `p < .001`, all measurements stable, conservative noise bands ±23%/±9%/±10%. Package: 111 files / 1,419 tests, no type errors; type-aware lint; build/declaration boundary; Three/React tilemap builds; full bundle 84.81 kB Brotli.   |
 | Result                 | Accepted. One dense clock is updated per shared animation, packed UVs are projected directly into exact tile rows, dirty chunks are marked once, public APIs stay unchanged, and disposal releases every retained chunk reference.                                                                                                     |
 
-## ECS-006 and ECS-007
+## ECS-006: Lighting storage refinement
 
-The lighting and hierarchy entries remain at their indexed status until the preceding slice lands.
-Their detailed records are added before implementation or measurement changes their status.
+| Field                  | Record                                                                                                                                                                                                                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decision               | Do not duplicate `Light2D` fields or `LightingContext` object topology into another numeric ECS trait. Benchmark a narrower `LightStore` refinement that clears only slots made stale by count shrinkage instead of clearing every unused capacity slot every frame.              |
+| Authoritative owner    | `Flatland` owns light membership and lighting lifecycle. `Light2D` remains authoritative for public mutable light state. `LightStore` remains the single packed CPU/GPU numeric projection. `ShadowPipeline` remains the single owner of shadow resources and camera stamps.      |
+| Object state           | Light/effect instances, renderer, camera, scene, materials, channel sets, TSL functions, textures, render targets, and lifecycle flags remain object-owned.                                                                                                                       |
+| Numeric state          | `LightStore` already owns the exact 4-row × 4-channel packed float projection sampled by shaders. Shadow dimensions and camera stamps remain a handful of scalars on the one world-owned pipeline object; a second SoA would add lookups rather than improve iteration.           |
+| Public boundary        | `Light2D`, `LightEffect`, `LightStore`, and `Flatland.setLighting` APIs remain unchanged. No lighting entity, trait, store, selector, dirty range, or runtime type becomes public.                                                                                                |
+| Ownership audit        | A second light SoA cannot replace the per-frame projection: `Object3D.position`, `Color`, direction, and public scalar properties can mutate through existing Three/R3F paths. Copying those values into the GPU texture remains necessary; duplicating them adds coherence risk. |
+| Performance hypothesis | With the default 1,024-light capacity, the current tail loop performs roughly `2 × (1024 - count)` writes per frame even when the count is stable. Clearing only the previous live tail on count shrinkage makes sparse-light sync proportional to active lights plus removals.   |
+| Required behavior      | One/dense lights, movement and scalar mutation, type/category changes, count growth/shrink/regrowth, disabled lights, exact stale-slot clearing, texture publication, nested worlds, terminal disposal, and first-error cleanup.                                                  |
+| Required evidence      | Frozen Labs comparison at 1, 64, and 1,000 lights; exact packed-row tests; full lighting/shadow/package gates; Three/React lighting builds; size and declaration-boundary checks.                                                                                                 |
+| Public attribution     | Any public guide or release note credits [Koota](https://github.com/pmndrs/koota)'s typed-trait/SoA design as the foundation that taught Flatland to separate object ownership from packed numeric projection, while recommending Koota for general-purpose application ECS.      |
+| Branch                 | `feat/animated-sprite-playback-soa`                                                                                                                                                                                                                                               |
+| Pull request           | Pending                                                                                                                                                                                                                                                                           |
+| Result                 | Active: freeze the unchanged `LightStore.sync` path, then implement only if the paired Labs verdict clears the evidence threshold.                                                                                                                                                |
+
+## ECS-007
+
+The hierarchy entry remains evidence-gated until profiles show ancestor comparison or snapshot
+storage dominates a representative frame.
