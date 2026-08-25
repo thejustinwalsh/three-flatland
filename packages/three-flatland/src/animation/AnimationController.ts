@@ -35,6 +35,7 @@ export class AnimationController {
   private speed: number = 1
   private direction: 1 | -1 = 1 // For ping-pong
   private timelineShareable: boolean = false
+  private timelineRevision: number = 0
 
   // Current play options
   private options: PlayOptions = {}
@@ -114,6 +115,7 @@ export class AnimationController {
     this.direction = 1
     this.options = resolvedOptions
     this.timelineShareable = options === undefined
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
 
     return this
   }
@@ -123,6 +125,7 @@ export class AnimationController {
    */
   pause(): this {
     this.paused = true
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -131,6 +134,7 @@ export class AnimationController {
    */
   resume(): this {
     this.paused = false
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -144,6 +148,7 @@ export class AnimationController {
     this.frameIndex = 0
     this.elapsed = 0
     this.timelineShareable = false
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -154,6 +159,7 @@ export class AnimationController {
     if (this.current && index >= 0 && index < this.current.frames.length) {
       this.frameIndex = index
       this.elapsed = 0
+      this.timelineRevision = (this.timelineRevision + 1) >>> 0
     }
     return this
   }
@@ -185,6 +191,7 @@ export class AnimationController {
     if (!Number.isFinite(nextElapsed)) {
       throw new Error('AnimationController.update resulting elapsed time must be finite')
     }
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     this.elapsed = nextElapsed
 
     // Check if we need to advance frames
@@ -320,6 +327,7 @@ export class AnimationController {
       throw new Error('AnimationController.setSpeed speed must be finite')
     }
     this.speed = speed
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -346,5 +354,6 @@ export class AnimationController {
     this.current = null
     this.options = {}
     this.timelineShareable = false
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
   }
 }

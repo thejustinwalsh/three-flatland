@@ -56,6 +56,7 @@ import {
   createAnimationGroupState,
   disposeAnimationGroupState,
   isAnimatedSprite,
+  prepareAnimationGroupState,
   resetAnimationGroupState,
 } from '../internal/animation-runtime'
 
@@ -895,6 +896,7 @@ export class SpriteGroup extends ClippingGroup {
     if (!world || !registry) return
 
     const animationState = this._animationState
+    prepareAnimationGroupState(animationState, registry.spriteArr.length)
     const scratch: AnimatedSprite2D[] = animationState.sprites
     scratch.length = 0
     for (const sprite of registry.spriteArr) {

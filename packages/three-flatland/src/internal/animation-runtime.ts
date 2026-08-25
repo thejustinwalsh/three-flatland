@@ -17,9 +17,11 @@ interface ControllerView {
   direction: 1 | -1
   options: PlayOptions
   timelineShareable: boolean
+  timelineRevision: number
 }
 
 interface TimelineCohort {
+  index: number
   animation: Animation
   frames: AnimationFrame[]
   fps: number | undefined
@@ -47,31 +49,71 @@ interface TimelineCohort {
   projectedDuration: number | undefined
   projectedEvent: string | undefined
   projected: boolean
+  processedTick: number
+  lastUsedTick: number
+  disabledTick: number
 }
 
 export interface AnimationGroupState {
   sprites: AnimatedSprite2D[]
   cohorts: TimelineCohort[]
-  cohortCount: number
+  bindingEntity: Float64Array
+  bindingCohort: Uint8Array
+  bindingTick: Uint32Array
+  bindingRevision: Uint32Array
+  tick: number
 }
 
 const animatedSprites = new WeakSet<object>()
 let standardUpdate: AnimatedSprite2D['update'] | null = null
 let standardSetFrame: Sprite2D['setFrame'] | null = null
+let standardControllerUpdate: AnimationController['update'] | null = null
 const MAX_COHORTS = 32
+const EMPTY_F64 = new Float64Array(0)
+const EMPTY_U32 = new Uint32Array(0)
+const EMPTY_U8 = new Uint8Array(0)
 
 export function createAnimationGroupState(): AnimationGroupState {
-  return { sprites: [], cohorts: [], cohortCount: 0 }
+  return {
+    sprites: [],
+    cohorts: [],
+    bindingEntity: EMPTY_F64,
+    bindingCohort: EMPTY_U8,
+    bindingTick: EMPTY_U32,
+    bindingRevision: EMPTY_U32,
+    tick: 0,
+  }
 }
 
 export function registerAnimatedSprite(
   sprite: AnimatedSprite2D,
   update: AnimatedSprite2D['update'],
-  setFrame: Sprite2D['setFrame']
+  setFrame: Sprite2D['setFrame'],
+  controllerUpdate: AnimationController['update']
 ): void {
   animatedSprites.add(sprite)
   standardUpdate ??= update
   standardSetFrame ??= setFrame
+  standardControllerUpdate ??= controllerUpdate
+}
+
+export function prepareAnimationGroupState(state: AnimationGroupState, capacity: number): void {
+  if (capacity <= state.bindingEntity.length) return
+  let nextCapacity = Math.max(16, state.bindingEntity.length)
+  while (nextCapacity < capacity) nextCapacity *= 2
+
+  const bindingEntity = new Float64Array(nextCapacity)
+  const bindingCohort = new Uint8Array(nextCapacity)
+  const bindingTick = new Uint32Array(nextCapacity)
+  const bindingRevision = new Uint32Array(nextCapacity)
+  bindingEntity.set(state.bindingEntity)
+  bindingCohort.set(state.bindingCohort)
+  bindingTick.set(state.bindingTick)
+  bindingRevision.set(state.bindingRevision)
+  state.bindingEntity = bindingEntity
+  state.bindingCohort = bindingCohort
+  state.bindingTick = bindingTick
+  state.bindingRevision = bindingRevision
 }
 
 export function isAnimatedSprite(sprite: Sprite2D): sprite is AnimatedSprite2D {
@@ -122,7 +164,11 @@ function canShareSingleTransition(view: ControllerView, deltaMs: number): boolea
 }
 
 function isStandardSprite(sprite: AnimatedSprite2D): boolean {
-  return sprite.update === standardUpdate && sprite.setFrame === standardSetFrame
+  return (
+    sprite.update === standardUpdate &&
+    sprite.setFrame === standardSetFrame &&
+    sprite.controller.update === standardControllerUpdate
+  )
 }
 
 function matches(cohort: TimelineCohort, view: ControllerView): boolean {
@@ -193,6 +239,7 @@ function captureCohort(cohort: TimelineCohort, view: ControllerView, sprite: Ani
 }
 
 function applyCohort(cohort: TimelineCohort, view: ControllerView, sprite: AnimatedSprite2D): void {
+  view.timelineRevision = (view.timelineRevision + 1) >>> 0
   view.frameIndex = cohort.outputFrameIndex
   view.elapsed = cohort.outputElapsed
   view.playing = cohort.outputPlaying
@@ -205,51 +252,137 @@ function applyCohort(cohort: TimelineCohort, view: ControllerView, sprite: Anima
   }
 }
 
-function findCohort(state: AnimationGroupState, view: ControllerView): TimelineCohort | null {
-  for (let index = 0; index < state.cohortCount; index++) {
-    const cohort = state.cohorts[index]!
-    if (matches(cohort, view)) return cohort
+function findCurrentCohort(state: AnimationGroupState, view: ControllerView): TimelineCohort | null {
+  for (const cohort of state.cohorts) {
+    if (cohort.processedTick === state.tick && cohort.disabledTick !== state.tick && matches(cohort, view)) {
+      return cohort
+    }
   }
   return null
 }
 
-/** Advance a stable enrolled-sprite snapshot, coalescing only equivalent single-transition timelines. */
+function acquireCohort(state: AnimationGroupState): TimelineCohort | null {
+  const previousTick = state.tick - 1
+  for (const cohort of state.cohorts) {
+    if (cohort.lastUsedTick < previousTick) return cohort
+  }
+  if (state.cohorts.length >= MAX_COHORTS) return null
+  const cohort = {
+    index: state.cohorts.length,
+    processedTick: 0,
+    lastUsedTick: 0,
+    disabledTick: 0,
+  } as TimelineCohort
+  state.cohorts.push(cohort)
+  return cohort
+}
+
+function clearBinding(state: AnimationGroupState, index: number): void {
+  state.bindingCohort[index] = 0
+}
+
+function bind(
+  state: AnimationGroupState,
+  index: number,
+  entity: number,
+  cohort: TimelineCohort,
+  view: ControllerView
+): void {
+  state.bindingEntity[index] = entity
+  state.bindingCohort[index] = cohort.index + 1
+  state.bindingTick[index] = state.tick
+  state.bindingRevision[index] = view.timelineRevision
+  cohort.lastUsedTick = state.tick
+}
+
+function advanceFallback(state: AnimationGroupState, index: number, sprite: AnimatedSprite2D, deltaMs: number): void {
+  clearBinding(state, index)
+  sprite.update(deltaMs)
+}
+
+function beginTick(state: AnimationGroupState): void {
+  state.tick = (state.tick + 1) >>> 0
+  if (state.tick !== 0) return
+  state.bindingTick.fill(0)
+  state.bindingCohort.fill(0)
+  state.tick = 1
+}
+
+/** Advance a stable enrolled-sprite snapshot, coalescing equivalent single-transition timelines. */
 export function advanceAnimationGroup(state: AnimationGroupState, world: World, deltaMs: number): void {
-  state.cohortCount = 0
+  beginTick(state)
+  const previousTick = state.tick - 1
   for (const sprite of state.sprites) {
-    if (spriteWorld(sprite) !== world || !spriteEntity(sprite)) continue
+    const entity = spriteEntity(sprite)
+    if (spriteWorld(sprite) !== world || !entity) continue
+    const index = world.index(entity)
     const view = controllerView(sprite.controller)
+    const cohortIndex = state.bindingCohort[index]! - 1
+    const boundCohort = cohortIndex >= 0 ? state.cohorts[cohortIndex] : undefined
+    const bindingValid =
+      isStandardSprite(sprite) &&
+      boundCohort !== undefined &&
+      state.bindingEntity[index] === entity &&
+      state.bindingTick[index] === previousTick &&
+      state.bindingRevision[index] === view.timelineRevision
+
+    if (bindingValid) {
+      if (boundCohort.disabledTick === state.tick) {
+        advanceFallback(state, index, sprite, deltaMs)
+        continue
+      }
+      if (boundCohort.processedTick !== state.tick) {
+        if (!canShareSingleTransition(view, deltaMs)) {
+          boundCohort.disabledTick = state.tick
+          boundCohort.lastUsedTick = state.tick
+          advanceFallback(state, index, sprite, deltaMs)
+          continue
+        }
+        captureCohort(boundCohort, view, sprite, deltaMs)
+        boundCohort.processedTick = state.tick
+        bind(state, index, entity, boundCohort, view)
+        continue
+      }
+      applyCohort(boundCohort, view, sprite)
+      bind(state, index, entity, boundCohort, view)
+      continue
+    }
+
+    clearBinding(state, index)
     if (!isStandardSprite(sprite) || !canShareSingleTransition(view, deltaMs)) {
       sprite.update(deltaMs)
       continue
     }
 
-    const existing = findCohort(state, view)
+    const existing = findCurrentCohort(state, view)
     if (existing) {
       applyCohort(existing, view, sprite)
-      continue
-    }
-    if (state.cohortCount >= MAX_COHORTS) {
-      sprite.update(deltaMs)
+      bind(state, index, entity, existing, view)
       continue
     }
 
-    let cohort = state.cohorts[state.cohortCount]
+    const cohort = acquireCohort(state)
     if (!cohort) {
-      cohort = {} as TimelineCohort
-      state.cohorts.push(cohort)
+      sprite.update(deltaMs)
+      continue
     }
-    state.cohortCount++
     captureCohort(cohort, view, sprite, deltaMs)
+    cohort.processedTick = state.tick
+    cohort.disabledTick = 0
+    bind(state, index, entity, cohort, view)
   }
 }
 
 export function resetAnimationGroupState(state: AnimationGroupState): void {
   state.sprites.length = 0
-  state.cohortCount = 0
 }
 
 export function disposeAnimationGroupState(state: AnimationGroupState): void {
   resetAnimationGroupState(state)
   state.cohorts.length = 0
+  state.bindingEntity = EMPTY_F64
+  state.bindingCohort = EMPTY_U8
+  state.bindingTick = EMPTY_U32
+  state.bindingRevision = EMPTY_U32
+  state.tick = 0
 }

@@ -251,20 +251,91 @@ describe('AnimatedSprite2D', () => {
     }
     const first = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
     const second = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
-    const firstUpdate = vi.spyOn(first.controller, 'update')
-    const secondUpdate = vi.spyOn(second.controller, 'update')
     group.addSprites(first, second)
 
     group.advanceAnimations(100)
 
-    expect(firstUpdate.mock.calls.length + secondUpdate.mock.calls.length).toBe(1)
+    const animationState = Reflect.get(group, '_animationState') as {
+      cohorts: unknown[]
+      bindingCohort: Uint8Array
+      bindingEntity: Float64Array
+    }
+    const bindingEntity = animationState.bindingEntity
+    const bindingCohort = animationState.bindingCohort
+    expect(animationState.cohorts).toHaveLength(1)
+    expect(Array.from(bindingCohort).filter((value) => value !== 0)).toEqual([1, 1])
     expect(first.controller.getState()).toEqual(second.controller.getState())
     expect(first.frame).toBe(frames.get('idle_1'))
     expect(second.frame).toBe(frames.get('idle_1'))
 
+    group.advanceAnimations(100)
+    expect(animationState.bindingEntity).toBe(bindingEntity)
+    expect(animationState.bindingCohort).toBe(bindingCohort)
+    expect(animationState.cohorts).toHaveLength(1)
+    expect(animationState.bindingEntity).toBeInstanceOf(Float64Array)
+
     group.dispose()
+    expect(animationState.bindingEntity).toHaveLength(0)
+    expect(animationState.bindingCohort).toHaveLength(0)
+    expect(animationState.cohorts).toHaveLength(0)
     first.dispose()
     second.dispose()
+  })
+
+  it('invalidates a dense timeline binding when an entity slot is reused', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const retired = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.add(retired)
+    group.advanceAnimations(100)
+    const retiredEntity = requiredEntity(retired)
+
+    group.remove(retired)
+    group.update()
+    group.update()
+    const replacement = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.add(replacement)
+    const replacementEntity = requiredEntity(replacement)
+    expect(replacementEntity).not.toBe(retiredEntity)
+    expect(replacementEntity & 0xfffff).toBe(retiredEntity & 0xfffff)
+
+    group.advanceAnimations(100)
+
+    expect(replacement.controller.getState()).toMatchObject({ frameIndex: 1, elapsed: 0 })
+    expect(replacement.frame).toBe(frames.get('idle_1'))
+
+    group.dispose()
+    retired.dispose()
+    replacement.dispose()
+  })
+
+  it('invalidates a dense timeline binding after a direct controller command', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const normal = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const faster = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.addSprites(normal, faster)
+    group.advanceAnimations(100)
+
+    faster.speed = 2
+    group.advanceAnimations(100)
+
+    expect(normal.controller.getState()).toMatchObject({ frameIndex: 0, elapsed: 0, speed: 1 })
+    expect(faster.controller.getState()).toMatchObject({ frameIndex: 1, elapsed: 0, speed: 2 })
+
+    group.dispose()
+    normal.dispose()
+    faster.dispose()
   })
 
   it('keeps callbacks and multi-frame catch-up on the exact controller path', () => {

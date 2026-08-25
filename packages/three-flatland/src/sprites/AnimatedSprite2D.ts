@@ -99,7 +99,12 @@ export class AnimatedSprite2D extends Sprite2D {
     })
 
     this.controller = new AnimationController()
-    registerAnimatedSprite(this, AnimatedSprite2D.prototype.update, Sprite2D.prototype.setFrame)
+    registerAnimatedSprite(
+      this,
+      AnimatedSprite2D.prototype.update,
+      Sprite2D.prototype.setFrame,
+      AnimationController.prototype.update
+    )
     this.name = 'AnimatedSprite2D'
 
     // If no options, we're being created by R3F - properties will be set via setters
