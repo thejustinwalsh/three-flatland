@@ -485,7 +485,22 @@ export function scanPublishedOutputForKoota(root: string, required: boolean): st
   }
   return allFiles(dist)
     .filter((path) => /\.(?:[cm]?js|d\.ts|map)$/.test(path))
-    .filter((path) => /\bkoota(?:\/react)?\b/i.test(readFileSync(path, 'utf8')))
+    .filter((path) => {
+      const text = readFileSync(path, 'utf8')
+      const containsModuleSpecifier = (source: string): boolean => /(['"`])koota(?:\/[^'"`\n]*)?\1/.test(source)
+      if (!path.endsWith('.map')) return containsModuleSpecifier(text)
+
+      const map = JSON.parse(text) as {
+        readonly sources?: readonly unknown[]
+        readonly sourcesContent?: readonly unknown[]
+      }
+      if ((map.sourcesContent ?? []).some((source) => typeof source === 'string' && containsModuleSpecifier(source))) {
+        return true
+      }
+      return (map.sources ?? []).some(
+        (source) => typeof source === 'string' && /(^|[/\\._-])koota([/\\._-]|$)/i.test(source)
+      )
+    })
     .map((path) => relative(root, path))
     .sort()
 }

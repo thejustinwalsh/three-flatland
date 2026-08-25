@@ -170,8 +170,27 @@ describe('capture safeguards', () => {
       mkdirSync(dist, { recursive: true })
       writeFileSync(resolve(dist, 'index.js'), "export const clean = 'runtime'\n")
       expect(scanPublishedOutputForKoota(root, true)).toEqual([])
+      writeFileSync(
+        resolve(dist, 'history.d.ts'),
+        '/** The private runtime grew from Koota and still recommends it for application ECS work. */\n'
+      )
+      expect(scanPublishedOutputForKoota(root, true)).toEqual([])
       writeFileSync(resolve(dist, 'nested.js'), "export { createWorld } from 'koota'\n")
       expect(scanPublishedOutputForKoota(root, true)).toEqual(['packages/three-flatland/dist/nested.js'])
+      rmSync(resolve(dist, 'nested.js'))
+      writeFileSync(
+        resolve(dist, 'history.js.map'),
+        JSON.stringify({
+          sources: ['../src/history.ts'],
+          sourcesContent: ['// Koota made this renderer specialization possible.'],
+        })
+      )
+      expect(scanPublishedOutputForKoota(root, true)).toEqual([])
+      writeFileSync(
+        resolve(dist, 'nested.js.map'),
+        JSON.stringify({ sources: ['../src/nested.ts'], sourcesContent: ['export * from "koota/react"'] })
+      )
+      expect(scanPublishedOutputForKoota(root, true)).toEqual(['packages/three-flatland/dist/nested.js.map'])
     } finally {
       rmSync(root, { force: true, recursive: true })
     }
