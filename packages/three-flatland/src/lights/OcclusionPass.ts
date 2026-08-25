@@ -109,6 +109,16 @@ export class OcclusionPass {
   private _hiddenMeshes: Mesh[] = []
 
   /**
+   * Dense mesh projection for the currently rendered scene. Three.js
+   * Object3D topology stays authoritative; childadded/childremoved events
+   * patch this reusable list only when topology changes.
+   */
+  private _projectionScene: Scene | null = null
+  private _projectionObjects = new Set<Object3D>()
+  private _projectedMeshes: Mesh[] = []
+  private _projectedMeshIndices = new Map<Mesh, number>()
+
+  /**
    * Re-entrancy guard. OcclusionPass.render() calls renderer.render(scene)
    * on the host scene, which triggers updateMatrixWorld → SpriteGroup runs
    * the ECS schedule → shadowPipelineSystem → OcclusionPass.render() again.
@@ -214,7 +224,10 @@ export class OcclusionPass {
     this._swappedMeshes.length = 0
     this._swappedOriginals.length = 0
     this._hiddenMeshes.length = 0
-    scene.traverse(this._collectAndSwap)
+    this._ensureProjection(scene)
+    for (let index = 0; index < this._projectedMeshes.length; index++) {
+      this._collectAndSwap(this._projectedMeshes[index]!)
+    }
 
     // Clear color/alpha are deliberately NOT restored here. Flatland.render
     // captures the caller's clear state before the ECS schedule and restores
@@ -292,6 +305,76 @@ export class OcclusionPass {
     mesh.material = occlusion
   }
 
+  private _ensureProjection(scene: Scene): void {
+    if (this._projectionScene === scene) return
+    this._clearProjection()
+    this._projectionScene = scene
+    this._trackSubtree(scene)
+  }
+
+  private _trackSubtree(object: Object3D): void {
+    if (this._projectionObjects.has(object)) return
+    this._projectionObjects.add(object)
+    object.addEventListener('childadded', this._onChildAdded)
+    object.addEventListener('childremoved', this._onChildRemoved)
+
+    const mesh = object as Mesh
+    if ((mesh as { isMesh?: boolean }).isMesh) {
+      this._projectedMeshIndices.set(mesh, this._projectedMeshes.length)
+      this._projectedMeshes.push(mesh)
+    }
+    for (const child of object.children) this._trackSubtree(child)
+  }
+
+  private _untrackSubtree(object: Object3D): void {
+    if (!this._projectionObjects.delete(object)) return
+    object.removeEventListener('childadded', this._onChildAdded)
+    object.removeEventListener('childremoved', this._onChildRemoved)
+
+    const mesh = object as Mesh
+    const index = this._projectedMeshIndices.get(mesh)
+    if (index !== undefined) {
+      const last = this._projectedMeshes.pop()!
+      this._projectedMeshIndices.delete(mesh)
+      if (last !== mesh) {
+        this._projectedMeshes[index] = last
+        this._projectedMeshIndices.set(last, index)
+      }
+    }
+    for (const child of object.children) this._untrackSubtree(child)
+  }
+
+  private _onChildAdded = (event: { child?: Object3D }): void => {
+    if (event.child) this._trackSubtree(event.child)
+  }
+
+  private _onChildRemoved = (event: { child?: Object3D }): void => {
+    if (event.child) this._untrackSubtree(event.child)
+  }
+
+  private _clearProjection(): void {
+    const objects = Array.from(this._projectionObjects)
+    this._projectionScene = null
+    this._projectionObjects.clear()
+    this._projectedMeshes.length = 0
+    this._projectedMeshIndices.clear()
+
+    let firstError: unknown
+    let didError = false
+    for (const object of objects) {
+      try {
+        object.removeEventListener('childadded', this._onChildAdded)
+        object.removeEventListener('childremoved', this._onChildRemoved)
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    if (didError) throw firstError
+  }
+
   private _getOrCreateOcclusionMaterial(texture: Texture, tightMesh: boolean): MeshBasicNodeMaterial {
     this._assertUsable('getOcclusionMaterial')
     // Keyed by (texture, geometry strategy): the occlusion shader must
@@ -325,6 +408,7 @@ export class OcclusionPass {
     }
 
     runCleanup(() => unregisterDebugTexture('occlusion.mask'))
+    runCleanup(() => this._clearProjection())
     runCleanup(() => this._rt.dispose())
     for (const material of materials) runCleanup(() => material.dispose())
     if (didError) throw firstError
