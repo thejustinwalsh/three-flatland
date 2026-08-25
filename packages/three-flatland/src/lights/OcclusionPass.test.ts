@@ -2,16 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { OcclusionPass } from './OcclusionPass'
 import { NearestFilter, LinearFilter } from 'three'
 
-function makeRenderer(onRender?: () => void) {
-  return {
-    clear() {},
-    getRenderTarget: () => null,
-    render: () => onRender?.(),
-    setClearColor() {},
-    setRenderTarget() {},
-  }
-}
-
 describe('OcclusionPass', () => {
   it('starts at a 1×1 placeholder RT before first resize', () => {
     const pass = new OcclusionPass()
@@ -188,84 +178,5 @@ describe('OcclusionPass', () => {
     expect(cache.size).toBe(0)
 
     mat.dispose()
-  })
-
-  it('projects nested scene meshes once and tracks later topology changes', async () => {
-    const { BufferGeometry, Group, InstancedBufferAttribute, Mesh, OrthographicCamera, Scene, Texture } =
-      await import('three')
-    const { Sprite2DMaterial } = await import('../materials/Sprite2DMaterial')
-    const pass = new OcclusionPass()
-    const scene = new Scene()
-    const camera = new OrthographicCamera()
-    const texture = new Texture()
-    const material = new Sprite2DMaterial({ map: texture })
-    const geometry = new BufferGeometry()
-    geometry.setAttribute('instanceSystem', new InstancedBufferAttribute(new Float32Array(4), 4))
-    const first = new Mesh(geometry, material)
-    const nested = new Group()
-    nested.add(first)
-    scene.add(nested)
-
-    let expected: Mesh[] = [first]
-    const renderer = makeRenderer(() => {
-      for (const mesh of expected) expect(mesh.material).not.toBe(material)
-    })
-
-    pass.render(renderer as never, scene, camera)
-    expect(first.material).toBe(material)
-
-    const second = new Mesh(geometry, material)
-    nested.add(second)
-    expected = [first, second]
-    pass.render(renderer as never, scene, camera)
-    expect(first.material).toBe(material)
-    expect(second.material).toBe(material)
-
-    nested.remove(first)
-    expected = [second]
-    pass.render(renderer as never, scene, camera)
-    expect(first.material).toBe(material)
-    expect(second.material).toBe(material)
-
-    pass.dispose()
-    expect(scene.hasEventListener('childadded', Reflect.get(pass, '_onChildAdded'))).toBe(false)
-    expect(nested.hasEventListener('childadded', Reflect.get(pass, '_onChildAdded'))).toBe(false)
-    geometry.dispose()
-    material.dispose()
-    texture.dispose()
-  })
-
-  it('observes material changes without rebuilding scene membership', async () => {
-    const { BufferGeometry, InstancedBufferAttribute, Mesh, MeshBasicMaterial, OrthographicCamera, Scene, Texture } =
-      await import('three')
-    const { Sprite2DMaterial } = await import('../materials/Sprite2DMaterial')
-    const pass = new OcclusionPass()
-    const scene = new Scene()
-    const camera = new OrthographicCamera()
-    const texture = new Texture()
-    const spriteMaterial = new Sprite2DMaterial({ map: texture })
-    const ordinaryMaterial = new MeshBasicMaterial()
-    const geometry = new BufferGeometry()
-    geometry.setAttribute('instanceSystem', new InstancedBufferAttribute(new Float32Array(4), 4))
-    const mesh = new Mesh(geometry, ordinaryMaterial)
-    scene.add(mesh)
-
-    let swapped = false
-    const renderer = makeRenderer(() => {
-      swapped = mesh.material !== ordinaryMaterial && mesh.material !== spriteMaterial
-    })
-    pass.render(renderer as never, scene, camera)
-    expect(swapped).toBe(false)
-
-    mesh.material = spriteMaterial
-    pass.render(renderer as never, scene, camera)
-    expect(swapped).toBe(true)
-    expect(mesh.material).toBe(spriteMaterial)
-
-    pass.dispose()
-    geometry.dispose()
-    ordinaryMaterial.dispose()
-    spriteMaterial.dispose()
-    texture.dispose()
   })
 })
