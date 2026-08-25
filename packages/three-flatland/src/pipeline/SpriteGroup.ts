@@ -3,7 +3,6 @@ import { ClippingGroup } from 'three/webgpu'
 import { createWorld, select, type Entity, type World } from '../ecs/runtime'
 import type { Registry } from '../orchestration/registry'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { AnimatedSprite2D } from '../sprites/AnimatedSprite2D'
 import type { ClipRect, SpriteGroupOptions, RenderStats } from './types'
 import type { SpriteBatch } from './SpriteBatch'
 import { assignWorld } from '../ecs/world'
@@ -57,7 +56,10 @@ import {
   disposeAnimationGroupState,
   isAnimatedSprite,
   prepareAnimationGroupState,
+  registerAnimationGroupSprite,
   resetAnimationGroupState,
+  snapshotAnimationGroupState,
+  unregisterAnimationGroupSprite,
 } from '../internal/animation-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
@@ -536,6 +538,10 @@ export class SpriteGroup extends ClippingGroup {
       this._spriteCount++
       countPublished = true
       this._trackMaterial(sprite)
+      if (isAnimatedSprite(sprite)) {
+        prepareAnimationGroupState(this._animationState, this._registryData?.spriteArr.length ?? 0)
+        registerAnimationGroupSprite(this._animationState, sprite)
+      }
       if (hierarchy) {
         sprite._hierarchyManaged = true
         sprite._hierarchyOwner = this
@@ -672,6 +678,7 @@ export class SpriteGroup extends ClippingGroup {
     // Hierarchy ownership follows the authored scene graph. Once fully
     // released, the sprite may be adopted by another SpriteGroup world.
     sprite._releaseWorldOwnership()
+    if (isAnimatedSprite(sprite)) unregisterAnimationGroupSprite(this._animationState, sprite)
     this._spriteCount--
   }
 
@@ -684,6 +691,7 @@ export class SpriteGroup extends ClippingGroup {
     sprite._setBatchSuppressed(false)
     sprite._unenrollFromWorld()
     sprite._releaseWorldOwnership()
+    if (isAnimatedSprite(sprite)) unregisterAnimationGroupSprite(this._animationState, sprite)
     this._spriteCount--
   }
 
@@ -892,16 +900,10 @@ export class SpriteGroup extends ClippingGroup {
     }
 
     const world = this._world
-    const registry = this._getRegistry()
-    if (!world || !registry) return
+    if (!world || !this._getRegistry()) return
 
     const animationState = this._animationState
-    prepareAnimationGroupState(animationState, registry.spriteArr.length)
-    const scratch: AnimatedSprite2D[] = animationState.sprites
-    scratch.length = 0
-    for (const sprite of registry.spriteArr) {
-      if (sprite && isAnimatedSprite(sprite)) scratch.push(sprite)
-    }
+    snapshotAnimationGroupState(animationState)
 
     this._advancingAnimations = true
     try {

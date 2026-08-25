@@ -6,6 +6,13 @@ import { SpriteGroup } from './SpriteGroup'
 import type { SpriteGroupOptions } from './types'
 
 describe('SpriteGroup capacity hint declaration boundary', () => {
+  it('keeps grouped animation timing on a plain caller-owned number boundary', () => {
+    const group = new SpriteGroup()
+
+    expectTypeOf(group.advanceAnimations).parameter(0).toEqualTypeOf<number>()
+    expectTypeOf(group.advanceAnimations(16.67)).toEqualTypeOf<void>()
+  })
+
   it('accepts expectedSprites only through constructor options', () => {
     expectTypeOf<ConstructorParameters<typeof SpriteGroup>[0]>().toEqualTypeOf<SpriteGroupOptions | undefined>()
 

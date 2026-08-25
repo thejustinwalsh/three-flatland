@@ -99,12 +99,15 @@ export class AnimatedSprite2D extends Sprite2D {
     })
 
     this.controller = new AnimationController()
+    // Stored only for exact identity checks; these methods are never invoked unbound.
+    // oxlint-disable typescript/unbound-method
     registerAnimatedSprite(
       this,
       AnimatedSprite2D.prototype.update,
       Sprite2D.prototype.setFrame,
       AnimationController.prototype.update
     )
+    // oxlint-enable typescript/unbound-method
     this.name = 'AnimatedSprite2D'
 
     // If no options, we're being created by R3F - properties will be set via setters

@@ -55,7 +55,9 @@ interface TimelineCohort {
 }
 
 export interface AnimationGroupState {
-  sprites: AnimatedSprite2D[]
+  members: AnimatedSprite2D[]
+  sprites: Array<AnimatedSprite2D | null>
+  spriteCount: number
   cohorts: TimelineCohort[]
   bindingEntity: Float64Array
   bindingCohort: Uint8Array
@@ -75,7 +77,9 @@ const EMPTY_U8 = new Uint8Array(0)
 
 export function createAnimationGroupState(): AnimationGroupState {
   return {
+    members: [],
     sprites: [],
+    spriteCount: 0,
     cohorts: [],
     bindingEntity: EMPTY_F64,
     bindingCohort: EMPTY_U8,
@@ -98,6 +102,11 @@ export function registerAnimatedSprite(
 }
 
 export function prepareAnimationGroupState(state: AnimationGroupState, capacity: number): void {
+  if (state.cohorts.length === 0) {
+    for (let index = 0; index < MAX_COHORTS; index++) {
+      state.cohorts.push({ index, processedTick: 0, lastUsedTick: -1, disabledTick: 0 } as TimelineCohort)
+    }
+  }
   if (capacity <= state.bindingEntity.length) return
   let nextCapacity = Math.max(16, state.bindingEntity.length)
   while (nextCapacity < capacity) nextCapacity *= 2
@@ -114,6 +123,32 @@ export function prepareAnimationGroupState(state: AnimationGroupState, capacity:
   state.bindingCohort = bindingCohort
   state.bindingTick = bindingTick
   state.bindingRevision = bindingRevision
+}
+
+/** Register animation membership and reserve frame scratch during topology work. */
+export function registerAnimationGroupSprite(state: AnimationGroupState, sprite: AnimatedSprite2D): void {
+  if (state.members.includes(sprite)) return
+  state.members.push(sprite)
+  while (state.sprites.length < state.members.length) state.sprites.push(null)
+}
+
+/** Release animation membership outside the frame step. */
+export function unregisterAnimationGroupSprite(state: AnimationGroupState, sprite: AnimatedSprite2D): void {
+  const index = state.members.indexOf(sprite)
+  if (index < 0) return
+  state.members.splice(index, 1)
+  if (state.spriteCount === 0) {
+    for (let scratchIndex = state.members.length; scratchIndex < state.sprites.length; scratchIndex++) {
+      state.sprites[scratchIndex] = null
+    }
+  }
+}
+
+/** Snapshot current animation membership without allocating during the frame step. */
+export function snapshotAnimationGroupState(state: AnimationGroupState): void {
+  const count = state.members.length
+  for (let index = 0; index < count; index++) state.sprites[index] = state.members[index]!
+  state.spriteCount = count
 }
 
 export function isAnimatedSprite(sprite: Sprite2D): sprite is AnimatedSprite2D {
@@ -266,15 +301,7 @@ function acquireCohort(state: AnimationGroupState): TimelineCohort | null {
   for (const cohort of state.cohorts) {
     if (cohort.lastUsedTick < previousTick) return cohort
   }
-  if (state.cohorts.length >= MAX_COHORTS) return null
-  const cohort = {
-    index: state.cohorts.length,
-    processedTick: 0,
-    lastUsedTick: 0,
-    disabledTick: 0,
-  } as TimelineCohort
-  state.cohorts.push(cohort)
-  return cohort
+  return null
 }
 
 function clearBinding(state: AnimationGroupState, index: number): void {
@@ -305,6 +332,11 @@ function beginTick(state: AnimationGroupState): void {
   if (state.tick !== 0) return
   state.bindingTick.fill(0)
   state.bindingCohort.fill(0)
+  for (const cohort of state.cohorts) {
+    cohort.processedTick = 0
+    cohort.lastUsedTick = -1
+    cohort.disabledTick = 0
+  }
   state.tick = 1
 }
 
@@ -312,7 +344,8 @@ function beginTick(state: AnimationGroupState): void {
 export function advanceAnimationGroup(state: AnimationGroupState, world: World, deltaMs: number): void {
   beginTick(state)
   const previousTick = state.tick - 1
-  for (const sprite of state.sprites) {
+  for (let spriteIndex = 0; spriteIndex < state.spriteCount; spriteIndex++) {
+    const sprite = state.sprites[spriteIndex]!
     const entity = spriteEntity(sprite)
     if (spriteWorld(sprite) !== world || !entity) continue
     const index = world.index(entity)
@@ -374,11 +407,14 @@ export function advanceAnimationGroup(state: AnimationGroupState, world: World, 
 }
 
 export function resetAnimationGroupState(state: AnimationGroupState): void {
-  state.sprites.length = 0
+  for (let index = 0; index < state.spriteCount; index++) state.sprites[index] = null
+  state.spriteCount = 0
 }
 
 export function disposeAnimationGroupState(state: AnimationGroupState): void {
   resetAnimationGroupState(state)
+  state.members.length = 0
+  state.sprites.length = 0
   state.cohorts.length = 0
   state.bindingEntity = EMPTY_F64
   state.bindingCohort = EMPTY_U8

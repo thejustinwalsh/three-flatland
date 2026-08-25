@@ -252,17 +252,29 @@ describe('AnimatedSprite2D', () => {
     const first = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
     const second = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
     group.addSprites(first, second)
-
-    group.advanceAnimations(100)
-
     const animationState = Reflect.get(group, '_animationState') as {
-      cohorts: unknown[]
+      members: AnimatedSprite2D[]
+      sprites: Array<AnimatedSprite2D | null>
+      spriteCount: number
+      cohorts: Array<{ processedTick: number }>
       bindingCohort: Uint8Array
       bindingEntity: Float64Array
     }
+    const scratch = animationState.sprites
     const bindingEntity = animationState.bindingEntity
     const bindingCohort = animationState.bindingCohort
-    expect(animationState.cohorts).toHaveLength(1)
+    expect(animationState.members).toEqual([first, second])
+    expect(scratch).toEqual([null, null])
+    expect(animationState.cohorts).toHaveLength(32)
+
+    group.advanceAnimations(100)
+
+    expect(animationState.bindingEntity).toBe(bindingEntity)
+    expect(animationState.bindingCohort).toBe(bindingCohort)
+    expect(animationState.sprites).toBe(scratch)
+    expect(animationState.sprites).toEqual([null, null])
+    expect(animationState.spriteCount).toBe(0)
+    expect(animationState.cohorts.filter((cohort) => cohort.processedTick > 0)).toHaveLength(1)
     expect(Array.from(bindingCohort).filter((value) => value !== 0)).toEqual([1, 1])
     expect(first.controller.getState()).toEqual(second.controller.getState())
     expect(first.frame).toBe(frames.get('idle_1'))
@@ -271,10 +283,13 @@ describe('AnimatedSprite2D', () => {
     group.advanceAnimations(100)
     expect(animationState.bindingEntity).toBe(bindingEntity)
     expect(animationState.bindingCohort).toBe(bindingCohort)
-    expect(animationState.cohorts).toHaveLength(1)
+    expect(animationState.sprites).toBe(scratch)
+    expect(animationState.cohorts.filter((cohort) => cohort.processedTick > 0)).toHaveLength(1)
     expect(animationState.bindingEntity).toBeInstanceOf(Float64Array)
 
     group.dispose()
+    expect(animationState.members).toHaveLength(0)
+    expect(animationState.sprites).toHaveLength(0)
     expect(animationState.bindingEntity).toHaveLength(0)
     expect(animationState.bindingCohort).toHaveLength(0)
     expect(animationState.cohorts).toHaveLength(0)
@@ -365,6 +380,34 @@ describe('AnimatedSprite2D', () => {
     group.dispose()
     withCallback.dispose()
     catchUp.dispose()
+  })
+
+  it('keeps a stable frame snapshot when an animation callback removes a later member', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const first = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation] })
+    const removed = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const retained = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    first.play('idle', { startFrame: 0, onFrame: () => group.remove(removed) })
+    group.addSprites(first, removed, retained)
+
+    group.advanceAnimations(100)
+
+    expect(first.controller.getState().frameIndex).toBe(1)
+    expect(removed.controller.getState().frameIndex).toBe(0)
+    expect(retained.controller.getState().frameIndex).toBe(1)
+    expect(group.spriteCount).toBe(2)
+    expect(Reflect.get(group, '_animationState').members).toEqual([first, retained])
+
+    group.dispose()
+    first.dispose()
+    removed.dispose()
+    retained.dispose()
   })
 
   it('rejects non-finite and reentrant group animation steps', () => {
