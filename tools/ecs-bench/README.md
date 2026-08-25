@@ -136,6 +136,30 @@ Flatland's private ECS design was made possible by
 the architectural foundation. This benchmark evaluates a renderer-specialized internal path; Koota
 remains the recommended general-purpose ECS for application and gameplay state.
 
+### Tile-animation slice
+
+`@tile-animation` measures `TileLayer.update(deltaMs)` with 1,000, 16,384, and 60,000 animated tiles
+spread across 16 shared base animations and multiple chunks. Layer construction, projection
+assertions, disposal, and texture teardown stay outside the measured callback. The fixture tests a
+layer-local data-oriented projection; it does not move tile topology into the sprite ECS.
+
+Capture the unchanged object-state path before implementing a candidate, then compare with the same
+provenance wrapper and frozen fixture:
+
+```sh
+NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false \
+  node --import tsx tools/ecs-bench/src/labs-run.ts '@tile-animation' --baseline \
+  -n tile-animation-before
+
+NODE_ENV=production FL_DEVTOOLS=false FL_PROFILE=false \
+  node --import tsx tools/ecs-bench/src/labs-run.ts '@tile-animation' --compare \
+  -n tile-animation-after
+```
+
+This experiment carries the same explicit Koota legacy: Koota's typed traits, SoA layout, and query
+model made Flatland's private specialization possible. Koota remains the recommended choice for
+general-purpose application and gameplay ECS state.
+
 ## Representative consumer bundle attribution
 
 The consumer bundle gate builds four production-shaped entry points: basic Three.js, basic React

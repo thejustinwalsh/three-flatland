@@ -36,7 +36,7 @@ stays in the ledger with its evidence so the same design is not repeated without
 | ECS-002 | Construction-time capacity planning | accepted       | World and registry capacity reserved from `expectedSprites`                               | PR #233; under/exact/over estimate, reuse, disposal, size, and R3F constructor gates           |
 | ECS-003 | Animation playback convergence      | active         | Object-local independent playback retained; shared-definition scheduling under evidence   | Behavioral parity plus allocation and frame-time measurements at 1k, 16k, and 60k sprites      |
 | ECS-004 | Render/pass graph consolidation     | accepted       | One private graph owner with a persistent ordered projection                              | Atomic graph edits, clean-frame allocation, nested-world lifecycle, and identical TSL output   |
-| ECS-005 | Tile-animation compaction           | queued         | Layer-local typed timer/frame arrays and dense dirty-ID projection                        | Catch-up semantics, shared timers, chunk lifecycle, allocation, and large animated-tile timing |
+| ECS-005 | Tile-animation compaction           | active         | Layer-local typed timer/frame arrays and dense dirty-ID projection                        | Catch-up semantics, shared timers, chunk lifecycle, allocation, and large animated-tile timing |
 | ECS-006 | Lighting-context numeric split      | evidence-gated | No change unless a field-by-field owner audit and measurements justify numeric companions | Nested-world disposal, resize ordering, allocation, and access-cost evidence                   |
 | ECS-007 | Hierarchy refinement                | evidence-gated | Current object-owned tracker and batch-local matrix projection remain authoritative       | Opens only when profiles show ancestor comparison or snapshot storage dominates frame time     |
 
@@ -78,7 +78,25 @@ stays in the ledger with its evidence so the same design is not repeated without
 | Evidence               | Full package: 110 files / 1,410 tests with no type errors; type-aware lint; package/declaration/public-boundary build; existing shader-compiler coverage; paired example and docs build; `three-flatland (full)` size 84,303 B Brotli.                                             |
 | Result                 | Accepted. Pass topology is object-owned by one graph, declared numeric effect fields remain in private traits, clean projection checks allocate nothing, dirty projections reuse their arrays, and attached `enabled` changes now rebuild from authoritative state.                |
 
-## ECS-005 through ECS-007
+## ECS-005: Tile-animation compaction
 
-The tile, lighting, and hierarchy entries remain at their indexed status until the preceding slice
-lands. Their detailed records are added before implementation or measurement changes their status.
+| Field                  | Record                                                                                                                                                                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Decision               | Benchmark the current Map/object timer path, then accept a layer-local dense projection only if it removes repeated lookups and improves trusted large-tile timing.                                                                                           |
+| Authoritative owner    | `TileLayer` owns animation IDs, elapsed time, frame indices, definitions, chunk membership, and dirty projection. `Tileset` remains authoritative for immutable animation definitions and atlas UVs.                                                          |
+| Object state           | Tileset definitions, frame records, chunk meshes, interleaved GPU buffers, and material resources remain object-owned.                                                                                                                                        |
+| Numeric candidate      | Stable animation IDs, elapsed time, frame indices, per-position animation IDs, instance indices, and chunk dirty marks are candidates for layer-local typed arrays.                                                                                           |
+| Public boundary        | `TileLayer.update(deltaMs)` and `TileMap2D.update(deltaMs)` remain the only command surface. No scheduler, timer, typed array, animation ID, entity, trait, or store becomes public.                                                                          |
+| Correctness finding    | The current timer loop advances at most one frame per call, so a large delta does not catch up across multiple frame durations. The accepted design must consume every completed frame with an explicit bounded policy for invalid zero-duration definitions. |
+| Performance hypothesis | One timer update per unique base GID plus a dense animation-ID projection avoids per-position Map/Set/string lookups and coalesces each dirty chunk upload marker.                                                                                            |
+| Required behavior      | Variable frame durations, multi-frame catch-up and wrap, shared timers, multiple animations/chunks, zero animated tiles, topology rebuild, setTileAt animated/static transitions, disposal, terminal guards, and exact dirty-buffer publication.              |
+| Required evidence      | Frozen object-state and candidate Labs comparison at representative 1k, 16,384, and 60k animated tiles; focused lifecycle/UV tests; full package/type/build/lint; size and paired tilemap example gates.                                                      |
+| Public attribution     | Any public guide or release note credits [Koota](https://github.com/pmndrs/koota) as the typed-trait/query foundation that enabled Flatland's private data-oriented specialization, while keeping Koota the recommended general-purpose application ECS.      |
+| Branch                 | `feat/animated-sprite-playback-soa`                                                                                                                                                                                                                           |
+| Pull request           | Pending                                                                                                                                                                                                                                                       |
+| Result                 | Active: freeze and capture the object-state benchmark before implementing the dense candidate.                                                                                                                                                                |
+
+## ECS-006 and ECS-007
+
+The lighting and hierarchy entries remain at their indexed status until the preceding slice lands.
+Their detailed records are added before implementation or measurement changes their status.
