@@ -3,14 +3,16 @@ title: Animation
 description: Animate sprites using spritesheets and frame-based animation.
 ---
 
-import { Tabs, TabItem } from 'starlight-theme/components';
-import Diagram from '../../../components/Diagram.astro';
-import animationPipeline from '../../../assets/diagrams/animation-pipeline.svg?raw';
+import { Tabs, TabItem } from 'starlight-theme/components'
+import Diagram from '../../../components/Diagram.astro'
+import animationPipeline from '../../../assets/diagrams/animation-pipeline.svg?raw'
 
 **What you'll learn**
+
 - How to load a spritesheet (TexturePacker / Aseprite JSON) and define an `animationSet`
 - How to drive playback with `play / pause / resume / stop` plus `onFrame` and `onComplete` callbacks
 - How `update(deltaMs)` fits into your render loop and how `speed` scales it
+- How to advance a large `SpriteGroup` once while keeping time in your application
 
 ---
 
@@ -18,7 +20,10 @@ three-flatland supports frame-based animation using spritesheets. The `AnimatedS
 
 If you've ever wired up sprite animation by hand — frame timers, wraparound math, swap textures on each tick — this is the part you don't have to write anymore.
 
-<Diagram caption="The animation data path — atlas frames are grouped into named clips, then play() picks the active clip and update(deltaMs) advances its frames over time." src={animationPipeline} />
+<Diagram
+  caption="The animation data path — atlas frames are grouped into named clips, then play() picks the active clip and update(deltaMs) advances its frames over time."
+  src={animationPipeline}
+/>
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -65,6 +70,7 @@ If you've ever wired up sprite animation by hand — frame timers, wraparound ma
       renderer.render(scene, camera);
     }
     ```
+
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
@@ -110,6 +116,7 @@ If you've ever wired up sprite animation by hand — frame timers, wraparound ma
       );
     }
     ```
+
   </TabItem>
 </Tabs>
 
@@ -139,24 +146,24 @@ animationSet: {
 ## Playback Control
 
 ```typescript
-sprite.play('run');              // Play animation by name
-sprite.pause();                  // Pause at current frame
-sprite.resume();                 // Resume paused animation
-sprite.stop();                   // Stop and reset
-sprite.gotoFrame(3);             // Jump to specific frame
+sprite.play('run') // Play animation by name
+sprite.pause() // Pause at current frame
+sprite.resume() // Resume paused animation
+sprite.stop() // Stop and reset
+sprite.gotoFrame(3) // Jump to specific frame
 
 // Check animation state
-sprite.isPlaying();              // Is any animation playing?
-sprite.isPlaying('run');         // Is 'run' animation playing?
-sprite.currentAnimation;         // Get current animation name
+sprite.isPlaying() // Is any animation playing?
+sprite.isPlaying('run') // Is 'run' animation playing?
+sprite.currentAnimation // Get current animation name
 ```
 
 ## Playback Speed
 
 ```typescript
-sprite.speed = 1.5;  // 1.5x speed
-sprite.speed = 0.5;  // Half speed
-sprite.speed = 2;    // Double speed
+sprite.speed = 1.5 // 1.5x speed
+sprite.speed = 0.5 // Half speed
+sprite.speed = 2 // Double speed
 ```
 
 ## Animation Callbacks
@@ -166,17 +173,17 @@ Use the `play()` method's options to handle animation events:
 ```typescript
 sprite.play('attack', {
   onFrame: (frameIndex) => {
-    console.log('Frame:', frameIndex);
+    console.log('Frame:', frameIndex)
     if (frameIndex === 2) {
       // Trigger damage on specific frame
-      dealDamage();
+      dealDamage()
     }
   },
   onComplete: () => {
     // Animation finished (non-looping only)
-    sprite.play('idle');
+    sprite.play('idle')
   },
-});
+})
 ```
 
 ## Loading Spritesheets
@@ -184,14 +191,14 @@ sprite.play('attack', {
 The `SpriteSheetLoader` supports Aseprite JSON format. Texture presets (like `NearestFilter` for pixel art) are automatically applied:
 
 ```typescript
-import { SpriteSheetLoader } from 'three-flatland';
+import { SpriteSheetLoader } from 'three-flatland'
 
 // Load spritesheet (presets automatically applied)
-const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json');
+const spriteSheet = await SpriteSheetLoader.load('/sprites/character.json')
 
 // Access frame data
-const frame = spriteSheet.getFrame('idle_0');
-console.log(frame); // { x, y, width, height, sourceWidth, sourceHeight, ... }
+const frame = spriteSheet.getFrame('idle_0')
+console.log(frame) // { x, y, width, height, sourceWidth, sourceHeight, ... }
 ```
 
 :::tip[Texture Configuration]
@@ -203,20 +210,78 @@ See the [Loaders guide](../loaders/#texture-presets) to configure presets for sm
 The `update(deltaMs)` method must be called each frame to advance the animation:
 
 ```typescript
-let lastTime = performance.now();
+let lastTime = performance.now()
 
 function animate() {
-  const now = performance.now();
-  const deltaMs = now - lastTime;
-  lastTime = now;
+  const now = performance.now()
+  const deltaMs = now - lastTime
+  lastTime = now
 
   // Update all animated sprites
-  sprite.update(deltaMs);
+  sprite.update(deltaMs)
 
-  renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+  renderer.render(scene, camera)
+  requestAnimationFrame(animate)
 }
 ```
+
+### Advance a SpriteGroup once
+
+When many animated sprites already belong to one `SpriteGroup`, advance the group instead of keeping
+an application-side loop over every sprite. Time remains explicit and caller-owned; rendering never
+advances animation implicitly. Sprites that share the same definition, phase, speed, and loop behavior
+can share timeline work. Callbacks, events, divergent playback, custom subclasses, and large catch-up
+steps automatically keep the exact per-controller path.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    import { SpriteGroup } from 'three-flatland'
+
+    const spriteGroup = new SpriteGroup({ expectedSprites: 16_384 })
+    scene.add(spriteGroup)
+    spriteGroup.addSprites(...animatedSprites)
+
+    function animate() {
+      const deltaMs = clock.getDelta() * 1000
+      spriteGroup.advanceAnimations(deltaMs)
+      renderer.render(scene, camera)
+    }
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { useRef } from 'react'
+    import { extend, useFrame } from '@react-three/fiber/webgpu'
+    import { AnimatedSprite2D, SpriteGroup } from 'three-flatland/react'
+
+    extend({ SpriteGroup, AnimatedSprite2D })
+
+    function AnimatedCrowd() {
+      const groupRef = useRef<SpriteGroup>(null)
+
+      useFrame((_, delta) => {
+        groupRef.current?.advanceAnimations(delta * 1000)
+      })
+
+      return (
+        <spriteGroup ref={groupRef}>
+          {/* AnimatedSprite2D children */}
+        </spriteGroup>
+      )
+    }
+    ```
+
+  </TabItem>
+</Tabs>
+
+:::note[Design lineage]
+This grouped data-oriented path grew from three-flatland's original
+[Koota](https://github.com/pmndrs/koota) integration. Koota's typed traits, structure-of-arrays
+storage, queries, and systems made the renderer specialization possible. Koota remains the
+recommended general-purpose ECS for application and gameplay state.
+:::
 
 ## Next steps
 

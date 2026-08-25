@@ -89,13 +89,27 @@ The capacity hint does not redefine `maxBatchSize`. That property keeps its exis
 
 Completed gates include constructor and R3F `args` type coverage, direct JSX-property rejection, bounded growth tests, dispose/reuse coverage, and the frozen-source under-estimate, exact-estimate, and over-estimate capture in [`results/expected-sprites.json`](./results/expected-sprites.json).
 
-### P1 — coalesce shared animation-definition work
+### P1 — coalesce shared animation-definition work: accepted
 
 Keep `Animation`, `SpriteFrame`, spritesheet, callbacks, event payloads, and independent controller rows object-owned. The rejected blanket-SoA prototype proved that full-row playback does not benefit from columnar storage in this runtime. Test shared-definition or shared-timeline scheduling instead: compute a common transition once only when sprites deliberately share phase/speed/loop semantics, then project the committed frame through the existing `setFrame`/batch UV path. Standalone and independent sprites continue to use `update(deltaMs)` with identical semantics.
 
 Avoid one entity per animation frame, avoid copying shared definitions into each entity, and do not add a bulk selector that merely calls every existing controller. A viable design must remove repeated computation or projection and must dispatch events without allocating closures or result arrays per sprite. Public controller methods remain the command surface and commit atomically.
 
-Exit condition: behavioral parity for loop, ping-pong, speed, pause/resume, large delta, per-frame duration, events, sprite-sheet swap, detach/re-enroll, and clone; allocation and frame-time measurements at 1k, 16k, and 60k animated sprites.
+The accepted design keeps controller state and animation definitions object-owned. A caller-timed
+`SpriteGroup.advanceAnimations(deltaMs)` snapshots its topology-maintained animated membership into
+pre-sized scratch, and a group-owned dense
+binding projection associates exact packed entity generations with at most 32 reusable timeline
+cohorts. A controller revision invalidates a binding after any direct playback command. Only standard,
+callback-free, event-free, single-transition sprites reuse a cohort result; every other case retains
+the existing controller update. The projection uses exact `Float64Array` handles so generations never
+alias at 32-bit boundaries, releases its retained definitions on disposal, and performs no steady-state
+allocation after capacity and cohort compilation.
+
+Labs accepted the final dense-membership path at 1k (p50 -25.5%, p99 -37.9%, `p < .001`) and
+16,384 (p50 -38.6%, p99 -24.5%, `p < .001`). The 60k run remained directionally faster but did not meet the configured
+confidence target within 30 seconds, so it is recorded as noisy rather than promoted into a release
+claim. Behavioral gates cover loop, speed divergence, callback and large-delta fallback, reentrancy,
+removal during a frame snapshot, packed-entity slot reuse, disposal, and direct controller compatibility.
 
 ### P1 — compact tile animation state
 
