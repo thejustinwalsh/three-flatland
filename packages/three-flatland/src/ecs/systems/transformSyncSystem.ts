@@ -5,7 +5,7 @@ import type { RegistryData } from '../batchUtils'
 import { quadHalfExtents } from '../../pipeline/SpriteSpatialGrid'
 import { HierarchyStateTracker } from '../HierarchyStateTracker'
 import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
-import { spriteEntity } from '../../internal/sprite-runtime'
+import { isStandardSpriteUpdateMatrix, spriteEntity } from '../../internal/sprite-runtime'
 
 const BatchRegistries = select(BatchRegistry)
 
@@ -19,6 +19,15 @@ interface TransformScratch {
   readonly relativeParents: Map<Object3D, Matrix4>
   readonly relativeParentPool: Matrix4[]
   relativeParentPoolIndex: number
+  readonly hierarchyPaths: WeakMap<Object3D, HierarchyPathState>
+  hierarchyFrame: number
+  hierarchyCacheDisabled: boolean
+}
+
+interface HierarchyPathState {
+  frame: number
+  changed: boolean
+  visible: boolean
 }
 
 const _scratchByRegistry = new WeakMap<RegistryData, TransformScratch>()
@@ -34,6 +43,9 @@ function transformScratch(registry: RegistryData): TransformScratch {
       relativeParents: new Map(),
       relativeParentPool: [],
       relativeParentPoolIndex: 0,
+      hierarchyPaths: new WeakMap(),
+      hierarchyFrame: 0,
+      hierarchyCacheDisabled: false,
     }
     _scratchByRegistry.set(registry, scratch)
   }
@@ -130,6 +142,36 @@ function hierarchyVisibleFrom(object: Object3D | null): boolean {
   return true
 }
 
+/** Resolve authored visibility for a cached source-parent path. */
+function authoredHierarchyVisibleFrom(object: Object3D | null): boolean {
+  while (object) {
+    const candidate = object as Object3D & { _isAuthoredVisible?: () => boolean }
+    if (candidate._isAuthoredVisible ? !candidate._isAuthoredVisible() : !object.visible) return false
+    object = object.parent
+  }
+  return true
+}
+
+/** Project one shared source-parent path once for the current frame. */
+function hierarchyPathState(
+  scratch: TransformScratch,
+  tracker: HierarchyStateTracker,
+  sourceParent: Object3D,
+  group: Object3D | null
+): HierarchyPathState {
+  const cached = scratch.hierarchyPaths.get(sourceParent)
+  if (cached?.frame === scratch.hierarchyFrame) return cached
+  let state = cached
+  if (!state) {
+    state = { frame: 0, changed: false, visible: true }
+    scratch.hierarchyPaths.set(sourceParent, state)
+  }
+  state.frame = scratch.hierarchyFrame
+  state.changed = tracker.pathChanged(sourceParent, group, undefined, undefined, false)
+  state.visible = authoredHierarchyVisibleFrom(sourceParent)
+  return state
+}
+
 /**
  * Sync transforms to GPU instance matrices AND `sprite.matrixWorld`.
  *
@@ -166,6 +208,8 @@ export function transformSyncSystem(world: World): void {
   scratch.updatedParents.clear()
   scratch.relativeParents.clear()
   scratch.relativeParentPoolIndex = 0
+  scratch.hierarchyFrame++
+  scratch.hierarchyCacheDisabled = false
   let tracker = _trackers.get(registry)
   if (!tracker) {
     tracker = new HierarchyStateTracker()
@@ -227,7 +271,29 @@ export function transformSyncSystem(world: World): void {
         continue
       }
       const sourceVisible = sprite._batchVisibilityState()
-      const pathChanged = tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
+      let pathChanged: boolean
+      let hierarchyVisible: boolean
+      if (directRoot) {
+        pathChanged = tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
+        hierarchyVisible = rootVisible && sourceVisible
+      } else {
+        // Compared by identity only; never invoked unbound.
+        // oxlint-disable-next-line typescript/unbound-method
+        if (!scratch.hierarchyCacheDisabled && isStandardSpriteUpdateMatrix(sprite.updateMatrix)) {
+          const sourceChanged = tracker.pathChanged(sprite, null, null, sourceVisible)
+          const parentPath = sourceParent ? hierarchyPathState(scratch, tracker, sourceParent, group) : null
+          pathChanged = sourceChanged || (parentPath?.changed ?? false)
+          hierarchyVisible = sourceVisible && (parentPath?.visible ?? true)
+        } else {
+          // Virtual user code can mutate a shared parent. Preserve the exact
+          // per-sprite visibility path and force later standard sprites to
+          // rebuild the aggregate after that callback boundary.
+          scratch.hierarchyCacheDisabled = true
+          tracker.pathChanged(sprite, group, sourceParent, sourceVisible)
+          pathChanged = true
+          hierarchyVisible = sprite._isHierarchyVisible(sourceParent)
+        }
+      }
       if (!pathChanged && !rootChanged) {
         if (sprite._hierarchyManaged || (sprite as unknown as { _autoRegistry: object | null })._autoRegistry) {
           sprite._batchWorldFresh = true
@@ -247,7 +313,6 @@ export function transformSyncSystem(world: World): void {
         sprite._batchWorldFresh = true
       }
       const worldMatrix = rootIsIdentity && directRoot ? sprite.matrix.elements : sprite.matrixWorld.elements
-      const hierarchyVisible = directRoot ? rootVisible && sourceVisible : sprite._isHierarchyVisible(sourceParent)
 
       let relativeMatrix: Matrix4
       if (!sourceParent || sourceParent === group) relativeMatrix = sprite.matrix

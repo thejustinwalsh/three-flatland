@@ -58,6 +58,7 @@ import {
   hasSpriteCloneBootstrapMaterial,
   markSpriteCloneBootstrapMaterial,
   publishSpriteRuntime,
+  registerStandardSpriteUpdateMatrix,
   spriteEntity,
   spriteWorld,
 } from '../internal/sprite-runtime'
@@ -915,6 +916,9 @@ export class Sprite2D extends Mesh {
     )
     geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2))
     super(geometry, material)
+    // Stored only for exact identity checks; this method is never invoked unbound.
+    // oxlint-disable-next-line typescript/unbound-method
+    registerStandardSpriteUpdateMatrix(Sprite2D.prototype.updateMatrix)
 
     // Store reference so we can dispose it
     this._geometry = geometry

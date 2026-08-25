@@ -6,6 +6,17 @@ const cloneBootstrapMaterials = new WeakSet<object>()
 const pendingCloneBootstrapErrors = new WeakMap<object, unknown>()
 const committedCloneBootstrapErrors = new WeakMap<object, unknown>()
 const observedCloneBootstrapCommits = new WeakMap<object, number>()
+let standardSpriteUpdateMatrix: unknown
+
+/** Capture Sprite2D's built-in matrix writer without importing it into ECS systems. @internal */
+export function registerStandardSpriteUpdateMatrix(method: unknown): void {
+  standardSpriteUpdateMatrix ??= method
+}
+
+/** Test whether a sprite still uses the callback-free built-in matrix writer. @internal */
+export function isStandardSpriteUpdateMatrix(method: unknown): boolean {
+  return method === standardSpriteUpdateMatrix
+}
 
 /** Mark a package-owned clone staging material for retirement on replacement/dispose. @internal */
 export function markSpriteCloneBootstrapMaterial(sprite: object): void {

@@ -100,6 +100,36 @@ describe('auto batching preserves the source hierarchy', () => {
     }
   )
 
+  it('invalidates a cached shared path after virtual updateMatrix changes parent visibility', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const parent = new Group()
+    const leading = makeSprite()
+    const mutator = makeSprite()
+    const trailing = makeSprite()
+    parent.add(leading, mutator, trailing)
+    spriteGroup.add(parent)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+
+    const updateMatrix = mutator.updateMatrix.bind(mutator)
+    mutator.updateMatrix = () => {
+      updateMatrix()
+      parent.visible = false
+    }
+    mutator.position.x = 1
+    scene.updateMatrixWorld(true)
+
+    // The leading row was already committed before user code changed the
+    // parent. The custom sprite and every later standard sprite observe the
+    // new authored visibility during the same pass.
+    expect(instanceSlot(leading)[0]).toBe(20)
+    expect(instanceSlot(mutator)[0]).toBe(0)
+    expect(instanceSlot(trailing)[0]).toBe(0)
+
+    spriteGroup.dispose()
+  })
+
   it('keeps transform scratch isolated across nested updates in two worlds', () => {
     const sceneA = new Scene()
     const sceneB = new Scene()
