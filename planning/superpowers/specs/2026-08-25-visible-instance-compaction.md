@@ -1,6 +1,6 @@
 # Camera-visible instance compaction
 
-Status: **active, evidence-gated**
+Status: **rejected, closed**
 
 Ledger: `ECS-008`
 
@@ -32,6 +32,8 @@ general-purpose ECS for application and gameplay state.
 - `SpriteBatch` sets an infinite bounding sphere and submits a contiguous prefix through `count`.
 - `SpriteGroup.frustumCulling` exists, but no per-sprite camera-visible compaction currently changes the
   submitted prefix.
+- `TileLayer` already splits maps into finite-bound `InstancedMesh` chunks and lets Three.js reject
+  offscreen chunks. The large paged-world case therefore has a cheaper existing visibility boundary.
 - Standalone `SpriteGroup` can be rendered through arbitrary Three.js cameras. `Flatland` additionally
   owns an orthographic camera, but the implementation cannot make that special case the general rule.
 
@@ -207,16 +209,15 @@ speed verdict. The sparse 60,000 cases establish a 1.54–1.74 ms CPU preparatio
 GPU win must repay. Measured heap also rose, so the current picking query is not acceptable production
 code.
 
-Three r185 publicly exports `storage`, `instancedArray`, and `instanceIndex`; a benchmark-only GPU proof
-is therefore authorized. Before production, the internal renderer needs two durable capabilities:
+Three r185 exposes the public TSL primitives needed for GPU indirection, but candidate C already fails
+the experiment's CPU and allocation preconditions. It regresses the dense cases, adds 1.54–1.74 ms of
+sparse preparation at 60,000 sprites, and retains more measured heap. A headed GPU proof cannot authorize
+a production path whose required preparation and dense fallback are not yet viable, so the prototype is
+removed by `ad861d73` without runtime residue.
 
-1. an allocation-free camera query that writes validated batch slots directly into caller-owned storage;
-2. one package-private source-instance-index node used consistently by instance matrices, the interleaved
-   core row, and every effect buffer, with the current direct-attribute path as the dense fallback.
-
-These are renderer projection features under `ECS-008`, not public ECS APIs. The dense path must bypass
-the index projection entirely, and no production implementation lands until headed WebGPU timing and
-pixel/submission parity pass.
+The existing tilemap path covers the clearest large-world case through finite chunk bounds and ordinary
+Three.js frustum rejection. A future proposal may reopen per-sprite compaction only with a new workload or
+camera-to-slot primitive that first proves allocation-free preparation and a neutral dense path.
 
 ## Execution order
 
@@ -224,11 +225,9 @@ pixel/submission parity pass.
 2. Prototype candidate A in the benchmark and remove it when it fails the CPU/allocation gate.
 3. Run deterministic behavior, allocation, and Labs gates.
 4. Reject candidate B if transparent-sort parity cannot be expressed across partitions.
-5. Prototype candidate C in a headed WebGPU benchmark using public TSL storage/index primitives.
-6. Add allocation-free query and unified instance-source abstractions only if the GPU proof repays the
-   measured sparse CPU preparation budget.
-7. Run paired Three.js/react-three-fiber sparse-world examples only for the winning candidate.
-8. Record the accepted or rejected result in `ECS-008` with raw evidence and exact commit.
+5. Reject candidate C after its CPU/allocation preparation gate fails; remove the prototype.
+6. Freeze the existing SpriteBatch behavior and the TileLayer chunk-culling regression.
+7. Record the rejected result in `ECS-008` with raw evidence and exact commits.
 
 ## Stop conditions
 
