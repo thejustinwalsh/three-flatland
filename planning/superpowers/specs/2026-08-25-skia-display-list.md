@@ -51,6 +51,12 @@ emit a callback command for them or retain the current traversal for the affecte
 The display list is a package-private renderer projection, not a gameplay ECS and not a public entity
 API.
 
+The benchmark prototype stays inside `@three-flatland/skia`. It does not import Flatland's unpublished
+renderer ECS and does not justify publishing that runtime as a package. The implementation may reuse the
+data-oriented pattern with Skia-local typed arrays, revisions, and passes. Shared code is acceptable only
+when it is a small type-erased utility with no world, entity, trait, query, or system API; otherwise the
+projection remains purpose-built and local to Skia.
+
 ## Benchmark-only first pull request
 
 Add a pinned Labs fixture that compares current tree traversal with an isolated compiled-command
@@ -103,9 +109,12 @@ custom subclasses, hostile callbacks, and terminal disposal.
 
 No display-list, command-buffer, node ID, ECS handle, or compiler type becomes public. Existing Skia
 classes and setters remain authoritative. The benchmark dependency stays private and cannot enter the
-published package.
+published package. `@three-flatland/skia` cannot depend on Flatland's unpublished ECS runtime, and this
+work cannot turn that runtime into a public package.
 
 ## GitHub issue scope
 
 The issue tracks only the benchmark and decision gate. It links this plan, states that Slug is excluded,
 and records that implementation requires a second reviewed pull request after evidence is accepted.
+
+Issue: [#235](https://github.com/thejustinwalsh/three-flatland/issues/235)
