@@ -1,6 +1,6 @@
 # Shadow-occluder projection
 
-Status: **active, evidence-gated**
+Status: **rejected, closed**
 
 Ledger: `ECS-009`
 
