@@ -172,12 +172,33 @@ public control is required. Any public change requires a separate alpha API revi
 The accepted consumer-size snapshot may move only after clean capture and review. The shipped-runtime
 aggregate must remain below its existing minified/gzip/Brotli caps.
 
+## Evidence checkpoint: candidate A rejected
+
+Benchmark-only commit `0cd3b3d0` tested the existing picking grid as the visible-set source and copied
+the canonical 16-float matrix row plus 16-float packed row into reusable projection buffers. A clean
+adaptive run rejected that design:
+
+- 16,384 p50 changed 6.5345 → 9.2959 ms dense, 7.3172 → 8.6357 ms at 20%, and
+  7.2535 → 7.4560 ms at 5%;
+- 60,000 p50 changed 28.9239 → 38.8529 ms dense, 26.1944 → 29.1774 ms at 20%, and
+  26.1114 → 27.8208 ms at 5%;
+- average measured heap rose in every projection case, including roughly 177 KB → 918–982 KB for the
+  sparse 60,000-sprite cases.
+
+The host clock drifted 8.4%, so these paired absolute timings are not promoted as a percentage speed
+claim. The candidate is rejected independently by the deterministic steady-allocation failure and the
+large dense regression. `SpriteSpatialGrid.querySegment()` is deliberately optimized for pointer-event
+broadphase work; it is not a per-frame camera-membership projection.
+
+Candidate B, spatially partitioned material batches, is next. It must be benchmarked first with a draw-
+call budget and transparent-sort parity; candidate A does not become dormant production complexity.
+
 ## Execution order
 
 1. Freeze the current infinite-bound behavior as a baseline fixture.
-2. Implement candidate A behind a package-private strategy seam.
+2. Prototype candidate A in the benchmark and remove it when it fails the CPU/allocation gate.
 3. Run deterministic behavior, allocation, and Labs gates.
-4. If A fails, remove it before testing B. Do not accumulate strategies in production.
+4. Prototype candidate B with bounded draw calls. Do not accumulate rejected strategies in production.
 5. Run paired Three.js/react-three-fiber sparse-world examples only for the winning candidate.
 6. Record the accepted or rejected result in `ECS-008` with raw evidence and exact commit.
 
