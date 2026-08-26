@@ -186,7 +186,7 @@ export interface TileMapData {
 export interface TileMap2DOptions {
   /** Tilemap data */
   data?: TileMapData
-  /** Chunk size in tiles for frustum culling (default: 256) */
+  /** Chunk size in tiles for frustum culling (default: 512) */
   chunkSize?: number
   /** Enable collision data extraction (default: true) */
   enableCollision?: boolean
