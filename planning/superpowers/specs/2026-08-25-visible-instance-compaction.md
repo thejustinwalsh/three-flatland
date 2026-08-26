@@ -193,14 +193,42 @@ broadphase work; it is not a per-frame camera-membership projection.
 Candidate B, spatially partitioned material batches, is next. It must be benchmarked first with a draw-
 call budget and transparent-sort parity; candidate A does not become dormant production complexity.
 
+Candidate B was rejected during that parity review, before production code. Transparent materials are
+sorted by `zIndex` within one physical batch. Splitting a material run into spatial cells creates
+separate draw calls with only one object-level `renderOrder` each; arbitrary sprite depths from two cells
+cannot interleave exactly. Sorting cells by min/max depth cannot resolve overlapping depth ranges. This
+would trade culling for incorrect alpha composition, so the candidate fails the compatibility gate.
+
+Benchmark-only candidate C (`b520c534`) writes only visible source slots into a reusable `Uint32Array`,
+using the validated private `Sprite2D._batchSlot` rather than copying instance rows. Clean result
+`visible-index-prototype` measured p50 changes of +20.8%/+12.9%/+2.8% at 16,384 dense/20%/5%, and
++13.7%/+6.2%/+5.4% at 60,000. Clock drift was 8.3%, so these are descriptive paired values, not a
+speed verdict. The sparse 60,000 cases establish a 1.54–1.74 ms CPU preparation budget that a headed
+GPU win must repay. Measured heap also rose, so the current picking query is not acceptable production
+code.
+
+Three r185 publicly exports `storage`, `instancedArray`, and `instanceIndex`; a benchmark-only GPU proof
+is therefore authorized. Before production, the internal renderer needs two durable capabilities:
+
+1. an allocation-free camera query that writes validated batch slots directly into caller-owned storage;
+2. one package-private source-instance-index node used consistently by instance matrices, the interleaved
+   core row, and every effect buffer, with the current direct-attribute path as the dense fallback.
+
+These are renderer projection features under `ECS-008`, not public ECS APIs. The dense path must bypass
+the index projection entirely, and no production implementation lands until headed WebGPU timing and
+pixel/submission parity pass.
+
 ## Execution order
 
 1. Freeze the current infinite-bound behavior as a baseline fixture.
 2. Prototype candidate A in the benchmark and remove it when it fails the CPU/allocation gate.
 3. Run deterministic behavior, allocation, and Labs gates.
-4. Prototype candidate B with bounded draw calls. Do not accumulate rejected strategies in production.
-5. Run paired Three.js/react-three-fiber sparse-world examples only for the winning candidate.
-6. Record the accepted or rejected result in `ECS-008` with raw evidence and exact commit.
+4. Reject candidate B if transparent-sort parity cannot be expressed across partitions.
+5. Prototype candidate C in a headed WebGPU benchmark using public TSL storage/index primitives.
+6. Add allocation-free query and unified instance-source abstractions only if the GPU proof repays the
+   measured sparse CPU preparation budget.
+7. Run paired Three.js/react-three-fiber sparse-world examples only for the winning candidate.
+8. Record the accepted or rejected result in `ECS-008` with raw evidence and exact commit.
 
 ## Stop conditions
 
