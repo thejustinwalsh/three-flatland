@@ -32,9 +32,18 @@ interface Context {
 }
 
 interface CameraFixture {
+  bottom: number
+  left: number
   position: { x: number; y: number; set(x: number, y: number, z: number): void }
+  right: number
+  top: number
   updateMatrixWorld(force?: boolean): void
   updateProjectionMatrix(): void
+}
+
+interface IndexProjection {
+  batch: SpriteBatch
+  visibleSlots: Uint32Array
 }
 
 const ROOT = resolve(import.meta.dirname, '../../..')
@@ -57,6 +66,51 @@ function collectBatches(group: SpriteGroup): SpriteBatch[] {
   const batches: SpriteBatch[] = []
   for (const run of group.batches.values()) batches.push(...run)
   return batches
+}
+
+class VisibleIndexPrototype {
+  private readonly _batches: IndexProjection[]
+  private _lastCount = 0
+  private _lastChecksum = 0
+
+  constructor(batches: readonly SpriteBatch[]) {
+    this._batches = batches.map((batch) => ({
+      batch,
+      visibleSlots: new Uint32Array(batch.maxSize),
+    }))
+  }
+
+  project(camera: CameraFixture): number {
+    const minX = camera.position.x + camera.left
+    const maxX = camera.position.x + camera.right
+    const minY = camera.position.y + camera.bottom
+    const maxY = camera.position.y + camera.top
+    let checksum = 0
+    let total = 0
+
+    for (const projection of this._batches) {
+      let row = 0
+      for (const sprite of projection.batch.grid.querySegment(minX, minY, maxX, maxY)) {
+        const x = sprite.position.x
+        const y = sprite.position.y
+        if (!sprite.visible || x < minX || x > maxX || y < minY || y > maxY) continue
+        const slot = sprite._batchSlot
+        if (slot < 0 || sprite._batchMesh !== projection.batch) continue
+        projection.visibleSlots[row++] = slot
+        checksum = ((checksum << 5) - checksum + slot) | 0
+      }
+      total += row
+    }
+    this._lastCount = total
+    this._lastChecksum = checksum
+    return total ^ checksum
+  }
+
+  assertPublished(): void {
+    if (this._lastCount === 0 || !Number.isInteger(this._lastChecksum)) {
+      throw new Error('Visible index projection was not published')
+    }
+  }
 }
 
 function createContext(count: number, occupancy: Occupancy): Context {
@@ -119,8 +173,9 @@ function mutate(context: Context, motion: Motion): void {
   }
 }
 
-function renderBoundary(context: Context): void {
+function renderBoundary(context: Context): number {
   context.group.update()
+  let submitted = 0
   for (const batch of context.batches) {
     batch.onBeforeRender(
       context.renderer as never,
@@ -130,20 +185,27 @@ function renderBoundary(context: Context): void {
       batch.material as never,
       context.group as never
     )
+    submitted += batch.count
   }
+  return submitted
 }
 
-function register(name: string, count: number, occupancy: Occupancy, motion: Motion): void {
-  bench(name, function* () {
+function register(name: string, count: number, occupancy: Occupancy, motion: Motion, indexed: boolean): void {
+  bench(`${name} / ${indexed ? 'visible-index prototype' : 'authoritative rows'}`, function* () {
     const context = createContext(count, occupancy)
+    const projection = indexed ? new VisibleIndexPrototype(context.batches) : null
     mutate(context, motion)
 
     try {
       yield {
-        bench: () => renderBoundary(context),
+        bench: () => {
+          const submitted = renderBoundary(context)
+          return projection?.project(context.camera) ?? submitted
+        },
         after: () => mutate(context, motion),
       }
 
+      projection?.assertPublished()
       if (context.group.spriteCount !== count) {
         throw new Error(`visibility fixture lost sprites for ${name}`)
       }
@@ -155,11 +217,16 @@ function register(name: string, count: number, occupancy: Occupancy, motion: Mot
   }).gc('inner')
 }
 
+function registerPair(name: string, count: number, occupancy: Occupancy, motion: Motion): void {
+  register(name, count, occupancy, motion, false)
+  register(name, count, occupancy, motion, true)
+}
+
 benchGroup('SpriteGroup camera-visible projection @visible-instance-compaction', () => {
-  register('dense static 16,384 @smoke', 16_384, 1, 'static')
-  register('20% camera pan 16,384', 16_384, 0.2, 'camera-pan')
-  register('5% camera pan 16,384', 16_384, 0.05, 'camera-pan')
-  register('dense static 60,000 @scale', 60_000, 1, 'static')
-  register('20% occupancy with 10% movement 60,000 @scale', 60_000, 0.2, 'ten-percent-moving')
-  register('5% occupancy with 10% movement 60,000 @scale', 60_000, 0.05, 'ten-percent-moving')
+  registerPair('dense static 16,384 @smoke', 16_384, 1, 'static')
+  registerPair('20% camera pan 16,384', 16_384, 0.2, 'camera-pan')
+  registerPair('5% camera pan 16,384', 16_384, 0.05, 'camera-pan')
+  registerPair('dense static 60,000 @scale', 60_000, 1, 'static')
+  registerPair('20% occupancy with 10% movement 60,000 @scale', 60_000, 0.2, 'ten-percent-moving')
+  registerPair('5% occupancy with 10% movement 60,000 @scale', 60_000, 0.05, 'ten-percent-moving')
 })
