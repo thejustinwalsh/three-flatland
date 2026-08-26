@@ -139,12 +139,36 @@ camera-layer APIs remain the command surface.
 Consumer budgets are reviewed only after a clean candidate capture. A preparation win cannot justify a
 runtime-size regression that breaches the existing shipped aggregate caps.
 
+## Evidence checkpoint: no production candidate accepted
+
+Candidate A (`11d1f4c7`) cached scene mesh membership through Three.js topology events. It improved the
+256-source preparation cases by 16.3–18.1%, but changed the 2,048-source cases by +1.6% and +15.6%.
+Discovery was not the dominant large-scene cost, so the change was reverted at `b6cca52f`.
+
+Benchmark-only candidate B (`c2563f9e`) established the preparation ceiling of a retained view: once
+views exist, a camera-only dirty pass has no discovery or swap/restore work. The authoritative path's
+clean p50 was 1.8140–2.0287 µs at 32 sources, 12.7841–13.7029 µs at 256, and
+175.7090–202.1250 µs at 2,048. The retained-view stub fell below useful timer resolution, so it is not
+an end-to-end speed claim.
+
+Production candidate B is rejected by the semantic stop condition. The current pass renders the
+authoritative scene, including foreign meshes, lines/points, lights, hierarchy visibility, layers, and
+user-extensible render callbacks on the original object identities. A dedicated scene can preserve that
+behavior only by mirroring the full render graph and continuously reconciling callback/material/lifecycle
+state, which makes it a second authoritative scene graph. Restricting the view to managed sprites would
+silently drop existing foreign/custom occluders or require a second fallback render with equivalent
+hide/restore work.
+
+No production code from either candidate remains. Reopen only when Three.js exposes a stable render-list
+filter/override boundary that preserves original object identity without scene mutation.
+
 ## Execution order
 
 1. Freeze the current traversal/swap behavior and output as the baseline.
 2. Implement the membership projection and candidate A.
 3. Run behavior, lifecycle, allocation, and Labs gates.
-4. Prototype B only if A leaves material swap/restore as a measured dominant cost.
+4. Prototype B only if A leaves material swap/restore as a measured dominant cost; reject it if exact
+   behavior requires a second authoritative scene graph.
 5. Run headed WebGPU parity and Three.js/react-three-fiber lighting examples for the winning candidate.
 6. Record the accepted or rejected result in `ECS-009` with exact source and evidence hashes.
 
