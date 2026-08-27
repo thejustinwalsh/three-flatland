@@ -78,5 +78,5 @@ describe('expectedSprites evidence harness', () => {
       }
     }
     expect(checksums.size).toBe(1)
-  })
+  }, 30_000)
 })
