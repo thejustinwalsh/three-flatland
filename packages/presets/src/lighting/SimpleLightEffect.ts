@@ -1,23 +1,7 @@
 import { Vector2 } from 'three'
-import {
-  vec2,
-  vec3,
-  vec4,
-  float,
-  int,
-  Fn,
-  Loop,
-  If,
-  Break,
-} from 'three/tsl'
+import { vec2, vec3, vec4, float, int, Fn, Loop, If, Break } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import {
-  createLightEffect,
-  ForwardPlusLighting,
-  MAX_LIGHTS_PER_TILE,
-  TILE_SIZE,
-} from 'three-flatland'
-import type { Light2D } from 'three-flatland'
+import { createLightEffect, ForwardPlusLighting, MAX_LIGHTS_PER_TILE, TILE_SIZE } from 'three-flatland'
 
 /**
  * Simple tiled lighting: Forward+ per-tile culling with minimal features.
@@ -42,7 +26,7 @@ export const SimpleLightEffect = createLightEffect({
     // Constants (per-instance, read-only reference, mutable internals)
     forwardPlus: () => new ForwardPlusLighting(),
   } as const,
-  requires: ['normal'] as const,
+  requires: ['normal', 'elevation'] as const,
   light: ({ uniforms, constants, lightStore }) => {
     const lightHeight = uniforms.lightHeight
 
@@ -55,10 +39,7 @@ export const SimpleLightEffect = createLightEffect({
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
 
         // Compute tile index from world position
-        const screenPos = surfacePos
-          .sub(fp.worldOffsetNode)
-          .div(fp.worldSizeNode)
-          .mul(fp.screenSizeNode)
+        const screenPos = surfacePos.sub(fp.worldOffsetNode).div(fp.worldSizeNode).mul(fp.screenSizeNode)
         const tileX = int(screenPos.x.div(float(TILE_SIZE)).floor())
         const tileY = int(screenPos.y.div(float(TILE_SIZE)).floor())
         const tileIndex = tileY.mul(fp.tileCountXNode).add(tileX)
@@ -69,7 +50,10 @@ export const SimpleLightEffect = createLightEffect({
             Break()
           })
 
-          const idx = float(lightId.sub(int(1)))
+          // Keep the subtraction in float space. Three r185's TSL optimizer
+          // otherwise lowers this mixed int/float expression to invalid shader
+          // source on the WebGPU path.
+          const idx = float(lightId).sub(float(1))
           const { row0, row1, row2, row3 } = lightStore.readLightData(idx)
 
           const lightPos = vec2(row0.r, row0.g)
@@ -106,7 +90,8 @@ export const SimpleLightEffect = createLightEffect({
 
           // Normal-based directional diffuse shading
           // Ambient lights are omnidirectional — skip normal-based diffuse
-          const lightDir3D = vec3(toLight.normalize(), lightHeight).normalize()
+          const safeDist = dist.max(float(0.0001))
+          const lightDir3D = vec3(toLight.div(safeDist), lightHeight.sub(ctx.elevation)).normalize()
           const isAmbient = lightType.greaterThan(float(2.5))
           const NdotL = ctx.normal.dot(lightDir3D).clamp(0, 1)
           const diffuse = isAmbient.select(float(1), NdotL)
@@ -129,7 +114,7 @@ export const SimpleLightEffect = createLightEffect({
   },
   update(ctx) {
     this.forwardPlus.setWorldBounds(ctx.worldSize, ctx.worldOffset)
-    this.forwardPlus.update(ctx.lights as Light2D[], ctx.lightStore.maxLights)
+    this.forwardPlus.update(ctx.lights, ctx.lightStore.maxLights)
   },
   resize(w, h) {
     this.forwardPlus.resize(w, h)

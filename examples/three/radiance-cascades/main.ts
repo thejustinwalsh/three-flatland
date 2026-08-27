@@ -471,7 +471,9 @@ async function main(): Promise<void> {
     params.hrcCompositionLevels = hrcLighting.radiance.compositionLevels
     params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
   }
-  const { pane, update: updateDevtools } = createPane({ driver: 'manual' })
+  const paneBundle = createPane({ driver: 'manual' })
+  const { pane } = paneBundle
+  const updateDevtools = () => paneBundle.update()
   const folder = pane.addFolder({ title: 'Radiance Cascades', expanded: true })
   folder
     .addBinding(params, 'algorithm', {
@@ -1305,7 +1307,7 @@ async function main(): Promise<void> {
     }
   }
 
-  renderer.setAnimationLoop(animate)
+  void renderer.setAnimationLoop(animate)
 }
 
 main().catch((error: unknown) => {
@@ -1316,7 +1318,7 @@ main().catch((error: unknown) => {
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
-    activeRenderer?.setAnimationLoop(null)
+    void activeRenderer?.setAnimationLoop(null)
     activeRenderer?.dispose()
     activeRenderer?.domElement.remove()
     activeRenderer = null

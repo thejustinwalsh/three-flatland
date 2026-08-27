@@ -25,13 +25,13 @@ const sdfAwareDownsample = Fn( ( [ uv, lightTex, sdfTex ] ) => {
     for ( let y = -1; y <= 1; y ++ ) {
       const offset = vec2( x, y ).mul( texelSize );
       const neighborUV = uv.add( offset );
-      
+
       const neighborLight = texture( lightTex, neighborUV ).rgb;
       const neighborSDF = texture( sdfTex, neighborUV ).r;
 
       // Weight is 0 if neighbor is on the other side of a wall
       const weight = sign( centerSDF ).equal( sign( neighborSDF ) ).select( 1.0, 0.0 );
-      
+
       totalFluence.addAssign( neighborLight.mul( weight ) );
       totalWeight.addAssign( weight );
     }

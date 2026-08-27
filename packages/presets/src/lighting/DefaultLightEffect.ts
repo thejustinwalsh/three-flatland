@@ -8,7 +8,6 @@ import {
   readCastShadowFlag,
   readShadowRadius,
 } from 'three-flatland'
-import type { Light2D } from 'three-flatland'
 import { shadowSDF2D } from '@three-flatland/nodes/lighting'
 
 /**
@@ -404,7 +403,7 @@ const _DefaultLightEffect = createLightEffect({
   },
   update(ctx) {
     this.forwardPlus.setWorldBounds(ctx.worldSize, ctx.worldOffset)
-    this.forwardPlus.update(ctx.lights as Light2D[], ctx.lightStore.maxLights)
+    this.forwardPlus.update(ctx.lights, ctx.lightStore.maxLights)
   },
   resize(w, h) {
     this.forwardPlus.resize(w, h)

@@ -26,11 +26,7 @@ export type {
 export { OcclusionPass } from './OcclusionPass'
 export type { OcclusionPassOptions } from './OcclusionPass'
 export { SDFGenerator } from './SDFGenerator'
-export {
-  RadianceCascades,
-  RADIANCE_CASCADES_PRESETS,
-  createRadianceCascadesConfig,
-} from './RadianceCascades'
+export { RadianceCascades, RADIANCE_CASCADES_PRESETS, createRadianceCascadesConfig } from './RadianceCascades'
 export type { RadianceCascadesConfig, RadianceCascadesQuality } from './RadianceCascades'
 export {
   HierarchicalRadianceCascades,
@@ -39,6 +35,7 @@ export {
 } from './HierarchicalRadianceCascades'
 export type {
   HierarchicalRadianceCascadesConfig,
+  HolographicRadianceCascadesLevelInfo,
   HierarchicalRadianceCascadesMode,
   HierarchicalRadianceCascadesQuality,
 } from './HierarchicalRadianceCascades'

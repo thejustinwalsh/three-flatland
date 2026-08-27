@@ -56,7 +56,7 @@ We are applying 3D AAA optimizations to a 2D Web environment using TSL.
 SDF-Adaptive Quadtrees: Standard 2D Forward+ uses a fixed grid. By using the SDF to define tile size, we can use massive tiles for "empty" space and tiny tiles for detailed corners. This "out of the box" trick drastically reduces the light-loop overhead on low-end hardware.
 TSL Cross-Compilation: Unlike pure GLSL/WGSL projects, our approach uses Three.js's new Shading Language to automatically swap between Native Compute (WebGPU) and GPGPU Texture Hacks (WebGL) without rewriting the core math.
 
-Mipmapped "Fake" Radiance: We bypass the complex hierarchical merging of Radiance Cascades by using simple texture mipmaps of emissive objects. This simulates "light bounce" (GI) for nearly zero extra cost—a trick used in early PS3/360 titles that most 2D web devs overlook today. 
+Mipmapped "Fake" Radiance: We bypass the complex hierarchical merging of Radiance Cascades by using simple texture mipmaps of emissive objects. This simulates "light bounce" (GI) for nearly zero extra cost—a trick used in early PS3/360 titles that most 2D web devs overlook today.
 
 # Further consideration
 

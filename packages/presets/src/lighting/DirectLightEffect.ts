@@ -1,14 +1,6 @@
-import {
-  vec2,
-  vec3,
-  vec4,
-  float,
-  Fn,
-  Loop,
-  If,
-} from 'three/tsl'
+import { vec2, vec3, vec4, float, Fn, Loop, If } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { createLightEffect } from 'three-flatland'
+import { createLightEffect, readCastShadowFlag, readShadowRadius } from 'three-flatland'
 import type { LightEffectBuildContext } from 'three-flatland'
 import { shadowSDF2D } from '@three-flatland/nodes/lighting'
 
@@ -41,7 +33,9 @@ export const DirectLightEffect = createLightEffect({
   name: 'directLight',
   schema: {
     shadowStrength: 0.6,
-    shadowBias: 0.04,
+    shadowBias: 0.5,
+    shadowStartOffsetScale: 1,
+    shadowMaxDistance: 0,
     bands: 0,
     pixelSize: 0,
     glowRadius: 0,
@@ -51,10 +45,18 @@ export const DirectLightEffect = createLightEffect({
     rimPower: 2,
   } as const,
   needsShadows: true,
-  requires: ['normal'] as const,
-  light: ({ uniforms, lightStore, sdfTexture, worldSizeNode, worldOffsetNode }: LightEffectBuildContext<{
+  requires: ['normal', 'elevation'] as const,
+  light: ({
+    uniforms,
+    lightStore,
+    sdfTexture,
+    worldSizeNode,
+    worldOffsetNode,
+  }: LightEffectBuildContext<{
     shadowStrength: 0.6
-    shadowBias: 0.04
+    shadowBias: 0.5
+    shadowStartOffsetScale: 1
+    shadowMaxDistance: 0
     bands: 0
     pixelSize: 0
     glowRadius: 0
@@ -66,6 +68,8 @@ export const DirectLightEffect = createLightEffect({
     const count = lightStore.countNode
     const shadowStrength = uniforms.shadowStrength
     const shadowBias = uniforms.shadowBias
+    const shadowStartOffsetScale = uniforms.shadowStartOffsetScale
+    const shadowMaxDistance = uniforms.shadowMaxDistance
     const bands = uniforms.bands
     const pixelSize = uniforms.pixelSize
     const glowRadius = uniforms.glowRadius
@@ -83,90 +87,85 @@ export const DirectLightEffect = createLightEffect({
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
         const totalRim = vec3(0, 0, 0).toVar('totalRim')
 
-        Loop(
-          { start: 0, end: count, type: 'float', condition: '<' },
-          ({ i }: { i: Node<'float'> }) => {
-            const { row0, row1, row2, row3 } = lightStore.readLightData(i)
+        Loop({ start: 0, end: count, type: 'float', condition: '<' }, ({ i }: { i: Node<'float'> }) => {
+          const { row0, row1, row2, row3 } = lightStore.readLightData(i)
 
-            const lightPos = vec2(row0.r, row0.g)
-            const lightColor = vec3(row0.b, row0.a, row1.r)
-            const lightIntensityVal = row1.g
-            const lightDistance = row1.b
-            const lightDecay = row1.a
-            const lightDir = vec2(row2.r, row2.g)
-            const lightAngle = row2.b
-            const lightPenumbra = row2.a
-            const lightType = row3.r
-            const lightEnabled = row3.g
+          const lightPos = vec2(row0.r, row0.g)
+          const lightColor = vec3(row0.b, row0.a, row1.r)
+          const lightIntensityVal = row1.g
+          const lightDistance = row1.b
+          const lightDecay = row1.a
+          const lightDir = vec2(row2.r, row2.g)
+          const lightAngle = row2.b
+          const lightPenumbra = row2.a
+          const lightType = row3.r
+          const lightEnabled = row3.g
+          const lightCastsShadow = row3.b
 
-            const contribution = lightColor.mul(lightIntensityVal).mul(lightEnabled)
+          const contribution = lightColor.mul(lightIntensityVal).mul(lightEnabled)
 
-            // Point light attenuation
-            const effectiveDistance = lightDistance.greaterThan(float(0)).select(lightDistance, float(1e6))
-            const toLight = lightPos.sub(vec2(surfacePos))
-            const dist = toLight.length()
-            const normalizedDist = dist.div(effectiveDistance).clamp(0, 1)
-            const sharpAtten = float(1).sub(normalizedDist.pow(lightDecay)).clamp(0, 1)
+          // Point light attenuation
+          const effectiveDistance = lightDistance.greaterThan(float(0)).select(lightDistance, float(1e6))
+          const toLight = lightPos.sub(vec2(surfacePos))
+          const dist = toLight.length()
+          const normalizedDist = dist.div(effectiveDistance).clamp(0, 1)
+          const sharpAtten = float(1).sub(normalizedDist.pow(lightDecay)).clamp(0, 1)
 
-            // Broad glow
-            const useGlow = glowRadius.greaterThan(float(0))
-            const glowDist = dist.div(effectiveDistance.mul(glowRadius)).clamp(0, 1)
-            const broadAtten = float(1).sub(glowDist).clamp(0, 1)
-            const pointAtten = useGlow.select(
-              sharpAtten.add(broadAtten.mul(glowIntensity)).clamp(0, 1),
-              sharpAtten
-            )
+          // Broad glow
+          const useGlow = glowRadius.greaterThan(float(0))
+          const glowDist = dist.div(effectiveDistance.mul(glowRadius)).clamp(0, 1)
+          const broadAtten = float(1).sub(glowDist).clamp(0, 1)
+          const pointAtten = useGlow.select(sharpAtten.add(broadAtten.mul(glowIntensity)).clamp(0, 1), sharpAtten)
 
-            // Spot light cone
-            const toSurfaceNorm = vec2(surfacePos).sub(lightPos).normalize()
-            const spotCos = toSurfaceNorm.dot(lightDir.normalize())
-            const innerCos = lightAngle.cos()
-            const outerCos = lightAngle.add(lightPenumbra).cos()
-            const coneAtten = spotCos.sub(outerCos).div(innerCos.sub(outerCos)).clamp(0, 1)
+          // Spot light cone
+          const toSurfaceNorm = vec2(surfacePos).sub(lightPos).normalize()
+          const spotCos = toSurfaceNorm.dot(lightDir.normalize())
+          const innerCos = lightAngle.cos()
+          const outerCos = lightAngle.add(lightPenumbra).cos()
+          const coneAtten = spotCos.sub(outerCos).div(innerCos.sub(outerCos)).clamp(0, 1)
 
-            // Select attenuation by type
-            const isPoint = lightType.lessThan(float(0.5))
-            const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
-            const atten = isPoint.select(pointAtten, isSpot.select(pointAtten.mul(coneAtten), float(1)))
+          // Select attenuation by type
+          const isPoint = lightType.lessThan(float(0.5))
+          const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
+          const atten = isPoint.select(pointAtten, isSpot.select(pointAtten.mul(coneAtten), float(1)))
 
-            // Normal-based directional diffuse shading
-            // Ambient lights are omnidirectional — skip normal-based diffuse
-            const lightDir3D = vec3(toLight.normalize(), lightHeight).normalize()
-            const isAmbient = lightType.greaterThan(float(2.5))
-            const NdotL = ctx.normal.dot(lightDir3D).clamp(0, 1)
-            const diffuse = isAmbient.select(float(1), NdotL)
+          // Normal-based directional diffuse shading
+          // Ambient lights are omnidirectional — skip normal-based diffuse
+          const safeDist = dist.max(float(0.0001))
+          const lightDir3D = vec3(toLight.div(safeDist), lightHeight.sub(ctx.elevation)).normalize()
+          const isAmbient = lightType.greaterThan(float(2.5))
+          const NdotL = ctx.normal.dot(lightDir3D).clamp(0, 1)
+          const diffuse = isAmbient.select(float(1), NdotL)
 
-            // SDF sphere-traced soft shadow — see DefaultLightEffect for
-            // the detailed comment. Same pattern, different light loop.
-            const shadow = float(1).toVar('shadow')
-            if (sdfTexture) {
-              const shouldTrace = isAmbient.not().and(NdotL.greaterThan(float(0)))
-              If(shouldTrace, () => {
-                const trace = shadowSDF2D(
-                  vec2(surfacePos),
-                  lightPos,
-                  sdfTexture,
-                  worldSizeNode,
-                  worldOffsetNode,
-                  { eps: shadowBias }
-                )
-                shadow.assign(float(1).sub(float(1).sub(trace).mul(shadowStrength)))
+          // SDF sphere-traced soft shadow — see DefaultLightEffect for
+          // the detailed comment. Same pattern, different light loop.
+          const shadow = float(1).toVar('shadow')
+          if (sdfTexture) {
+            const shouldTrace = isAmbient
+              .not()
+              .and(NdotL.greaterThan(float(0)))
+              .and(atten.greaterThan(float(0.01)))
+              .and(lightCastsShadow.greaterThan(float(0.5)))
+            If(shouldTrace, () => {
+              const trace = shadowSDF2D(vec2(surfacePos), lightPos, sdfTexture, worldSizeNode, worldOffsetNode, {
+                eps: shadowBias,
+                startOffset: readShadowRadius().mul(shadowStartOffsetScale),
+                fragmentCastsShadow: readCastShadowFlag(),
+                maxShadowDistance: shadowMaxDistance,
               })
-            }
-            totalLight.addAssign(contribution.mul(atten).mul(diffuse).mul(shadow))
-
-            // Rim lighting — edge highlight from inverse normal dot
-            const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
-            totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
+              shadow.assign(float(1).sub(float(1).sub(trace).mul(shadowStrength)))
+            })
           }
-        )
+          totalLight.addAssign(contribution.mul(atten).mul(diffuse).mul(shadow))
+
+          // Rim lighting — edge highlight from inverse normal dot
+          const rimFactor = isAmbient.select(float(0), float(1).sub(NdotL).pow(rimPower))
+          totalRim.addAssign(contribution.mul(atten).mul(rimFactor))
+        })
 
         // Add rim to diffuse lighting
         const useRim = rimIntensity.greaterThan(float(0))
-        const combined = useRim.select(
-          vec3(totalLight).add(vec3(totalRim).mul(rimIntensity)),
-          vec3(totalLight)
-        )
+        const combined = useRim.select(vec3(totalLight).add(vec3(totalRim).mul(rimIntensity)), vec3(totalLight))
 
         // Quantize to discrete bands
         const useBands = bands.greaterThan(float(0))

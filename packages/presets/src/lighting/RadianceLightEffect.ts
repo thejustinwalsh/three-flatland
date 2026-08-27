@@ -1,6 +1,5 @@
-import { vec2, vec3, vec4, Fn, texture as sampleTexture, uniform } from 'three/tsl'
+import { vec2, vec3, vec4, Fn, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { Vector2 } from 'three'
 import { createLightEffect, RadianceCascades, createRadianceCascadesConfig } from 'three-flatland'
 
 /**
@@ -30,14 +29,10 @@ export const RadianceLightEffect = createLightEffect({
     radianceIntensity: 1.0,
     // Constants (per-instance, read-only reference, mutable internals)
     radiance: () => new RadianceCascades(createRadianceCascadesConfig('balanced')),
-    occSize: () => uniform(new Vector2(1, 1)),
-    occOffset: () => uniform(new Vector2(0, 0)),
   } as const,
   needsShadows: true,
-  light: ({ uniforms, constants }) => {
+  light: ({ uniforms, constants, worldSizeNode, worldOffsetNode }) => {
     const radianceIntensity = uniforms.radianceIntensity
-    const occSize = constants.occSize
-    const occOffset = constants.occOffset
 
     // Capture the stable texture reference at node-build time.
     // RadianceCascades eagerly allocates its final RT in the constructor,
@@ -50,7 +45,7 @@ export const RadianceLightEffect = createLightEffect({
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
 
         // Sample radiance texture for indirect GI
-        const surfaceUV = vec2(ctx.worldPosition).sub(occOffset).div(occSize)
+        const surfaceUV = vec2(ctx.worldPosition).sub(worldOffsetNode).div(worldSizeNode)
         const indirect = sampleTexture(radianceTexture, surfaceUV)
         totalLight.addAssign(indirect.rgb.mul(radianceIntensity))
 
@@ -67,25 +62,13 @@ export const RadianceLightEffect = createLightEffect({
     const cameraWidth = ctx.camera.right - ctx.camera.left
     const cameraHeight = ctx.camera.top - ctx.camera.bottom
 
-    this.radiance.init(
-      cameraWidth,
-      cameraHeight,
-      ctx.lightStore.lightsTexture,
-      ctx.lightStore.countNode
-    )
+    this.radiance.init(cameraWidth, cameraHeight, ctx.lightStore.lightsTexture, ctx.lightStore.countNode)
   },
   update(ctx) {
     if (!ctx.sdfGenerator) return
 
     this.radiance.setWorldBounds(ctx.worldSize, ctx.worldOffset)
     this.radiance.generate(ctx.renderer, ctx.sdfGenerator.sdfTexture)
-
-    // Update world bounds uniforms — zero-cost, no shader rebuild
-    this.occSize.value.copy(ctx.worldSize)
-    this.occOffset.value.copy(ctx.worldOffset)
-  },
-  resize(w, h) {
-    this.radiance.resize(w, h)
   },
   dispose() {
     this.radiance.dispose()

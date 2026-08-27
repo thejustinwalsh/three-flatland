@@ -318,7 +318,7 @@ export class ForwardPlusLighting {
     return this._fillQuotas[bucket]!
   }
 
-  update(lights: Light2D[], maxLights: number = lights.length): void {
+  update(lights: readonly Light2D[], maxLights: number = lights.length): void {
     if (this._tileCount === 0) return
     // The shader looks up each tile slot's `lightIdx` in the lights
     // DataTexture (LightStore). LightStore writes only the first

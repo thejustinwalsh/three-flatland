@@ -15,6 +15,7 @@ export const EXAMPLE_GEMS: Record<string, Gem | null> = {
   'knightmark': 'amethyst',
   'lighting': 'emerald',
   'pass-effects': 'ruby',
+  'radiance-cascades': 'ruby',
   'skia': 'turquoize',
   'slug-text': 'diamond',
   'tilemap': 'salmon',

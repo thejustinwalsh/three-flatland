@@ -3,6 +3,7 @@ import type { DefaultLightEffect } from '../lighting/DefaultLightEffect'
 import type { DirectLightEffect } from '../lighting/DirectLightEffect'
 import type { SimpleLightEffect } from '../lighting/SimpleLightEffect'
 import type { RadianceLightEffect } from '../lighting/RadianceLightEffect'
+import type { HierarchicalRadianceLightEffect } from '../lighting/HierarchicalRadianceLightEffect'
 import type { NormalMapProvider } from '../lighting/NormalMapProvider'
 
 declare module '@react-three/fiber' {
@@ -11,6 +12,7 @@ declare module '@react-three/fiber' {
     directLightEffect: LightEffectElement<typeof DirectLightEffect>
     simpleLightEffect: LightEffectElement<typeof SimpleLightEffect>
     radianceLightEffect: LightEffectElement<typeof RadianceLightEffect>
+    hierarchicalRadianceLightEffect: LightEffectElement<typeof HierarchicalRadianceLightEffect>
     normalMapProvider: EffectElement<typeof NormalMapProvider>
   }
 }
