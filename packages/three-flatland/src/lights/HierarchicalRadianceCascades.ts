@@ -86,9 +86,11 @@ export interface HolographicRadianceCascadesLevelInfo {
   outputHeight: number
   /** Padded quadrant grid dimension used to pack all four rotated quadrants into one atlas shape. */
   outputMaxDimension: number
+  /** Number of packed logical Holographic segments: four rotations times two parity offsets. */
+  segmentCount: number
   /** Probe columns after decimating only along the quadrant-facing axis. */
   probeWidth: number
-  /** Probe rows; spatial resolution perpendicular to the quadrant is preserved. */
+  /** Probe rows per logical segment. */
   probeHeight: number
   /** Number of transfer directions `k = 0..2^n`. */
   transferDirectionCount: number
@@ -356,11 +358,11 @@ export class HierarchicalRadianceCascades {
   }
 
   get estimatedHolographicTransferValueCount(): number {
-    return this._holographicLevelInfo().reduce((sum, level) => sum + level.transferValueCount, 0) * 4
+    return this._holographicLevelInfo().reduce((sum, level) => sum + level.transferValueCount, 0) * 8
   }
 
   get estimatedHolographicRadianceValueCount(): number {
-    return this._holographicLevelInfo().reduce((sum, level) => sum + level.radianceValueCount, 0) * 4
+    return this._holographicLevelInfo().reduce((sum, level) => sum + level.radianceValueCount, 0) * 8
   }
 
   get holographicTransferAtlasTextures(): Texture[] {
@@ -721,7 +723,7 @@ export class HierarchicalRadianceCascades {
     if (this._config.compositionMode !== 'holographic') return 0
     return this._holographicLevelInfo()
       .slice(0, 3)
-      .reduce((sum, level) => sum + level.transferValueCount * 4, 0)
+      .reduce((sum, level) => sum + level.transferValueCount * 8, 0)
   }
 
   get estimatedHolographicDirectTransferSampleCount(): number {
@@ -735,7 +737,7 @@ export class HierarchicalRadianceCascades {
     if (this._config.compositionMode !== 'holographic') return 0
     return this._holographicLevelInfo()
       .slice(3)
-      .reduce((sum, level) => sum + level.transferValueCount * 4, 0)
+      .reduce((sum, level) => sum + level.transferValueCount * 8, 0)
   }
 
   get estimatedHolographicRadianceTexelCount(): number {
@@ -994,23 +996,27 @@ export class HierarchicalRadianceCascades {
     const baseAngular = Math.sqrt(this._config.baseRayCount)
     const output = this._holographicFinalRadianceDimensions(resolution)
     const outputMaxDimension = Math.max(output.width, output.height)
-    const terminalLevel = Math.max(1, Math.ceil(Math.log2(Math.max(1, outputMaxDimension))))
+    const segmentCount = 8
+    const baseGridSize = Math.max(1, Math.ceil(outputMaxDimension / 2))
+    const terminalLevel = Math.max(1, Math.ceil(Math.log2(Math.max(1, baseGridSize))))
     const levels: HolographicRadianceCascadesLevelInfo[] = []
     for (let level = 0; level <= terminalLevel; level++) {
       const stride = 2 ** level
-      const probeWidth = Math.ceil(outputMaxDimension / stride)
-      const probeHeight = outputMaxDimension
-      const transferDirectionCount = stride + 1
-      const radianceDirectionCount = level < terminalLevel ? stride : 0
+      const directionCount = stride * 2
+      const probeWidth = Math.ceil(baseGridSize / stride)
+      const probeHeight = baseGridSize
+      const transferDirectionCount = directionCount + 1
+      const radianceDirectionCount = level < terminalLevel ? directionCount : 0
       const transferAtlasWidth = probeWidth * transferDirectionCount
-      const transferAtlasHeight = probeHeight * 4
+      const transferAtlasHeight = probeHeight * segmentCount
       const radianceAtlasWidth = probeWidth * radianceDirectionCount
-      const radianceAtlasHeight = radianceDirectionCount > 0 ? probeHeight * 4 : 0
+      const radianceAtlasHeight = radianceDirectionCount > 0 ? probeHeight * segmentCount : 0
       levels.push({
         level,
         outputWidth: output.width,
         outputHeight: output.height,
         outputMaxDimension,
+        segmentCount,
         probeWidth,
         probeHeight,
         transferDirectionCount,
@@ -1229,37 +1235,43 @@ export class HierarchicalRadianceCascades {
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
       const atlasCoord = uv().mul(vec2(float(transferAtlasWidth), float(transferAtlasHeight)))
-      const quadrant = floor(atlasCoord.y.div(float(probeHeight)))
+      const segmentIndex = floor(atlasCoord.y.div(float(probeHeight)))
+      const rotation = floor(segmentIndex.div(float(2)))
+      const segmentPhase = mod(segmentIndex, float(2))
       const localY = mod(atlasCoord.y, float(probeHeight))
       const directionIndex = floor(atlasCoord.x.div(float(probeWidth)))
       const probeX = mod(atlasCoord.x, float(probeWidth))
       const parallel = probeX.mul(float(stride))
       const perpendicular = localY
-      const lateralOffset = directionIndex.mul(float(2)).sub(float(stride))
-      const validGrid = parallel
+      const lateralOffset = directionIndex.sub(float(stride))
+      const fullParallel = parallel.mul(float(2))
+      const fullPerpendicular = perpendicular.mul(float(2)).add(segmentPhase)
+      const fullLateralOffset = lateralOffset.mul(float(2))
+      const fullStride = float(stride * 2)
+      const validGrid = fullParallel
         .lessThan(float(outputWidth))
-        .and(perpendicular.lessThan(float(outputHeight)))
+        .and(fullPerpendicular.lessThan(float(outputHeight)))
         .toVar()
 
-      const startGrid = vec2(parallel, perpendicular).toVar()
-      const offsetGrid = vec2(float(stride), lateralOffset).toVar()
+      const startGrid = vec2(fullParallel, fullPerpendicular).toVar()
+      const offsetGrid = vec2(fullStride, fullLateralOffset).toVar()
 
-      If(quadrant.greaterThan(float(0.5)).and(quadrant.lessThan(float(1.5))), () => {
-        validGrid.assign(parallel.lessThan(float(outputHeight)).and(perpendicular.lessThan(float(outputWidth))))
-        startGrid.assign(vec2(float(outputWidth).sub(perpendicular), parallel))
-        offsetGrid.assign(vec2(lateralOffset.mul(float(-1)), float(stride)))
+      If(rotation.greaterThan(float(0.5)).and(rotation.lessThan(float(1.5))), () => {
+        validGrid.assign(fullParallel.lessThan(float(outputHeight)).and(fullPerpendicular.lessThan(float(outputWidth))))
+        startGrid.assign(vec2(float(outputWidth).sub(fullPerpendicular), fullParallel))
+        offsetGrid.assign(vec2(fullLateralOffset.mul(float(-1)), fullStride))
       })
 
-      If(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))), () => {
-        validGrid.assign(parallel.lessThan(float(outputWidth)).and(perpendicular.lessThan(float(outputHeight))))
-        startGrid.assign(vec2(float(outputWidth).sub(parallel), perpendicular))
-        offsetGrid.assign(vec2(float(-stride), lateralOffset.mul(float(-1))))
+      If(rotation.greaterThan(float(1.5)).and(rotation.lessThan(float(2.5))), () => {
+        validGrid.assign(fullParallel.lessThan(float(outputWidth)).and(fullPerpendicular.lessThan(float(outputHeight))))
+        startGrid.assign(vec2(float(outputWidth).sub(fullParallel), fullPerpendicular))
+        offsetGrid.assign(vec2(fullStride.mul(float(-1)), fullLateralOffset.mul(float(-1))))
       })
 
-      If(quadrant.greaterThan(float(2.5)), () => {
-        validGrid.assign(parallel.lessThan(float(outputHeight)).and(perpendicular.lessThan(float(outputWidth))))
-        startGrid.assign(vec2(perpendicular, float(outputHeight).sub(parallel)))
-        offsetGrid.assign(vec2(lateralOffset, float(-stride)))
+      If(rotation.greaterThan(float(2.5)), () => {
+        validGrid.assign(fullParallel.lessThan(float(outputHeight)).and(fullPerpendicular.lessThan(float(outputWidth))))
+        startGrid.assign(vec2(fullPerpendicular, float(outputHeight).sub(fullParallel)))
+        offsetGrid.assign(vec2(fullLateralOffset, fullStride.mul(float(-1))))
       })
 
       const outputSize = vec2(float(outputWidth), float(outputHeight))
@@ -1350,7 +1362,8 @@ export class HierarchicalRadianceCascades {
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
       const atlasCoord = uv().mul(vec2(float(transferAtlasWidth), float(transferAtlasHeight)))
-      const quadrant = floor(atlasCoord.y.div(float(probeHeight)))
+      const segmentIndex = floor(atlasCoord.y.div(float(probeHeight)))
+      const rotation = floor(segmentIndex.div(float(2)))
       const localY = mod(atlasCoord.y, float(probeHeight))
       const directionIndex = floor(atlasCoord.x.div(float(probeWidth)))
       const probeX = mod(atlasCoord.x, float(probeWidth))
@@ -1358,16 +1371,16 @@ export class HierarchicalRadianceCascades {
 
       const samplePrevious = (sampleParallel: Node<'float'>, sampleY: Node<'float'>, sampleDirection: Node<'float'>) => {
         const sourceProbeX = floor(sampleParallel.div(float(previousStride)))
-        const usesHorizontalPrimary = quadrant
+        const usesHorizontalPrimary = rotation
           .lessThan(float(0.5))
-          .or(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))))
+          .or(rotation.greaterThan(float(1.5)).and(rotation.lessThan(float(2.5))))
         const primaryLimit = usesHorizontalPrimary.select(
-          float(previousInfo.outputWidth),
-          float(previousInfo.outputHeight)
+          float(Math.ceil(previousInfo.outputWidth / 2)),
+          float(Math.ceil(previousInfo.outputHeight / 2))
         )
         const perpendicularLimit = usesHorizontalPrimary.select(
-          float(previousInfo.outputHeight),
-          float(previousInfo.outputWidth)
+          float(Math.ceil(previousInfo.outputHeight / 2)),
+          float(Math.ceil(previousInfo.outputWidth / 2))
         )
         const valid = sourceProbeX
           .greaterThanEqual(float(0))
@@ -1381,7 +1394,7 @@ export class HierarchicalRadianceCascades {
           .and(sampleDirection.lessThan(float(previousInfo.transferDirectionCount)))
         const coord = vec2(
           sampleDirection.mul(float(previousProbeWidth)).add(sourceProbeX).add(float(0.5)),
-          quadrant.mul(float(previousProbeHeight)).add(sampleY).add(float(0.5))
+          segmentIndex.mul(float(previousProbeHeight)).add(sampleY).add(float(0.5))
         )
         const sampled = sampleTexture(sourceTexture, coord.div(vec2(float(previousAtlasWidth), float(previousAtlasHeight))))
         return sampled.mul(valid.select(float(1), float(0)))
@@ -1481,7 +1494,8 @@ export class HierarchicalRadianceCascades {
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
       const atlasCoord = uv().mul(vec2(float(radianceAtlasWidth), float(radianceAtlasHeight)))
-      const quadrant = floor(atlasCoord.y.div(float(probeHeight)))
+      const segmentIndex = floor(atlasCoord.y.div(float(probeHeight)))
+      const rotation = floor(segmentIndex.div(float(2)))
       const localY = mod(atlasCoord.y, float(probeHeight))
       const directionIndex = floor(atlasCoord.x.div(float(probeWidth)))
       const probeX = mod(atlasCoord.x, float(probeWidth))
@@ -1503,11 +1517,17 @@ export class HierarchicalRadianceCascades {
       ) => {
         const sampleStride = 2 ** info.level
         const sourceProbeX = floor(sampleParallel.div(float(sampleStride)))
-        const usesHorizontalPrimary = quadrant
+        const usesHorizontalPrimary = rotation
           .lessThan(float(0.5))
-          .or(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))))
-        const primaryLimit = usesHorizontalPrimary.select(float(info.outputWidth), float(info.outputHeight))
-        const perpendicularLimit = usesHorizontalPrimary.select(float(info.outputHeight), float(info.outputWidth))
+          .or(rotation.greaterThan(float(1.5)).and(rotation.lessThan(float(2.5))))
+        const primaryLimit = usesHorizontalPrimary.select(
+          float(Math.ceil(info.outputWidth / 2)),
+          float(Math.ceil(info.outputHeight / 2))
+        )
+        const perpendicularLimit = usesHorizontalPrimary.select(
+          float(Math.ceil(info.outputHeight / 2)),
+          float(Math.ceil(info.outputWidth / 2))
+        )
         const valid = sourceProbeX
           .greaterThanEqual(float(0))
           .and(sourceProbeX.lessThan(float(info.probeWidth)))
@@ -1520,7 +1540,7 @@ export class HierarchicalRadianceCascades {
           .and(sampleDirection.lessThan(float(info.transferDirectionCount)))
         const coord = vec2(
           sampleDirection.mul(float(info.probeWidth)).add(sourceProbeX).add(float(0.5)),
-          quadrant.mul(float(info.probeHeight)).add(sampleY).add(float(0.5))
+          segmentIndex.mul(float(info.probeHeight)).add(sampleY).add(float(0.5))
         )
         const sampled = sampleTexture(texture, coord.div(vec2(float(info.transferAtlasWidth), float(info.transferAtlasHeight))))
         return sampled.mul(valid.select(float(1), float(0)))
@@ -1536,11 +1556,17 @@ export class HierarchicalRadianceCascades {
         }
 
         const sourceProbeX = floor(sampleParallel.div(float(nextStride)))
-        const usesHorizontalPrimary = quadrant
+        const usesHorizontalPrimary = rotation
           .lessThan(float(0.5))
-          .or(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))))
-        const primaryLimit = usesHorizontalPrimary.select(float(nextInfo.outputWidth), float(nextInfo.outputHeight))
-        const perpendicularLimit = usesHorizontalPrimary.select(float(nextInfo.outputHeight), float(nextInfo.outputWidth))
+          .or(rotation.greaterThan(float(1.5)).and(rotation.lessThan(float(2.5))))
+        const primaryLimit = usesHorizontalPrimary.select(
+          float(Math.ceil(nextInfo.outputWidth / 2)),
+          float(Math.ceil(nextInfo.outputHeight / 2))
+        )
+        const perpendicularLimit = usesHorizontalPrimary.select(
+          float(Math.ceil(nextInfo.outputHeight / 2)),
+          float(Math.ceil(nextInfo.outputWidth / 2))
+        )
         const valid = sourceProbeX
           .greaterThanEqual(float(0))
           .and(sourceProbeX.lessThan(float(nextInfo.probeWidth)))
@@ -1553,7 +1579,7 @@ export class HierarchicalRadianceCascades {
           .and(sampleDirection.lessThan(float(nextInfo.radianceDirectionCount)))
         const coord = vec2(
           sampleDirection.mul(float(nextInfo.probeWidth)).add(sourceProbeX).add(float(0.5)),
-          quadrant.mul(float(nextInfo.probeHeight)).add(sampleY).add(float(0.5))
+          segmentIndex.mul(float(nextInfo.probeHeight)).add(sampleY).add(float(0.5))
         )
         const sampled = sampleTexture(nextRadianceTexture, coord.div(vec2(float(nextRadianceAtlasWidth), float(nextRadianceAtlasHeight))))
         return sampled.mul(valid.select(float(1), float(0)))
@@ -1867,11 +1893,16 @@ export class HierarchicalRadianceCascades {
     const r0Info = this._holographicLevelInfo()[0]
     if (!r0Info) return
     if (!this._sdfTexture) return
+    if (!this._sceneRadianceRT) return
 
     const sdfTexture = this._sdfTexture
+    const sceneRadianceTexture = this._sceneRadianceRT.texture
+    const worldSize = this._worldSizeNode
+    const worldOffset = this._worldOffsetNode
     const radianceAtlasWidth = r0Info.radianceAtlasWidth
     const radianceAtlasHeight = r0Info.radianceAtlasHeight
     const probeHeight = r0Info.probeHeight
+    const finalTraceSteps = Math.max(4, Math.min(16, Math.ceil(this._config.raymarchSteps / 4)))
 
     this._finalRadianceMaterial = new NodeMaterial()
     this._finalRadianceMaterial.fragmentNode = Fn(() => {
@@ -1881,19 +1912,20 @@ export class HierarchicalRadianceCascades {
       const centerSDFUV = vec2(centerUV.x, float(1).sub(centerUV.y))
       const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
 
-      const sampleQuadrant = (
-        quadrant: number,
-        parallel: Node<'float'>,
-        perpendicular: Node<'float'>
+      const sampleR0 = (
+        cell: Node<'vec2'>,
+        direction: Node<'float'>
       ) => {
-        const valid = parallel
+        const valid = cell.x
           .greaterThanEqual(float(0))
-          .and(parallel.lessThan(float(r0Info.outputMaxDimension)))
-          .and(perpendicular.greaterThanEqual(float(0)))
-          .and(perpendicular.lessThan(float(r0Info.outputMaxDimension)))
+          .and(cell.x.lessThan(float(probeHeight)))
+          .and(cell.y.greaterThanEqual(float(0)))
+          .and(cell.y.lessThan(float(radianceAtlasHeight)))
+          .and(direction.greaterThanEqual(float(0)))
+          .and(direction.lessThan(float(r0Info.radianceDirectionCount)))
         const coord = vec2(
-          parallel.add(float(0.5)),
-          float(quadrant * probeHeight).add(perpendicular).add(float(0.5))
+          direction.mul(float(r0Info.probeWidth)).add(cell.x).add(float(0.5)),
+          cell.y.add(float(0.5))
         )
         const sample = sampleTexture(
           sourceTexture,
@@ -1902,13 +1934,140 @@ export class HierarchicalRadianceCascades {
         return sample.rgb.mul(valid.select(float(1), float(0)))
       }
 
+      const sampleRotation = (
+        rotation: number,
+        parallel: Node<'float'>,
+        perpendicular: Node<'float'>
+      ) => {
+        const shiftedParallel = parallel.add(float(1))
+        const xEven = mod(shiftedParallel, float(2)).lessThan(float(0.5))
+        const yEven = mod(perpendicular, float(2)).lessThan(float(0.5))
+        const mismatch = xEven.and(yEven.not()).or(xEven.not().and(yEven))
+        const halfX = floor(shiftedParallel.div(float(2)))
+        const halfY = floor(perpendicular.div(float(2)))
+        const offset = mismatch.select(
+          yEven.select(float(probeHeight - 1), float(probeHeight)),
+          float(0)
+        )
+        const baseCell = vec2(
+          halfX,
+          halfY.add(offset).add(float(2 * probeHeight * rotation))
+        )
+        const traceSegmentIndex = float(2 * rotation).add(mismatch.select(float(1), float(0)))
+        const segmentPhase = mod(traceSegmentIndex, float(2))
+        const localCellY = baseCell.y.sub(traceSegmentIndex.mul(float(probeHeight)))
+        const valid = shiftedParallel
+          .lessThan(float(r0Info.outputMaxDimension))
+          .and(parallel.greaterThanEqual(float(0)))
+          .and(perpendicular.greaterThanEqual(float(0)))
+          .and(perpendicular.lessThan(float(r0Info.outputMaxDimension)))
+
+        const mapHalfGrid = (halfCell: Node<'vec2'>) => {
+          const fullParallel = halfCell.x.mul(float(2))
+          const fullPerpendicular = halfCell.y.mul(float(2)).add(segmentPhase)
+          const grid = vec2(fullParallel, fullPerpendicular).toVar()
+
+          If(traceSegmentIndex.greaterThan(float(1.5)).and(traceSegmentIndex.lessThan(float(3.5))), () => {
+            grid.assign(vec2(float(outputWidth).sub(fullPerpendicular), fullParallel))
+          })
+
+          If(traceSegmentIndex.greaterThan(float(3.5)).and(traceSegmentIndex.lessThan(float(5.5))), () => {
+            grid.assign(vec2(float(outputWidth).sub(fullParallel), fullPerpendicular))
+          })
+
+          If(traceSegmentIndex.greaterThan(float(5.5)), () => {
+            grid.assign(vec2(fullPerpendicular, float(outputHeight).sub(fullParallel)))
+          })
+
+          return grid
+        }
+
+        const traceFinal = (upper: boolean) => {
+          const cellF = vec2(
+            baseCell.x.add(xEven.select(float(0), float(0.5))),
+            localCellY.add(xEven.select(float(0), float(0.5)))
+          )
+          const factor = xEven.select(float(2), float(1))
+          const ySign = upper ? 1 : -1
+          const targetHalf = floor(cellF.add(vec2(float(0.5), float(0.5 * ySign)).mul(factor)))
+          const traceValid = targetHalf.x
+            .greaterThanEqual(float(0))
+            .and(targetHalf.x.lessThan(float(probeHeight)))
+            .and(targetHalf.y.greaterThanEqual(float(0)))
+            .and(targetHalf.y.lessThan(float(probeHeight)))
+          const startHalf = vec2(cellF.x.sub(float(0.49)), cellF.y)
+          const startGrid = mapHalfGrid(startHalf)
+          const endGrid = mapHalfGrid(targetHalf)
+          const outputSize = vec2(float(outputWidth), float(outputHeight))
+          const startWorld = uvToWorld(startGrid.div(outputSize), worldSize, worldOffset)
+          const endWorld = uvToWorld(endGrid.div(outputSize), worldSize, worldOffset)
+          const segment = endWorld.sub(startWorld)
+          const segmentLength = segment.length().max(float(0.001))
+          const rayDir = segment.div(segmentLength)
+          const minStep = segmentLength.div(float(finalTraceSteps)).max(float(0.001))
+          const radiance = vec3(0).toVar()
+          const transmittance = float(1).toVar()
+          const t = float(0).toVar()
+
+          Loop(finalTraceSteps, () => {
+            const sampleWorld = startWorld.add(rayDir.mul(t))
+            const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
+            const outOfBounds = sampleUV.x
+              .lessThan(0)
+              .or(sampleUV.x.greaterThan(1))
+              .or(sampleUV.y.lessThan(0))
+              .or(sampleUV.y.greaterThan(1))
+
+            If(outOfBounds, () => {
+              transmittance.assign(float(0))
+              Break()
+            })
+
+            const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
+            const sdfDist = sampleTexture(sdfTexture, sdfUV).r
+            If(sdfDist.lessThan(float(EPS)), () => {
+              transmittance.assign(float(0))
+              Break()
+            })
+
+            const stepLen = min(sdfDist.max(minStep), segmentLength.sub(t))
+            const sceneRad = sampleTexture(sceneRadianceTexture, sampleUV)
+            radiance.addAssign(sceneRad.rgb.mul(transmittance).mul(stepLen))
+            t.addAssign(stepLen)
+
+            If(t.greaterThanEqual(segmentLength), () => {
+              Break()
+            })
+          })
+
+          return vec4(radiance.mul(float(Math.PI / 4)), transmittance).mul(traceValid.select(float(1), float(0)))
+        }
+
+        const lowerDirection = float(0)
+        const upperDirection = float(1)
+        const lowerOffset = vec2(float(1), xEven.select(float(-1), float(0)))
+        const upperOffset = vec2(float(1), float(1))
+        const lowerFar = sampleR0(baseCell.add(lowerOffset), lowerDirection)
+        const upperFar = sampleR0(baseCell.add(upperOffset), upperDirection)
+        const lowerTrace = traceFinal(false)
+        const upperTrace = traceFinal(true)
+        const lowerNext = lowerTrace.rgb.add(lowerTrace.a.mul(lowerFar))
+        const upperNext = upperTrace.rgb.add(upperTrace.a.mul(upperFar))
+        const lowerCurrent = sampleR0(baseCell, lowerDirection)
+        const upperCurrent = sampleR0(baseCell, upperDirection)
+        const lower = xEven.select(lowerCurrent.add(lowerNext).mul(float(0.5)), lowerNext)
+        const upper = xEven.select(upperCurrent.add(upperNext).mul(float(0.5)), upperNext)
+
+        return lower.add(upper).mul(valid.select(float(1), float(0)))
+      }
+
       const sampleReadout = (coord: Node<'vec2'>) => {
         const x = coord.x
         const y = coord.y
-        const fluence = sampleQuadrant(0, x, y)
-          .add(sampleQuadrant(1, y, float(outputWidth - 1).sub(x)))
-          .add(sampleQuadrant(2, float(outputWidth - 1).sub(x), y))
-          .add(sampleQuadrant(3, float(outputHeight - 1).sub(y), x))
+        const fluence = sampleRotation(0, x, y)
+          .add(sampleRotation(1, y, float(outputWidth - 1).sub(x)))
+          .add(sampleRotation(2, float(outputWidth - 1).sub(x), y))
+          .add(sampleRotation(3, float(outputHeight - 1).sub(y), x))
         return fluence.div(float(Math.PI))
       }
 

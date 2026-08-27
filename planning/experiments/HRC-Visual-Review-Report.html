@@ -736,6 +736,56 @@
         </div>
       </article>
 
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Probe: Eight-Segment Absolute-Row Final Merge</h3>
+            <p>
+              This probe kept the eight logical Holographic segments and changed
+              final readout to use the reference-style absolute row offset:
+              <code>x + 1</code>, parity-selected segment, and global row
+              offsets. It improved the paper alignment of the addressing, but
+              did not beat the accepted four-row hybrid metrics.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/027-hrc-eight-segment-absolute-readout.png" alt="Eight-segment HRC with absolute-row final readout" />
+            <figcaption>Absolute-row <code>R0</code> readout: plausible standalone result, but too much fluence crosses the shadow boundary.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>SSIM 0.94903; luma MAE 0.06846; RMSE 0.09691; edge MAE 0.03683; high-frequency MAE 0.00251.</span>
+          </div>
+          <div class="note">
+            <b>Final Metrics</b>
+            <span>SSIM 0.85032; luma MAE 52.22846; RMSE 61.74555; edge MAE 20.84991; high-frequency MAE 0.94020.</span>
+          </div>
+          <div class="note">
+            <b>Diagnosis</b>
+            <span>Addressing alone is insufficient. Reference <code>merge_0</code> also performs a short final <code>trace_0</code> over the lower/upper far <code>R0</code> samples.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Current Candidate</b>
+            <span>The worktree now contains an unverified direct final <code>trace_0</code> implementation with segment-offset mapping corrected to match the reference tracer.</span>
+          </div>
+          <div class="note">
+            <b>Verification Blocker</b>
+            <span>Codex could typecheck the candidate, but localhost/GPU vitexec was blocked by the sandbox approval layer. It still needs a live screenshot and luminance compare before commit.</span>
+          </div>
+          <div class="note">
+            <b>Next Gate</b>
+            <span>Capture <code>028-hrc-eight-segment-final-trace0.png</code> and compare against RC and accepted scale-2 hybrid. Keep only if canvas/final luma move materially toward the hybrid while improving contact shadows.</span>
+          </div>
+        </div>
+      </article>
+
       <h2>Next Feature Template</h2>
       <article class="entry">
         <div class="entry-header">

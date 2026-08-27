@@ -66,6 +66,15 @@ type BufferStats = {
   maxLuminance: number
   nonBlackRatio: number
   finiteRatio: number
+  rowGroups?: Array<{
+    index: number
+    y0: number
+    y1: number
+    meanLuminance: number
+    meanAlpha: number
+    nonBlackRatio: number
+    finiteRatio: number
+  }>
   error?: string
 }
 
@@ -1051,7 +1060,7 @@ async function main(): Promise<void> {
           if (Math.abs(rv) + Math.abs(gv) + Math.abs(bv) + Math.abs(av) > 1e-5) nonBlack++
         }
         const inv = 1 / Math.max(1, pixels)
-        return {
+        const stats: BufferStats = {
           name,
           width: readback.width,
           height: readback.height,
@@ -1064,6 +1073,50 @@ async function main(): Promise<void> {
           nonBlackRatio: nonBlack * inv,
           finiteRatio: finite * inv,
         }
+        const hrcProbe = (window as Window & { __radianceCascadeProbe?: { hrc?: { holographicLevelInfo?: Array<{ segmentCount?: number }> } } }).__radianceCascadeProbe
+        const transferMatch = /^hrc\.T(\d+)$/.exec(name)
+        const segmentCount = transferMatch
+          ? hrcProbe?.hrc?.holographicLevelInfo?.[Number(transferMatch[1])]?.segmentCount
+          : undefined
+        if (segmentCount && segmentCount > 1 && readback.height % segmentCount === 0) {
+          const groupHeight = readback.height / segmentCount
+          stats.rowGroups = []
+          for (let group = 0; group < segmentCount; group++) {
+            let groupLuma = 0
+            let groupAlpha = 0
+            let groupFinite = 0
+            let groupNonBlack = 0
+            const y0 = group * groupHeight
+            const y1 = y0 + groupHeight
+            const groupPixels = readback.width * groupHeight
+            for (let y = y0; y < y1; y++) {
+              for (let x = 0; x < readback.width; x++) {
+                const j = (y * readback.width + x) * 4
+                const rv = readback.data[j] ?? 0
+                const gv = readback.data[j + 1] ?? 0
+                const bv = readback.data[j + 2] ?? 0
+                const av = readback.data[j + 3] ?? 0
+                if (Number.isFinite(rv) && Number.isFinite(gv) && Number.isFinite(bv) && Number.isFinite(av)) {
+                  groupFinite++
+                }
+                groupLuma += 0.2126 * rv + 0.7152 * gv + 0.0722 * bv
+                groupAlpha += av
+                if (Math.abs(rv) + Math.abs(gv) + Math.abs(bv) + Math.abs(av) > 1e-5) groupNonBlack++
+              }
+            }
+            const groupInv = 1 / Math.max(1, groupPixels)
+            stats.rowGroups.push({
+              index: group,
+              y0,
+              y1,
+              meanLuminance: groupLuma * groupInv,
+              meanAlpha: groupAlpha * groupInv,
+              nonBlackRatio: groupNonBlack * groupInv,
+              finiteRatio: groupFinite * groupInv,
+            })
+          }
+        }
+        return stats
       }
 
       params.algorithm = 'hrc'
