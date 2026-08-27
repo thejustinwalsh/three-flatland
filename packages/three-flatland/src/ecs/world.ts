@@ -1,7 +1,12 @@
-import { createWorld, type World } from 'koota'
+import { createWorld } from './runtime'
+import type { World } from './runtime'
+import type { Sprite2D } from '../sprites/Sprite2D'
+import { stageSpriteWorld } from '../internal/sprite-runtime'
+
+type RuntimeWorld = ReturnType<typeof createWorld>
 
 /** Global fallback world for standalone sprites (no SpriteGroup parent) */
-let _globalWorld: World | null = null
+let _globalWorld: RuntimeWorld | null = null
 
 /**
  * Get the global fallback world.
@@ -19,17 +24,9 @@ export function getGlobalWorld(): World {
  */
 export function resetGlobalWorld(): void {
   if (_globalWorld) {
-    _globalWorld.destroy()
+    _globalWorld.dispose()
     _globalWorld = null
   }
-}
-
-/**
- * Interface for Three.js objects that provide ECS world context to children.
- * Implemented by SpriteGroup and Flatland.
- */
-export interface WorldProvider {
-  readonly world: World
 }
 
 /**
@@ -43,9 +40,6 @@ export interface WorldProvider {
  * @param child - Three.js object to assign world to
  * @param world - ECS world to assign
  */
-export function assignWorld(child: { _flatlandWorld?: World | null }, world: World): void {
-  if (child._flatlandWorld && child._flatlandWorld !== world) {
-    throw new Error('three-flatland: Cannot switch worlds after creation. Destroy and recreate the object.')
-  }
-  child._flatlandWorld = world
+export function assignWorld(child: Sprite2D, world: World): void {
+  stageSpriteWorld(child, world)
 }

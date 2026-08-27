@@ -1,4 +1,4 @@
-import { trait, type Entity, type Trait } from 'koota'
+import { trait, type NumericSchema, type NumericStore, type World } from '../ecs/runtime'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type { OrthographicCamera, Texture } from 'three'
@@ -20,11 +20,31 @@ import type { ChannelName, WithRequiredChannels } from '../materials/channels'
 import type { LightStore } from './LightStore'
 import type { SDFGenerator } from './SDFGenerator'
 import type { Light2D } from './Light2D'
+import { entitySlot } from '../ecs/snapshot'
+import { validateEffectSchema } from '../internal/effectSchemaValidation'
+import type { SpriteGroup } from '../pipeline/SpriteGroup'
+import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
+import {
+  getEffectEntity,
+  getEffectTrait,
+  readEffectVectorSnapshot,
+  setEffectEntity,
+  setEffectTrait,
+} from '../internal/effect-runtime'
 
 // Re-export schema types for LightEffect consumers
 export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
 // Re-export channel types for LightEffect consumers
 export type { ChannelName, WithRequiredChannels }
+
+function createSchemaRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>
+}
+
+/** Resolve the effect class without trusting a user-defined `constructor` schema field. @internal */
+function lightEffectClassOf(effect: LightEffect): typeof LightEffect {
+  return (Object.getPrototypeOf(effect) as { constructor: typeof LightEffect }).constructor
+}
 
 // ============================================
 // LightEffect Context Types
@@ -78,6 +98,7 @@ export interface LightEffectRuntimeContext {
 
 // Forward-declare Flatland to avoid circular import
 interface FlatlandLike {
+  readonly spriteGroup: SpriteGroup
   _markLightingDirty(): void
   _markLightingResizeDirty?(): void
   /**
@@ -149,10 +170,12 @@ export abstract class LightEffect {
   /** Per-fragment channels this effect requires (e.g., ['normal']). */
   static readonly requires: readonly ChannelName[] = []
 
-  /** @internal Auto-generated Koota trait from schema. */
-  static _trait: Trait
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
+  /** @internal Precomputed flattened SoA keys for each field. */
+  static _fieldKeys: Readonly<Record<string, readonly string[]>>
+  /** @internal Constant-time field lookup for property accessors. */
+  static _fieldMap: ReadonlyMap<string, EffectField>
   /** @internal Total float slots needed for this effect's data. */
   static _totalFloats: number
   /** @internal Whether static initialization has been performed. */
@@ -175,19 +198,19 @@ export abstract class LightEffect {
    * @internal
    */
   static _initialize(): void {
-    if (this._initialized) return
-    this._initialized = true
+    if (Object.hasOwn(this, '_initialized') && this._initialized) return
 
     const schema = this.lightSchema
     if (!schema) {
       throw new Error(`LightEffect: ${this.name} is missing lightSchema`)
     }
+    const schemaEntries = validateEffectSchema('LightEffect', this.lightName, schema, this.prototype)
 
     // Compute field metadata from schema defaults (uniform fields only)
     const fields: EffectField[] = []
-    const constantFactories: Record<string, () => unknown> = {}
+    const constantFactories = createSchemaRecord<() => unknown>()
     let totalFloats = 0
-    for (const [fieldName, value] of Object.entries(schema)) {
+    for (const [fieldName, value] of schemaEntries) {
       if (typeof value === 'function') {
         constantFactories[fieldName] = value as () => unknown
       } else if (typeof value === 'number') {
@@ -201,11 +224,19 @@ export abstract class LightEffect {
     }
 
     this._fields = fields
+    const fieldKeys = createSchemaRecord<readonly string[]>()
+    for (const field of fields) {
+      const keys: string[] = []
+      for (let i = 0; i < field.size; i++) keys.push(field.size === 1 ? field.name : `${field.name}_${i}`)
+      fieldKeys[field.name] = keys
+    }
+    this._fieldKeys = fieldKeys
+    this._fieldMap = new Map(fields.map((field) => [field.name, field]))
     this._totalFloats = totalFloats
     this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota (uniform fields only)
-    const traitSchema: Record<string, number> = {}
+    // Build the flattened numeric trait schema (uniform fields only)
+    const traitSchema = createSchemaRecord<number>()
     for (const field of fields) {
       if (field.size === 1) {
         traitSchema[field.name] = field.default[0]!
@@ -216,7 +247,8 @@ export abstract class LightEffect {
       }
     }
 
-    this._trait = trait(traitSchema)
+    setEffectTrait(this, trait(traitSchema))
+    this._initialized = true
   }
 
   // ============================================
@@ -229,14 +261,17 @@ export abstract class LightEffect {
   /** @internal The Flatland instance this effect is attached to. */
   _flatland: FlatlandLike | null = null
 
-  /** @internal The ECS entity for this effect. */
-  _entity: Entity | null = null
+  /** Cached numeric SoA for allocation-free enrolled property access. */
+  private _numericStore: NumericStore<NumericSchema> | null = null
+
+  /** World owning `_numericStore`; effects may move between Flatland instances. */
+  private _storeWorld: World | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. */
   _defaults: Record<string, number | number[]>
 
   /** @internal Per-instance constant values (from factory function schema fields). */
-  _constants: Record<string, unknown> = {}
+  _constants: Record<string, unknown> = createSchemaRecord<unknown>()
 
   /** @internal TSL uniform nodes — one per uniform schema field. */
   _uniforms: Record<string, UniformNodeValue>
@@ -260,7 +295,7 @@ export abstract class LightEffect {
   _onDirty: (() => void) | null = null
 
   constructor() {
-    const ctor = this.constructor as typeof LightEffect
+    const ctor = lightEffectClassOf(this)
 
     // Lazy initialize static metadata
     ctor._initialize()
@@ -268,7 +303,7 @@ export abstract class LightEffect {
     this.name = ctor.lightName
 
     // Build defaults snapshot from schema (uniform fields only)
-    this._defaults = {}
+    this._defaults = createSchemaRecord<number | number[]>()
     for (const field of ctor._fields) {
       if (field.size === 1) {
         this._defaults[field.name] = field.default[0]!
@@ -278,7 +313,7 @@ export abstract class LightEffect {
     }
 
     // Create uniform nodes per uniform schema field
-    this._uniforms = {}
+    this._uniforms = createSchemaRecord<UniformNodeValue>()
     for (const field of ctor._fields) {
       const d = field.default
       if (field.size === 1) {
@@ -299,14 +334,12 @@ export abstract class LightEffect {
           get: () => this._getField(field.name),
           set: (v: number) => this._setField(field.name, v),
           enumerable: true,
-          configurable: true,
         })
       } else {
         Object.defineProperty(this, field.name, {
           get: () => this._getField(field.name),
-          set: (v: number[]) => this._setField(field.name, v),
+          set: (v: readonly number[]) => this._setField(field.name, v),
           enumerable: true,
-          configurable: true,
         })
       }
     }
@@ -355,13 +388,11 @@ export abstract class LightEffect {
             this._flatland?._rebuildLightFn?.()
           },
           enumerable: true,
-          configurable: true,
         })
       } else {
         Object.defineProperty(this, name, {
           get: () => this._constants[name],
           enumerable: true,
-          configurable: true,
         })
       }
     }
@@ -438,6 +469,7 @@ export abstract class LightEffect {
   _attach(flatland: FlatlandLike, onDirty?: () => void): void {
     this._flatland = flatland
     this._onDirty = onDirty ?? null
+    this._cacheStore(getSpriteGroupWorld(flatland.spriteGroup))
   }
 
   /**
@@ -446,11 +478,22 @@ export abstract class LightEffect {
    */
   _detach(): void {
     this._flatland = null
-    this._entity = null
+    setEffectEntity(this, null)
+    this._numericStore = null
+    this._storeWorld = null
     this._lightFn = null
     this._initialized = false
     this._onDirty = null
     this._dirty = false
+  }
+
+  private _cacheStore(world: World): NumericStore<NumericSchema> {
+    if (this._storeWorld !== world || !this._numericStore) {
+      const ctor = lightEffectClassOf(this)
+      this._numericStore = world.store(getEffectTrait(ctor))
+      this._storeWorld = world
+    }
+    return this._numericStore
   }
 
   /**
@@ -492,7 +535,7 @@ export abstract class LightEffect {
     sdfTexture: Texture | null = null
   ): ColorTransformFn {
     if (!this._lightFn) {
-      const ctor = this.constructor as typeof LightEffect
+      const ctor = lightEffectClassOf(this)
       this._lightFn = ctor.buildLightFn({
         uniforms: this._uniforms,
         constants: this._constants,
@@ -515,22 +558,42 @@ export abstract class LightEffect {
    * Read a field value.
    * @internal
    */
-  _getField(name: string): number | number[] {
-    const ctor = this.constructor as typeof LightEffect
-    if (this._entity && this._entity.has(ctor._trait)) {
-      const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+  _getField(name: string): number | readonly number[] {
+    const ctor = lightEffectClassOf(this)
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
+    if (entity && world?.has(entity, runtimeTrait)) {
+      const field = ctor._fieldMap.get(name)!
+      const keys = ctor._fieldKeys[name]!
+      const store = this._cacheStore(world)
+      const index = entitySlot(entity)
       if (field.size === 1) {
-        return data[name]!
+        return store[keys[0]!]![index]!
       } else {
-        const result: number[] = []
-        for (let i = 0; i < field.size; i++) {
-          result.push(data[`${name}_${i}`]!)
-        }
-        return result
+        return readEffectVectorSnapshot(
+          this,
+          name,
+          field.size,
+          store[keys[0]!]![index]!,
+          store[keys[1]!]![index]!,
+          field.size >= 3 ? store[keys[2]!]![index]! : 0,
+          field.size >= 4 ? store[keys[3]!]![index]! : 0
+        )
       }
     }
-    return this._defaults[name]!
+    const staged = this._defaults[name]!
+    if (typeof staged === 'number') return staged
+    const field = ctor._fieldMap.get(name)!
+    return readEffectVectorSnapshot(
+      this,
+      name,
+      field.size,
+      staged[0]!,
+      staged[1]!,
+      field.size >= 3 ? staged[2]! : 0,
+      field.size >= 4 ? staged[3]! : 0
+    )
   }
 
   /**
@@ -538,28 +601,60 @@ export abstract class LightEffect {
    * Updates ECS trait, uniform value, and snapshot defaults.
    * @internal
    */
-  _setField(name: string, value: number | number[]): void {
-    const ctor = this.constructor as typeof LightEffect
-    const field = ctor._fields.find((f) => f.name === name)!
+  _setField(name: string, value: number | readonly number[]): void {
+    const ctor = lightEffectClassOf(this)
+    const field = ctor._fieldMap.get(name)!
+    let scalar = 0
+    let c0 = 0
+    let c1 = 0
+    let c2 = 0
+    let c3 = 0
+    if (field.size === 1) {
+      if (typeof value !== 'number') throw new TypeError(`LightEffect.${field.name} must be a number`)
+      scalar = value
+    } else {
+      if (!Array.isArray(value) || value.length !== field.size) {
+        throw new TypeError(`LightEffect.${field.name} must provide ${field.size} numeric components`)
+      }
+      c0 = value[0]!
+      c1 = value[1]!
+      if (field.size >= 3) c2 = value[2]!
+      if (field.size >= 4) c3 = value[3]!
+      if (
+        typeof c0 !== 'number' ||
+        typeof c1 !== 'number' ||
+        (field.size >= 3 && typeof c2 !== 'number') ||
+        (field.size >= 4 && typeof c3 !== 'number')
+      ) {
+        throw new TypeError(`LightEffect.${field.name} must provide ${field.size} numeric components`)
+      }
+    }
 
     // Update snapshot defaults
-    if (typeof value === 'number') {
-      this._defaults[name] = value
+    if (field.size === 1) {
+      this._defaults[name] = scalar
     } else {
-      this._defaults[name] = [...value]
+      const defaults = this._defaults[name] as number[]
+      defaults[0] = c0
+      defaults[1] = c1
+      if (field.size >= 3) defaults[2] = c2
+      if (field.size >= 4) defaults[3] = c3
     }
 
     // Write to ECS trait if enrolled
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
+    if (entity && world?.has(entity, runtimeTrait)) {
+      const keys = ctor._fieldKeys[name]!
+      const store = this._cacheStore(world)
+      const index = entitySlot(entity)
       if (field.size === 1) {
-        this._entity.set(ctor._trait, { [name]: value as number })
+        store[keys[0]!]![index] = scalar
       } else {
-        const arr = value as number[]
-        const traitUpdate: Record<string, number> = {}
         for (let i = 0; i < field.size; i++) {
-          traitUpdate[`${name}_${i}`] = arr[i]!
+          store[keys[i]!]![index] = i === 0 ? c0 : i === 1 ? c1 : i === 2 ? c2 : c3
         }
-        this._entity.set(ctor._trait, traitUpdate)
       }
     }
 
@@ -567,18 +662,17 @@ export abstract class LightEffect {
     const uniformNode = this._uniforms[name]
     if (uniformNode) {
       if (field.size === 1) {
-        ;(uniformNode as UniformNode<'float', number>).value = value as number
+        ;(uniformNode as UniformNode<'float', number>).value = scalar
       } else {
-        const arr = value as number[]
         const vecUniform = uniformNode as
           | UniformNode<'vec2', Vector2>
           | UniformNode<'vec3', Vector3>
           | UniformNode<'vec4', Vector4>
         const obj = vecUniform.value
-        obj.x = arr[0]!
-        if (field.size >= 2) (obj as Vector2).y = arr[1]!
-        if (field.size >= 3) (obj as Vector3).z = arr[2]!
-        if (field.size >= 4) (obj as Vector4).w = arr[3]!
+        obj.x = c0
+        ;(obj as Vector2).y = c1
+        if (field.size >= 3) (obj as Vector3).z = c2
+        if (field.size >= 4) (obj as Vector4).w = c3
       }
     }
   }
@@ -629,8 +723,9 @@ export type LightEffectClass<S extends EffectSchema> = {
   readonly lightSchema: S
   readonly needsShadows: boolean
   readonly requires: readonly ChannelName[]
-  readonly _trait: Trait
   readonly _fields: EffectField[]
+  readonly _fieldKeys: Readonly<Record<string, readonly string[]>>
+  readonly _fieldMap: ReadonlyMap<string, EffectField>
   readonly _totalFloats: number
   readonly _constantFactories: Record<string, () => unknown>
   readonly _initialized: boolean

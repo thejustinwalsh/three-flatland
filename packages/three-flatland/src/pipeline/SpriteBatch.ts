@@ -11,7 +11,7 @@ import {
   type Intersection,
 } from 'three'
 import { SpriteSpatialGrid, quadHalfExtents } from './SpriteSpatialGrid'
-import { retireBatchPicking, isR3FManaged } from '../react/batchPicking'
+import { retireBatchPicking, isR3FManaged, recordBatchRaycastResult } from '../react/batchPicking'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import { createSynthQuadGeometry } from './synthQuadGeometry'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
@@ -20,6 +20,8 @@ import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import type { InstanceAttributeType } from './types'
 import { BucketedDirtyTracker } from './BucketedDirtyTracker'
 import { installInstanceEventUpdateBeforePatch } from './_instanceEventUpdateBeforePatch'
+import { validateMaxBatchSize } from '../internal/max-batch-size'
+import { registerSpriteBatchOwnership } from '../internal/sprite-batch-ownership'
 
 // SpriteBatch is retained by every batching entry, including tsdown's flattened
 // root/react builds and direct pipeline subpaths. Install the r185 compatibility
@@ -151,17 +153,29 @@ export class SpriteBatch extends InstancedMesh {
   /**
    * Current number of active slots in the batch.
    */
-  private _activeCount: number = 0
+  #activeCount: number = 0
 
   /**
    * Free slot indices for reuse (pooling).
    */
-  private _freeList: number[] = []
+  #freeList: number[] = []
 
   /**
    * Next index to allocate when freeList is empty.
    */
-  private _nextIndex: number = 0
+  #nextIndex: number = 0
+
+  /** Full packed entity handle occupying each physical row; 0 marks a hole. */
+  #slotEntities: number[]
+
+  /** Stable traversal row parallel to each physical slot; -1 marks a hole. */
+  #slotMembers: Int32Array
+
+  /** Packed stable assignment-order sprite references. */
+  #memberSprites: (Sprite2D | null)[]
+
+  /** Current physical slot for each packed stable member row. */
+  #memberSlots: Int32Array
 
   /**
    * Interleaved core buffer (UV + color + system + extras).
@@ -214,6 +228,8 @@ export class SpriteBatch extends InstancedMesh {
   private _interleavedTracker!: BucketedDirtyTracker
 
   constructor(material: Sprite2DMaterial, maxSize: number = FALLBACK_BATCH_SIZE) {
+    maxSize = validateMaxBatchSize(maxSize)
+
     // Allocate interleaved core storage BEFORE creating InstancedMesh
     // so the attribute bindings exist during shader compilation.
     const interleavedData = new Float32Array(maxSize * INSTANCE_STRIDE)
@@ -315,6 +331,10 @@ export class SpriteBatch extends InstancedMesh {
     this._systemAttribute = systemAttr
     this._extrasAttribute = extrasAttr
     this._customAttributes = customAttributes
+    this.#slotEntities = Array<number>(maxSize).fill(0)
+    this.#slotMembers = new Int32Array(maxSize).fill(-1)
+    this.#memberSprites = Array<Sprite2D | null>(maxSize).fill(null)
+    this.#memberSlots = new Int32Array(maxSize).fill(-1)
     this.spriteMaterial = material
     this.maxSize = maxSize
     this.geometryKind = envelope !== null ? 'tight-mesh' : 'synth-quad'
@@ -332,6 +352,23 @@ export class SpriteBatch extends InstancedMesh {
       INSTANCE_STRIDE,
       INTERLEAVED_FULL_THRESHOLD
     )
+
+    registerSpriteBatchOwnership(this, {
+      slotSpan: () => this.#nextIndex,
+      slotEntities: this.#slotEntities,
+      spriteAtSlot: (slot) => this.#spriteAtSlot(slot),
+      memberSpan: () => this.#activeCount,
+      memberSprites: this.#memberSprites,
+      memberSlotAt: (member) => this.#memberSlotAt(member),
+      swapSlots: (a, b) => this.#swapSlots(a, b),
+      assertSlotOwner: (index, expectedEntity) => this.#assertSlotOwner(index, expectedEntity),
+      reserveSlot: () => this.#reserveSlot(),
+      commitSlot: (index, entity, sprite) => this.#commitSlot(index, entity, sprite),
+      rollbackSlot: (index) => this.#rollbackSlot(index),
+      releaseSlot: (index, expectedEntity) => this.#releaseSlot(index, expectedEntity),
+      hideSlot: (index) => this.#clearPhysicalSlot(index),
+      resetSlots: () => this.#resetSlots(),
+    })
 
     // Set initial count to 0 (no sprites yet)
     this.count = 0
@@ -471,8 +508,16 @@ export class SpriteBatch extends InstancedMesh {
    *
    * Zero-alloc: uses element-wise writes on typed arrays in place.
    */
-  swapSlots(a: number, b: number): void {
+  #swapSlots(a: number, b: number): void {
     if (a === b) return
+    if (a < 0 || a >= this.#nextIndex || b < 0 || b >= this.#nextIndex) {
+      throw new Error(`three-flatland: Cannot swap batch slots ${a} and ${b} outside the active span`)
+    }
+
+    const entityA = this.#slotEntities[a] ?? 0
+    const entityB = this.#slotEntities[b] ?? 0
+    const memberA = this.#assertStableMember(a, entityA)
+    const memberB = this.#assertStableMember(b, entityB)
 
     // instanceMatrix (16 floats)
     const m = this.instanceMatrix.array as Float32Array
@@ -512,6 +557,13 @@ export class SpriteBatch extends InstancedMesh {
       custom.tracker.markDirty(a)
       custom.tracker.markDirty(b)
     }
+
+    this.#slotEntities[a] = entityB
+    this.#slotEntities[b] = entityA
+    this.#slotMembers[a] = memberB
+    this.#slotMembers[b] = memberA
+    this.#memberSlots[memberA] = b
+    this.#memberSlots[memberB] = a
   }
 
   // ============================================
@@ -519,31 +571,111 @@ export class SpriteBatch extends InstancedMesh {
   // ============================================
 
   get activeCount(): number {
-    return this._activeCount
+    return this.#activeCount
   }
 
   get isFull(): boolean {
-    return this._freeList.length === 0 && this._nextIndex >= this.maxSize
+    return this.#freeList.length === 0 && this.#nextIndex >= this.maxSize
   }
 
   get isEmpty(): boolean {
-    return this._activeCount === 0
+    return this.#activeCount === 0
   }
 
-  allocateSlot(): number {
-    let index: number
+  /** Sprite reference owning a physical row, or null for a hole. */
+  #spriteAtSlot(slot: number): Sprite2D | null {
+    const member = this.#slotMembers[slot] ?? -1
+    return member >= 0 && member < this.#activeCount ? (this.#memberSprites[member] ?? null) : null
+  }
 
-    if (this._freeList.length > 0) {
-      index = this._freeList.pop()!
-    } else {
-      if (this._nextIndex >= this.maxSize) {
-        return -1
-      }
-      index = this._nextIndex++
+  /** Current physical slot for one packed active member. */
+  #memberSlotAt(member: number): number {
+    if (member < 0 || member >= this.#activeCount) {
+      throw new RangeError(`three-flatland: Batch member ${member} is outside the active span`)
     }
+    return this.#memberSlots[member]!
+  }
 
-    this._activeCount++
-    return index
+  #assertStableMember(slot: number, entity: number): number {
+    const member = this.#slotMembers[slot] ?? -1
+    if (
+      entity === 0 ||
+      member < 0 ||
+      member >= this.#activeCount ||
+      !this.#memberSprites[member] ||
+      this.#memberSlots[member] !== slot
+    ) {
+      throw new Error(`three-flatland: Batch slot ${slot} has inconsistent stable membership`)
+    }
+    return member
+  }
+
+  /** Assert full packed-handle ownership before a multi-structure commit. */
+  #assertSlotOwner(index: number, expectedEntity: number): void {
+    if (index < 0 || index >= this.#nextIndex || this.#slotEntities[index] !== expectedEntity) {
+      throw new Error(`three-flatland: Batch slot ${index} is not owned by entity ${expectedEntity}`)
+    }
+    this.#assertStableMember(index, expectedEntity)
+  }
+
+  /** Reserve a physical row without publishing ownership. */
+  #reserveSlot(): number {
+    while (this.#freeList.length > 0) {
+      const reusable = this.#freeList.pop()!
+      // Tail compaction deliberately leaves stale indices in the stack;
+      // discard them lazily instead of searching/splicing the free list.
+      if (reusable < this.#nextIndex && this.#slotEntities[reusable] === 0 && this.#slotMembers[reusable] === -1) {
+        return reusable
+      }
+    }
+    if (this.#nextIndex >= this.maxSize) return -1
+    return this.#nextIndex++
+  }
+
+  /** Publish ownership after every buffer and forward-reference write succeeds. */
+  #commitSlot(index: number, entity: number, sprite: Sprite2D): void {
+    if (entity === 0) throw new Error('three-flatland: Entity handle 0 cannot own a batch slot')
+    if (index < 0 || index >= this.#nextIndex || this.#slotEntities[index] !== 0 || this.#slotMembers[index] !== -1) {
+      throw new Error(`three-flatland: Cannot commit occupied or unreserved batch slot ${index}`)
+    }
+    const member = this.#activeCount
+    if (member >= this.maxSize || this.#memberSprites[member] !== null || this.#memberSlots[member] !== -1) {
+      throw new Error(`three-flatland: Cannot commit occupied stable batch member ${member}`)
+    }
+    this.#slotEntities[index] = entity
+    this.#slotMembers[index] = member
+    this.#memberSprites[member] = sprite
+    this.#memberSlots[member] = index
+    this.#activeCount++
+  }
+
+  /** Roll back an unpublished reservation without changing active ownership. */
+  #rollbackSlot(index: number): void {
+    if (index < 0 || index >= this.#nextIndex || this.#slotEntities[index] !== 0) return
+    this.#clearPhysicalSlot(index)
+    if (index === this.#nextIndex - 1) this.#collapseFreeTail()
+    else if (!this.#freeList.includes(index)) this.#freeList.push(index)
+  }
+
+  /** Scrub every render-visible value shared by release and failed reservation rollback. */
+  #clearPhysicalSlot(index: number): void {
+    const matrix = this.instanceMatrix.array as Float32Array
+    matrix.fill(0, index * 16, index * 16 + 16)
+    this._matrixTracker.markDirty(index)
+
+    this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
+    this._interleavedTracker.markDirty(index)
+  }
+
+  /** Collapse unowned tail rows so GPU instance count tracks live high-water. */
+  #collapseFreeTail(): void {
+    while (
+      this.#nextIndex > 0 &&
+      this.#slotEntities[this.#nextIndex - 1] === 0 &&
+      this.#slotMembers[this.#nextIndex - 1] === -1
+    ) {
+      this.#nextIndex--
+    }
   }
 
   /**
@@ -554,28 +686,44 @@ export class SpriteBatch extends InstancedMesh {
    * belt-and-braces (any path that resurrects the matrix before
    * reassignment still draws nothing).
    */
-  freeSlot(index: number): void {
-    if (index < 0 || index >= this._nextIndex) return
+  #releaseSlot(index: number, expectedEntity: number): void {
+    this.#assertSlotOwner(index, expectedEntity)
+    const member = this.#slotMembers[index] ?? -1
+    const lastMember = this.#activeCount - 1
+    const movedSprite = member !== lastMember ? this.#memberSprites[lastMember] : null
+    const movedSlot = member !== lastMember ? this.#memberSlots[lastMember]! : -1
+    if (member !== lastMember && (!movedSprite || movedSlot < 0 || this.#slotMembers[movedSlot] !== lastMember)) {
+      throw new Error('three-flatland: Last stable batch member is inconsistent')
+    }
 
-    const m = this.instanceMatrix.array as Float32Array
-    m.fill(0, index * 16, index * 16 + 16)
-    this._matrixTracker.markDirty(index)
+    this.#clearPhysicalSlot(index)
 
-    this._interleavedData[index * INSTANCE_STRIDE + OFFSET_COLOR + 3] = 0
-    this._interleavedTracker.markDirty(index)
-
-    this._freeList.push(index)
-    this._activeCount--
+    this.#slotEntities[index] = 0
+    this.#slotMembers[index] = -1
+    if (member !== lastMember) {
+      this.#memberSprites[member] = movedSprite!
+      this.#memberSlots[member] = movedSlot
+      this.#slotMembers[movedSlot] = member
+    }
+    this.#memberSprites[lastMember] = null
+    this.#memberSlots[lastMember] = -1
+    this.#freeList.push(index)
+    this.#activeCount--
+    this.#collapseFreeTail()
   }
 
   /**
    * Reset all slots without disposing GPU resources.
    * Used when recycling a batch from the pool.
    */
-  resetSlots(): void {
-    this._activeCount = 0
-    this._freeList.length = 0
-    this._nextIndex = 0
+  #resetSlots(): void {
+    this.#slotEntities.fill(0, 0, this.#nextIndex)
+    this.#slotMembers.fill(-1, 0, this.#nextIndex)
+    this.#memberSprites.fill(null, 0, this.#activeCount)
+    this.#memberSlots.fill(-1, 0, this.#activeCount)
+    this.#activeCount = 0
+    this.#freeList.length = 0
+    this.#nextIndex = 0
     this.count = 0
     // Wholesale membership reset — the broadphase index goes with it.
     this.grid.clear()
@@ -609,7 +757,7 @@ export class SpriteBatch extends InstancedMesh {
    * Free slots have alpha=0 so they're invisible.
    */
   syncCount(): void {
-    this.count = this._nextIndex
+    this.count = this.#nextIndex
     if (this.count > 0) {
       this.computeBoundingSphere()
     }
@@ -663,7 +811,9 @@ export class SpriteBatch extends InstancedMesh {
    * the camera (those just clamp; they never abort the whole broadphase).
    */
   override raycast(raycaster: Raycaster, intersects: Intersection[]): void {
-    if (this._activeCount === 0) return
+    const intersectionStart = intersects.length
+    recordBatchRaycastResult(this, false)
+    if (this.#activeCount === 0) return
     const grid = this.grid
     const zMin = grid.zMin
     const zMax = grid.zMax
@@ -702,6 +852,7 @@ export class SpriteBatch extends InstancedMesh {
         sprite.raycast(raycaster, intersects)
       }
     }
+    recordBatchRaycastResult(this, intersects.length > intersectionStart)
   }
 
   /**
@@ -751,13 +902,27 @@ export class SpriteBatch extends InstancedMesh {
    * Dispose of resources.
    */
   override dispose(): this {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
     // Drop any R3F batch-root picking registration — a disposed mesh
     // must not linger in a live root's interaction list.
-    retireBatchPicking(this)
-    this.resetSlots()
-    this.geometry.dispose()
+    runCleanup(() => retireBatchPicking(this))
+    runCleanup(() => this.#resetSlots())
+    runCleanup(() => this.geometry.dispose())
     // Don't dispose the material - it may be shared between batches
     this._customAttributes.clear()
+    if (didError) throw firstError
     return this
   }
 }

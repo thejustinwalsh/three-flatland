@@ -1,8 +1,5 @@
-import type { Trait, World } from 'koota'
 import type { SpriteBatch } from './SpriteBatch'
-import type { RegistryData, RunKey } from '../ecs/batchUtils'
 import {
-  BatchMesh,
   IsAlphaBlendedBatch as _IsAlphaBlendedBatch,
   IsAlphaTestedBatch as _IsAlphaTestedBatch,
   IsLitBatch as _IsLitBatch,
@@ -11,11 +8,17 @@ import {
 
 /**
  * Opaque batch classification token. The underlying ECS trait never
- * leaks — the Koota dependency stays swappable behind this facade.
+ * leaks — the private ECS implementation stays replaceable behind this facade.
+ *
+ * The private renderer ECS grew from {@link https://github.com/pmndrs/koota | Koota}. Its typed
+ * traits, structure-of-arrays storage, queries, and systems made this specialized design possible.
+ * Koota remains the recommended general-purpose ECS for application and gameplay state.
  */
 export interface BatchQueryTag {
   readonly __flBatchTag?: true
 }
+
+type QueryResolver = (tag: BatchQueryTag) => SpriteBatch[]
 
 /** Batch classification: material alpha-blends (`transparent`, no alphaTest). */
 export const IsAlphaBlendedBatch: BatchQueryTag = _IsAlphaBlendedBatch as unknown as BatchQueryTag
@@ -41,41 +44,17 @@ export const IsUnlitBatch: BatchQueryTag = _IsUnlitBatch as unknown as BatchQuer
  * evolve from branch → query-narrowing as workload demands without
  * breaking this surface.
  */
-export class BatchQueryView extends Map<RunKey, SpriteBatch[]> {
-  private _world: World | null
+export class BatchQueryView extends Map<string, SpriteBatch[]> {
+  readonly #query: QueryResolver | null
 
-  constructor(world: World | null, entries?: Iterable<readonly [RunKey, SpriteBatch[]]>) {
+  constructor(entries?: Iterable<readonly [string, SpriteBatch[]]>)
+  constructor(entries?: Iterable<readonly [string, SpriteBatch[]]>, query?: QueryResolver) {
     super(entries)
-    this._world = world
+    this.#query = query ?? null
   }
 
   /** All batches currently tagged with the given classification. */
   where(tag: BatchQueryTag): SpriteBatch[] {
-    if (!this._world) return []
-    const result: SpriteBatch[] = []
-    for (const entity of this._world.query(tag as unknown as Trait, BatchMesh)) {
-      const mesh = entity.get(BatchMesh)?.mesh
-      if (mesh) result.push(mesh)
-    }
-    return result
+    return this.#query?.(tag) ?? []
   }
-}
-
-/**
- * Build a {@link BatchQueryView} from a world's registry data, keyed by
- * run key. Shared by `SpriteGroup.batches` and `Registry.batches` so the
- * run → mesh-list traversal has exactly one implementation.
- */
-export function buildBatchQueryView(world: World | null, registryData: RegistryData | null): BatchQueryView {
-  const view = new BatchQueryView(world)
-  if (!registryData) return view
-  for (const [key, run] of registryData.runs) {
-    const meshes: SpriteBatch[] = []
-    for (const batchEntity of run.batches) {
-      const mesh = batchEntity.get(BatchMesh)?.mesh
-      if (mesh) meshes.push(mesh)
-    }
-    view.set(key, meshes)
-  }
-  return view
 }

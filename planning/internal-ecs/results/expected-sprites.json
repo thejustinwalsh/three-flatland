@@ -1,0 +1,1691 @@
+{
+  "schemaVersion": 4,
+  "provenance": {
+    "git": {
+      "dirty": false,
+      "head": "c25f74c3e37bb9b521d416a81d749c925df00df2",
+      "mergeBase": "bd19dd506f64cbb060e69148e01fc7b9ceb4bee8"
+    },
+    "harnessSha256": "6c9d8ca25dd53e29b812f9258a44133f73c624df6c8043a11a5b30ef599c6f60",
+    "harnessSources": [
+      "expected-sprites.ts",
+      "benchmark-statistics.ts",
+      "provenance.ts",
+      "../../../packages/three-flatland/src/internal/capacity.ts",
+      "../../../packages/three-flatland/src/internal/reserved-world.ts",
+      "../../../packages/three-flatland/src/ecs/runtime/entity.ts",
+      "../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts",
+      "../../../packages/three-flatland/src/ecs/runtime/world.ts",
+      "../../../packages/three-flatland/src/ecs/batchUtils.ts",
+      "../../../packages/three-flatland/src/pipeline/SpriteGroup.ts",
+      "../../../packages/three-flatland/src/sprites/Sprite2D.ts"
+    ],
+    "node": "v26.5.0",
+    "platform": "darwin-arm64",
+    "sourceHashes": {
+      "expected-sprites.ts": "8b032d1818a167efea33d0ea557e32b7b526a8f9d3fe5ddcb9184373b772a52f",
+      "benchmark-statistics.ts": "466e32bcc8c521ee272cb284af955f64e2ce2301f06b01cbdadfe0c4505f5c51",
+      "provenance.ts": "a1146ea8981465c5e9bf5b2a5bf0106262925965b026cde5d7084ab33c723391",
+      "../../../packages/three-flatland/src/internal/capacity.ts": "eb4ec867ea13a5dbcdbf6708fe6e095db3e2d8a22061eeab19d5149a84a2b6d0",
+      "../../../packages/three-flatland/src/internal/reserved-world.ts": "dda04a7393bf481c11cd91b5e2e154d17c030505b8a0db4020dc9e2de7d168e9",
+      "../../../packages/three-flatland/src/ecs/runtime/entity.ts": "7224a103218f54c5d9926d56a605588340cc88816c30652eb80c0d3ad6edf6f5",
+      "../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts": "a6905658ebec9882540bda8a74d5fd018e743e97159d9f471ec4c8f375b8d837",
+      "../../../packages/three-flatland/src/ecs/runtime/world.ts": "23aa8bd57dd6b70ea7e5b9d0b2372adcafd25a2fc9a8e351566e3ef056a67547",
+      "../../../packages/three-flatland/src/ecs/batchUtils.ts": "edab5033c4c7d218eaaa01b090fcbc9462d8462f9c18a35be6ee4f5f5acaa23d",
+      "../../../packages/three-flatland/src/pipeline/SpriteGroup.ts": "bcdd445b17a0b440d3d0512a9ecc7da23b92a7177141a9540254a3876662e034",
+      "../../../packages/three-flatland/src/sprites/Sprite2D.ts": "2a74fc3508c806f82d5ead18de80eee17b22baa16295b29697d194552a1df63c"
+    },
+    "timestamp": "2026-08-24T04:40:21.201Z"
+  },
+  "options": {
+    "count": 16384,
+    "samples": 20,
+    "warmups": 5
+  },
+  "cases": {
+    "unhinted": {
+      "expectedSprites": null
+    },
+    "under": {
+      "expectedSprites": 8192
+    },
+    "exact": {
+      "expectedSprites": 16384
+    },
+    "over": {
+      "expectedSprites": 32768
+    }
+  },
+  "gc": {
+    "collectionsPerBoundary": 2,
+    "exposed": true,
+    "timed": false
+  },
+  "representation": {
+    "dense": "Dense iteration arrays are not synthetically reserved; JavaScript has no portable reserve primitive.",
+    "gpu": "No GPU batch is pre-created by expectedSprites; first update creates the measured topology.",
+    "indexAddressed": "Only active index-addressed arrays retain explicitly initialized default/absence slots through the hint."
+  },
+  "validation": {
+    "boundedOverflowGrowth": true,
+    "capacityAfterReuse": 32772,
+    "capacityAtHint": 16386,
+    "capacityPastHint": 32772,
+    "topologyAtHint": {
+      "batches": 1,
+      "sprites": 16384,
+      "visibleSprites": 16384
+    },
+    "zeroGrowthToHint": true
+  },
+  "observations": {
+    "unhinted": {
+      "raw": [
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.060833000000457105,
+            "enrollment": 70.15545899999961,
+            "firstUpdate": 72.12579100000039,
+            "total": 142.34208300000046
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.04916599999887694,
+            "enrollment": 76.47550000000047,
+            "firstUpdate": 69.67387500000041,
+            "total": 146.19854099999975
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.04783300000053714,
+            "enrollment": 74.07687499999884,
+            "firstUpdate": 72.56583300000057,
+            "total": 146.69054099999994
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.054459000000861124,
+            "enrollment": 82.80374999999913,
+            "firstUpdate": 71.54608300000109,
+            "total": 154.40429200000108
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.05216699999982666,
+            "enrollment": 78.41916700000002,
+            "firstUpdate": 72.4311660000003,
+            "total": 150.90250000000015
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.06616599999870232,
+            "enrollment": 71.29325000000063,
+            "firstUpdate": 70.46208400000069,
+            "total": 141.82150000000001
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.06054199999925913,
+            "enrollment": 69.56670799999847,
+            "firstUpdate": 70.34875000000102,
+            "total": 139.97599999999875
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.060541000002558576,
+            "enrollment": 72.3914999999979,
+            "firstUpdate": 69.88787500000035,
+            "total": 142.3399160000008
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.0623749999977008,
+            "enrollment": 72.32429100000081,
+            "firstUpdate": 71.11662499999875,
+            "total": 143.50329099999726
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.04824999999982538,
+            "enrollment": 78.8325420000001,
+            "firstUpdate": 71.63066600000093,
+            "total": 150.51145800000086
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.054874999997991836,
+            "enrollment": 78.9564590000009,
+            "firstUpdate": 71.32629100000122,
+            "total": 150.33762500000012
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.053708999999798834,
+            "enrollment": 78.81212500000038,
+            "firstUpdate": 72.57200000000012,
+            "total": 151.4378340000003
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.049958999999944353,
+            "enrollment": 75.59812500000044,
+            "firstUpdate": 72.03645799999867,
+            "total": 147.68454199999906
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.11566700000184937,
+            "enrollment": 75.25941699999748,
+            "firstUpdate": 72.23308300000281,
+            "total": 147.60816700000214
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.06441600000107428,
+            "enrollment": 72.23541699999987,
+            "firstUpdate": 71.234375,
+            "total": 143.53420800000094
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.058042000000568805,
+            "enrollment": 71.99845799999821,
+            "firstUpdate": 68.72258400000283,
+            "total": 140.7790840000016
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.05891600000177277,
+            "enrollment": 69.93824999999924,
+            "firstUpdate": 69.13033400000131,
+            "total": 139.12750000000233
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.08658299999660812,
+            "enrollment": 79.30687500000204,
+            "firstUpdate": 72.14899999999761,
+            "total": 151.54245799999626
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.04654199999640696,
+            "enrollment": 78.54641600000468,
+            "firstUpdate": 73.62229200000002,
+            "total": 152.2152500000011
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 0,
+            "afterEnrollment": 16385,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.05229200000030687,
+            "enrollment": 78.82429199999751,
+            "firstUpdate": 70.36658300000272,
+            "total": 149.24316700000054
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        }
+      ],
+      "phasesMs": {
+        "construction": {
+          "median": 0.054874999997991836,
+          "p95": 0.08658299999660812
+        },
+        "enrollment": {
+          "median": 75.25941699999748,
+          "p95": 79.30687500000204
+        },
+        "firstUpdate": {
+          "median": 71.32629100000122,
+          "p95": 72.57200000000012
+        },
+        "total": {
+          "median": 146.69054099999994,
+          "p95": 152.2152500000011
+        }
+      }
+    },
+    "under": {
+      "raw": [
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.4495420000002923,
+            "enrollment": 69.9917919999998,
+            "firstUpdate": 69.61683300000004,
+            "total": 140.05816700000014
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3422080000000278,
+            "enrollment": 68.20441699999901,
+            "firstUpdate": 71.85608300000058,
+            "total": 140.40270799999962
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.2842500000006112,
+            "enrollment": 73.78304199999911,
+            "firstUpdate": 70.93879200000083,
+            "total": 145.00608400000056
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3150839999998425,
+            "enrollment": 75.17041599999902,
+            "firstUpdate": 71.61775000000125,
+            "total": 147.10325000000012
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.28445800000008603,
+            "enrollment": 78.2075420000001,
+            "firstUpdate": 70.64295800000036,
+            "total": 149.13495800000055
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.2891249999993306,
+            "enrollment": 76.23970799999915,
+            "firstUpdate": 71.50266700000066,
+            "total": 148.03149999999914
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.323792000002868,
+            "enrollment": 71.14229100000011,
+            "firstUpdate": 70.51204199999847,
+            "total": 141.97812500000146
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3358329999973648,
+            "enrollment": 67.98325000000114,
+            "firstUpdate": 71.86920800000007,
+            "total": 140.18829099999857
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.4349160000019765,
+            "enrollment": 72.13666699999885,
+            "firstUpdate": 71.8293330000015,
+            "total": 144.40091600000233
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3214169999992009,
+            "enrollment": 75.15091600000233,
+            "firstUpdate": 70.97741699999824,
+            "total": 146.44974999999977
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3042920000007143,
+            "enrollment": 73.73474999999962,
+            "firstUpdate": 70.1372909999991,
+            "total": 144.17633299999943
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.28887500000200816,
+            "enrollment": 75.30537499999991,
+            "firstUpdate": 68.5290419999983,
+            "total": 144.12329200000022
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3039580000004207,
+            "enrollment": 73.59000000000015,
+            "firstUpdate": 68.7958749999998,
+            "total": 142.68983300000036
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.33075000000098953,
+            "enrollment": 72.93829199999891,
+            "firstUpdate": 69.74954200000138,
+            "total": 143.01858400000128
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3226250000006985,
+            "enrollment": 69.50083299999824,
+            "firstUpdate": 68.87458300000071,
+            "total": 138.69804099999965
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.32804200000100536,
+            "enrollment": 68.20820800000001,
+            "firstUpdate": 70.62162499999977,
+            "total": 139.1578750000008
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.3035409999974945,
+            "enrollment": 69.37950000000274,
+            "firstUpdate": 69.6284169999999,
+            "total": 139.31145800000013
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.29508399999758694,
+            "enrollment": 76.30500000000029,
+            "firstUpdate": 70.46075000000201,
+            "total": 147.0608339999999
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.2922919999982696,
+            "enrollment": 77.02037500000006,
+            "firstUpdate": 69.80520800000522,
+            "total": 147.11787500000355
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 8194,
+            "afterEnrollment": 16388,
+            "afterFirstUpdate": 16388
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.2847920000058366,
+            "enrollment": 73.42991599999368,
+            "firstUpdate": 70.43691700000636,
+            "total": 144.15162500000588
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        }
+      ],
+      "phasesMs": {
+        "construction": {
+          "median": 0.3042920000007143,
+          "p95": 0.4349160000019765
+        },
+        "enrollment": {
+          "median": 73.42991599999368,
+          "p95": 77.02037500000006
+        },
+        "firstUpdate": {
+          "median": 70.46075000000201,
+          "p95": 71.85608300000058
+        },
+        "total": {
+          "median": 144.12329200000022,
+          "p95": 148.03149999999914
+        }
+      }
+    },
+    "exact": {
+      "raw": [
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7012919999997393,
+            "enrollment": 73.62583300000006,
+            "firstUpdate": 71.7502080000013,
+            "total": 146.0773330000011
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.6778329999997368,
+            "enrollment": 72.87029199999961,
+            "firstUpdate": 68.79304199999933,
+            "total": 142.34116699999868
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7429580000007263,
+            "enrollment": 71.15712499999972,
+            "firstUpdate": 74.36904200000026,
+            "total": 146.2691250000007
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.765625,
+            "enrollment": 74.16150000000016,
+            "firstUpdate": 69.01816700000018,
+            "total": 143.94529200000034
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7441250000010768,
+            "enrollment": 74.67395899999974,
+            "firstUpdate": 75.34991599999921,
+            "total": 150.76800000000003
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7555410000004485,
+            "enrollment": 75.79145900000003,
+            "firstUpdate": 69.60662500000035,
+            "total": 146.15362500000083
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.8559169999989535,
+            "enrollment": 69.27962500000103,
+            "firstUpdate": 75.73758300000009,
+            "total": 145.87312500000007
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7102080000004207,
+            "enrollment": 68.95166700000118,
+            "firstUpdate": 68.05987499999901,
+            "total": 137.7217500000006
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.0389580000010028,
+            "enrollment": 70.122457999998,
+            "firstUpdate": 72.34000000000015,
+            "total": 143.50141599999915
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.8096670000013546,
+            "enrollment": 76.70574999999735,
+            "firstUpdate": 69.94854200000191,
+            "total": 147.4639590000006
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7464169999984733,
+            "enrollment": 74.6933330000029,
+            "firstUpdate": 70.55512499999895,
+            "total": 145.99487500000032
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.0219170000018494,
+            "enrollment": 73.67358299999978,
+            "firstUpdate": 71.7544170000001,
+            "total": 146.44991700000173
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7427080000015849,
+            "enrollment": 72.89833400000134,
+            "firstUpdate": 70.89345799999865,
+            "total": 144.53450000000157
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7972499999996217,
+            "enrollment": 70.13204100000075,
+            "firstUpdate": 70.5738339999989,
+            "total": 141.50312499999927
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.8882919999996375,
+            "enrollment": 70.8350419999988,
+            "firstUpdate": 71.77679100000023,
+            "total": 143.50012499999866
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7747080000008282,
+            "enrollment": 69.22020799999882,
+            "firstUpdate": 72.75229200000103,
+            "total": 142.74720800000068
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.5933330000007118,
+            "enrollment": 67.40870899999936,
+            "firstUpdate": 72.04187499999898,
+            "total": 141.04391699999906
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.8422910000008414,
+            "enrollment": 77.16754199999923,
+            "firstUpdate": 71.47754200000054,
+            "total": 149.4873750000006
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7138749999940046,
+            "enrollment": 74.80487500000163,
+            "firstUpdate": 70.89833400000498,
+            "total": 146.4170840000006
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 16386,
+            "afterEnrollment": 16386,
+            "afterFirstUpdate": 16386
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 0.7443750000020373,
+            "enrollment": 75.81370799999422,
+            "firstUpdate": 69.48270800000319,
+            "total": 146.04079099999944
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        }
+      ],
+      "phasesMs": {
+        "construction": {
+          "median": 0.7555410000004485,
+          "p95": 1.0389580000010028
+        },
+        "enrollment": {
+          "median": 72.89833400000134,
+          "p95": 76.70574999999735
+        },
+        "firstUpdate": {
+          "median": 70.89833400000498,
+          "p95": 75.34991599999921
+        },
+        "total": {
+          "median": 145.87312500000007,
+          "p95": 149.4873750000006
+        }
+      }
+    },
+    "over": {
+      "raw": [
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.2900420000005397,
+            "enrollment": 72.19158299999981,
+            "firstUpdate": 71.82266700000037,
+            "total": 145.30429200000071
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.498582999998689,
+            "enrollment": 69.84095800000068,
+            "firstUpdate": 74.49979200000053,
+            "total": 145.8393329999999
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.2394999999996799,
+            "enrollment": 73.49250000000029,
+            "firstUpdate": 72.01987499999996,
+            "total": 146.75187499999993
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.5766250000015134,
+            "enrollment": 69.0669170000001,
+            "firstUpdate": 73.66616599999907,
+            "total": 144.30970800000068
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.2338749999998981,
+            "enrollment": 76.82987499999945,
+            "firstUpdate": 67.96737500000017,
+            "total": 146.03112499999952
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.7824170000003505,
+            "enrollment": 69.29183299999931,
+            "firstUpdate": 71.3680000000004,
+            "total": 142.44225000000006
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.474584000003233,
+            "enrollment": 71.7529579999973,
+            "firstUpdate": 70.93904200000179,
+            "total": 144.16658400000233
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.3482089999997697,
+            "enrollment": 67.27216599999883,
+            "firstUpdate": 70.40445900000122,
+            "total": 139.02483399999983
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.3377910000017437,
+            "enrollment": 71.3425419999985,
+            "firstUpdate": 72.66370800000004,
+            "total": 145.3440410000003
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.405624999999418,
+            "enrollment": 74.0399589999979,
+            "firstUpdate": 69.97475000000122,
+            "total": 145.42033399999855
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.257499999999709,
+            "enrollment": 76.1560419999987,
+            "firstUpdate": 69.73670800000036,
+            "total": 147.15024999999878
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.292250000002241,
+            "enrollment": 73.32687499999884,
+            "firstUpdate": 70.69591700000092,
+            "total": 145.315042000002
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.3000839999986056,
+            "enrollment": 75.79579100000046,
+            "firstUpdate": 70.54612500000076,
+            "total": 147.64199999999983
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.3783750000002328,
+            "enrollment": 67.61108299999978,
+            "firstUpdate": 73.04770799999824,
+            "total": 142.03716599999825
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.4093339999999444,
+            "enrollment": 71.51387499999691,
+            "firstUpdate": 71.88666600000215,
+            "total": 144.809874999999
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.6195829999996931,
+            "enrollment": 67.8350419999988,
+            "firstUpdate": 72.24312500000087,
+            "total": 141.69774999999936
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.320917000000918,
+            "enrollment": 78.04733299999862,
+            "firstUpdate": 67.53995900000155,
+            "total": 146.90820900000108
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.2538749999985157,
+            "enrollment": 77.21929100000125,
+            "firstUpdate": 70.36224999999831,
+            "total": 148.83541599999808
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.6596250000002328,
+            "enrollment": 76.58383400000457,
+            "firstUpdate": 69.87629099999322,
+            "total": 148.11974999999802
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        },
+        {
+          "capacities": {
+            "afterConstruction": 32771,
+            "afterEnrollment": 32771,
+            "afterFirstUpdate": 32771
+          },
+          "checksum": 17314095104,
+          "phasesMs": {
+            "construction": 1.2868339999986347,
+            "enrollment": 74.05779100000655,
+            "firstUpdate": 70.1649999999936,
+            "total": 145.50962499999878
+          },
+          "topology": {
+            "batches": 1,
+            "sprites": 16384,
+            "visibleSprites": 16384
+          }
+        }
+      ],
+      "phasesMs": {
+        "construction": {
+          "median": 1.3377910000017437,
+          "p95": 1.6596250000002328
+        },
+        "enrollment": {
+          "median": 72.19158299999981,
+          "p95": 77.21929100000125
+        },
+        "firstUpdate": {
+          "median": 70.69591700000092,
+          "p95": 73.66616599999907
+        },
+        "total": {
+          "median": 145.3440410000003,
+          "p95": 148.11974999999802
+        }
+      }
+    }
+  }
+}

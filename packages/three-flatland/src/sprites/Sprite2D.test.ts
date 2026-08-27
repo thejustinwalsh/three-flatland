@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { entityFor, worldFor, enrollInWorld } from '../ecs/testUtils.type-test'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Texture, BufferAttribute, InterleavedBufferAttribute } from 'three'
-import { createWorld, universe } from 'koota'
+import { createWorld } from '../ecs/runtime'
 import { Sprite2D } from './Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { SpriteColor, SpriteFlip, SpriteUV } from '../ecs/traits'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
+import { readRequired, requiredEntity } from '../ecs/testUtils.type-test'
 
 describe('Sprite2D', () => {
   let texture: Texture
@@ -190,18 +192,18 @@ describe('Sprite2D', () => {
 
   it('caches the batch registry across hot-path mutations', () => {
     const group = new SpriteGroup()
-    const world = group.world
-    const query = vi.spyOn(world, 'query')
+    const world = worldFor(group)
+    const view = vi.spyOn(world, 'view')
     const sprite = new Sprite2D({ texture })
     group.add(sprite)
-    const enrollmentQueries = query.mock.calls.length
+    const enrollmentQueries = view.mock.calls.length
 
     sprite.visible = false
     sprite.visible = true
     sprite.hitRadius = 24
 
     expect(enrollmentQueries).toBeGreaterThan(0)
-    expect(query).toHaveBeenCalledTimes(enrollmentQueries)
+    expect(view).toHaveBeenCalledTimes(enrollmentQueries)
     group.dispose()
   })
 
@@ -273,10 +275,6 @@ describe('Sprite2D standalone vs enrolled', () => {
     material = new Sprite2DMaterial({ map: texture })
   })
 
-  afterEach(() => {
-    universe.reset()
-  })
-
   it('standalone: tint writes to own geometry buffer immediately', () => {
     const sprite = new Sprite2D({ texture, material })
 
@@ -342,7 +340,7 @@ describe('Sprite2D standalone vs enrolled', () => {
   it('enrolled: tint writes to trait only, own buffer unchanged', () => {
     const sprite = new Sprite2D({ texture, material })
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Read initial own buffer color. The interleaved layout puts
     // color at offset 4..7 within each vertex's 16-float slice; green
@@ -358,30 +356,32 @@ describe('Sprite2D standalone vs enrolled', () => {
     expect(array[5]).toBe(initialG)
 
     // But the trait should have the new value
-    expect(sprite._entity).not.toBeNull()
-    const color = sprite._entity!.get(SpriteColor)
+    expect(entityFor(sprite)).not.toBeNull()
+    const color = readRequired(world, requiredEntity(sprite), SpriteColor)
     expect(color.r).toBe(1)
     expect(color.g).toBe(0)
     expect(color.b).toBe(0)
+    world.dispose()
   })
 
   it('enrolled: flip writes to trait only', () => {
     const sprite = new Sprite2D({ texture, material })
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     sprite.flipX = true
 
     // Trait should have the new value
-    const flip = sprite._entity!.get(SpriteFlip)
+    const flip = readRequired(world, requiredEntity(sprite), SpriteFlip)
     expect(flip.x).toBe(-1)
     expect(flip.y).toBe(1)
+    world.dispose()
   })
 
   it('enrolled: setFrame writes to trait only', () => {
     const sprite = new Sprite2D({ texture, material })
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     sprite.setFrame({
       name: 'test',
@@ -393,24 +393,26 @@ describe('Sprite2D standalone vs enrolled', () => {
       sourceHeight: 25,
     })
 
-    const uv = sprite._entity!.get(SpriteUV)
+    const uv = readRequired(world, requiredEntity(sprite), SpriteUV)
     expect(uv.x).toBeCloseTo(0.25)
     expect(uv.y).toBeCloseTo(0.5)
     expect(uv.w).toBeCloseTo(0.25)
     expect(uv.h).toBeCloseTo(0.25)
+    world.dispose()
   })
 
   it('enrolled sprite entity exists after enrollment', () => {
     const sprite = new Sprite2D({ texture, material })
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
-    expect(sprite._entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     // Entity should have trait data matching sprite properties
-    const color = sprite._entity!.get(SpriteColor)
+    const color = readRequired(world, requiredEntity(sprite), SpriteColor)
     expect(color.r).toBe(1)
     expect(color.g).toBe(1)
     expect(color.b).toBe(1)
     expect(color.a).toBe(1)
+    world.dispose()
   })
 })

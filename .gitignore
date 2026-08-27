@@ -97,4 +97,5 @@ tools/vscode/*.vsix
 tools/vscode/LICENSE
 # Nx runtime/cache dirs — nothing under .nx/ is meant to be tracked
 .nx/
+.labs/
 .claude/worktrees

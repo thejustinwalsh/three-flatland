@@ -1,8 +1,8 @@
 # Baseline and kernel decision
 
-Status: private production runtime validated; core migration and renderer gates remain pending
+Status: kernel decision and final frozen-source release evidence accepted
 
-Date: 2026-08-22
+Date: 2026-08-24
 
 ## Decision
 
@@ -13,37 +13,45 @@ It is the best current balance for Flatland's bounded trait surface:
 
 - 68.5% less active heap than Koota at 60,000 entities,
 - the production runtime uses 44.6% less active heap than the sparse-persistent candidate,
-- 48.3% lower median for the 60,000-entity lifecycle workload than Koota,
-- 51.4% lower median for the 60,000-entity, 256-dynamic-effect-trait lifecycle,
+- 50.5% lower median for the 60,000-entity lifecycle workload than Koota,
+- 54.9% lower median for the 60,000-entity, 256-dynamic-effect-trait lifecycle,
 - 99.9% lower median for repeated stable-query retrieval,
-- 47.1% lower median when actually iterating 16.384 million stable-query entities,
-- 65.8% lower median for 12,000 routing changes,
-- 80.9% lower median for 12,000 dynamic structural changes, and
-- 58.2% lower median for full-handle numeric batch assignment.
+- 48.6% lower median across 16.384 million stable-query iteration visits,
+- 68.2% lower median for 12,000 routing changes,
+- 82.6% lower median for 12,000 dynamic structural changes, and
+- 59.6% lower median for full-handle numeric batch assignment.
 
-The production runtime still has to pass the full `SystemSchedule`, allocation, representative
-consumer bundle, declaration, and live WebGPU gates. This decision chooses the implementation
-direction; it does not waive any shipping threshold.
+The production runtime passes the `SystemSchedule`, allocation, isolated-kernel-size, declaration,
+package, reviewed consumer-budget, final Node topology/memory, trusted Labs timing, and headed
+Knightmark/lighting browser gates. This decision does not waive those thresholds for future runtime
+changes.
 
 ## Reproducible environment
 
-| Input                 | Value                                      |
-| --------------------- | ------------------------------------------ |
-| Kernel merge base     | `93c7d9cc9a5c35844ea2f08daf090c3bc06080e5` |
-| Storage merge base    | `4824c47555a822b532ab8497c30c8e8d881529a2` |
-| Node                  | 26.5.0                                     |
-| pnpm                  | 10.28.1                                    |
-| OS                    | Darwin 25.5.0 arm64                        |
-| Koota                 | 0.6.5                                      |
-| tsx                   | 4.21.0                                     |
-| esbuild               | 0.28.1                                     |
-| Browser bundle target | ES2022 ESM                                 |
-| CPU                   | Apple M4                                   |
+| Input                   | Value                                      |
+| ----------------------- | ------------------------------------------ |
+| Kernel merge base       | `bd19dd506f64cbb060e69148e01fc7b9ceb4bee8` |
+| Storage merge base      | `4824c47555a822b532ab8497c30c8e8d881529a2` |
+| Node                    | 26.5.0                                     |
+| pnpm                    | 10.28.1                                    |
+| OS                      | Darwin 25.5.0 arm64                        |
+| Koota                   | 0.6.5                                      |
+| tsx                     | 4.21.0                                     |
+| esbuild                 | 0.28.1                                     |
+| Renderer source HEAD    | `c25f74c3e37bb9b521d416a81d749c925df00df2` |
+| Renderer merge base     | `bd19dd506f64cbb060e69148e01fc7b9ceb4bee8` |
+| Browser release source  | `6a11576769772223146228b4e799c178eb173d71` |
+| Browser historical base | `c0441b6fab15b918217a8f5587b8078541fd7b1d` |
+| Three.js                | 0.185.1                                    |
+| three-flatland          | 0.1.0-alpha.10                             |
+| Browser bundle target   | ES2022 ESM                                 |
+| CPU                     | Apple M4                                   |
 
 Every adapter ran in three fresh Node processes with explicit garbage collection available. Per
 process, ordinary workloads used five warm-ups and fifteen observations. Lifecycle workloads used
 three warm-ups and ten observations at 1,000 and 16,384 entities, and five observations at 60,000
-entities. The aggregate medians and p95s therefore include process/JIT variance, not only repeated
+entities. Medians and p95s use nearest-rank order statistics; at ten observations the median is the
+fifth ordered value and p95 is the maximum. The aggregates therefore include process/JIT variance, not only repeated
 timing inside one process. The JSON records every raw observation. Memory uses two warm-ups and
 seven fresh-world observations per process, with active heap sampled before disposal and retained
 heap sampled after the capture frame returns and garbage collection runs. The raw artifacts record
@@ -52,9 +60,15 @@ source that generated them.
 
 Raw evidence:
 
+- [`results/final-evidence-manifest.md`](./results/final-evidence-manifest.md)
 - [`results/kernel-baseline.json`](./results/kernel-baseline.json)
 - [`results/kernel-size.json`](./results/kernel-size.json)
 - [`results/numeric-storage.json`](./results/numeric-storage.json)
+- [`results/renderer-production.json`](./results/renderer-production.json)
+- [`results/renderer-labs-summary.md`](./results/renderer-labs-summary.md)
+- [`results/expected-sprites.json`](./results/expected-sprites.json)
+- [`results/consumer-bundle-budget.json`](./results/consumer-bundle-budget.json)
+- [`results/browser-evidence-summary.md`](./results/browser-evidence-summary.md)
 
 ## Behavioral baseline
 
@@ -62,12 +76,12 @@ The independent reference model and Koota adapter exposed ten intentional differ
 Koota 0.6.5 and the Flatland contract:
 
 1. Passing a partial initializer to a Koota object-backed trait replaces the factory result, so
-   omitted defaults disappear. Flatland will merge the partial into a fresh factory result.
+   omitted defaults disappear. Flatland merges the partial into a fresh factory result.
 2. Koota changed-event queries do not enforce an ordinary required tag. The current routing query
-   can therefore return an entity without `IsBatched`; later relation rejection happens to hide it.
-   Flatland will filter required traits when the event is enqueued.
+   could therefore return an entity without `IsBatched`; later relation rejection happened to hide it.
+   Flatland filters required traits when the event is enqueued.
 3. Adding and removing a trait before the first added-event drain loses the Koota added event.
-   Flatland will preserve independent added and removed queues.
+   Flatland preserves independent added and removed queues.
 4. Destroying an entity causes Koota to report removed traits. Flatland reserves removed events for
    explicit trait removal so destruction cannot queue unreadable entity handles.
 5. If an index is destroyed and recycled before an added-event drain, Koota collapses the old and
@@ -78,7 +92,7 @@ Koota 0.6.5 and the Flatland contract:
    composition and throws before consuming an index or touching stores, selectors, or events.
 8. Koota accepts an empty all-entities selector. Flatland rejects it because the renderer has no
    all-entities query and should not maintain a global membership index for an unused feature.
-9. Koota's 12-bit generation wraps and aliases the original handle on the 4,096th recycle. Flatland
+9. Koota's 8-bit generation wraps and aliases the original handle on the 256th recycle. Flatland
    uses the safe-integer generation range and permanently retires an index before it could wrap.
 10. Removing an exclusive relation from a destroyed source silently no-ops in Koota. Flatland
     rejects stale-source unassignment consistently with every other structural mutation.
@@ -93,18 +107,28 @@ incompatibilities during migration.
 | ----------------------------------------- | -------: | -------: | ------: |
 | Koota seven-import kernel                 | 34,910 B | 10,584 B | 9,362 B |
 | Shared candidate superset, signature mode |  8,637 B |  3,209 B | 2,940 B |
-| Private production runtime                | 11,647 B |  3,824 B | 3,427 B |
+| Private production runtime                | 10,905 B |  3,865 B | 3,507 B |
+| Optional capacity extension alone         |     56 B |     71 B |    60 B |
+| Shipped runtime with capacity             | 10,954 B |  3,887 B | 3,529 B |
 
 The prototype result is conservative: the candidate artifact still contains the shared
 benchmark-adapter shell and branches for all three query modes. Even that superset is 26,273 bytes
 smaller minified, 7,375 bytes smaller gzip, and 6,422 bytes smaller Brotli than the exact Koota
 import surface. It is below the isolated kernel caps of 12,000 / 4,000 / 3,800 bytes.
 
-The specialized private runtime now measures 23,263 bytes smaller minified, 6,760 bytes smaller
-gzip, and 5,935 bytes smaller Brotli than the exact Koota import surface. Its additional entity
-safety, nominal types, explicit per-world event activation, and release paths remain below the
-12,000 / 4,000 / 3,800 byte caps. This isolated result does not substitute for the required basic
-Three.js, basic React, stress, and dynamic-effect consumer attribution after the core migration.
+The base private runtime measures 24,005 bytes smaller minified, 6,719 bytes smaller gzip, and 5,855
+bytes smaller Brotli than the exact Koota import surface. The statically shipped runtime with
+capacity measures 23,956 / 6,697 / 5,833 bytes smaller and remains below the unchanged 12,000 /
+4,000 / 3,800-byte caps. The standalone extension row is attribution evidence, not an arithmetically
+additive compressed size: the authoritative shipped delta over the base runtime is 49 bytes
+minified, 22 bytes gzip, and 22 bytes Brotli.
+
+Representative consumer sizes are gated against the reviewed frozen-source budget. A second clean
+capture reproduced every accepted minified/gzip/Brotli maximum with zero-byte deltas across all four
+fixtures. The pinned historical comparison remains report-only because it spans every package
+change reachable from those fixtures: basic Three, basic React, and pass/lighting are larger, while
+Knightmark is smaller. Publication checks continue to reject Koota and duplicate private-runtime
+output.
 
 ## Full microbenchmark summary
 
@@ -112,29 +136,66 @@ Times are milliseconds per sample. Lower is better.
 
 | Workload                              | Koota median / p95 | Production median / p95 | Median change |
 | ------------------------------------- | -----------------: | ----------------------: | ------------: |
-| Lifecycle, 1,000                      |      1.809 / 2.234 |           1.316 / 1.928 |        -27.2% |
-| Lifecycle, 16,384                     |    33.442 / 35.400 |         17.174 / 17.732 |        -48.6% |
-| Lifecycle, 60,000                     |  125.074 / 130.579 |         64.675 / 67.889 |        -48.3% |
-| 256-effect-trait lifecycle, 12,000    |    58.411 / 61.294 |         45.496 / 52.397 |        -22.1% |
-| 256-effect-trait lifecycle, 60,000    |  253.709 / 261.141 |       123.362 / 143.071 |        -51.4% |
-| Stable view retrieval, 1,000 calls    |      8.817 / 9.041 |           0.013 / 0.028 |        -99.9% |
-| Stable view iteration, 16.384M visits |    16.047 / 16.497 |           8.494 / 8.908 |        -47.1% |
-| Dynamic add/remove, 12,000            |    13.054 / 14.006 |           2.499 / 2.704 |        -80.9% |
-| Three routing writes, 12,000          |      5.049 / 5.190 |           1.729 / 1.930 |        -65.8% |
-| Exclusive assign/read/remove, 12,000  |      3.577 / 4.660 |           1.494 / 1.652 |        -58.2% |
+| Lifecycle, 1,000                      |      1.885 / 2.402 |           1.355 / 1.983 |        -28.1% |
+| Lifecycle, 16,384                     |    34.661 / 37.154 |         17.133 / 17.760 |        -50.6% |
+| Lifecycle, 60,000                     |  129.784 / 136.749 |         64.250 / 69.583 |        -50.5% |
+| 256-effect-trait lifecycle, 12,000    |    63.823 / 67.323 |         48.787 / 55.220 |        -23.6% |
+| 256-effect-trait lifecycle, 60,000    |  271.432 / 277.124 |       122.497 / 127.304 |        -54.9% |
+| Stable view retrieval, 1,000 calls    |     9.481 / 10.172 |           0.011 / 0.019 |        -99.9% |
+| Stable view iteration, 16.384M visits |    16.721 / 17.124 |           8.601 / 8.971 |        -48.6% |
+| Dynamic add/remove, 12,000            |    14.338 / 15.403 |           2.492 / 6.115 |        -82.6% |
+| Three routing writes, 12,000          |      5.222 / 5.682 |           1.660 / 1.832 |        -68.2% |
+| Exclusive assign/read/remove, 12,000  |      3.667 / 4.743 |           1.483 / 1.623 |        -59.6% |
 
-The production stable-iteration observations include two 86–87 ms timing outliers;
-the other 43 observations cluster between 8.42 and 8.91 ms. The aggregate p95 remains 8.908 ms, and
-the raw result intentionally retains that timing variance instead of filtering it
-from the evidence.
+Production stable iteration retained 22.111 ms and 88.944 ms observations. The other 43 observations
+span 8.501–8.971 ms. Because nearest-rank p95 at 45 samples selects the 43rd ordered observation,
+the reported p95 is 8.971 ms; no observations were filtered.
 
-The direct-store loop measured 0.172 ms for the production runtime versus 0.174 ms for Koota, an
-absolute difference of 0.002 ms. After setup, that loop performs only identical cached index and
-`number[]` operations—no adapter operation is in the timed region—so the disagreement is classified
-as sub-millisecond process/JIT noise rather than a kernel result. The end-to-end schedule and
-batch-local traversal gates remain authoritative. The assignment row uses a full packed handle in a
-numeric field with `0` as the unassigned sentinel, matching the planned `BatchSlot.batchEntity`
-storage rather than a general relation or `Map` shim.
+The direct-store loop measured 0.171 ms for production and 0.181 ms for Koota, an absolute median
+difference of 0.010 ms. Production p95 was 0.206 ms and Koota p95 was 0.233 ms. Because the timed
+region contains identical cached index and `number[]` operations and no adapter call, this is not
+interpreted as an ECS-kernel result. The
+end-to-end schedule and batch-local traversal gates remain authoritative. The assignment row uses a
+full packed handle in a numeric field with `0` as the unassigned sentinel, matching the planned
+`BatchSlot.batchEntity` storage rather than a general relation or `Map` shim.
+
+## Final production renderer schedule
+
+The production `SpriteGroup`/`SystemSchedule` harness ran all eight cases at both 16,384 and 60,000
+sprites on the Apple M4 host at frozen renderer source `c25f74c3`. Each case first used three fresh
+GC-controlled memory-only contexts. A separate production context then ran one untimed
+topology-validation frame, five warm-ups, and ten instrumented measured frames. The raw generator
+correctly labels itself `measured-unreviewed`; this decision record independently accepts the
+topology, ownership, lifecycle, and memory evidence below. Its User Timing wall-clock totals remain
+diagnostic. The trusted ordinary-production Node timing verdict is the
+[`@pmndrs/labs` comparison](./results/renderer-labs-summary.md), and the end-to-end merge verdict is
+the headed browser matrix.
+
+| Case                   | 16,384 median / p95 | Batches | 60,000 median / p95 | Batches |
+| ---------------------- | ------------------: | ------: | ------------------: | ------: |
+| Static                 |       6.018 / 6.826 |     1→1 |     26.409 / 28.436 |     4→4 |
+| Moving, alpha/depth    |       8.452 / 9.604 |     1→1 |     31.304 / 32.419 |     4→4 |
+| Transparent CPU sort   |     12.323 / 12.798 |     1→1 |     53.782 / 55.684 |     4→4 |
+| 12,000 routing changes |     46.782 / 48.085 |     1→4 |     68.544 / 70.219 |     4→7 |
+| 10% add/remove churn   |     20.358 / 23.559 |     1→1 |     57.043 / 60.086 |     4→4 |
+| Dynamic-effect churn   |       6.841 / 7.314 |     1→1 |     27.314 / 28.278 |     4→4 |
+| Mixed scene            |      9.737 / 11.440 |     2→2 |     40.725 / 42.539 |     4→4 |
+| Multiple worlds        |     10.886 / 11.828 |     2→2 |     43.477 / 43.939 |     4→4 |
+
+Every initial batch count matched the production ladder: one batch for a single 16,384-sprite run
+and four for a single 60,000-sprite run, with the expected sums for mixed and multi-world cases.
+Across all 160 measured frames, the packed member count exactly matched the number of occupied
+physical rows. The separate untimed topology frame confirmed that transform, sort, and dirty-range
+flush traversal never returned to an earlier batch after advancing to another. Routing intentionally
+moves individual owners between batches and is not subject to that traversal-order invariant.
+
+Transform sync dominates settled workloads; batch reassignment dominates the 12,000-routing-change
+case. With ten measured frames, nearest-rank p95 is the observed maximum, and no observation was
+filtered. Per-cycle retained deltas span -1,071,616 to +1,006,280 bytes; the 60,000-sprite subset
+spans -742,336 to +719,880 bytes. Final cross-cycle deltas span -354,976 to +353,856 bytes.
+Positive and negative values remain bounded without a consistent upward post-destroy trend; with
+three cycles this is stabilization evidence, not proof of leak absence. This is JavaScript heap, not
+browser GPU memory.
 
 ## Numeric storage decision
 
@@ -157,12 +218,12 @@ strategies.
 
 ### Selected: signatures plus persistent views
 
-The signature candidate is 9.6% faster than sparse-persistent at the 60,000-entity lifecycle,
-10.0% faster for structural churn, 53.9% faster for the 256-effect-trait lifecycle, 11.5% faster for
-exclusive assignment, 0.8% slower for routing, and uses 44.5% less active heap. Multiple 32-bit
+The signature candidate is 7.0% faster than sparse-persistent at the 60,000-entity lifecycle, 4.3%
+faster for structural churn, 54.8% faster for the 256-effect-trait lifecycle, 6.0% faster for
+exclusive assignment, 17.1% faster for routing, and uses 44.5% less active heap. Multiple 32-bit
 words support dynamic effect traits without a fixed 32-trait ceiling. The specialized production
-runtime's dense active-signature-word scan with present-bit traversal improves another 16.1% over
-the shared signature prototype on the 60,000-entity base lifecycle and 66.2% on the dynamic-effect
+runtime's dense active-signature-word scan with present-bit traversal improves another 20.3% over
+the shared signature prototype on the 60,000-entity base lifecycle and 69.5% on the dynamic-effect
 lifecycle.
 
 ### Rejected: sparse membership plus persistent views
@@ -174,13 +235,20 @@ paths make it the weaker overall kernel.
 ### Rejected: anchored scans
 
 Anchored scans are small and fast under structural churn, but the unchanged 16,384-entity query
-retrieval workload took 362.0 ms versus Koota's 8.8 ms, and full iteration took 369.2 ms versus
-16.0 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
+retrieval workload took 346.1 ms versus Koota's 8.9 ms, and full iteration took 352.2 ms versus
+15.9 ms. Recomputing intersections per frame is incompatible with Flatland's stable sprite-wide queries.
 
-## Next gate
+## Final release-evidence verdict
 
-Finish the private-runtime PR review with behavior, compile-time inference, isolated production
-bundle, packed-package boundary, stale-handle, and disposal gates green. Then migrate core call
-sites, enforce allocation-free hot numeric access and batch-local physical-slot iteration, and run
-the full schedule, representative consumer, declaration, and live WebGPU gates before removing
-Koota.
+The [headed browser matrix](./results/browser-evidence-summary.md) contains 24 complete reports and
+1,038 validated observations against byte-identical fixtures. Ordinary-production Knightmark gains
+one refined 1,000-sprite crossover and preserves the other three; none regresses. Both Three.js
+lighting variants preserve their 20k–30k bracket while reducing missed cadence at 30k and 40k. Both
+React lighting variants move from the 10k–20k measured bracket to the 20k–30k bracket. Profile
+reports retain every non-monotonic host outlier and are diagnostic rather than the merge verdict.
+
+Koota is absent from current source, public declarations, published output, and representative
+consumer graphs. The shipped runtime remains within 12,000 / 4,000 / 3,800-byte
+minified/gzip/Brotli caps, the reviewed consumer budget reproduces exactly, and the trusted Labs
+production comparison establishes no Node renderer regression. The implementation and release
+evidence gates are accepted.

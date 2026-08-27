@@ -1,8 +1,8 @@
 # Internal ECS design gate
 
-Status: **approved — initial kernel evidence captured, full production validation pending**
+Status: **approved — implementation and final release evidence accepted**
 
-Date: 2026-08-22
+Date: 2026-08-24
 
 ## Decision requested
 
@@ -10,7 +10,9 @@ Approve or revise the proposal to replace Koota inside `three-flatland` with a p
 
 The recommendation is **not** to publish another general ECS and **not** to recreate Koota. The proposed runtime keeps the useful part of Koota's model—typed trait schemas with tag, structure-of-arrays, and object-backed forms—while removing the general features Flatland does not use.
 
-The replacement must prove all of the following before Koota is removed:
+The replacement was required to prove all of the following before Koota was removed. The private
+runtime, core migration, dependency cleanup, final Node matrix, reviewed consumer budgets, and
+deterministic headed browser A/B now satisfy their gates:
 
 1. It is behaviorally equivalent for Flatland's entity lifecycle, batching, effect traits, and change events.
 2. It is faster in the representative structural and steady-state workloads.
@@ -26,6 +28,21 @@ The replacement must prove all of the following before Koota is removed:
 4. [Benchmark and validation plan](./03-benchmark-validation-plan.md) — baselines, workloads, acceptance thresholds, and CI gates.
 5. [Migration and rollout plan](./04-migration-rollout-plan.md) — atomic implementation phases, rollback boundary, documentation, and review sequence.
 6. [Baseline and kernel decision](./05-baseline-and-kernel-decision.md) — raw-evidence links, Koota behavior findings, isolated size results, and the selected production direction.
+7. [Private ECS architecture standard](./06-private-ecs-architecture-standard.md) — the durable public/private boundary, ownership laws, hot-path rules, lifecycle contract, capacity policy, and telemetry policy.
+8. [Private ECS convergence plan](./07-private-ecs-convergence-plan.md) — subsystem audit, ranked migrations, source references, and the gates required for each follow-up.
+9. [Koota upstream suggestions](./08-koota-upstream-suggestions.md) — narrowly scoped ideas learned from the migration, separated into measured proposals and lower-confidence experiments.
+10. [Private ECS evolution ledger](./09-private-ecs-evolution-ledger.md) — durable feature records for every accepted, active, queued, evidence-gated, or rejected internal ECS change.
+
+Final evidence is recorded in the [kernel and renderer decision](./05-baseline-and-kernel-decision.md),
+the [trusted Node timing summary](./results/renderer-labs-summary.md), and the
+[headed browser summary](./results/browser-evidence-summary.md). The browser archive retains all 24
+complete production/profile reports. The [final example walkthrough](./results/example-smoke-summary.md)
+records the 28/28 live application and starter check. The
+[final evidence manifest](./results/final-evidence-manifest.md) records source boundaries, artifact
+checksums, and the acceptance role of each capture. The standalone
+[API audit](./results/api-audit.html) compares every package export root and declaration surface,
+records the supported breaking changes, and separates the accepted alpha boundary from the remaining
+pre-stable declaration cleanup.
 
 ## Proposed decision in one page
 
@@ -96,10 +113,11 @@ Against the currently installed Koota 0.6.5:
 | ------------------------------------------------------ | -------------------------------------------------------------: |
 | Installed Koota package                                |                                                 496 kB on disk |
 | Tree-shaken bundle of Flatland's seven runtime imports | 34,910 bytes minified / 10,584 bytes gzip / 9,362 bytes Brotli |
+| Shipped private runtime with capacity                  |  10,954 bytes minified / 3,887 bytes gzip / 3,529 bytes Brotli |
 
 The seven imports are `createWorld`, `trait`, `relation`, `createAdded`, `createChanged`, `createRemoved`, and `getStore`. Type-only imports are excluded from the bundle measurement.
 
-The proposed shipped-runtime gate is at most **12 kB minified / 4 kB gzip**, with an actual representative-example reduction of at least **22 kB minified / 6 kB gzip**. A smaller result is expected; these are rejection thresholds, not targets to fill.
+The combined shipped private runtime and optional capacity module is gated at **12 kB minified / 4 kB gzip / 3.8 kB Brotli**. Representative consumers use reviewed fixture-specific absolute budgets after source freeze. The pinned pre-migration comparison remains exact but report-only because it spans every reachable package-source change, not only the ECS replacement.
 
 ## Approval boundary
 

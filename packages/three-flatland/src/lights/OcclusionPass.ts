@@ -74,6 +74,8 @@ export interface OcclusionPassOptions {
  * @internal
  */
 export class OcclusionPass {
+  private _disposed = false
+
   private _resolutionScale: number
   private _clearColor: Color
   private _clearAlpha: number
@@ -144,6 +146,7 @@ export class OcclusionPass {
 
   /** The render target whose `texture.a` is the occluder silhouette. */
   get renderTarget(): RenderTarget {
+    this._assertUsable('renderTarget')
     return this._rt
   }
 
@@ -172,6 +175,7 @@ export class OcclusionPass {
    * instantiation-before-first-render never hits a zero-size GPU resource.
    */
   resize(viewportWidth: number, viewportHeight: number): void {
+    this._assertUsable('resize')
     const w = Math.max(1, Math.floor(viewportWidth * this._resolutionScale))
     const h = Math.max(1, Math.floor(viewportHeight * this._resolutionScale))
     if (w === this._width && h === this._height) return
@@ -197,6 +201,7 @@ export class OcclusionPass {
    * caller's subsequent main-scene render sees no side effects.
    */
   render(renderer: WebGPURenderer, scene: Scene, camera: Camera): void {
+    this._assertUsable('render')
     if (this._rendering) return
     this._rendering = true
 
@@ -288,6 +293,7 @@ export class OcclusionPass {
   }
 
   private _getOrCreateOcclusionMaterial(texture: Texture, tightMesh: boolean): MeshBasicNodeMaterial {
+    this._assertUsable('getOcclusionMaterial')
     // Keyed by (texture, geometry strategy): the occlusion shader must
     // mirror the source material's vertex path — vertexIndex synthesis
     // for synth-quad batches, geometry position/uv for tight-mesh ones.
@@ -300,10 +306,32 @@ export class OcclusionPass {
   }
 
   dispose(): void {
-    unregisterDebugTexture('occlusion.mask')
-    this._rt.dispose()
-    for (const mat of this._occlusionMaterials.values()) mat.dispose()
+    if (this._disposed) return
+    this._disposed = true
+
+    const materials = Array.from(this._occlusionMaterials.values())
     this._occlusionMaterials.clear()
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    runCleanup(() => unregisterDebugTexture('occlusion.mask'))
+    runCleanup(() => this._rt.dispose())
+    for (const material of materials) runCleanup(() => material.dispose())
+    if (didError) throw firstError
+  }
+
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: OcclusionPass.${member} cannot be used after dispose()`)
   }
 }
 

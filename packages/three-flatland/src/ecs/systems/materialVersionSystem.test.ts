@@ -1,13 +1,14 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { worldFor } from '../testUtils.type-test'
+import { describe, it, expect, vi } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { materialVersionSystem } from './materialVersionSystem'
-import { BatchSlot, BatchMesh, InBatch } from '../traits'
-import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+import { BatchSlot, IsBatched } from '../traits'
+import { batchFor, readRequired, requiredEntity } from '../testUtils.type-test'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
 
 function makeTexture(): Texture {
   const texture = new Texture()
@@ -16,18 +17,11 @@ function makeTexture(): Texture {
 }
 
 describe('materialVersionSystem', () => {
-  afterEach(() => {
-    universe.reset()
-  })
-
   // Regression guard: the standalone materialVersionSystem export used to
   // carry its own copy of the eviction logic that freed the batch slot
-  // read off the InBatch relation — a pure membership tag with no slot
-  // payload (see traits.ts), so that read was always `undefined`. The
-  // live slot lives on BatchSlot, kept in sync by batchSortSystem on
-  // every swap. Now materialVersionSystem delegates to
-  // evictBatchesForMaterial, which reads BatchSlot.
-  it('evicts using the LIVE BatchSlot after a sort swap, not the stale InBatch relation', () => {
+  // read off the deleted relation target. The complete owner + live slot now
+  // live together on BatchSlot and are updated atomically by sorting.
+  it('evicts using the live BatchSlot ownership after a sort swap', () => {
     const texture = makeTexture()
     // effectTier: 0 (below the default 8) so registering even a
     // single-float effect below forces a tier upgrade and bumps
@@ -43,23 +37,24 @@ describe('materialVersionSystem', () => {
     group.add(b)
     group.update() // initial assign + sort: b (z=5) before a (z=10)
 
-    const slotABefore = a.entity!.get(BatchSlot)!.slot
-    const slotBBefore = b.entity!.get(BatchSlot)!.slot
+    const entityA = requiredEntity(a)
+    const entityB = requiredEntity(b)
+    const slotABefore = readRequired(worldFor(group), entityA, BatchSlot).slot
+    const slotBBefore = readRequired(worldFor(group), entityB, BatchSlot).slot
     expect(slotBBefore).toBeLessThan(slotABefore)
 
     // Flip zIndex so a sorts before b — batchSortSystem swaps their
-    // physical slots and updates BatchSlot; InBatch is never touched.
+    // physical slots and updates the complete BatchSlot ownership record.
     a.zIndex = 0
     group.update()
 
-    const slotAAfter = a.entity!.get(BatchSlot)!.slot
-    const slotBAfter = b.entity!.get(BatchSlot)!.slot
+    const slotAAfter = readRequired(worldFor(group), entityA, BatchSlot).slot
+    const slotBAfter = readRequired(worldFor(group), entityB, BatchSlot).slot
     expect(slotAAfter).toBe(slotBBefore) // proves the physical swap happened
     expect(slotBAfter).toBe(slotABefore)
 
-    const batchEntity = a.entity!.targetFor(InBatch)!
-    const mesh = batchEntity.get(BatchMesh)!.mesh as SpriteBatch
-    const freeSlotSpy = vi.spyOn(mesh, 'freeSlot')
+    const mesh = batchFor(worldFor(group), a)
+    const releaseSlotSpy = vi.spyOn(getSpriteBatchOwnership(mesh), 'releaseSlot')
 
     // Bump the material's effect schema version so materialVersionSystem
     // detects the mismatch and evicts every sprite using it.
@@ -70,20 +65,29 @@ describe('materialVersionSystem', () => {
     })
     material.registerEffect(Glow)
 
-    materialVersionSystem(group.world)
+    materialVersionSystem(worldFor(group))
 
     // The CURRENT (post-swap) slots were freed...
-    expect(freeSlotSpy).toHaveBeenCalledWith(slotAAfter)
-    expect(freeSlotSpy).toHaveBeenCalledWith(slotBAfter)
-    // ...never the stale InBatch relation (which carries no slot at all).
-    expect(freeSlotSpy).not.toHaveBeenCalledWith(undefined)
+    expect(releaseSlotSpy).toHaveBeenCalledWith(slotAAfter, entityA)
+    expect(releaseSlotSpy).toHaveBeenCalledWith(slotBAfter, entityB)
+    // ...never an absent ownership slot.
+    expect(releaseSlotSpy.mock.calls.every(([slot, owner]) => slot !== undefined && owner !== undefined)).toBe(true)
 
     // evictBatchesForMaterial (unlike the deleted duplicate) also clears
     // each sprite's cached direct-write refs.
     expect(a._batchMesh).toBeNull()
     expect(b._batchMesh).toBeNull()
 
-    freeSlotSpy.mockRestore()
+    // Eviction re-triggers IsRenderable on the same entities. The queued
+    // Removed event must not retire those live survivors on the next frame.
+    group.update()
+    group.update()
+    expect(worldFor(group).isAlive(entityA)).toBe(true)
+    expect(worldFor(group).isAlive(entityB)).toBe(true)
+    expect(worldFor(group).has(entityA, IsBatched)).toBe(true)
+    expect(worldFor(group).has(entityB, IsBatched)).toBe(true)
+
+    releaseSlotSpy.mockRestore()
     group.dispose()
   })
 })

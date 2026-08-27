@@ -1,9 +1,13 @@
 import { Vector2, NearestFilter, LinearFilter } from 'three'
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import { BatchRegistry, LightingContext, ShadowPipeline } from '../traits'
 import { SDFGenerator } from '../../lights/SDFGenerator'
 import { OcclusionPass } from '../../lights/OcclusionPass'
 import type { LightEffect } from '../../lights/LightEffect'
+
+const LightingContexts = select(LightingContext)
+const ShadowPipelines = select(ShadowPipeline)
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Owns the shared shadow pipeline end-to-end.
@@ -23,13 +27,12 @@ import type { LightEffect } from '../../lights/LightEffect'
  *   change, render pre-pass on every run.
  *
  * Performance notes:
- * - Single `world.query(LightingContext)` + `world.query(ShadowPipeline)`
- *   per frame. Koota caches query results by trait signature, so these
- *   are O(1) lookups after warmup.
- * - `entity.get(Trait)` for factory-function traits returns the stored
+ * - Stable selector views for `LightingContext` and `ShadowPipeline` are
+ *   reused every frame, so retrieval is O(1) after warmup.
+ * - `world.read(entity, Trait)` for object traits returns the stored
  *   object reference — no allocation, no cloning. Mutations happen in
  *   place (`pipeline.initialized = true`), bypassing `entity.set`'s
- *   `Changed()` wakeup since nothing queries this trait with Changed().
+ *   tracked-change wakeup since nothing subscribes to this trait's changes.
  * - The fast path when shadows are active and size hasn't changed is
  *   two branch predictions, then the two render calls — no CPU work
  *   in JS beyond that.
@@ -37,14 +40,20 @@ import type { LightEffect } from '../../lights/LightEffect'
 const _worldSizeScratch = new Vector2()
 
 export function shadowPipelineSystem(world: World): void {
-  const ctxEntities = world.query(LightingContext)
+  const ctxEntities = world.view(LightingContexts)
   if (ctxEntities.length === 0) return
-  const ctx = ctxEntities[0]!.get(LightingContext)
+  const ctx = world.read(ctxEntities[0]!, LightingContext)
   if (!ctx) return
 
-  const pipelineEntities = world.query(ShadowPipeline)
+  // Flatland depublishes both handles while an old effect's extensible
+  // dispose() callback is running. Treat that transactional state like a
+  // missing context so a direct system call cannot retire or replace the
+  // still-authoritative shadow generation.
+  if (!ctx.effect && !ctx.lightStore) return
+
+  const pipelineEntities = world.view(ShadowPipelines)
   if (pipelineEntities.length === 0) return
-  const pipeline = pipelineEntities[0]!.get(ShadowPipeline)
+  const pipeline = world.read(pipelineEntities[0]!, ShadowPipeline)
   if (!pipeline) return
 
   const effect = ctx.effect
@@ -59,17 +68,32 @@ export function shadowPipelineSystem(world: World): void {
 
   // Teardown path: active effect doesn't need shadows but we hold state.
   if (!needsShadows) {
-    if (pipeline.sdfGenerator) {
-      pipeline.sdfGenerator.dispose()
-      pipeline.sdfGenerator = null
+    const sdfGenerator = pipeline.sdfGenerator
+    const occlusionPass = pipeline.occlusionPass
+    const onResourcesChanged = pipeline.onResourcesChanged
+    pipeline.sdfGenerator = null
+    pipeline.occlusionPass = null
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
     }
-    if (pipeline.occlusionPass) {
-      pipeline.occlusionPass.dispose()
-      pipeline.occlusionPass = null
+    if ((sdfGenerator || occlusionPass) && onResourcesChanged) {
+      runCleanup(() => onResourcesChanged(null, null))
     }
+    if (sdfGenerator) runCleanup(() => sdfGenerator.dispose())
+    if (occlusionPass) runCleanup(() => occlusionPass.dispose())
     pipeline.initialized = false
     pipeline.width = 0
     pipeline.height = 0
+    if (didError) throw firstError
     return
   }
 
@@ -91,9 +115,11 @@ export function shadowPipelineSystem(world: World): void {
   // each frame — no mirrored state on LightingContext.
   if (!pipeline.sdfGenerator) {
     pipeline.sdfGenerator = new SDFGenerator()
+    pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
   if (!pipeline.occlusionPass) {
     pipeline.occlusionPass = new OcclusionPass()
+    pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
 
   // Size from the active LightEffect processing surface (the physical render
@@ -171,10 +197,10 @@ export function shadowPipelineSystem(world: World): void {
   // generation, which is correct when nothing moved. The size-sync / init /
   // resize / setWorldBounds logic above still runs every frame; only the two
   // GPU passes below are gated.
-  const registryEntities = world.query(BatchRegistry)
+  const registryEntities = world.view(BatchRegistries)
   // Treat a missing registry as dirty so shadows never silently freeze.
   const occludersDirty =
-    registryEntities.length === 0 ? true : (registryEntities[0]!.get(BatchRegistry)?.occludersDirty ?? true)
+    registryEntities.length === 0 ? true : (world.read(registryEntities[0]!, BatchRegistry)?.occludersDirty ?? true)
 
   const posX = camera.position.x
   const posY = camera.position.y

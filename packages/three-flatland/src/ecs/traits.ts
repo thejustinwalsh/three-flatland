@@ -1,12 +1,11 @@
-import { trait, relation } from 'koota'
+import { trait } from './runtime'
 import { Vector2 } from 'three'
-import type { Entity, Trait } from 'koota'
+import type { Entity, World } from './runtime'
 import type { Group, Object3D, OrthographicCamera, Scene, Texture } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
 import type { Sprite2DMaterial, ColorTransformFn } from '../materials/Sprite2DMaterial'
-import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { LightEffect } from '../lights/LightEffect'
 import type { LightStore } from '../lights/LightStore'
 import type { Light2D } from '../lights/Light2D'
@@ -77,18 +76,7 @@ export const IsStandalone = trait()
  * slot is the index within that batch's GPU buffers.
  * Avoids O(n) relation resolution per entity per frame.
  */
-export const BatchSlot = trait({ batchIdx: -1, slot: -1 })
-
-// ============================================
-// Relations
-// ============================================
-
-/**
- * Relation: sprite entity → batch entity (exclusive: sprite can only be in one batch).
- * Pure membership marker — the slot index lives in BatchSlot, which batchSortSystem
- * keeps in sync on every swap (a slot on the relation would go stale after a sort).
- */
-export const InBatch = relation({ exclusive: true })
+export const BatchSlot = trait({ batchEntity: 0, batchIdx: -1, slot: -1 })
 
 // ============================================
 // Batch entity traits
@@ -96,8 +84,8 @@ export const InBatch = relation({ exclusive: true })
 
 /**
  * AoS — reference to the SpriteBatch that owns GPU buffers AND slot management.
- * SpriteBatch already has: writeColor(), writeUV(), writeFlip(),
- * writeMatrix(), writeCustom(), writeEffectSlot(), allocateSlot(), freeSlot().
+ * Public buffer writes stay on SpriteBatch; private physical-row ownership is
+ * coordinated by the batching systems through their internal friend access.
  */
 export const BatchMesh = trait(() => ({
   mesh: null as SpriteBatch | null,
@@ -173,6 +161,8 @@ export interface BatchRun {
  * Spawned once by SpriteGroup; systems query for it.
  */
 export const BatchRegistry = trait(() => ({
+  /** Owning world, used by internal inspection facades without parallel lookup state. */
+  world: null as World | null,
   /** Runs indexed by run key — groups batches by (materialId, sortLayer, layers.mask). */
   runs: new Map<string, BatchRun>(),
   /** Sorted run keys for O(log R) binary search on insert. */
@@ -189,6 +179,8 @@ export const BatchRegistry = trait(() => ({
   tierLadder: null as readonly number[] | null,
   /** Material references for schema version tracking. */
   materialRefs: new Map<number, { material: Sprite2DMaterial; version: number }>(),
+  /** Retired ids awaiting one batched material-liveness sweep. */
+  materialReleaseCandidates: new Set<number>(),
   /**
    * Per-texture default Sprite2DMaterials, scoped to this world —
    * replaces the cross-world static cache footgun. Registering an
@@ -209,8 +201,6 @@ export const BatchRegistry = trait(() => ({
   /** Flat array of Sprite2D refs indexed by entity SoA index (eid).
    *  Pure array indexing — same O(1) pattern as other SoA stores. */
   spriteArr: [] as (Sprite2D | null)[],
-  /** Cached effect traits across all materials. Populated by materialVersionSystem. */
-  effectTraits: new Map() as Map<Trait, typeof MaterialEffect>,
   /** Entities whose destruction is deferred to the top of the next frame. */
   pendingDestroy: [] as Entity[],
   /** The SpriteGroup (parent Group) for scene graph sync. */
@@ -251,22 +241,6 @@ export const BatchRegistry = trait(() => ({
 }))
 
 // ============================================
-// Post-processing pass traits
-// ============================================
-
-/** AoS — holds a post-processing pass function, order, and enabled state. */
-export const PostPassTrait = trait(() => ({
-  fn: null as ((input: Node<'vec4'>, uv: Node<'vec2'>) => Node<'vec4'>) | null,
-  order: 0,
-  enabled: true,
-}))
-
-/** World-level singleton for post-processing pass dirty tracking. */
-export const PostPassRegistry = trait(() => ({
-  dirty: false as boolean,
-}))
-
-// ============================================
 // Lighting effect traits
 // ============================================
 
@@ -291,15 +265,15 @@ export const LightEffectTrait = trait(() => ({
  * than each effect owning its own SDFGenerator, the pipeline is shared
  * at the world level.
  *
- * Lifecycle: `shadowPipelineSystem` owns this trait end-to-end — it
- * allocates the generators when the active effect declares
- * `needsShadows`, resizes them as the viewport changes, runs the
- * per-frame pre-pass, and disposes on detach. Flatland does not touch
- * these fields.
+ * Lifecycle: `shadowPipelineSystem` owns the active trait fields — it
+ * allocates the generators when the active effect declares `needsShadows`,
+ * resizes them as the viewport changes, runs the per-frame pre-pass, and
+ * disposes on detach. The resource-change callback transfers teardown
+ * ownership to Flatland without adding work to the steady frame path.
  *
  * Fast-path contract: every field here is either a nullable object
- * reference or a small scalar. Consumers read via `entity.get(ShadowPipeline)`
- * (O(1) pointer deref in Koota) and mutate in place. No per-frame
+ * reference or a small scalar. Consumers read via `world.read(entity, ShadowPipeline)`
+ * (O(1) object-store lookup) and mutate in place. No per-frame
  * allocation.
  */
 export const ShadowPipeline = trait(() => ({
@@ -307,6 +281,8 @@ export const ShadowPipeline = trait(() => ({
   sdfGenerator: null as SDFGenerator | null,
   /** Occluder silhouette pre-pass. Null while inactive. */
   occlusionPass: null as OcclusionPass | null,
+  /** Boundary-only notification when the owned resource generation changes. */
+  onResourcesChanged: null as ((sdfGenerator: SDFGenerator | null, occlusionPass: OcclusionPass | null) => void) | null,
   /** Last SDF render-target width (post-resolution-scale). */
   width: 0,
   /** Last SDF render-target height (post-resolution-scale). */

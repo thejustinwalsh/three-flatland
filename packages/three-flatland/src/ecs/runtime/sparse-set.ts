@@ -1,14 +1,10 @@
 export class SparseSet {
   readonly dense: number[] = []
-  private readonly sparse: Array<number | undefined> = []
+  readonly sparse: Array<number | undefined> = []
 
   has(value: number): boolean {
     const position = this.sparse[value]
     return position !== undefined && this.dense[position] === value
-  }
-
-  indexOf(value: number): number {
-    return this.has(value) ? this.sparse[value]! : -1
   }
 
   add(value: number): boolean {
@@ -18,9 +14,9 @@ export class SparseSet {
     return true
   }
 
-  delete(value: number): boolean {
+  delete(value: number): number {
     const position = this.sparse[value]
-    if (position === undefined || this.dense[position] !== value) return false
+    if (position === undefined || this.dense[position] !== value) return -1
 
     const last = this.dense.pop()!
     this.sparse[value] = undefined
@@ -28,7 +24,7 @@ export class SparseSet {
       this.dense[position] = last
       this.sparse[last] = position
     }
-    return true
+    return position
   }
 
   clear(): void {

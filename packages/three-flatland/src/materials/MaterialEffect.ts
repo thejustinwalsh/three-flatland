@@ -1,9 +1,23 @@
-import { trait } from 'koota'
-import type { Entity, Trait } from 'koota'
+import { trait, type NumericSchema, type NumericStore, type World } from '../ecs/runtime'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { Texture } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
+import type { TileMap2D } from '../tilemap/TileMap2D'
 import type { ChannelName, ChannelNodeMap } from './channels'
+import { entitySlot } from '../ecs/snapshot'
+import { validateEffectSchema } from '../internal/effectSchemaValidation'
+import { syncTileMapEffectProjection } from '../internal/tile-map-effect-projection'
+import {
+  beginEffectReadOverride,
+  getEffectEntity,
+  getEffectTrait,
+  readEffectScalarValue,
+  readEffectVectorSnapshot,
+  restoreEffectReadOverride,
+  setEffectEntity,
+  setEffectTrait,
+} from '../internal/effect-runtime'
+import { spriteEntity, spriteWorld } from '../internal/sprite-runtime'
 
 // ============================================
 // Schema Types
@@ -30,16 +44,21 @@ export type ConstantKeys<S extends EffectSchema> = {
   [K in keyof S]: S[K] extends (...args: never[]) => unknown ? K : never
 }[keyof S]
 
-/** Derive JS value types from an effect schema (uniform fields only, used by property setters). */
+/**
+ * Derive JS value types from an effect schema (uniform fields only, used by
+ * property setters). Vector getters return read-only tuple snapshots. Update a
+ * vector by assigning the complete tuple (`effect.offset = [x, y]`); mutating
+ * snapshot components in place does not update ECS, uniforms, or GPU buffers.
+ */
 export type EffectValues<S extends EffectSchema> = {
   -readonly [K in UniformKeys<S>]: S[K] extends number
     ? number
     : S[K] extends readonly [number, number, number, number]
-      ? [number, number, number, number]
+      ? readonly [number, number, number, number]
       : S[K] extends readonly [number, number, number]
-        ? [number, number, number]
+        ? readonly [number, number, number]
         : S[K] extends readonly [number, number]
-          ? [number, number]
+          ? readonly [number, number]
           : never
 }
 
@@ -69,6 +88,15 @@ export interface EffectField {
   size: number
   /** Default values as flat array. */
   default: number[]
+}
+
+function createSchemaRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>
+}
+
+/** Resolve the effect class without trusting a user-defined `constructor` schema field. @internal */
+function materialEffectClassOf(effect: MaterialEffect): typeof MaterialEffect {
+  return (Object.getPrototypeOf(effect) as { constructor: typeof MaterialEffect }).constructor
 }
 
 // ============================================
@@ -167,10 +195,12 @@ export abstract class MaterialEffect {
   /** Channel node builder — produces TSL nodes for declared channels. */
   static channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null = null
 
-  /** @internal Auto-generated Koota trait from schema. */
-  static _trait: Trait
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
+  /** @internal Precomputed flattened SoA keys for each field. */
+  static _fieldKeys: Readonly<Record<string, readonly string[]>>
+  /** @internal Constant-time field lookup for property accessors. */
+  static _fieldMap: ReadonlyMap<string, EffectField>
   /** @internal Total float slots needed for this effect's data (excluding flags). */
   static _totalFloats: number
   /** @internal TSL node builder function. */
@@ -191,23 +221,23 @@ export abstract class MaterialEffect {
 
   /**
    * Initialize static metadata from the schema (called once per subclass, lazily).
-   * Computes field metadata, creates Koota trait, and sets up the node function.
+   * Computes field metadata, creates the numeric trait, and sets up the node function.
    * @internal
    */
   static _initialize(): void {
-    if (this._initialized) return
-    this._initialized = true
+    if (Object.hasOwn(this, '_initialized') && this._initialized) return
 
     const schema = this.effectSchema
     if (!schema) {
       throw new Error(`MaterialEffect: ${this.name} is missing effectSchema`)
     }
+    const schemaEntries = validateEffectSchema('MaterialEffect', this.effectName, schema, this.prototype)
 
     // Compute field metadata from schema defaults (uniform fields only)
     const fields: EffectField[] = []
-    const constantFactories: Record<string, () => unknown> = {}
+    const constantFactories = createSchemaRecord<() => unknown>()
     let totalFloats = 0
-    for (const [fieldName, value] of Object.entries(schema)) {
+    for (const [fieldName, value] of schemaEntries) {
       if (typeof value === 'function') {
         // Constant field — factory function, not a uniform
         constantFactories[fieldName] = value as () => unknown
@@ -222,13 +252,21 @@ export abstract class MaterialEffect {
     }
 
     this._fields = fields
+    const fieldKeys = createSchemaRecord<readonly string[]>()
+    for (const field of fields) {
+      const keys: string[] = []
+      for (let i = 0; i < field.size; i++) keys.push(field.size === 1 ? field.name : `${field.name}_${i}`)
+      fieldKeys[field.name] = keys
+    }
+    this._fieldKeys = fieldKeys
+    this._fieldMap = new Map(fields.map((field) => [field.name, field]))
     this._totalFloats = totalFloats
     this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota (uniform fields only):
+    // Build the flattened numeric trait schema (uniform fields only):
     // - float fields → { fieldName: default }
     // - vecN fields  → { fieldName_0: v[0], fieldName_1: v[1], ... }
-    const traitSchema: Record<string, number> = {}
+    const traitSchema = createSchemaRecord<number>()
     for (const field of fields) {
       if (field.size === 1) {
         traitSchema[field.name] = field.default[0]!
@@ -239,10 +277,11 @@ export abstract class MaterialEffect {
       }
     }
 
-    this._trait = trait(traitSchema)
+    setEffectTrait(this, trait(traitSchema))
 
     // Use buildNode as the node function
     this._node = this.buildNode.bind(this) as (context: EffectNodeContext) => Node<'vec4'>
+    this._initialized = true
   }
 
   // ============================================
@@ -261,8 +300,17 @@ export abstract class MaterialEffect {
   /** @internal The sprite this effect is attached to. */
   _sprite: Sprite2D | null = null
 
-  /** @internal The ECS entity for the parent sprite. */
-  _entity: Entity | null = null
+  /** @internal The tilemap this effect configures when used as a layer provider. */
+  _tileMap: TileMap2D | null = null
+
+  /** Cached numeric SoA for allocation-free enrolled property access. */
+  private _numericStore: NumericStore<NumericSchema> | null = null
+
+  /** World owning `_numericStore`; effects may be detached and re-enrolled elsewhere. */
+  private _storeWorld: World | null = null
+
+  /** Active TileMap projection transaction depth; keeps ordinary scalar reads direct. */
+  private _readOverrideDepth = 0
 
   /** @internal Snapshot defaults for pre-enrollment staging. Keyed by field name. */
   _defaults: Record<string, number | number[]>
@@ -273,10 +321,10 @@ export abstract class MaterialEffect {
    * Internal state is freely mutable and mutations apply immediately.
    * @internal
    */
-  _constants: Record<string, unknown> = {}
+  _constants: Record<string, unknown> = createSchemaRecord<unknown>()
 
   constructor() {
-    const ctor = this.constructor as typeof MaterialEffect
+    const ctor = materialEffectClassOf(this)
 
     // Lazy initialize static metadata
     ctor._initialize()
@@ -285,7 +333,7 @@ export abstract class MaterialEffect {
     this.name = ctor.effectName
 
     // Build defaults snapshot from schema (uniform fields only)
-    this._defaults = {}
+    this._defaults = createSchemaRecord<number | number[]>()
     for (const field of ctor._fields) {
       if (field.size === 1) {
         this._defaults[field.name] = field.default[0]!
@@ -301,14 +349,12 @@ export abstract class MaterialEffect {
           get: () => this._getField(field.name),
           set: (v: number) => this._setField(field.name, v),
           enumerable: true,
-          configurable: true,
         })
       } else {
         Object.defineProperty(this, field.name, {
           get: () => this._getField(field.name),
-          set: (v: number[]) => this._setField(field.name, v),
+          set: (v: readonly number[]) => this._setField(field.name, v),
           enumerable: true,
-          configurable: true,
         })
       }
     }
@@ -331,7 +377,6 @@ export abstract class MaterialEffect {
           this._constants[name] = v
         },
         enumerable: true,
-        configurable: true,
       })
     }
   }
@@ -342,7 +387,14 @@ export abstract class MaterialEffect {
    */
   _attach(sprite: Sprite2D): void {
     this._sprite = sprite
-    this._entity = sprite._entity
+    setEffectEntity(this, spriteEntity(sprite))
+    const world = spriteWorld(sprite)
+    if (world) this._cacheStore(world)
+  }
+
+  /** @internal Attach as retained tilemap material configuration. */
+  _attachTileMap(tileMap: TileMap2D): void {
+    this._tileMap = tileMap
   }
 
   /**
@@ -351,7 +403,29 @@ export abstract class MaterialEffect {
    */
   _detach(): void {
     this._sprite = null
-    this._entity = null
+    setEffectEntity(this, null)
+    this._numericStore = null
+    this._storeWorld = null
+  }
+
+  /** @internal Detach retained tilemap material configuration. */
+  _detachTileMap(): void {
+    this._tileMap = null
+  }
+
+  /** @internal Bind the stable SoA arrays after a pre-attached effect is enrolled. */
+  _bindStore(): void {
+    const world = spriteWorld(this._sprite!)
+    if (world) this._cacheStore(world)
+  }
+
+  private _cacheStore(world: World): NumericStore<NumericSchema> {
+    if (this._storeWorld !== world || !this._numericStore) {
+      const ctor = materialEffectClassOf(this)
+      this._numericStore = world.store(getEffectTrait(ctor))
+      this._storeWorld = world
+    }
+    return this._numericStore
   }
 
   /**
@@ -360,67 +434,201 @@ export abstract class MaterialEffect {
    * Otherwise, reads from the snapshot defaults.
    * @internal
    */
-  _getField(name: string): number | number[] {
-    const ctor = this.constructor as typeof MaterialEffect
-    if (this._entity && this._entity.has(ctor._trait)) {
-      // Read from trait
-      const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+  _getField(name: string): number | readonly number[] {
+    const ctor = materialEffectClassOf(this)
+    const world = this._storeWorld
+    const entity = world ? getEffectEntity(this) : null
+    const runtimeTrait = world ? getEffectTrait(ctor) : null
+    if (entity && world && runtimeTrait && world.has(entity, runtimeTrait)) {
+      const field = ctor._fieldMap.get(name)!
+      const keys = ctor._fieldKeys[name]!
+      const store = this._cacheStore(world)
+      const index = entitySlot(entity)
       if (field.size === 1) {
-        return data[name]!
+        const value = store[keys[0]!]![index]!
+        return this._readOverrideDepth > 0 ? readEffectScalarValue(this, name, value) : value
       } else {
-        const result: number[] = []
-        for (let i = 0; i < field.size; i++) {
-          result.push(data[`${name}_${i}`]!)
-        }
-        return result
+        return readEffectVectorSnapshot(
+          this,
+          name,
+          field.size,
+          store[keys[0]!]![index]!,
+          store[keys[1]!]![index]!,
+          field.size >= 3 ? store[keys[2]!]![index]! : 0,
+          field.size >= 4 ? store[keys[3]!]![index]! : 0
+        )
       }
     }
-    return this._defaults[name]!
+    const staged = this._defaults[name]!
+    if (typeof staged === 'number') {
+      return this._readOverrideDepth > 0 ? readEffectScalarValue(this, name, staged) : staged
+    }
+    const field = ctor._fieldMap.get(name)!
+    return readEffectVectorSnapshot(
+      this,
+      name,
+      field.size,
+      staged[0]!,
+      staged[1]!,
+      field.size >= 3 ? staged[2]! : 0,
+      field.size >= 4 ? staged[3]! : 0
+    )
   }
 
   /**
-   * Write a field value using the snapshot pattern.
-   * If attached to an enrolled sprite, writes to ECS trait (systems sync to GPU).
-   * Otherwise, writes to the snapshot defaults.
-   * Only triggers immediate GPU buffer sync for standalone sprites.
+   * Write a field value through the cached numeric store.
+   * An enrolled sprite updates ECS state and, when currently batched against
+   * the same material schema, its exact packed GPU row. Its standalone own
+   * buffer remains untouched until demotion. A standalone sprite instead
+   * writes the staged defaults and its own geometry buffer immediately.
    * @internal
    */
-  _setField(name: string, value: number | number[]): void {
-    const ctor = this.constructor as typeof MaterialEffect
-
-    if (this._entity && this._entity.has(ctor._trait)) {
-      // Write to trait — systems will sync to batch buffers
-      const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
-
-      if (field.size === 1) {
-        // Skip if value unchanged — avoids unnecessary Changed triggers
-        if (data[name] === value) return
-        this._entity.set(ctor._trait, { [name]: value as number })
-      } else {
-        const arr = value as number[]
-        const traitUpdate: Record<string, number> = {}
-        let changed = false
-        for (let i = 0; i < field.size; i++) {
-          const key = `${name}_${i}`
-          traitUpdate[key] = arr[i]!
-          if (data[key] !== arr[i]) changed = true
-        }
-        if (!changed) return
-        this._entity.set(ctor._trait, traitUpdate)
-      }
+  _setField(name: string, value: number | readonly number[]): void {
+    const ctor = materialEffectClassOf(this)
+    const field = ctor._fieldMap.get(name)!
+    let scalar = 0
+    let c0 = 0
+    let c1 = 0
+    let c2 = 0
+    let c3 = 0
+    const previous = this._defaults[name]!
+    const previousScalar = typeof previous === 'number' ? previous : 0
+    const previous0 = typeof previous === 'number' ? 0 : previous[0]!
+    const previous1 = typeof previous === 'number' ? 0 : previous[1]!
+    const previous2 = typeof previous === 'number' ? 0 : (previous[2] ?? 0)
+    const previous3 = typeof previous === 'number' ? 0 : (previous[3] ?? 0)
+    if (field.size === 1) {
+      if (typeof value !== 'number') throw new TypeError(`MaterialEffect.${field.name} must be a number`)
+      scalar = value
     } else {
-      // Write to snapshot defaults
-      if (typeof value === 'number') {
-        this._defaults[name] = value
+      if (!Array.isArray(value) || value.length !== field.size) {
+        throw new TypeError(`MaterialEffect.${field.name} must provide ${field.size} numeric components`)
+      }
+      c0 = value[0]!
+      c1 = value[1]!
+      if (field.size >= 3) c2 = value[2]!
+      if (field.size >= 4) c3 = value[3]!
+      if (
+        typeof c0 !== 'number' ||
+        typeof c1 !== 'number' ||
+        (field.size >= 3 && typeof c2 !== 'number') ||
+        (field.size >= 4 && typeof c3 !== 'number')
+      ) {
+        throw new TypeError(`MaterialEffect.${field.name} must provide ${field.size} numeric components`)
+      }
+    }
+
+    const stagingUnchanged =
+      field.size === 1
+        ? Object.is(previousScalar, scalar)
+        : Object.is(previous0, c0) &&
+          Object.is(previous1, c1) &&
+          (field.size < 3 || Object.is(previous2, c2)) &&
+          (field.size < 4 || Object.is(previous3, c3))
+
+    const world = this._sprite ? spriteWorld(this._sprite) : null
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
+    let keys: readonly string[] | null = null
+    let store: NumericStore<NumericSchema> | null = null
+    let index = -1
+    if (entity && world?.has(entity, runtimeTrait)) {
+      keys = ctor._fieldKeys[name]!
+      store = this._cacheStore(world)
+      index = entitySlot(entity)
+    }
+
+    const backingUnchanged = store
+      ? field.size === 1
+        ? Object.is(store[keys![0]!]![index], scalar)
+        : Object.is(store[keys![0]!]![index], c0) &&
+          Object.is(store[keys![1]!]![index], c1) &&
+          (field.size < 3 || Object.is(store[keys![2]!]![index], c2)) &&
+          (field.size < 4 || Object.is(store[keys![3]!]![index], c3))
+      : stagingUnchanged
+    if (stagingUnchanged && backingUnchanged) return
+
+    // Keep the detach/re-attach snapshot current even while ECS owns the live
+    // value. removeEffect() deletes the numeric trait; addEffect() rebuilds it
+    // from this snapshot, so an enrolled-only write must not be lost there.
+    if (field.size === 1) {
+      this._defaults[name] = scalar
+    } else {
+      const defaults = previous as number[]
+      defaults[0] = c0
+      defaults[1] = c1
+      if (field.size >= 3) defaults[2] = c2
+      if (field.size >= 4) defaults[3] = c3
+    }
+
+    if (this._tileMap) {
+      let readOverrideActive = false
+      try {
+        beginEffectReadOverride(
+          this,
+          name,
+          field.size,
+          field.size === 1 ? previousScalar : previous0,
+          previous1,
+          previous2,
+          previous3
+        )
+        readOverrideActive = true
+        this._readOverrideDepth++
+        syncTileMapEffectProjection(this._tileMap, this, name)
+      } catch (error) {
+        if (field.size === 1) {
+          this._defaults[name] = previousScalar
+        } else {
+          const defaults = previous as number[]
+          defaults[0] = previous0
+          defaults[1] = previous1
+          if (field.size >= 3) defaults[2] = previous2
+          if (field.size >= 4) defaults[3] = previous3
+        }
+        throw error
+      } finally {
+        if (readOverrideActive) {
+          restoreEffectReadOverride(this)
+          this._readOverrideDepth--
+        }
+      }
+    }
+
+    if (store && keys && !backingUnchanged) {
+      if (field.size === 1) {
+        store[keys[0]!]![index] = scalar
       } else {
-        this._defaults[name] = [...value]
+        for (let i = 0; i < field.size; i++) {
+          store[keys[i]!]![index] = i === 0 ? c0 : i === 1 ? c1 : i === 2 ? c2 : c3
+        }
+      }
+
+      // Uniform effect fields do not participate in material/run routing, so
+      // no Changed event is required. Push the exact updated components to the
+      // current physical batch row immediately; sort/reassign keep the sprite's
+      // cached row synchronized with BatchSlot.
+      const sprite = this._sprite
+      const mesh = sprite?._batchMesh
+      if (sprite && mesh && mesh.spriteMaterial === sprite.material && sprite._batchSlot >= 0) {
+        const slotInfo = mesh.spriteMaterial._effectSlots.get(`${ctor.effectName}_${name}`)
+        if (slotInfo) {
+          if (field.size === 1) {
+            const offset = slotInfo.offset
+            mesh.writeEffectSlot(sprite._batchSlot, Math.floor(offset / 4), offset % 4, scalar)
+          } else {
+            for (let i = 0; i < field.size; i++) {
+              const offset = slotInfo.offset + i
+              const component = i === 0 ? c0 : i === 1 ? c1 : i === 2 ? c2 : c3
+              mesh.writeEffectSlot(sprite._batchSlot, Math.floor(offset / 4), offset % 4, component)
+            }
+          }
+        }
       }
     }
 
     // Standalone only: immediate own-buffer write
-    if (this._sprite && !this._sprite._entity) {
+    if (this._sprite && !spriteEntity(this._sprite)) {
       this._sprite._writeEffectDataOwn()
     }
   }
@@ -472,8 +680,9 @@ export type MaterialEffectClass<S extends EffectSchema> = {
   readonly effectSchema: S
   readonly provides: readonly ChannelName[]
   readonly channelNode: ((channelName: string, context: ChannelNodeContext) => Node) | null
-  readonly _trait: Trait
   readonly _fields: EffectField[]
+  readonly _fieldKeys: Readonly<Record<string, readonly string[]>>
+  readonly _fieldMap: ReadonlyMap<string, EffectField>
   readonly _totalFloats: number
   readonly _constantFactories: Record<string, () => unknown>
   readonly _node: (context: EffectNodeContext) => Node<'vec4'>

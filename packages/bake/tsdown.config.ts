@@ -8,5 +8,4 @@ export default defineConfig({
   clean: true,
   unbundle: true,
   fixedExtension: false,
-  shims: true,
 })

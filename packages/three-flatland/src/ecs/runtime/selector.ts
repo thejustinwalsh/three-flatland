@@ -1,4 +1,5 @@
 import type { AnyTrait } from './trait'
+import { fail } from './error'
 
 export type EventKind = 'added' | 'changed' | 'removed'
 
@@ -53,7 +54,7 @@ function compileRequirements(required: readonly AnyTrait[]): CompiledRequirement
 export function select(first: AnyTrait, ...rest: readonly AnyTrait[]): Selector
 export function select(...required: readonly AnyTrait[]): Selector {
   if (required.length === 0) {
-    throw new Error('three-flatland: Selectors require at least one trait')
+    fail('Selector needs at least one trait')
   }
 
   const stableRequired = Object.freeze([...required])
@@ -67,7 +68,7 @@ export function select(...required: readonly AnyTrait[]): Selector {
 
 function event(kind: EventKind, observed: readonly AnyTrait[], required: readonly AnyTrait[]): EventSelector {
   if (observed.length === 0) {
-    throw new Error('three-flatland: Event selectors require at least one observed trait')
+    fail('Event selector needs at least one observed trait')
   }
 
   const stableObserved = Object.freeze([...observed])

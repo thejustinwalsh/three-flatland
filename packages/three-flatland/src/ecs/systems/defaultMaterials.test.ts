@@ -1,16 +1,15 @@
+import { worldFor, entityFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Group, Scene, Texture, CustomBlending, OneFactor } from 'three'
-import { universe } from 'koota'
 import { createMaterialEffect } from '../../materials/MaterialEffect'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import { BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
+import { registryFor } from '../testUtils.type-test'
 
 function getRegistry(group: SpriteGroup): RegistryData {
-  const registryEntities = group.world.query(BatchRegistry)
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+  return registryFor(worldFor(group))
 }
 
 function makeTexture(): Texture {
@@ -33,7 +32,6 @@ describe('registry-scoped default materials + dispose resurrection', () => {
   })
 
   afterEach(() => {
-    universe.reset()
     vi.restoreAllMocks()
   })
 
@@ -105,8 +103,8 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     expect(a.material).not.toBe(disposedMaterial)
     expect(a.material).toBe(b.material)
     expect(a._materialWasRegistryDefault).toBe(true)
-    expect(a.entity).not.toBeNull()
-    expect(b.entity).not.toBeNull()
+    expect(entityFor(a)).not.toBeNull()
+    expect(entityFor(b)).not.toBeNull()
 
     // Next system pass re-batches with the fresh material
     group.update()
@@ -133,12 +131,72 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     expect(sprite.visible).toBe(true)
     expect(sprite.isMesh).toBe(true)
-    expect(sprite.entity).toBeNull() // unenrolled — three's standard semantics apply
+    expect(entityFor(sprite)).toBeNull() // unenrolled — three's standard semantics apply
     expect(sprite.material).toBe(custom) // we never swap user materials
     expect(group.spriteCount).toBe(0)
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
 
     group.dispose()
+  })
+
+  it('runs world cleanup before an earlier user dispose listener throws the exact value 0', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const custom = new Sprite2DMaterial({ map: texture })
+    const userListener = (): void => {
+      throw 0
+    }
+    // Register before enrollment; EventDispatcher order previously let this
+    // abort dispatch before the world's later cleanup listener ran.
+    custom.addEventListener('dispose', userListener)
+    const group = new SpriteGroup()
+    const sprite = new Sprite2D({ texture, material: custom })
+    group.add(sprite)
+    group.update()
+    expect(sprite._batchMesh).not.toBeNull()
+
+    let thrown: unknown = Symbol('not-thrown')
+    try {
+      custom.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(sprite.material).toBe(custom)
+    expect(entityFor(sprite)).toBeNull()
+    expect(sprite._batchMesh).toBeNull()
+    expect(sprite.isMesh).toBe(true)
+    expect(group.spriteCount).toBe(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('disposed material'))
+    custom.removeEventListener('dispose', userListener)
+    group.dispose()
+  })
+
+  it('runs every world hook when two worlds share one user material', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const shared = new Sprite2DMaterial({ map: texture })
+    const groupA = new SpriteGroup()
+    const groupB = new SpriteGroup()
+    const spriteA = new Sprite2D({ texture, material: shared })
+    const spriteB = new Sprite2D({ texture, material: shared })
+    groupA.add(spriteA)
+    groupB.add(spriteB)
+    groupA.update()
+    groupB.update()
+    expect(spriteA._batchMesh).not.toBeNull()
+    expect(spriteB._batchMesh).not.toBeNull()
+
+    shared.dispose()
+
+    expect(entityFor(spriteA)).toBeNull()
+    expect(entityFor(spriteB)).toBeNull()
+    expect(spriteA._batchMesh).toBeNull()
+    expect(spriteB._batchMesh).toBeNull()
+    expect(groupA.spriteCount).toBe(0)
+    expect(groupB.spriteCount).toBe(0)
+    expect(warn).toHaveBeenCalledTimes(2)
+    groupA.dispose()
+    groupB.dispose()
   })
 
   it('keeps a hierarchy sprite unbatched after custom material disposal until replacement', () => {
@@ -152,11 +210,11 @@ describe('registry-scoped default materials + dispose resurrection', () => {
     group.add(host)
     scene.add(group)
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
 
     custom.dispose()
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).toBeNull()
+    expect(entityFor(sprite)).toBeNull()
     expect(sprite.material).toBe(custom)
     expect(sprite.visible).toBe(true)
     expect(sprite.isMesh).toBe(true)
@@ -164,7 +222,7 @@ describe('registry-scoped default materials + dispose resurrection', () => {
 
     sprite.material = new Sprite2DMaterial({ map: texture })
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).not.toBeNull()
+    expect(entityFor(sprite)).not.toBeNull()
     expect(sprite._hierarchyOwner).toBe(group)
     expect(sprite.isMesh).toBe(false)
     expect(group.spriteCount).toBe(1)
@@ -304,7 +362,6 @@ describe('registry-scoped effect-variant materials + dispose resurrection', () =
   })
 
   afterEach(() => {
-    universe.reset()
     vi.restoreAllMocks()
   })
 
@@ -373,7 +430,7 @@ describe('registry-scoped effect-variant materials + dispose resurrection', () =
     expect(spriteA.material).not.toBe(variantA)
     expect(spriteA._materialWasRegistryVariant).toBe(true)
     expect(spriteA.material.hasEffect(VariantMarker)).toBe(true)
-    expect(spriteA.entity).not.toBeNull()
+    expect(entityFor(spriteA)).not.toBeNull()
 
     expect(spriteB.material).toBe(variantB)
     expect(variantB.hasEffect(VariantMarker)).toBe(true)

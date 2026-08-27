@@ -1,22 +1,19 @@
+import { worldFor } from './testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { universe } from 'koota'
 import { Texture } from 'three'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
-import { BatchRegistry } from './traits'
-import type { RegistryData } from './batchUtils'
+import { flushUnusedMaterials, releaseMaterialIfUnused, type RegistryData } from './batchUtils'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
+import { registryFor } from './testUtils.type-test'
 
 // ============================================
 // Helpers
 // ============================================
 
-function getRegistry(group: SpriteGroup): RegistryData | null {
-  const world = group.world
-  const registryEntities = world.query(BatchRegistry)
-  if (registryEntities.length === 0) return null
-  return registryEntities[0]!.get(BatchRegistry) as RegistryData
+function getRegistry(group: SpriteGroup): RegistryData {
+  return registryFor(worldFor(group))
 }
 
 function activeMeshes(group: SpriteGroup): SpriteBatch[] {
@@ -50,13 +47,11 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     group = new SpriteGroup()
   })
 
-  // 60s ceiling: tearing down a 40k-sprite group + universe.reset() is O(n) and
-  // blew even a bumped 20s hookTimeout on a contended CI runner (passes in ~6s
-  // locally). It's the bulk-prime fixture's inherent teardown cost, not a hang —
-  // the reset is correctly dirty-gated; give it headroom.
+  // 60s ceiling: tearing down a 40k-sprite group is O(n) and can exceed a
+  // bumped 20s hook timeout on a contended CI runner. It is the bulk-prime
+  // fixture's inherent teardown cost, not a hang.
   afterEach(() => {
     group.dispose()
-    universe.reset()
   }, 60000)
 
   it('small scene: 200 sprites in one pass produce exactly one 1024-slot batch', () => {
@@ -121,5 +116,43 @@ describe('auto-batch tier defaults (batchUtils)', () => {
     for (const mesh of meshes) expect(mesh.maxSize).toBe(8192)
 
     pinned.dispose()
+  })
+
+  it('flushes material churn with one run scan and one sprite scan', () => {
+    const registry = getRegistry(group)
+    const originalRunValues = registry.runs.values.bind(registry.runs)
+    const originalSpriteIterator = registry.spriteArr[Symbol.iterator].bind(registry.spriteArr)
+    let runScans = 0
+    let spriteScans = 0
+
+    registry.runs.values = () => {
+      runScans++
+      return originalRunValues()
+    }
+    Object.defineProperty(registry.spriteArr, Symbol.iterator, {
+      configurable: true,
+      value: () => {
+        spriteScans++
+        return originalSpriteIterator()
+      },
+    })
+
+    try {
+      for (let i = 0; i < 1_000; i++) {
+        const transient = new Sprite2DMaterial()
+        registry.materialRefs.set(transient.batchId, { material: transient, version: transient.version })
+        releaseMaterialIfUnused(worldFor(group), registry, transient)
+      }
+
+      flushUnusedMaterials(worldFor(group), registry)
+
+      expect(runScans).toBe(1)
+      expect(spriteScans).toBe(1)
+      expect(registry.materialRefs.size).toBe(0)
+      expect(registry.materialReleaseCandidates.size).toBe(0)
+    } finally {
+      registry.runs.values = originalRunValues
+      delete registry.spriteArr[Symbol.iterator]
+    }
   })
 })

@@ -60,3 +60,13 @@ export const PIXEL_PERFECT_MASK = 1 << PIXEL_PERFECT_BIT
  * use).
  */
 export const EFFECT_BIT_OFFSET = 0
+
+/**
+ * Maximum number of independently enabled MaterialEffects.
+ *
+ * Enable flags are stored in a Float32 attribute, whose integer mantissa
+ * represents bits 0..23 exactly. Keep the offset in this calculation so
+ * reserving low bits in the future automatically reduces registration
+ * capacity instead of silently producing aliased enable masks.
+ */
+export const MAX_MATERIAL_EFFECTS = 24 - EFFECT_BIT_OFFSET

@@ -23,7 +23,7 @@ Or hand-author the file — it is just frontmatter plus a summary:
 
 ```markdown
 ---
-'three-flatland': patch
+"three-flatland": patch
 ---
 
 Fix sprite tint not applying on the first frame after a texture swap.
@@ -121,7 +121,12 @@ The `discoverPackages()` function (`scripts/generate-changesets.ts:81–103`) is
 ]
 ```
 
-Packages in the same linked group always bump to the same version. Adding a new package to a group means its version will be pulled to match its peers.
+Linked groups align the highest current version and highest requested bump among group members that
+are already in the same release plan. A package is not added to a release solely because another
+member of its linked group changed. Normal dependency propagation can add it first; for example,
+`@three-flatland/presets` follows a `three-flatland` release because it depends on
+`three-flatland`, while `@three-flatland/nodes` does not release unless it has its own change or a
+dependency update.
 
 ### Checklist for a new publishable package in `packages/`
 

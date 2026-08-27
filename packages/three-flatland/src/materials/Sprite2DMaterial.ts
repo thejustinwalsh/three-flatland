@@ -314,6 +314,19 @@ export function sprite2DMaterialVariantKey(options: Sprite2DMaterialOptions = {}
  * fixed-size vec4 buffers with per-sprite enable flags.
  */
 export class Sprite2DMaterial extends EffectMaterial {
+  /** Internal lifecycle hooks that must run before Three's public dispose event. */
+  private readonly _preDisposeHooks = new Set<() => void>()
+
+  /** Register world-scoped cleanup independent of EventDispatcher listener order. @internal */
+  _addPreDisposeHook(hook: () => void): void {
+    this._preDisposeHooks.add(hook)
+  }
+
+  /** Remove a previously registered world-scoped cleanup hook. @internal */
+  _removePreDisposeHook(hook: () => void): void {
+    this._preDisposeHooks.delete(hook)
+  }
+
   /**
    * Canonical three.js class identifier — every built-in material
    * overrides this (MeshBasicMaterial's `type` is `'MeshBasicMaterial'`,
@@ -829,11 +842,39 @@ export class Sprite2DMaterial extends EffectMaterial {
     return cloned
   }
 
-  dispose() {
-    this._effects.length = 0
-    this._instanceAttributes.clear()
-    this._effectSlots.clear()
-    this._effectBitIndex.clear()
-    super.dispose()
+  override dispose(): void {
+    let didThrow = false
+    let firstError: unknown
+    const run = (operation: () => void): void => {
+      try {
+        operation()
+      } catch (error) {
+        if (!didThrow) {
+          didThrow = true
+          firstError = error
+        }
+      }
+    }
+
+    // Snapshot and clear before invoking so every hook runs exactly once even
+    // when it removes itself, installs another hook, or throws. World cleanup
+    // must precede Three's public dispose event: EventDispatcher stops at a
+    // throwing earlier user listener and cannot provide this guarantee.
+    const internalHooks = [...this._preDisposeHooks]
+    this._preDisposeHooks.clear()
+    for (const hook of internalHooks) run(hook)
+
+    run(() => {
+      this._effects.length = 0
+      this._effectConstants.clear()
+      this._instanceAttributes.clear()
+      this._effectSlots.clear()
+      this._effectBitIndex.clear()
+      this._effectTotalFloats = 0
+      this._effectTier = 0
+    })
+    run(() => super.dispose())
+
+    if (didThrow) throw firstError
   }
 }

@@ -1,3 +1,6 @@
+import type { TraitHandle } from '../../internal/ecs-handles'
+import { fail } from './error'
+
 export type NumericSchema = Readonly<Record<string, number>>
 
 export type WidenNumericSchema<TSchema extends NumericSchema> = {
@@ -22,7 +25,7 @@ declare const traitValue: unique symbol
 declare const traitKind: unique symbol
 declare const traitInitializerBrand: unique symbol
 
-export interface Trait<TValue = unknown, TKind extends TraitKind = TraitKind> {
+export interface Trait<TValue = unknown, TKind extends TraitKind = TraitKind> extends TraitHandle {
   readonly id: number
   readonly kind: TKind
   readonly [traitValue]: TValue
@@ -61,17 +64,14 @@ export function numericDataSnapshot(value: object): Record<string, number> | und
   const prototype = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) return undefined
 
-  const snapshot: Record<string, number> = {}
+  const snapshot = Object.create(null) as Record<string, number>
   for (const field of Reflect.ownKeys(value)) {
     if (typeof field !== 'string') return undefined
     const descriptor = Object.getOwnPropertyDescriptor(value, field)
     if (descriptor?.enumerable !== true || !('value' in descriptor) || typeof descriptor.value !== 'number') {
       return undefined
     }
-    Object.defineProperty(snapshot, field, {
-      enumerable: true,
-      value: descriptor.value,
-    })
+    snapshot[field] = descriptor.value
   }
   return snapshot
 }
@@ -105,7 +105,7 @@ export function trait<TValue extends object>(
 
   const defaults = numericDataSnapshot(definition)
   if (defaults === undefined) {
-    throw new TypeError('three-flatland: Numeric traits accept only flat number fields')
+    fail('Numeric trait needs flat number fields', TypeError)
   }
 
   Object.freeze(defaults)

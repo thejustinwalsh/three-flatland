@@ -1,21 +1,25 @@
 import { Group, Matrix4, Plane, Vector3, type Object3D } from 'three'
 import { ClippingGroup } from 'three/webgpu'
-import { createWorld, type World, type Entity, type Trait } from 'koota'
+import { createWorld, select, type Entity, type World } from '../ecs/runtime'
+import type { Registry } from '../orchestration/registry'
 import type { Sprite2D } from '../sprites/Sprite2D'
-import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { ClipRect, SpriteGroupOptions, RenderStats } from './types'
-import { assignWorld, type WorldProvider } from '../ecs/world'
+import type { SpriteBatch } from './SpriteBatch'
+import { assignWorld } from '../ecs/world'
 import { BatchRegistry, BatchMesh } from '../ecs/traits'
 import type { RegistryData } from '../ecs/batchUtils'
 import {
   BATCH_TIER_LADDER,
   ensureMaterialDisposeHook,
   evictBatchesForMaterial,
+  flushUnusedMaterials,
   getWorldDefaultMaterial,
   getWorldEffectVariant,
   removeMaterialDisposeHooks,
+  resetBatchSlots,
 } from '../ecs/batchUtils'
-import { buildBatchQueryView, type BatchQueryView } from './batchQuery'
+import type { BatchQueryView } from './batchQuery'
+import { buildBatchQueryView } from '../internal/batch-query-builder'
 import { _registerBatchSource, _unregisterBatchSource, type BatchSourceFn } from '../debug/debug-sink'
 import { SystemSchedule } from '../ecs/SystemSchedule'
 import { PERF_TRACK } from '../debug/perf-track'
@@ -29,9 +33,39 @@ import {
 } from '../ecs/systems'
 import { conditionalTransformSyncSystem } from '../ecs/systems/conditionalTransformSyncSystem'
 import { flushDirtyRangesSystem } from '../ecs/systems/flushDirtyRangesSystem'
+import { releaseLightEffectRuntimeContext } from '../ecs/systems/lightEffectSystem'
+import { validateMaxBatchSize } from '../internal/max-batch-size'
+import { clampEntityReservation, reserveIndexedArray, validateExpectedSprites } from '../internal/capacity'
+import { reserveWorld } from '../internal/reserved-world'
+import {
+  assertSpriteGroupCanDispose,
+  clearSpriteGroupWorld,
+  registerSpriteGroupAdoption,
+  registerSpriteGroupRuntime,
+} from '../internal/sprite-group-runtime'
+import {
+  rollbackSpriteManagedMaterialResolution,
+  spriteEntity,
+  spriteLifecycleRevision,
+  spriteWorld,
+  throwSpriteCloneBootstrapError,
+} from '../internal/sprite-runtime'
+import {
+  advanceAnimationGroup,
+  createAnimationGroupState,
+  disposeAnimationGroupState,
+  isAnimatedSprite,
+  prepareAnimationGroupState,
+  registerAnimationGroupSprite,
+  resetAnimationGroupState,
+  snapshotAnimationGroupState,
+  unregisterAnimationGroupSprite,
+} from '../internal/animation-runtime'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
 declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * 2D render pipeline with automatic batching and sorting.
@@ -43,9 +77,9 @@ declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
  * calls during `renderer.render(scene, camera)`. No explicit `update()` needed.
  *
  * Batching is fully ECS-driven:
- * - Sprite entities get InBatch relations linking them to batch entities
- * - Systems handle all data flow: assignment, reassignment, buffer sync, removal
- * - No imperative BatchManager — batch entities, runs, and slot management are pure ECS
+ * - Sprite entities hold direct `BatchSlot` ownership of physical GPU rows
+ * - Systems handle assignment, reassignment, transform sync, sorting, and removal
+ * - Batch entities, runs, and slot ownership remain isolated per SpriteGroup world
  *
  * @example
  * ```typescript
@@ -63,13 +97,26 @@ declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
 const _clipPoint = new Vector3()
 const _clipInverse = new Matrix4()
 
-export class SpriteGroup extends ClippingGroup implements WorldProvider {
+function isSprite2D(object: Object3D): object is Sprite2D {
+  return '_enrollInWorld' in object && '_releaseWorldOwnership' in object
+}
+
+export class SpriteGroup extends ClippingGroup {
   readonly isSpriteGroup = true
   /**
    * ECS world for this renderer.
    * Lazily created on first access.
    */
   private _world: World | null = null
+
+  /** Terminal lifecycle latch. Disposal is idempotent and never permits a replacement world. */
+  private _disposed = false
+  private _lifecycleRevision = 0
+  private readonly _adoptionsInProgress = new WeakSet<Sprite2D>()
+
+  private readonly _expectedEntityCapacity: number
+  private readonly _expectedBatchCapacity: number
+  private _registryData: RegistryData | null = null
 
   /**
    * Entity holding the BatchRegistry singleton trait.
@@ -136,11 +183,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   }
 
   set maxBatchSize(value: number) {
-    this._maxBatchSize = value
+    const maxBatchSize = validateMaxBatchSize(value)
+    this._maxBatchSize = maxBatchSize
     this._tierLadder = null
     const registry = this._getRegistry()
     if (registry) {
-      registry.maxBatchSize = value
+      registry.maxBatchSize = maxBatchSize
       registry.tierLadder = null
     }
   }
@@ -168,25 +216,17 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   private _spriteCount: number = 0
 
   /**
-   * Per-instance ECS system functions. Each holds its own scratch state
-   * (Koota change-tracking subscriptions, scratch arrays, Sets) so two
-   * SpriteGroups don't share buffers or interfere with each other's
-   * change-tracking.
-   */
-  private readonly _batchAssignSystem = createBatchAssignSystem()
-  private readonly _batchReassignSystem = createBatchReassignSystem()
-  private readonly _batchRemoveSystem = createBatchRemoveSystem()
-  private readonly _batchSortSystem = createBatchSortSystem()
-  private readonly _sceneGraphSyncSystem = createSceneGraphSyncSystem()
-
-  /**
    * Per-SpriteGroup state consumed by the schedule closures (built once
-   * in `get world()`). These are the SAME references the BatchRegistry
+   * in the lazy runtime initializer. These are the SAME references the BatchRegistry
    * spawn points at, so the factory systems and the registry never
    * diverge.
    */
-  private _effectTraits: Map<Trait, typeof MaterialEffect> = new Map()
   private _pendingDestroy: Entity[] = []
+  private _batchAssignSystem: ReturnType<typeof createBatchAssignSystem> | null = null
+  private _batchReassignSystem: ReturnType<typeof createBatchReassignSystem> | null = null
+  private _batchRemoveSystem: ReturnType<typeof createBatchRemoveSystem> | null = null
+  private _batchSortSystem: ReturnType<typeof createBatchSortSystem> | null = null
+  private _sceneGraphSyncSystem: ReturnType<typeof createSceneGraphSyncSystem> | null = null
   private _parentAdd = Group.prototype.add.bind(this)
   private _parentRemove = Group.prototype.remove.bind(this)
 
@@ -201,6 +241,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   private readonly _hierarchySeen = new Set<Sprite2D>()
 
   constructor(options: SpriteGroupOptions = {}) {
+    const maxBatchSize = validateMaxBatchSize(options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!)
+    const expectedSprites = validateExpectedSprites(options.expectedSprites)
+    const reservedSprites = clampEntityReservation(expectedSprites)
+    const expectedBatchCapacity = reservedSprites === 0 ? 0 : Math.ceil(reservedSprites / maxBatchSize)
+    const expectedEntityCapacity =
+      reservedSprites === 0 ? 0 : clampEntityReservation(reservedSprites + expectedBatchCapacity + 1)
     super()
 
     this.name = 'SpriteGroup'
@@ -208,13 +254,22 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
 
     // Explicit maxBatchSize pins every batch to that size; otherwise the
     // tier ladder scales allocation with usage (1024 → 4096 → 16384).
-    this._maxBatchSize = options.maxBatchSize ?? BATCH_TIER_LADDER[BATCH_TIER_LADDER.length - 1]!
+    this._maxBatchSize = maxBatchSize
     this._tierLadder = options.maxBatchSize !== undefined ? null : BATCH_TIER_LADDER
+    this._expectedBatchCapacity = expectedBatchCapacity
+    this._expectedEntityCapacity = expectedEntityCapacity
+    registerSpriteGroupRuntime(this, () => this.#runtimeWorld())
+    registerSpriteGroupAdoption(
+      this,
+      (sprite) => this._adoptDirectSprite(sprite),
+      (sprite) => this._rollbackSpriteAdoption(sprite)
+    )
 
     this.autoSort = options.autoSort ?? true
     this.frustumCulling = options.frustumCulling ?? true
     this.autoInvalidateTransforms = options.autoInvalidateTransforms ?? true
     this.clipRect = options.clipRect ?? null
+    if (expectedSprites > 0) void this.#runtimeWorld()
   }
 
   /** Build parent-local clipping planes from the public rectangle property. */
@@ -264,43 +319,46 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     return _clipPoint.x >= minX && _clipPoint.x <= maxX && _clipPoint.y >= minY && _clipPoint.y <= maxY
   }
 
-  /**
-   * The ECS world managed by this renderer.
-   * Sprites added to this renderer are enrolled in this world.
-   */
-  get world(): World {
+  #runtimeWorld(): World {
+    this._assertUsable('runtime')
     if (!this._world) {
       this._world = createWorld()
+      this._batchAssignSystem = createBatchAssignSystem(this._world)
+      this._batchReassignSystem = createBatchReassignSystem(this._world)
+      this._batchRemoveSystem = createBatchRemoveSystem(this._world)
+      this._batchSortSystem = createBatchSortSystem()
+      this._sceneGraphSyncSystem = createSceneGraphSyncSystem()
 
       // Build the SystemSchedule in execution order. The batch
       // lifecycle / sort / scene-graph systems are factory instances
-      // (created ONCE as readonly fields above to hold per-SpriteGroup
+      // (created once as local per-world closures to hold per-SpriteGroup
       // scratch state). We register stable closures over those instances
       // here — built once at world-init, never re-`createX()`-ing per
       // frame. Lighting systems are prepended later by
       // `Flatland.setLighting` via `schedule.prepend(...)`.
       const schedule = new SystemSchedule()
       schedule
-        .add(() => deferredDestroySystem(this._pendingDestroy), {
+        .add((w) => deferredDestroySystem(w, this._pendingDestroy), {
           track: PERF_TRACK.Batch,
           name: 'deferredDestroy',
         })
-        // Sort-aware tier-rebuild + effect-trait collection. Uses the
-        // BatchSlot-authoritative slot (kept in sync by batchSortSystem),
-        // NOT the stale InBatch relation slot.
+        // Sort-aware tier rebuilding uses the BatchSlot-authoritative
+        // physical row (kept in sync by batchSortSystem).
         .add(() => this._checkMaterialVersions(), {
           track: PERF_TRACK.Batch,
           name: 'checkMaterialVersions',
         })
-        .add(() => this._rebuildEffectTraits(), {
+        // Release stale rows before the batch-local transform/sort passes.
+        // Reverse ownership arrays therefore contain live renderables only.
+        .add((w) => this._batchRemoveSystem!(w, this._pendingDestroy), {
           track: PERF_TRACK.Batch,
-          name: 'rebuildEffectTraits',
+          name: 'batchRemove',
         })
-        .add((w) => this._batchAssignSystem(w, this._effectTraits), {
+        .add((w) => this._batchAssignSystem!(w), {
           track: PERF_TRACK.Batch,
           name: 'batchAssign',
         })
-        .add((w) => this._batchReassignSystem(w, this._effectTraits), {
+        .add((w) => this._batchReassignSystem!(w), {
           track: PERF_TRACK.Batch,
           name: 'batchReassign',
         })
@@ -309,28 +367,26 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
           name: 'transformSync',
         })
         // Re-sort instance slots by zIndex within dirty batches.
-        .add((w) => this._batchSortSystem(w), {
+        .add((w) => this._batchSortSystem!(w), {
           track: PERF_TRACK.Batch,
           name: 'batchSort',
         })
-        .add((w) => this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove), {
+        .add((w) => this._sceneGraphSyncSystem!(w, this, this._parentAdd, this._parentRemove), {
           track: PERF_TRACK.Batch,
           name: 'sceneGraphSync',
         })
-        .add((w) => this._batchRemoveSystem(w, this._pendingDestroy), {
-          track: PERF_TRACK.Batch,
-          name: 'batchRemove',
-        })
-        // Late assignment: catch entities enrolled mid-frame (e.g. R3F
-        // reconciliation between render calls). Uses the same factory
-        // instances so the late pass shares their scratch state.
+        // Late routing catches both entities enrolled mid-frame (for example,
+        // R3F reconciliation) and route mutations made by user updateMatrix()
+        // during transformSync. Only a committed assignment/reassignment pays
+        // for the second transform/sort/scene pass.
         .add(
           (w) => {
-            const lateAssigned = this._batchAssignSystem(w, this._effectTraits)
-            if (lateAssigned) {
+            const lateReassigned = this._batchReassignSystem!(w)
+            const lateAssigned = this._batchAssignSystem!(w)
+            if (lateAssigned || lateReassigned) {
               conditionalTransformSyncSystem(w)
-              this._batchSortSystem(w)
-              this._sceneGraphSyncSystem(w, this, this._parentAdd, this._parentRemove)
+              this._batchSortSystem!(w)
+              this._sceneGraphSyncSystem!(w, this, this._parentAdd, this._parentRemove)
             }
           },
           { track: PERF_TRACK.Batch, name: 'batchAssignLate' }
@@ -339,49 +395,65 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
           track: PERF_TRACK.Batch,
           name: 'flushDirtyRanges',
         })
+      schedule.addFinalizer((w) => {
+        const registry = this._getRegistry()
+        if (registry) flushUnusedMaterials(w, registry)
+      })
+      reserveWorld(this._world, this._expectedEntityCapacity)
 
-      // Register with the devtools batch-source sink so the batches
-      // feature can snapshot our active batches each frame. No-op in
-      // prod (tree-shaken via the devtools build gate). The getter closure
-      // stays allocation-free past construction.
+      const activeBatches: Entity[] = []
+      const batchPool: Entity[] = []
+      const batchSlots: Array<SpriteBatch | null> = []
+      const batchSlotFreeList: number[] = []
+      const spriteArr: Array<Sprite2D | null> = []
+      reserveIndexedArray(batchSlots, this._expectedBatchCapacity, null)
+      for (let index = this._expectedBatchCapacity - 1; index >= 0; index--) batchSlotFreeList.push(index)
+      reserveIndexedArray(spriteArr, this._world.capacity, null)
+
+      // Spawn the batch registry singleton with all system context.
+      const registryData: RegistryData = {
+        world: this._world,
+        runs: new Map(),
+        sortedRunKeys: [],
+        batchPool,
+        activeBatches,
+        renderOrderDirty: false,
+        maxBatchSize: this._maxBatchSize,
+        tierLadder: this._tierLadder,
+        materialRefs: new Map(),
+        materialReleaseCandidates: new Set(),
+        defaultMaterials: new WeakMap(),
+        effectVariants: new WeakMap(),
+        batchSlots,
+        batchSlotFreeList,
+        spriteArr,
+        // Share the SpriteGroup's own pending-destroy array so schedule
+        // closures and registry consumers operate on the same queue.
+        pendingDestroy: this._pendingDestroy,
+        parentGroup: this,
+        parentAdd: this._parentAdd,
+        parentRemove: this._parentRemove,
+        autoInvalidateTransforms: this.autoInvalidateTransforms,
+        transformsDirty: true,
+        schedule,
+        scheduleRuns: 0,
+        occludersDirty: true,
+      }
+      this._registryEntity = this._world.spawn(BatchRegistry(registryData))
+      this._registryData = registryData
+
+      // Publish to the devtools sink only after the registry transaction is
+      // complete so a failed eager reservation cannot strand a source.
       if (process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') {
         this._batchSource = () => this._getRegistry()
         _registerBatchSource(this._batchSource)
       }
-
-      // Spawn the batch registry singleton with all system context
-      this._registryEntity = this._world.spawn(
-        BatchRegistry({
-          runs: new Map(),
-          sortedRunKeys: [],
-          batchPool: [],
-          activeBatches: [],
-          renderOrderDirty: false,
-          maxBatchSize: this._maxBatchSize,
-          tierLadder: this._tierLadder,
-          materialRefs: new Map(),
-          defaultMaterials: new WeakMap(),
-          effectVariants: new WeakMap(),
-          batchSlots: [],
-          batchSlotFreeList: [],
-          spriteArr: [],
-          // Share the SpriteGroup's own references so the schedule
-          // closures (which read this._effectTraits / this._pendingDestroy)
-          // and any registry consumer operate on the same map/array.
-          effectTraits: this._effectTraits,
-          pendingDestroy: this._pendingDestroy,
-          parentGroup: this,
-          parentAdd: this._parentAdd,
-          parentRemove: this._parentRemove,
-          autoInvalidateTransforms: this.autoInvalidateTransforms,
-          transformsDirty: true,
-          schedule,
-          scheduleRuns: 0,
-          occludersDirty: true,
-        })
-      )
     }
     return this._world
+  }
+
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: SpriteGroup.${member} cannot be used after dispose()`)
   }
 
   /**
@@ -390,36 +462,169 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   override add(...objects: Object3D[]): this
   override add(sprite: Sprite2D): this
   override add(spriteOrObject: Sprite2D | Object3D, ...rest: Object3D[]): this {
+    this._assertUsable('add')
     // If called with multiple arguments, delegate to parent
     if (rest.length > 0) {
       return super.add(spriteOrObject, ...rest)
     }
-    // Check if it's a Sprite2D (has _enrollInWorld — duck typing)
-    if ('_enrollInWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
-      if (spriteOrObject._disposed) return this
-      if (spriteOrObject._batchEnrollmentBlockedMaterial === spriteOrObject.material) return this
-      const targetWorld = this.world
-      // Skip if already enrolled (R3F insertBefore re-adds during reconciliation)
-      if (spriteOrObject.entity && spriteOrObject._flatlandWorld === targetWorld) return this
-      if (spriteOrObject._autoRegistry && spriteOrObject._autoRegistry.group !== this) {
-        spriteOrObject._releaseAutoOrchestration()
-      }
-      if (spriteOrObject.entity) this._releasePreviousWorldEnrollment(spriteOrObject)
-      // Assign ECS world, resolve world-scoped default material, enroll
-      assignWorld(spriteOrObject, targetWorld)
-      this._resolveDefaultMaterial(spriteOrObject)
-      spriteOrObject._enrollInWorld(targetWorld)
-      this._spriteCount++
-      this._trackMaterial(spriteOrObject)
+    if (isSprite2D(spriteOrObject)) {
+      this._adoptDirectSprite(spriteOrObject)
     } else {
       super.add(spriteOrObject)
       spriteOrObject.traverse((object) => {
-        if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
-          this._enrollHierarchySprite(object as Sprite2D)
-        }
+        if (isSprite2D(object)) this._enrollHierarchySprite(object)
       })
     }
     return this
+  }
+
+  /** Commit one direct enrollment, returning false for a reentrant or terminalized adoption. @internal */
+  private _adoptDirectSprite(sprite: Sprite2D, hierarchy = false): boolean {
+    if (sprite._disposed || sprite._batchEnrollmentBlockedMaterial === sprite.material) return false
+    if (this._adoptionsInProgress.has(sprite)) return false
+    const targetWorld = this.#runtimeWorld()
+    // Skip if already enrolled (R3F insertBefore re-adds during reconciliation).
+    if (spriteEntity(sprite) && spriteWorld(sprite) === targetWorld) return true
+
+    this._adoptionsInProgress.add(sprite)
+    const groupRevision = this._lifecycleRevision
+    const spriteRevision = spriteLifecycleRevision(sprite)
+    const previousMaterial = sprite.material
+    const bootstrapDefault = sprite._materialIsBootstrapDefault
+    const registryDefault = sprite._materialWasRegistryDefault
+    const bootstrapVariant = sprite._materialIsBootstrapVariant
+    const registryVariant = sprite._materialWasRegistryVariant
+    let committed = false
+    let countPublished = false
+    try {
+      const autoRegistry = (sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry
+      if (autoRegistry && autoRegistry.group !== this) sprite._releaseAutoOrchestration()
+      if (spriteEntity(sprite)) this._releasePreviousWorldEnrollment(sprite)
+      assignWorld(sprite, targetWorld)
+      this._resolveDefaultMaterial(sprite)
+
+      const lifecycleChanged =
+        this._lifecycleRevision !== groupRevision || spriteLifecycleRevision(sprite) !== spriteRevision
+      if (!lifecycleChanged && !this._disposed && !sprite._disposed) sprite._enrollInWorld()
+      if (
+        lifecycleChanged ||
+        this._disposed ||
+        sprite._disposed ||
+        spriteWorld(sprite) !== targetWorld ||
+        !spriteEntity(sprite)
+      ) {
+        let rollbackError: unknown
+        let rollbackFailed = false
+        try {
+          this._rollbackIncompleteAdoption(
+            sprite,
+            previousMaterial,
+            bootstrapDefault,
+            registryDefault,
+            bootstrapVariant,
+            registryVariant
+          )
+        } catch (error) {
+          rollbackError = error
+          rollbackFailed = true
+        }
+        // A hostile staging listener's exact value remains the primary
+        // failure even if best-effort rollback also encountered a problem.
+        throwSpriteCloneBootstrapError(sprite, false)
+        if (rollbackFailed) throw rollbackError
+        return false
+      }
+
+      this._spriteCount++
+      countPublished = true
+      this._trackMaterial(sprite)
+      if (isAnimatedSprite(sprite)) {
+        prepareAnimationGroupState(this._animationState, this._registryData?.spriteArr.length ?? 0)
+        registerAnimationGroupSprite(this._animationState, sprite)
+      }
+      if (hierarchy) {
+        sprite._hierarchyManaged = true
+        sprite._hierarchyOwner = this
+        this._hierarchySprites.add(sprite)
+      }
+      committed = true
+      throwSpriteCloneBootstrapError(sprite)
+      return true
+    } catch (error) {
+      if (!committed) {
+        if (countPublished) {
+          this._spriteCount--
+          if (hierarchy) {
+            this._hierarchySprites.delete(sprite)
+            sprite._hierarchyManaged = false
+            sprite._hierarchyOwner = null
+          }
+        }
+        try {
+          this._rollbackIncompleteAdoption(
+            sprite,
+            previousMaterial,
+            bootstrapDefault,
+            registryDefault,
+            bootstrapVariant,
+            registryVariant
+          )
+        } catch {
+          // Preserve the exact primary failure after complete best-effort rollback.
+        }
+      }
+      throw error
+    } finally {
+      this._adoptionsInProgress.delete(sprite)
+    }
+  }
+
+  /** Roll back without public lifecycle guards or user-extensible material callbacks. */
+  private _rollbackIncompleteAdoption(
+    sprite: Sprite2D,
+    material: Sprite2D['material'],
+    bootstrapDefault: boolean,
+    registryDefault: boolean,
+    bootstrapVariant: boolean,
+    registryVariant: boolean
+  ): void {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    if (spriteEntity(sprite)) runCleanup(() => sprite._unenrollFromWorld())
+    if (!spriteEntity(sprite) && spriteWorld(sprite)) runCleanup(() => sprite._releaseWorldOwnership())
+    if (sprite.material !== material) {
+      runCleanup(() =>
+        rollbackSpriteManagedMaterialResolution(
+          sprite,
+          material,
+          bootstrapDefault,
+          registryDefault,
+          bootstrapVariant,
+          registryVariant
+        )
+      )
+    }
+    if (didError) throw firstError
+  }
+
+  /** Terminal-safe rollback used by Flatland when outer ownership publication fails. @internal */
+  private _rollbackSpriteAdoption(sprite: Sprite2D): void {
+    if (sprite._hierarchyOwner === this) {
+      this._releaseHierarchySprite(sprite)
+      return
+    }
+    if (spriteEntity(sprite) && spriteWorld(sprite) === this._world) this._releaseDirectEnrollment(sprite)
+    else if (!spriteEntity(sprite) && spriteWorld(sprite)) sprite._releaseWorldOwnership()
   }
 
   /** Enroll a sprite while leaving it under its authored Object3D parent. @internal */
@@ -435,10 +640,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     if (sprite._hierarchyOwner && sprite._hierarchyOwner !== this) {
       sprite._hierarchyOwner._releaseHierarchySprite?.(sprite)
     }
-    if (sprite._autoRegistry) sprite._releaseAutoOrchestration()
+    if ((sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry) {
+      sprite._releaseAutoOrchestration()
+    }
 
-    const targetWorld = this.world
-    if (sprite.entity && sprite._flatlandWorld !== targetWorld) {
+    const targetWorld = this.#runtimeWorld()
+    if (spriteEntity(sprite) && spriteWorld(sprite) !== targetWorld) {
       this._releasePreviousWorldEnrollment(sprite)
     }
 
@@ -446,7 +653,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     // API, then later be parented below an ordinary Object3D. Convert that
     // enrollment in-place so the authored ancestor chain starts contributing
     // transforms and visibility without changing the sprite count.
-    if (sprite.entity) {
+    if (spriteEntity(sprite)) {
       sprite._hierarchyManaged = true
       sprite._hierarchyOwner = this
       this._hierarchySprites.add(sprite)
@@ -455,14 +662,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
       return
     }
 
-    assignWorld(sprite, targetWorld)
-    this._resolveDefaultMaterial(sprite)
-    sprite._hierarchyManaged = true
-    sprite._hierarchyOwner = this
-    this._hierarchySprites.add(sprite)
-    sprite._enrollInWorld(targetWorld)
-    this._spriteCount++
-    this._trackMaterial(sprite)
+    this._adoptDirectSprite(sprite, true)
   }
 
   /** Release a retained source descendant from this group's world. @internal */
@@ -477,7 +677,8 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     sprite._unenrollFromWorld()
     // Hierarchy ownership follows the authored scene graph. Once fully
     // released, the sprite may be adopted by another SpriteGroup world.
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
+    if (isAnimatedSprite(sprite)) unregisterAnimationGroupSprite(this._animationState, sprite)
     this._spriteCount--
   }
 
@@ -486,19 +687,21 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     // Match Object3D.remove(): a retained descendant is not this group's
     // direct child. The hierarchy reconciler owns its enrollment lifecycle.
     if (sprite._hierarchyOwner === this) return
-    if (!sprite.entity || sprite._flatlandWorld !== this._world) return
+    if (!spriteEntity(sprite) || spriteWorld(sprite) !== this._world) return
     sprite._setBatchSuppressed(false)
     sprite._unenrollFromWorld()
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
+    if (isAnimatedSprite(sprite)) unregisterAnimationGroupSprite(this._animationState, sprite)
     this._spriteCount--
   }
 
   /** Resolve and release the SpriteGroup that owns a sprite's previous ECS world. */
   private _releasePreviousWorldEnrollment(sprite: Sprite2D): void {
-    const previousWorld = sprite._flatlandWorld
+    const previousWorld = spriteWorld(sprite)
     if (!previousWorld) return
-    const registryEntity = previousWorld.query(BatchRegistry)[0]
-    const registry = registryEntity?.get(BatchRegistry) as RegistryData | undefined
+    const runtimeWorld = previousWorld as World
+    const registryEntity = runtimeWorld.view(BatchRegistries)[0]
+    const registry = registryEntity ? (runtimeWorld.read(registryEntity, BatchRegistry) as RegistryData) : undefined
     const previousGroup = registry?.parentGroup
     if (previousGroup && 'isSpriteGroup' in previousGroup && previousGroup.isSpriteGroup === true) {
       const previousSpriteGroup = previousGroup as SpriteGroup
@@ -511,7 +714,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     }
     sprite._setBatchSuppressed(false)
     sprite._unenrollFromWorld()
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
   }
 
   /** True when this is the first SpriteGroup above the source sprite. */
@@ -528,15 +731,15 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   private _collectHierarchySprites(object: Object3D): void {
     if ('isSpriteGroup' in object && object.isSpriteGroup === true) return
 
-    if ('_enrollInWorld' in object && '_flatlandWorld' in object) {
-      const sprite = object as Sprite2D
+    if (isSprite2D(object)) {
+      const sprite = object
       if (
         !sprite._disposed &&
         !sprite._renderOrderOverridden &&
         sprite._batchEnrollmentBlockedMaterial !== sprite.material
       ) {
         this._hierarchySeen.add(sprite)
-        if (sprite._hierarchyOwner !== this || !sprite.entity) this._enrollHierarchySprite(sprite)
+        if (sprite._hierarchyOwner !== this || !spriteEntity(sprite)) this._enrollHierarchySprite(sprite)
       }
     }
 
@@ -568,12 +771,12 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     if (sprite._materialIsBootstrapDefault) {
       const registry = this._getRegistry()
       if (!registry) return
-      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.world, registry, texture))
+      sprite._resolveDefaultMaterial(getWorldDefaultMaterial(this.#runtimeWorld(), registry, texture))
     } else if (sprite._materialIsBootstrapVariant) {
       const registry = this._getRegistry()
       if (!registry) return
       sprite._resolveEffectVariantMaterial(
-        getWorldEffectVariant(this.world, registry, texture, sprite._currentVariantOptions())
+        getWorldEffectVariant(this.#runtimeWorld(), registry, texture, sprite._currentVariantOptions())
       )
     }
   }
@@ -582,6 +785,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * Add multiple sprites to the renderer.
    */
   addSprites(...sprites: Sprite2D[]): this {
+    this._assertUsable('addSprites')
     for (const sprite of sprites) {
       this.add(sprite)
     }
@@ -594,21 +798,23 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   override remove(...objects: Object3D[]): this
   override remove(sprite: Sprite2D): this
   override remove(spriteOrObject: Sprite2D | Object3D, ...rest: Object3D[]): this {
+    this._assertUsable('remove')
     // If called with multiple arguments, delegate to parent
     if (rest.length > 0) {
       return super.remove(spriteOrObject, ...rest)
     }
     // Check if it's a Sprite2D
-    if ('_unenrollFromWorld' in spriteOrObject && '_flatlandWorld' in spriteOrObject) {
-      if (spriteOrObject._hierarchyOwner === this) {
+    if (isSprite2D(spriteOrObject)) {
+      const sprite = spriteOrObject
+      if (sprite._hierarchyOwner === this) {
         // Match Object3D.remove(): a retained descendant is not this
         // group's direct child, so removing it from here is a no-op.
-        if (spriteOrObject.parent !== this) return this
-        this._releaseHierarchySprite(spriteOrObject)
-        super.remove(spriteOrObject)
+        if (sprite.parent !== this) return this
+        this._releaseHierarchySprite(sprite)
+        super.remove(sprite)
       } else {
-        this._releaseDirectEnrollment(spriteOrObject)
-        if (spriteOrObject.parent === this) super.remove(spriteOrObject)
+        this._releaseDirectEnrollment(sprite)
+        if (sprite.parent === this) super.remove(sprite)
       }
     } else {
       spriteOrObject.traverse((object) => {
@@ -625,6 +831,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * Remove multiple sprites from the renderer.
    */
   removeSprites(...sprites: Sprite2D[]): this {
+    this._assertUsable('removeSprites')
     for (const sprite of sprites) {
       this._releaseDirectEnrollment(sprite)
     }
@@ -665,16 +872,47 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * before drawing children. This is the main integration point — no manual
    * `update()` call is needed.
    *
-   * Per-frame flow is the `SystemSchedule` built in `get world()`:
-   * deferredDestroy → material-version/effect-traits → batchAssign →
-   * batchReassign → conditionalTransformSync → batchSort → sceneGraphSync
-   * → batchRemove → late-assign → flushDirtyRanges, with lighting systems
-   * prepended by `Flatland.setLighting`. Color / UV / flip / effect writes
-   * are NOT in the schedule — they happen at the setter site via the
-   * sprite's cached `_batchMesh`/`_batchSlot`; the BucketedDirtyTracker on
-   * each instance attribute coalesces uploads.
+   * Per-frame flow is the `SystemSchedule` built by the lazy runtime initializer:
+   * deferredDestroy → material-version check → batchRemove →
+   * batchAssign → batchReassign → conditionalTransformSync → batchSort →
+   * sceneGraphSync → late-route → flushDirtyRanges, then schedule
+   * finalizers. Lighting systems are prepended by `Flatland.setLighting`.
+   * Color / UV / flip / effect writes are NOT in the schedule — they happen
+   * at the setter site via the sprite's cached `_batchMesh`/`_batchSlot`;
+   * the BucketedDirtyTracker on each instance attribute coalesces uploads.
    */
   private _inSystems = false
+  private _advancingAnimations = false
+  private readonly _animationState = createAnimationGroupState()
+
+  /**
+   * Advance every currently enrolled `AnimatedSprite2D` with one caller-owned
+   * delta. Ordinary rendering never advances animation implicitly, and direct
+   * `AnimatedSprite2D.update(deltaMs)` calls remain supported.
+   */
+  advanceAnimations(deltaMs: number): void {
+    this._assertUsable('advanceAnimations')
+    if (!Number.isFinite(deltaMs)) {
+      throw new Error('SpriteGroup.advanceAnimations deltaMs must be finite')
+    }
+    if (this._advancingAnimations) {
+      throw new Error('three-flatland: SpriteGroup.advanceAnimations cannot be used reentrantly')
+    }
+
+    const world = this._world
+    if (!world || !this._getRegistry()) return
+
+    const animationState = this._animationState
+    snapshotAnimationGroupState(animationState)
+
+    this._advancingAnimations = true
+    try {
+      advanceAnimationGroup(animationState, world, deltaMs)
+    } finally {
+      resetAnimationGroupState(animationState)
+      this._advancingAnimations = false
+    }
+  }
 
   override updateMatrixWorld(force?: boolean): void {
     if (!this._inSystems) this._reconcileHierarchySprites()
@@ -782,9 +1020,9 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    */
   private _checkMaterialVersions(): void {
     if (!this._world) return
-    const registryEntities = this._world.query(BatchRegistry)
+    const registryEntities = this._world.view(BatchRegistries)
     if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
+    const registry = this._world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined
     if (!registry) return
 
     for (const [materialId, ref] of registry.materialRefs) {
@@ -813,24 +1051,6 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
   }
 
   /**
-   * Rebuild the effect traits map from tracked materials.
-   */
-  private _rebuildEffectTraits(): void {
-    if (!this._world) return
-    const registryEntities = this._world.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-    if (!registry) return
-
-    this._effectTraits.clear()
-    for (const { material } of registry.materialRefs.values()) {
-      for (const effectClass of material.getEffects()) {
-        this._effectTraits.set(effectClass._trait, effectClass)
-      }
-    }
-  }
-
-  /**
    * Get render statistics.
    *
    * Note: `drawCalls` is NOT computed here — it must come from
@@ -849,7 +1069,7 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     let visibleSprites = 0
 
     for (const batchEntity of activeBatches) {
-      const batchMeshData = batchEntity.get(BatchMesh)
+      const batchMeshData = this._world ? this._world.read(batchEntity, BatchMesh) : undefined
       const mesh = batchMeshData?.mesh ?? null
       if (mesh) visibleSprites += mesh.activeCount
     }
@@ -895,7 +1115,28 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * Clear all sprites.
    */
   override clear(): this {
-    for (const sprite of this._hierarchySprites) this._releaseHierarchySprite(sprite)
+    this._assertUsable('clear')
+    return this._clear()
+  }
+
+  /** Terminal-safe clear path used after the disposal latch has been published. */
+  private _clear(): this {
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    for (const sprite of this._hierarchySprites) {
+      runCleanup(() => this._releaseHierarchySprite(sprite))
+    }
 
     // Direct sprites are not Object3D children, so clearing the group tree
     // cannot discover them. Release every remaining registry source before
@@ -904,52 +1145,76 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
     const registry = this._getRegistry()
     if (registry) {
       for (const sprite of registry.spriteArr) {
-        if (sprite) this._releaseDirectEnrollment(sprite)
+        if (sprite) runCleanup(() => this._releaseDirectEnrollment(sprite))
+      }
+
+      // Removed(IsRenderable) is deferred. Drain that ownership teardown
+      // before disposing the meshes it targets, then destroy the queued
+      // entities below. This is a terminal clear, so a dedicated schedule
+      // frame is intentional even if rendering already ran this frame.
+      const schedule = registry.schedule
+      const world = this._world
+      if (world && schedule) {
+        schedule.nextFrame()
+        this._inSystems = true
+        runCleanup(() => {
+          try {
+            schedule.run(world)
+            registry.scheduleRuns++
+            this._lastRunSeen = registry.scheduleRuns
+          } finally {
+            this._inSystems = false
+          }
+        })
       }
     }
 
-    // Remove all batch children from scene graph
-    while (this.children.length > 0) {
-      const child = this.children[0]
-      if (child) {
-        super.remove(child)
-      }
+    // Remove a stable snapshot so hostile `removed` listeners cannot keep a
+    // length-driven loop alive by reattaching the child before they throw.
+    const ownedChildren = this.children.slice()
+    for (const child of ownedChildren) {
+      runCleanup(() => super.remove(child))
+      this._forceDetachChild(child)
     }
+    // A listener can bypass this class's terminal add guard through the base
+    // prototype. Terminal clear still owns an empty scene-graph result.
+    for (const child of this.children.slice()) this._forceDetachChild(child)
 
     // Clear registry state
     if (registry) {
-      // Dispose all active batch meshes
-      for (const batchEntity of registry.activeBatches) {
-        const batchMeshData = batchEntity.get(BatchMesh)
+      const world = this._world
+      const batchEntities = new Set([...registry.activeBatches, ...registry.batchPool])
+      for (const batchEntity of batchEntities) {
+        const batchMeshData = world?.read(batchEntity, BatchMesh)
         const mesh = batchMeshData?.mesh ?? null
-        if (mesh) mesh.dispose()
+        if (mesh) runCleanup(() => mesh.dispose())
       }
-      // Dispose pooled batch meshes
-      for (const batchEntity of registry.batchPool) {
-        const batchMeshData = batchEntity.get(BatchMesh)
-        const mesh = batchMeshData?.mesh ?? null
-        if (mesh) mesh.dispose()
+      // Batch entities own object-backed mesh references. Destroy them even
+      // when user disposal listeners throw so clear() cannot retain every
+      // prior max-capacity buffer until the entire world is disposed.
+      for (const batchEntity of batchEntities) {
+        if (world?.isAlive(batchEntity)) runCleanup(() => world.destroy(batchEntity))
       }
       registry.activeBatches.length = 0
       registry.batchPool.length = 0
       registry.runs.clear()
       registry.sortedRunKeys.length = 0
       registry.materialRefs.clear()
+      registry.materialReleaseCandidates.clear()
       registry.renderOrderDirty = false
-      registry.batchSlots.length = 0
-      registry.batchSlotFreeList.length = 0
-      registry.spriteArr.length = 0
-      registry.effectTraits.clear()
+      resetBatchSlots(registry)
+      registry.spriteArr.fill(null)
 
       // Flush deferred destroys so zombies don't outlive the group
       for (const entity of registry.pendingDestroy) {
-        entity.destroy()
+        if (this._world?.isAlive(entity)) runCleanup(() => this._world!.destroy(entity))
       }
       registry.pendingDestroy.length = 0
     }
 
     this._spriteCount = 0
 
+    if (didError) throw firstError
     return this
   }
 
@@ -958,9 +1223,17 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    */
   private _getRegistry(): RegistryData | null {
     if (!this._world) return null
-    const registryEntities = this._world.query(BatchRegistry)
+    const registryEntities = this._world.view(BatchRegistries)
     if (registryEntities.length === 0) return null
-    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
+    return (this._world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined) ?? null
+  }
+
+  /** Detach without redispatching user-extensible hierarchy events. */
+  private _forceDetachChild(child: Object3D): void {
+    if (child.parent !== this) return
+    const index = this.children.indexOf(child)
+    if (index !== -1) this.children.splice(index, 1)
+    child.parent = null
   }
 
   /**
@@ -989,16 +1262,53 @@ export class SpriteGroup extends ClippingGroup implements WorldProvider {
    * Dispose of all resources.
    */
   dispose(): void {
-    this.clear()
+    if (this._disposed) return
+    assertSpriteGroupCanDispose(this)
+    this._lifecycleRevision++
+    this._disposed = true
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    runCleanup(() => this._clear())
+    const registry = this._registryData
+    if (registry) {
+      // clear() preserves reservations for reuse; terminal disposal releases
+      // every retained backing store and object slot.
+      registry.spriteArr.length = 0
+      registry.batchSlots.length = 0
+      registry.batchSlotFreeList.length = 0
+      registry.pendingDestroy.length = 0
+    }
     if ((process.env.NODE_ENV !== 'production' || process.env.FL_DEVTOOLS === 'true') && this._batchSource !== null) {
-      _unregisterBatchSource(this._batchSource)
+      runCleanup(() => _unregisterBatchSource(this._batchSource!))
       this._batchSource = null
     }
-    if (this._world) {
-      removeMaterialDisposeHooks(this._world)
-      this._world.destroy()
-      this._world = null
-      this._registryEntity = null
+    const world = this._world
+    if (world) {
+      runCleanup(() => removeMaterialDisposeHooks(world))
+      runCleanup(() => releaseLightEffectRuntimeContext(world))
+      runCleanup(() => world.dispose())
     }
+    this._world = null
+    clearSpriteGroupWorld(this)
+    this._registryEntity = null
+    this._registryData = null
+    this._batchAssignSystem = null
+    this._batchReassignSystem = null
+    this._batchRemoveSystem = null
+    this._batchSortSystem = null
+    this._sceneGraphSyncSystem = null
+    disposeAnimationGroupState(this._animationState)
+    if (didError) throw firstError
   }
 }

@@ -21,16 +21,22 @@ three-flatland exposes 2D primitives as plain `Object3D` subclasses on the Three
 - **TSL shaders through `WebGPURenderer`.** Three.js compiles the node graphs for WebGPU or its WebGL 2 compatibility backend.
 - **Pixel-perfect by default.** `FlatlandConfig` coordinates texture loading, integer camera scale, and projected-pivot snapping; override the whole pipeline or one subsystem.
 - **Composable effects.** Tint, outline, dissolve, palette swap, CRT, bloom — combine on a shared material; sprites in a batch stay batched as effects come and go.
-- **Animation system.** `AnimatedSprite2D` + `AnimationController` for spritesheet-driven, frame-precise playback with completion callbacks.
+- **Animation system.** `AnimatedSprite2D` + `AnimationController` for frame-precise playback, plus caller-timed `SpriteGroup.advanceAnimations()` for dense shared timelines.
 - **Tilemap support.** Loaders for [Tiled](https://www.mapeditor.org/) and [LDtk](https://ldtk.io/) editor formats; animated tiles included.
 - **2D-on-3D via render targets.** The `Flatland` class wraps a 2D scene with an orthographic camera and an optional `RenderTarget`; the resulting texture mounts on any 3D material for HUDs, dialogue panels, or in-world signage.
 - **React Three Fiber integration.** `three-flatland/react` re-exports the core surface with JSX type augmentation. `extend()`-friendly classes, `attachEffect` lifecycle helper.
 - **Tree-shakeable subpath exports.** Import per-category, deep imports for surgical bundles.
 
+The private data-oriented renderer core grew from three-flatland's original
+[Koota](https://github.com/pmndrs/koota) integration. Koota's typed traits, structure-of-arrays
+storage, queries, and systems made this specialized design possible. Koota remains the recommended
+general-purpose ECS for application and gameplay state; the renderer specialization does not replace
+it.
+
 ## Install
 
 ```bash
-npm install three-flatland
+npm install three-flatland three
 ```
 
 For React Three Fiber:
@@ -42,7 +48,6 @@ npm install three-flatland @react-three/fiber@10.0.0-alpha.3
 ### Requirements
 
 - **three** ^0.185.1 (WebGPU/TSL support)
-- **koota** ^0.6.5 (ECS for batch rendering)
 - **React** ~19.2.0 and **@react-three/fiber** 10.0.0-alpha.3 (optional, for R3F)
 
 ## Quick Start
@@ -145,6 +150,30 @@ export default function App() {
 }
 ```
 
+## Capacity hints
+
+When a scene's approximate sprite population is known, pass `expectedSprites` to the `SpriteGroup` or `Flatland` constructor:
+
+```ts
+const group = new SpriteGroup({ expectedSprites: 16_384 })
+const flatland = new Flatland({ expectedSprites: 16_384 })
+```
+
+The value reserves hot CPU-side enrollment storage. It is advisory rather than a cap: enrollment continues automatically past the hint. `clear()` keeps the reservation for reuse, while `dispose()` releases it.
+
+React Three Fiber receives constructor-only options through stable `args`:
+
+```tsx
+import { useMemo } from 'react'
+import type { SpriteGroupOptions } from 'three-flatland/react'
+
+const groupArgs = useMemo(() => [{ expectedSprites: 16_384 }] satisfies [SpriteGroupOptions], [])
+
+return <spriteGroup args={groupArgs}>{/* sprites */}</spriteGroup>
+```
+
+`expectedSprites` is not a mutable JSX property. Change the memoized constructor args when the expected population changes so React Three Fiber reconstructs the object.
+
 ## Subpath Exports
 
 Import only what you need:
@@ -169,12 +198,12 @@ import { Sprite2D, attachEffect, type EffectElement } from 'three-flatland/react
 
 ## Companion Packages
 
-| Package | Description |
-|---------|-------------|
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | 50+ TSL shader nodes. Tint, outline, dissolve, blur, CRT, palette swap, and more. |
-| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Skia compiled to WASM. GPU vector graphics, text, paths, image filters. |
-| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 theme + React hooks (transitioning to a devtools package). |
-| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Pre-configured effect combinations (in development). |
+| Package                                                                                | Description                                                                       |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes)         | 50+ TSL shader nodes. Tint, outline, dissolve, blur, CRT, palette swap, and more. |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia)           | Skia compiled to WASM. GPU vector graphics, text, paths, image filters.           |
+| [`@three-flatland/tweakpane`](https://www.npmjs.com/package/@three-flatland/tweakpane) | Tweakpane v4 theme + React hooks (transitioning to a devtools package).           |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets)     | Pre-configured effect combinations (in development).                              |
 
 ## When not to reach for three-flatland
 

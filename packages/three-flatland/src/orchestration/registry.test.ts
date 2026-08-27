@@ -1,16 +1,12 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { worldFor } from '../ecs/testUtils.type-test'
+import { describe, it, expect } from 'vitest'
 import { Scene } from 'three'
-import { universe } from 'koota'
 import { Registry, getOrCreateRegistry, peekRegistry } from './registry'
 
 function makeRenderer(): object {
   // The registry never calls renderer methods — identity is all that matters.
   return { isFakeRenderer: true }
 }
-
-afterEach(() => {
-  universe.reset()
-})
 
 describe('per-(renderer, scene) registry foundation', () => {
   it('returns the same registry for the same tuple', () => {
@@ -45,7 +41,7 @@ describe('per-(renderer, scene) registry foundation', () => {
     const b = getOrCreateRegistry(renderer, s2)
 
     expect(a).not.toBe(b)
-    expect(a.world).not.toBe(b.world)
+    expect(worldFor(a)).not.toBe(worldFor(b))
   })
 
   it('peekRegistry never creates', () => {
@@ -82,5 +78,32 @@ describe('per-(renderer, scene) registry foundation', () => {
     expect(registry.batches.size).toBe(0)
     expect(registry._sceneHookInstalled).toBe(false)
     expect(registry.group.name).toBe('FlatlandOrchestrator')
+  })
+
+  it('publishes a live replacement before terminal-group removal callbacks run', () => {
+    const renderer = makeRenderer()
+    const scene = new Scene()
+    const terminal = getOrCreateRegistry(renderer, scene)
+    let observed: Registry | null = null
+    scene.add(terminal.group)
+    terminal.group.addEventListener('removed', () => {
+      observed = peekRegistry(renderer, scene)
+      throw 0
+    })
+    terminal.group.dispose()
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      getOrCreateRegistry(renderer, scene)
+    } catch (error) {
+      thrown = error
+    }
+
+    const replacement = peekRegistry(renderer, scene)!
+    expect(thrown).toBe(0)
+    expect(replacement).not.toBe(terminal)
+    expect(observed).toBe(replacement)
+    expect(terminal.group.parent).toBeNull()
+    replacement.group.dispose()
   })
 })

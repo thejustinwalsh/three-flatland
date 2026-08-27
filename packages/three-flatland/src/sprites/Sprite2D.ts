@@ -13,7 +13,7 @@ import {
   type Intersection,
   type Object3D,
 } from 'three'
-import type { Entity, World } from 'koota'
+import { select, type World } from '../ecs/runtime'
 import type { MaterialEffect } from '../materials/MaterialEffect'
 import { Sprite2DMaterial, type Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import type { SpriteBatch } from '../pipeline/SpriteBatch'
@@ -27,13 +27,18 @@ import {
   SpriteZIndex,
   SpriteMaterialRef,
   IsRenderable,
-  IsBatched,
   BatchSlot,
   BatchRegistry,
 } from '../ecs/traits'
 import { resolveSortLayer, type SortLayerName, type SortLayerValue } from '../pipeline/sortLayers'
-import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
-import { ENTITY_ID_MASK, resolveStore } from '../ecs/snapshot'
+import {
+  ensureMaterialDisposeHook,
+  getWorldDefaultMaterial,
+  getWorldEffectVariant,
+  releaseMaterialIfUnused,
+  type RegistryData,
+} from '../ecs/batchUtils'
+import { entitySlot, resolveStore } from '../ecs/snapshot'
 import { getGlobalWorld } from '../ecs/world'
 import { observable } from '../observable'
 import type { HitTestMode } from '../events/HitTestMode'
@@ -45,6 +50,63 @@ import { createSynthQuadGeometry } from '../pipeline/synthQuadGeometry'
 import { flatlandPrime, flatlandRegister, flatlandUnregister } from '../orchestration/orchestrator'
 import type { Registry } from '../orchestration/registry'
 import { resolvePixelPerfect, type RenderingSetting } from '../config/RenderingConfig'
+import { reserveIndexedArray } from '../internal/capacity'
+import { markTerminalObject } from '../internal/terminal-object'
+import {
+  consumeSpriteCloneBootstrapMaterial,
+  deferSpriteCloneBootstrapError,
+  hasSpriteCloneBootstrapMaterial,
+  markSpriteCloneBootstrapMaterial,
+  publishSpriteRuntime,
+  registerStandardSpriteUpdateMatrix,
+  spriteEntity,
+  spriteWorld,
+} from '../internal/sprite-runtime'
+import { getEffectTrait, setEffectEntity } from '../internal/effect-runtime'
+import { notifySpriteDispose, notifySpriteMaterialChange } from '../internal/ownership-observers'
+
+let nextEffectConstantIdentity = 1
+const effectConstantObjectIdentities = new WeakMap<object, number>()
+const effectConstantSymbolIdentities = new Map<symbol, number>()
+
+function effectConstantIdentity(value: object | symbol): number {
+  if (typeof value === 'symbol') {
+    const existing = effectConstantSymbolIdentities.get(value)
+    if (existing !== undefined) return existing
+    const identity = nextEffectConstantIdentity++
+    effectConstantSymbolIdentities.set(value, identity)
+    return identity
+  }
+  const existing = effectConstantObjectIdentities.get(value)
+  if (existing !== undefined) return existing
+  const identity = nextEffectConstantIdentity++
+  effectConstantObjectIdentities.set(value, identity)
+  return identity
+}
+
+function encodeEffectConstant(value: unknown): string {
+  if (value === null) return 'null'
+  switch (typeof value) {
+    case 'undefined':
+      return 'undefined'
+    case 'string':
+      return `string:${value.length}:${value}`
+    case 'number':
+      return `number:${Object.is(value, -0) ? '-0' : String(value)}`
+    case 'boolean':
+      return `boolean:${value ? '1' : '0'}`
+    case 'bigint':
+      return `bigint:${value}`
+    case 'symbol':
+      return `symbol:${effectConstantIdentity(value)}`
+    case 'function':
+    case 'object':
+      return `reference:${effectConstantIdentity(value)}`
+  }
+  throw new TypeError(`Unsupported effect constant type: ${typeof value}`)
+}
+
+const BatchRegistries = select(BatchRegistry)
 
 // Types the build-time `process.env` read without requiring @types/node
 // (shadows the global where present; erased at compile).
@@ -154,8 +216,11 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _setMaterialInternal(value: Sprite2DMaterial): void {
+    const previous = this._materialRef
+    const finalizeOwnership = previous ? notifySpriteMaterialChange(this, previous, value) : undefined
     this._materialRef = value
     this._batchEnrollmentBlockedMaterial = null
+    finalizeOwnership?.()
   }
 
   /**
@@ -261,7 +326,7 @@ export class Sprite2D extends Mesh {
       this._systemFlags &= ~PIXEL_PERFECT_MASK
     }
 
-    if (this._entity) {
+    if (this.#entity) {
       this._syncEffectFlagsToBatch()
     } else {
       this._writeEffectDataOwn()
@@ -289,7 +354,7 @@ export class Sprite2D extends Mesh {
     }
 
     // Sync to GPU buffers
-    if (this._entity) {
+    if (this.#entity) {
       this._syncEffectFlagsToBatch()
     } else {
       this._writeEffectDataOwn()
@@ -316,7 +381,7 @@ export class Sprite2D extends Mesh {
     }
 
     // Sync to GPU buffers
-    if (this._entity) {
+    if (this.#entity) {
       this._syncEffectFlagsToBatch()
     } else {
       this._writeEffectDataOwn()
@@ -363,7 +428,7 @@ export class Sprite2D extends Mesh {
     // Push to GPU: standalone writes the own-geometry buffer; batched
     // lets transformSyncSystem pick it up on the next frame (it reads
     // scale + override together when resolving the per-slot value).
-    if (this._entity) {
+    if (this.#entity) {
       this._syncShadowRadiusToBatch()
     } else {
       this._updateOwnShadowRadius()
@@ -394,7 +459,7 @@ export class Sprite2D extends Mesh {
     }
 
     // Sync to GPU buffers
-    if (this._entity) {
+    if (this.#entity) {
       this._syncEffectFlagsToBatch()
     } else {
       this._writeEffectDataOwn()
@@ -443,7 +508,7 @@ export class Sprite2D extends Mesh {
   //
   // Each numeric trait field has a backing array ref + index.
   // Standalone: refs point to local arrays (length >= 1), _idx = 0.
-  // Enrolled: refs point to world SoA store arrays, _idx = eid.
+  // Enrolled: refs point to world SoA store arrays, _idx = packed-handle index.
   // Enrollment swaps refs + copies values. Zero branching in setters.
 
   /** Index into the backing arrays (0 when standalone, eid when enrolled). */
@@ -455,17 +520,17 @@ export class Sprite2D extends Mesh {
   /** @internal */ _uvW: number[] = [1]
   /** @internal */ _uvH: number[] = [1]
 
-  // Color (SpriteColor) — needs entity.set() for Changed() on write
+  // Color (SpriteColor) — direct writes are followed by world.touch()
   /** @internal */ _colorR: number[] = [1]
   /** @internal */ _colorG: number[] = [1]
   /** @internal */ _colorB: number[] = [1]
   /** @internal */ _colorA: number[] = [1]
 
-  // Flip (SpriteFlip) — needs entity.set() for Changed() on write
+  // Flip (SpriteFlip) — direct writes are followed by world.touch()
   /** @internal */ _flipXArr: number[] = [1]
   /** @internal */ _flipYArr: number[] = [1]
 
-  // SortLayer — needs entity.set() for Changed() on write
+  // SortLayer — direct writes are followed by world.touch()
   /** @internal */ _layerArr: number[] = [0]
 
   /**
@@ -515,7 +580,7 @@ export class Sprite2D extends Mesh {
    * was picked up from a vanilla scene (no SpriteGroup / Flatland).
    * @internal
    */
-  _autoRegistry: Registry | null = null
+  private _autoRegistry: Registry | null = null
 
   /** Enrolled by the nearest SpriteGroup while retaining a real source parent. @internal */
   _hierarchyManaged = false
@@ -529,6 +594,8 @@ export class Sprite2D extends Mesh {
   _batchEnrollmentBlockedMaterial: Sprite2DMaterial | null = null
   /** Terminal object-disposal latch; disposed sprites cannot be re-enrolled. @internal */
   _disposed = false
+  /** Changes before terminal cleanup can invoke user code. @internal */
+  private _lifecycleRevision = 0
 
   /**
    * True while the material is the construction-time bootstrap default
@@ -609,7 +676,7 @@ export class Sprite2D extends Mesh {
   private _registryCache: RegistryData | undefined
 
   private _registryData(): RegistryData | undefined {
-    const world = this._flatlandWorld
+    const world = this._runtimeWorld
     if (!world) {
       this._registryCacheWorld = null
       this._registryCache = undefined
@@ -617,8 +684,9 @@ export class Sprite2D extends Mesh {
     }
     if (this._registryCacheWorld === world && this._registryCache) return this._registryCache
 
-    const registries = world.query(BatchRegistry)
-    const registry = registries[0]?.get(BatchRegistry) as RegistryData | undefined
+    const registries = world.view(BatchRegistries)
+    const registryEntity = registries[0]
+    const registry = registryEntity ? (world.read(registryEntity, BatchRegistry) as RegistryData) : undefined
     if (registry) {
       this._registryCacheWorld = world
       this._registryCache = registry
@@ -679,7 +747,7 @@ export class Sprite2D extends Mesh {
   _isHierarchyVisible(parentOverride?: Object3D | null): boolean {
     if (!this._batchVisibilityState()) return false
     let parent =
-      parentOverride === undefined ? (this._entity ? this._batchHierarchyParent() : this.parent) : parentOverride
+      parentOverride === undefined ? (this.#entity ? this._batchHierarchyParent() : this.parent) : parentOverride
     while (parent) {
       const candidate = parent as Sprite2D
       if ('_isAuthoredVisible' in candidate) {
@@ -694,7 +762,7 @@ export class Sprite2D extends Mesh {
 
   /** Test a world point against every Flatland clip ancestor. @internal */
   private _isInsideHierarchyClips(point: Vector3): boolean {
-    let parent = this._entity ? this._batchHierarchyParent() : this.parent
+    let parent = this.#entity ? this._batchHierarchyParent() : this.parent
     while (parent) {
       const clip = parent as FlatlandClipAncestor
       if (clip._containsWorldPoint && !clip._containsWorldPoint(point)) return false
@@ -723,13 +791,20 @@ export class Sprite2D extends Mesh {
    * The ECS entity for this sprite (null until enrolled in a world).
    * @internal
    */
-  _entity: Entity | null = null
+  #entity: ReturnType<World['spawn']> | null = null
 
   /**
    * The ECS world this sprite belongs to (set by SpriteGroup or Flatland).
    * @internal
    */
-  _flatlandWorld: World | null = null
+  #world: World | null = null
+
+  /** Private typed view of the public opaque world handle. */
+  private get _runtimeWorld(): World | null {
+    // Three writes inherited accessors from Object3D/Mesh constructors
+    // before this subclass's private slots are installed.
+    return #world in this ? this.#world : null
+  }
 
   /**
    * Cached batch references for O(1) direct-write dispatch from setters.
@@ -741,7 +816,7 @@ export class Sprite2D extends Mesh {
    *
    * Setters that need to write to GPU buffers (UV via setFrame, color
    * via tint/alpha, flip via flipX/flipY) read these directly instead
-   * of routing through Koota's Changed channel and a per-frame
+   * of routing through a tracked change channel and a per-frame
    * bufferSync system pass.
    * @internal
    */
@@ -841,6 +916,9 @@ export class Sprite2D extends Mesh {
     )
     geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2))
     super(geometry, material)
+    // Stored only for exact identity checks; this method is never invoked unbound.
+    // oxlint-disable-next-line typescript/unbound-method
+    registerStandardSpriteUpdateMatrix(Sprite2D.prototype.updateMatrix)
 
     // Store reference so we can dispose it
     this._geometry = geometry
@@ -869,7 +947,7 @@ export class Sprite2D extends Mesh {
           this._tintColor.b,
           this._colorA[i]!
         )
-      } else if (!this._entity) {
+      } else if (!this.#entity) {
         this._updateOwnColor()
       }
     })
@@ -1040,8 +1118,8 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _syncShadowRadiusToBatch() {
-    if (!this._entity || !this._flatlandWorld) return
-    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!this.#entity || !this.#world) return
+    const bs = this._runtimeWorld!.read(this.#entity, BatchSlot)
     if (!bs || bs.batchIdx < 0) return
     const registry = this._registryData()
     if (!registry) return
@@ -1059,9 +1137,9 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _resolveWorldDefaultMaterial(texture: Texture): Sprite2DMaterial | null {
-    if (this._flatlandWorld) {
+    if (this.#world) {
       const registry = this._registryData()
-      if (registry) return getWorldDefaultMaterial(this._flatlandWorld, registry, texture)
+      if (registry) return getWorldDefaultMaterial(this._runtimeWorld!, registry, texture)
     }
     if (this._autoRegistry) {
       return this._autoRegistry.getDefaultMaterial(texture)
@@ -1080,9 +1158,9 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _resolveWorldEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial | null {
-    if (this._flatlandWorld) {
+    if (this.#world) {
       const registry = this._registryData()
-      if (registry) return getWorldEffectVariant(this._flatlandWorld, registry, texture, options)
+      if (registry) return getWorldEffectVariant(this._runtimeWorld!, registry, texture, options)
     }
     if (this._autoRegistry) {
       return this._autoRegistry.getEffectVariant(texture, options)
@@ -1150,7 +1228,7 @@ export class Sprite2D extends Mesh {
           sourceWidth: (value.image as HTMLImageElement | undefined)?.width ?? 1,
           sourceHeight: (value.image as HTMLImageElement | undefined)?.height ?? 1,
         }
-        if (!this._entity) this._updateOwnUV()
+        if (!this.#entity) this._updateOwnUV()
         this.updateSize()
       }
       // Mark drawable without overwriting user/React visibility.
@@ -1164,19 +1242,13 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   private _constantsKey(constants: Record<string, unknown>): string {
-    const parts: string[] = []
-    for (const [key, value] of Object.entries(constants)) {
-      if (value && typeof value === 'object' && 'id' in value) {
-        parts.push(`${key}=${(value as { id: number }).id}`)
-      } else if (value == null) {
-        parts.push(`${key}=null`)
-      } else {
-        parts.push(
-          `${key}=${typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : 'ref'}`
-        )
-      }
-    }
-    return parts.join(',')
+    return Object.entries(constants)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => {
+        const encoded = encodeEffectConstant(value)
+        return `${key.length}:${key}:${encoded.length}:${encoded}`
+      })
+      .join('|')
   }
 
   /**
@@ -1188,14 +1260,16 @@ export class Sprite2D extends Mesh {
    * effect state.
    * @internal
    */
-  private _buildEffectsKey(): string {
-    return this._effects
+  private _buildEffectsKey(additionalEffect?: MaterialEffect): string {
+    const effects = additionalEffect ? [...this._effects, additionalEffect] : this._effects
+    return effects
       .filter((e) => Object.keys((e.constructor as typeof MaterialEffect)._constantFactories).length > 0)
       .map((e) => {
         const EC = e.constructor as typeof MaterialEffect
-        return `${EC.effectName}:${this._constantsKey(e._constants)}`
+        const constants = this._constantsKey(e._constants)
+        return `effect:${EC.effectName.length}:${EC.effectName}:constants:${constants.length}:${constants}`
       })
-      .join(';')
+      .join('|')
   }
 
   /**
@@ -1218,6 +1292,9 @@ export class Sprite2D extends Mesh {
    */
   private _switchToMaterial(newMaterial: Sprite2DMaterial): void {
     const current = this.material
+    const globalUniforms = current.globalUniforms
+    const requiredChannels = current.requiredChannels
+    const colorTransform = current.colorTransform
     this.material = newMaterial
     this._materialIsBootstrapDefault = false
     this._materialWasRegistryDefault = false
@@ -1225,29 +1302,15 @@ export class Sprite2D extends Mesh {
     this._materialWasRegistryVariant = false
 
     // Carry over global uniforms
-    if (current.globalUniforms) {
-      newMaterial.globalUniforms = current.globalUniforms
+    if (globalUniforms) {
+      newMaterial.globalUniforms = globalUniforms
     }
     // Carry over required channels and color transform
-    newMaterial.requiredChannels = current.requiredChannels
-    newMaterial.colorTransform = current.colorTransform
+    newMaterial.requiredChannels = requiredChannels
+    newMaterial.colorTransform = colorTransform
 
-    // Re-register all effects on the new material
-    for (const effect of this._effects) {
-      const EffectClass = effect.constructor as typeof MaterialEffect
-      if (!newMaterial.hasEffect(EffectClass)) {
-        newMaterial.registerEffect(EffectClass, effect._constants)
-      }
-    }
-
-    // Update SpriteMaterialRef for batch reassignment
-    if (this._entity) {
-      this._entity.set(SpriteMaterialRef, { materialId: newMaterial.batchId })
-    }
-    this._setupInstanceAttributes()
-    if (!this._entity) {
-      this._writeEffectDataOwn()
-    }
+    // The public material interceptor already carried this sprite's effects,
+    // rebuilt its source attribute schema, and refreshed standalone values.
   }
 
   /**
@@ -1262,8 +1325,16 @@ export class Sprite2D extends Mesh {
       this._materialWasRegistryDefault = true
       return
     }
-    this._switchToMaterial(material)
-    this._materialWasRegistryDefault = true
+    try {
+      this._switchToMaterial(material)
+    } finally {
+      // Material assignment may commit before a cleanup/finalizer throws.
+      // Publish matching provenance whenever the destination won the swap.
+      if (this.material === material) {
+        this._materialIsBootstrapDefault = false
+        this._materialWasRegistryDefault = true
+      }
+    }
   }
 
   /**
@@ -1278,8 +1349,14 @@ export class Sprite2D extends Mesh {
       this._materialWasRegistryVariant = true
       return
     }
-    this._switchToMaterial(material)
-    this._materialWasRegistryVariant = true
+    try {
+      this._switchToMaterial(material)
+    } finally {
+      if (this.material === material) {
+        this._materialIsBootstrapVariant = false
+        this._materialWasRegistryVariant = true
+      }
+    }
   }
 
   /**
@@ -1305,7 +1382,7 @@ export class Sprite2D extends Mesh {
   setFrame(frame: SpriteFrame): this {
     const isFirstFrame = this._frame === null
     this._frame = frame
-    // Raw array writes to the SoA store (no Koota Changed roundtrip).
+    // Raw array writes to the SoA store (no tracked-change roundtrip).
     const i = this._idx
     this._uvX[i] = frame.x
     this._uvY[i] = frame.y
@@ -1321,7 +1398,7 @@ export class Sprite2D extends Mesh {
       else this._systemFlags &= ~ROTATED_FRAME_MASK
       if (this._batchMesh) {
         this._batchMesh.writeSystemFlags(this._batchSlot, this._systemFlags)
-      } else if (!this._entity) {
+      } else if (!this.#entity) {
         this._writeEffectDataOwn()
       }
     }
@@ -1348,7 +1425,7 @@ export class Sprite2D extends Mesh {
     // write above is what batchAssignSystem reads when it syncs the slot.
     if (this._batchMesh) {
       this._batchMesh.writeUV(this._batchSlot, frame.x, frame.y, frame.width, frame.height)
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._updateOwnUV()
     }
     // Only auto-size on first frame set (not during animation)
@@ -1429,7 +1506,7 @@ export class Sprite2D extends Mesh {
     this._colorA[i] = value
     if (this._batchMesh) {
       this._batchMesh.writeColor(this._batchSlot, this._colorR[i]!, this._colorG[i]!, this._colorB[i]!, value)
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._updateOwnColor()
     }
   }
@@ -1451,7 +1528,7 @@ export class Sprite2D extends Mesh {
     this._flipXArr[i] = numVal
     if (this._batchMesh) {
       this._batchMesh.writeFlip(this._batchSlot, numVal, this._flipYArr[i]!)
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._updateOwnFlip()
     }
   }
@@ -1473,7 +1550,7 @@ export class Sprite2D extends Mesh {
     this._flipYArr[i] = numVal
     if (this._batchMesh) {
       this._batchMesh.writeFlip(this._batchSlot, this._flipXArr[i]!, numVal)
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._updateOwnFlip()
     }
   }
@@ -1489,7 +1566,7 @@ export class Sprite2D extends Mesh {
     this._flipYArr[i] = fy
     if (this._batchMesh) {
       this._batchMesh.writeFlip(this._batchSlot, fx, fy)
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._updateOwnFlip()
     }
     return this
@@ -1505,16 +1582,19 @@ export class Sprite2D extends Mesh {
 
   /**
    * Set the sortLayer (primary sort key) — a registered name (typed via
-   * `SortLayerRegistry` augmentation) or a raw numeric order. Routes the
-   * sprite to the batch matching its new run key on the next system pass.
+   * `SortLayerRegistry` augmentation) or a finite signed 32-bit numeric
+   * order. Routes the sprite to the batch matching its new run key on the
+   * next system pass.
+   *
+   * @throws {RangeError} When a numeric order is outside the signed 32-bit range.
    */
   set sortLayer(value: SortLayerValue) {
     const numeric = resolveSortLayer(value)
     this._sortLayerName = typeof value === 'string' ? value : null
     this._sortLayerExplicit = true
     this._layerArr[this._idx] = numeric
-    if (this._entity) {
-      this._entity.set(SortLayer, { value: numeric })
+    if (this.#entity) {
+      this._runtimeWorld?.touch(this.#entity, SortLayer)
     } else if (this._autoRegistry) {
       // Standalone auto sprite changed its run key — re-evaluate
       // thresholds on the next sweep (it may now share a run).
@@ -1541,8 +1621,8 @@ export class Sprite2D extends Mesh {
     const numeric = resolveSortLayer(name)
     this._sortLayerName = name
     this._layerArr[this._idx] = numeric
-    if (this._entity) {
-      this._entity.set(SortLayer, { value: numeric })
+    if (this.#entity) {
+      this._runtimeWorld?.touch(this.#entity, SortLayer)
     } else if (this._autoRegistry) {
       this._autoRegistry._autoEvalDirty = true
     }
@@ -1568,7 +1648,7 @@ export class Sprite2D extends Mesh {
    *
    * For non-gated materials, we flip the batch's `_sortDirty` flag so
    * `batchSortSystem` knows to re-sort this batch on its next pass. This
-   * replaced the prior `Changed(SpriteZIndex)` channel — Koota's change
+   * replaced the prior `Changed(SpriteZIndex)` channel — the generic change
    * tracker enumerated every flip every frame even when the gate trivially
    * skipped the sort, costing ~7ms/frame in a 12k-sprite demo. The
    * per-batch boolean costs one ref read + one write.
@@ -1671,6 +1751,7 @@ export class Sprite2D extends Mesh {
 
     // Custom attributes from material schema (pure effect data — no
     // system reservations)
+    for (const name of this._customBuffers.keys()) geo.deleteAttribute(name)
     this._customBuffers.clear()
     const schema = this.material.getInstanceAttributeSchema()
     for (const [name, config] of schema) {
@@ -1758,20 +1839,35 @@ export class Sprite2D extends Mesh {
   addEffect(effect: MaterialEffect): this {
     // Same instance already attached — no-op (R3F stable children)
     if (this._effects.includes(effect)) return this
+    if (effect._tileMap) {
+      throw new Error(
+        `Sprite2D.addEffect: effect '${effect.name}' is already attached to a tilemap; remove it before reattaching`
+      )
+    }
+    if (effect._sprite && effect._sprite !== this) {
+      throw new Error(
+        `Sprite2D.addEffect: effect '${effect.name}' is already attached to a different sprite; remove it before reattaching`
+      )
+    }
 
     const EffectClass = effect.constructor as typeof MaterialEffect
+    if (this._effects.some((attached) => attached.constructor === EffectClass)) {
+      throw new Error(
+        `Sprite2D.addEffect: only one '${EffectClass.effectName}' instance may be attached to a sprite at a time`
+      )
+    }
     const hasConstants = Object.keys(EffectClass._constantFactories).length > 0
 
     // Provider effects with constants may need a different material
     if (hasConstants) {
-      // Link and store the effect first (needed for _switchToMaterial /
-      // _buildEffectsKey, which reads this._effects)
-      effect._attach(this)
-      this._effects.push(effect)
+      // Validate against the current complete material layout before resolving
+      // a shared variant. A rejected 25th provider must not create a cache entry,
+      // attach the effect, change the ECS route, or alter sprite flags/material.
+      this.material._assertEffectRegistrations([{ effectClass: EffectClass, constants: effect._constants }])
 
       const options: Sprite2DMaterialOptions = {
         ...this.material.variantOptions,
-        effectsKey: this._buildEffectsKey(),
+        effectsKey: this._buildEffectsKey(effect),
       }
 
       // Resolve through the sprite's world/registry when enrolled, so
@@ -1779,8 +1875,26 @@ export class Sprite2D extends Mesh {
       // material instances (effect registration / dispose stay
       // isolated); fall back to the module-global shared cache only
       // pre-enrollment.
-      const worldVariant = this._texture ? this._resolveWorldEffectVariant(this._texture, options) : null
-      const newMaterial = worldVariant ?? Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options })
+      const cloneBootstrap = hasSpriteCloneBootstrapMaterial(this)
+      const worldVariant =
+        !cloneBootstrap && this._texture ? this._resolveWorldEffectVariant(this._texture, options) : null
+      const newMaterial = cloneBootstrap
+        ? this.material
+        : (worldVariant ?? Sprite2DMaterial.getShared({ map: this._texture ?? undefined, ...options }))
+
+      // Preflight and commit the complete union on the destination before the
+      // sprite changes. `_registerEffects` is atomic, so a cached variant with
+      // an incompatible schema cannot leave a half-attached sprite either.
+      const tierChanged = newMaterial._registerEffects([
+        ...this._effects.map((attached) => ({
+          effectClass: attached.constructor as typeof MaterialEffect,
+          constants: attached._constants,
+        })),
+        { effectClass: EffectClass, constants: effect._constants },
+      ])
+
+      effect._attach(this)
+      this._effects.push(effect)
 
       if (newMaterial !== this.material) {
         this._switchToMaterial(newMaterial)
@@ -1790,12 +1904,8 @@ export class Sprite2D extends Mesh {
           this._materialIsBootstrapVariant = true
         }
       } else {
-        // Same material — just register the effect
-        if (!this.material.hasEffect(EffectClass)) {
-          const tierChanged = this.material.registerEffect(EffectClass, effect._constants)
-          if (tierChanged) {
-            this._setupInstanceAttributes()
-          }
+        if (tierChanged) {
+          this._setupInstanceAttributes()
         }
       }
 
@@ -1804,13 +1914,14 @@ export class Sprite2D extends Mesh {
       this._effectFlags |= 1 << bitIndex
 
       // Add trait to entity (if enrolled)
-      if (this._entity) {
+      if (this.#entity) {
         const traitData = this._buildTraitData(effect)
-        this._entity.add(EffectClass._trait(traitData))
-        this._entity.set(EffectClass._trait, traitData)
+        this._runtimeWorld?.add(this.#entity, getEffectTrait(EffectClass)(traitData))
       }
 
-      if (!this._entity) {
+      if (this._batchMesh) {
+        this._writeEffectStateToBatch()
+      } else if (!this.#entity) {
         this._writeEffectDataOwn()
       }
 
@@ -1841,12 +1952,12 @@ export class Sprite2D extends Mesh {
     const bitIndex = material._effectBitIndex.get(EffectClass.effectName)!
     this._effectFlags |= 1 << bitIndex
 
-    // 4. Add trait to entity (if enrolled) — ECS state only. No .set()
+    // 4. Add trait to entity (if enrolled) — ECS state only. No touch()
     //    follow-up needed; the direct-write below pushes the data to the
     //    GPU buffer immediately, no Changed event consumer.
-    if (this._entity) {
+    if (this.#entity) {
       const traitData = this._buildTraitData(effect)
-      this._entity.add(EffectClass._trait(traitData))
+      this._runtimeWorld?.add(this.#entity, getEffectTrait(EffectClass)(traitData))
     }
 
     // 5. Store effect
@@ -1855,7 +1966,7 @@ export class Sprite2D extends Mesh {
     // 6. Write packed data directly to wherever this sprite lives.
     if (this._batchMesh) {
       this._writeEffectStateToBatch()
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._writeEffectDataOwn()
     }
 
@@ -1881,8 +1992,9 @@ export class Sprite2D extends Mesh {
     this._effectFlags &= ~(1 << bitIndex)
 
     // 2. Remove trait from entity (if enrolled) — ECS state only.
-    if (this._entity && this._entity.has(EffectClass._trait)) {
-      this._entity.remove(EffectClass._trait)
+    const effectTrait = getEffectTrait(EffectClass)
+    if (this.#entity && this._runtimeWorld?.has(this.#entity, effectTrait)) {
+      this._runtimeWorld.remove(this.#entity, effectTrait)
     }
 
     // 3. Detach effect and remove from list
@@ -1895,7 +2007,7 @@ export class Sprite2D extends Mesh {
     //    full state for symmetry with addEffect.
     if (this._batchMesh) {
       this._writeEffectStateToBatch()
-    } else if (!this._entity) {
+    } else if (!this.#entity) {
       this._writeEffectDataOwn()
     }
 
@@ -1906,13 +2018,19 @@ export class Sprite2D extends Mesh {
    * Direct-write the sprite's current effect state (flags + active field
    * values) into its batch's packed effect buffers. Same pattern as the
    * color / zIndex setters — uses the cached `_batchMesh` + `_batchSlot`
-   * refs instead of routing through Koota Changed events.
+   * refs instead of routing through tracked change events.
    * @internal
    */
   private _writeEffectStateToBatch(): void {
     const mesh = this._batchMesh
     if (!mesh) return
-    const material = this.material
+    // A material setter publishes the new Sprite2D material before the ECS
+    // reassignment pass moves the sprite. The cached mesh still belongs to
+    // the old schema during that window; writing new-layout offsets into it
+    // would corrupt whichever sprite owns those physical lanes. Reassignment
+    // projects the full effect state into the destination, so defer the write.
+    if (mesh.spriteMaterial !== this.material) return
+    const material = mesh.spriteMaterial
     if (material._effectTier === 0) return
 
     const slot = this._batchSlot
@@ -1933,7 +2051,7 @@ export class Sprite2D extends Mesh {
           const off = slotInfo.offset
           mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value)
         } else {
-          for (let i = 0; i < value.length; i++) {
+          for (let i = 0; i < field.size; i++) {
             const off = slotInfo.offset + i
             mesh.writeEffectSlot(slot, Math.floor(off / 4), off % 4, value[i]!)
           }
@@ -1948,7 +2066,7 @@ export class Sprite2D extends Mesh {
    */
   private _buildTraitData(effect: MaterialEffect): Record<string, number> {
     const ctor = effect.constructor as typeof MaterialEffect
-    const data: Record<string, number> = {}
+    const data = Object.create(null) as Record<string, number>
     for (const field of ctor._fields) {
       const value = effect._defaults[field.name]
       if (field.size === 1) {
@@ -1994,7 +2112,7 @@ export class Sprite2D extends Mesh {
         if (typeof value === 'number') {
           this._writePackedSlotOwn(slotInfo.offset, value)
         } else {
-          for (let i = 0; i < value.length; i++) {
+          for (let i = 0; i < field.size; i++) {
             this._writePackedSlotOwn(slotInfo.offset + i, value[i]!)
           }
         }
@@ -2045,8 +2163,8 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _syncEffectFlagsToBatch(): void {
-    if (!this._entity || !this._flatlandWorld) return
-    const bs = this._entity.get(BatchSlot) as { batchIdx: number; slot: number } | undefined
+    if (!this.#entity || !this.#world) return
+    const bs = this._runtimeWorld!.read(this.#entity, BatchSlot)
     if (!bs || bs.batchIdx < 0) return
     const registry = this._registryData()
     if (!registry) return
@@ -2110,7 +2228,7 @@ export class Sprite2D extends Mesh {
    * once registered — the hot path stays ~free.
    */
   override onBeforeRender: Mesh['onBeforeRender'] = (renderer, scene) => {
-    if (this._autoRegistry || this._flatlandWorld) return
+    if (this._autoRegistry || this.#world) return
     flatlandRegister(this, renderer as unknown as object, scene)
   }
 
@@ -2204,7 +2322,7 @@ export class Sprite2D extends Mesh {
    * `sprite.updateWorldMatrix(true, false)` then read `matrixWorld`.
    */
   override updateWorldMatrix(updateParents: boolean, updateChildren: boolean): void {
-    if (this._entity) {
+    if (this.#entity) {
       this._composeBatchedMatrixWorld()
       return
     }
@@ -2212,7 +2330,7 @@ export class Sprite2D extends Mesh {
   }
 
   override updateMatrixWorld(force?: boolean): void {
-    if (this._entity) {
+    if (this.#entity) {
       if ((this._hierarchyManaged || this._autoRegistry) && this._batchWorldFresh) {
         this._batchWorldFresh = false
         return
@@ -2261,7 +2379,7 @@ export class Sprite2D extends Mesh {
     // design contract (`sprite.renderOrder = sortLayer's value`).
     if (value === this.sortLayerValue) return
     this._renderOrderOverridden = true
-    if (this._entity) {
+    if (this.#entity) {
       this._demoteToStandalone()
     }
   }
@@ -2295,8 +2413,8 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _onLayersMaskChanged(mask: number): void {
-    if (this._entity) {
-      this._entity.set(CameraLayersMask, { mask })
+    if (this.#entity) {
+      this._runtimeWorld?.patch(this.#entity, CameraLayersMask, { mask })
     } else if (this._autoRegistry) {
       // Standalone auto sprite changed its run key — re-evaluate.
       this._autoRegistry._autoEvalDirty = true
@@ -2310,7 +2428,7 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _demoteToStandalone(): void {
-    if (!this._entity || !this._flatlandWorld) return
+    if (!this.#entity || !this.#world) return
     const registry = this._registryData()
     this._unenrollFromWorld()
     // SpriteGroup-managed sprites were never in the scene tree — parent
@@ -2402,14 +2520,13 @@ export class Sprite2D extends Mesh {
    * Creates an entity with initial trait values from snapshot.
    * Called automatically by SpriteGroup when adding a sprite.
    *
-   * @param world - The ECS world to enroll in (defaults to global world)
    * @internal
    */
-  _enrollInWorld(world?: World): void {
-    if (this._disposed || this._entity) return // Disposed or already enrolled
+  _enrollInWorld(): void {
+    if (this._disposed || this.#entity) return // Disposed or already enrolled
 
-    const w = world ?? this._flatlandWorld ?? getGlobalWorld()
-    this._flatlandWorld = w
+    const w = spriteWorld(this) ?? this.#world ?? (getGlobalWorld() as World)
+    this.#world = w
 
     // Read current values from local arrays before swapping refs
     const uvX = this._uvX[0]!,
@@ -2425,7 +2542,7 @@ export class Sprite2D extends Mesh {
     const lay = this._layerArr[0]!
     const zIdx = this._zIndexArr[0]!
 
-    this._entity = w.spawn(
+    this.#entity = w.spawn(
       SpriteUV({ x: uvX, y: uvY, w: uvW, h: uvH }),
       SpriteColor({ r: cR, g: cG, b: cB, a: cA }),
       SpriteFlip({ x: fX, y: fY }),
@@ -2436,11 +2553,11 @@ export class Sprite2D extends Mesh {
         materialId: this.material.batchId,
       }),
       IsRenderable,
-      IsBatched,
-      BatchSlot({ batchIdx: -1, slot: -1 })
+      BatchSlot({ batchEntity: 0, batchIdx: -1, slot: -1 })
     )
+    publishSpriteRuntime(this, w, this.#entity)
 
-    const eid = (this._entity as unknown as number) & ENTITY_ID_MASK
+    const eid = entitySlot(this.#entity)
     this._idx = eid
 
     // The ECS transform pass is the single writer of a batched sprite's
@@ -2472,14 +2589,38 @@ export class Sprite2D extends Mesh {
 
     // Register in the spriteArr for O(1) lookup by entity SoA index.
     const registry = this._registryData()
-    if (registry) registry.spriteArr[eid] = this
+    if (registry) {
+      reserveIndexedArray(registry.spriteArr, w.capacity, null)
+      registry.spriteArr[eid] = this
+    }
 
     // Add effect traits for active effects
     for (const effect of this._effects) {
       const EffectClass = effect.constructor as typeof MaterialEffect
-      this._entity.add(EffectClass._trait(this._buildTraitData(effect)))
+      const effectTrait = getEffectTrait(EffectClass)
+      w.add(this.#entity, effectTrait(this._buildTraitData(effect)))
       // Update entity reference on effect instance
-      effect._entity = this._entity
+      setEffectEntity(effect, this.#entity)
+      effect._bindStore()
+    }
+  }
+
+  /** Restore the pre-adoption staging material without redispatching user callbacks. @internal */
+  private _rollbackManagedMaterialResolution(
+    material: Sprite2DMaterial,
+    bootstrapDefault: boolean,
+    registryDefault: boolean,
+    bootstrapVariant: boolean,
+    registryVariant: boolean
+  ): void {
+    this._materialRef = material
+    this._materialIsBootstrapDefault = bootstrapDefault
+    this._materialWasRegistryDefault = registryDefault
+    this._materialIsBootstrapVariant = bootstrapVariant
+    this._materialWasRegistryVariant = registryVariant
+    if (!this._disposed) {
+      this._setupInstanceAttributes()
+      this._writeEffectDataOwn()
     }
   }
 
@@ -2490,7 +2631,7 @@ export class Sprite2D extends Mesh {
    * @internal
    */
   _unenrollFromWorld(): void {
-    if (!this._entity) return
+    if (!this.#entity) return
 
     // Every enrollment receives a freshly seeded batch slot. Retaining the
     // previous hierarchy snapshot could make transform sync early-out and
@@ -2531,8 +2672,9 @@ export class Sprite2D extends Mesh {
     // Serialize effect trait values back to effect snapshots
     for (const effect of this._effects) {
       const EffectClass = effect.constructor as typeof MaterialEffect
-      if (this._entity.has(EffectClass._trait)) {
-        const traitData = this._entity.get(EffectClass._trait) as Record<string, number>
+      const effectTrait = getEffectTrait(EffectClass)
+      if (this._runtimeWorld?.has(this.#entity, effectTrait)) {
+        const traitData = this._runtimeWorld.read(this.#entity, effectTrait) as Record<string, number>
         for (const field of EffectClass._fields) {
           if (field.size === 1) {
             effect._defaults[field.name] = traitData[field.name]!
@@ -2545,21 +2687,22 @@ export class Sprite2D extends Mesh {
           }
         }
       }
-      effect._entity = null
+      setEffectEntity(effect, null)
     }
 
     // Remove from spriteArr
-    if (this._flatlandWorld) {
+    if (this.#world) {
       const registry = this._registryData()
       if (registry) registry.spriteArr[eid] = null
     }
 
     // Remove IsRenderable instead of destroying — this triggers Removed(IsRenderable)
-    // for batchRemoveSystem, which needs the InBatch relation and BatchSlot data
-    // to still be present to find and free the batch slot. The system destroys
+    // for batchRemoveSystem, which needs the BatchSlot ownership data to remain
+    // present while it finds and frees the physical row. The system destroys
     // the entity after cleanup.
-    this._entity.remove(IsRenderable)
-    this._entity = null
+    this._runtimeWorld?.remove(this.#entity, IsRenderable)
+    this.#entity = null
+    publishSpriteRuntime(this, this.#world, null)
 
     // Clear cached batch refs immediately. batchRemoveSystem can't do it
     // (the spriteArr entry above is already nulled), and a stale
@@ -2585,12 +2728,11 @@ export class Sprite2D extends Mesh {
     this.matrixWorldAutoUpdate = true
   }
 
-  /**
-   * Get the ECS entity for this sprite (null if not enrolled).
-   * @internal
-   */
-  get entity(): Entity | null {
-    return this._entity
+  /** Release package-private world ownership after unenrollment. @internal */
+  _releaseWorldOwnership(): void {
+    if (this.#entity) throw new Error('three-flatland: cannot release a sprite world while enrolled')
+    this.#world = null
+    publishSpriteRuntime(this, null, null)
   }
 
   /**
@@ -2598,36 +2740,60 @@ export class Sprite2D extends Mesh {
    */
   dispose() {
     if (this._disposed) return
+    this._lifecycleRevision++
     this._disposed = true
+    markTerminalObject(this)
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    // Flatland owns registries beyond SpriteGroup enrollment (material
+    // references, lighting materials, pending validation, and owner
+    // subscriptions). Notify it before the fallback release below so a
+    // direct Flatland child retires through Flatland.remove().
+    runCleanup(() => notifySpriteDispose(this))
 
     // Release through the owning path so hierarchy/auto/direct bookkeeping
     // and sprite counts stay coherent. A disposed source may remain in the
     // authored Object3D tree, so the terminal latch above also prevents the
     // next reconciliation or orchestration sweep from resurrecting it.
     if (this._hierarchyOwner) {
-      this._hierarchyOwner._releaseHierarchySprite?.(this)
+      runCleanup(() => this._hierarchyOwner?._releaseHierarchySprite?.(this))
     } else if (this._autoRegistry) {
-      flatlandUnregister(this)
+      runCleanup(() => flatlandUnregister(this))
     } else {
       const owner = this._registryData()?.parentGroup as FlatlandClipAncestor | undefined
-      if (owner?._releaseDirectEnrollment) owner._releaseDirectEnrollment(this)
-      else this._unenrollFromWorld()
+      if (owner?._releaseDirectEnrollment) runCleanup(() => owner._releaseDirectEnrollment!(this))
+      else runCleanup(() => this._unenrollFromWorld())
     }
-    if (this._pendingPrimeScene) flatlandUnregister(this)
-    this._setContentReady(false)
+    if (this._pendingPrimeScene) runCleanup(() => flatlandUnregister(this))
+    runCleanup(() => this._setContentReady(false))
 
     // Detach effects
     for (const effect of this._effects) {
-      effect._detach()
+      runCleanup(() => effect._detach())
     }
     this._effects.length = 0
 
     // Dispose owned geometry (each sprite has its own)
-    if (this._geometry) {
-      this._geometry.dispose()
+    const geometry = this._geometry
+    if (geometry) runCleanup(() => geometry.dispose())
+    if (consumeSpriteCloneBootstrapMaterial(this)) {
+      const material = this.material
+      runCleanup(() => material.dispose())
     }
-    // Material is NOT disposed here — materials are shared resources.
-    // Users/frameworks manage material lifecycle separately.
+    // User/shared materials are not disposed here. The package-owned clone
+    // staging material above is the deliberate exception.
+    if (didError) throw firstError
   }
 
   /**
@@ -2639,7 +2805,7 @@ export class Sprite2D extends Mesh {
     super.copy(source, recursive)
     // Object3D.copy transfers matrixWorldAutoUpdate from the source, but
     // Flatland owns that flag according to the TARGET's enrollment state.
-    this.matrixWorldAutoUpdate = this._entity === null
+    this.matrixWorldAutoUpdate = this.#entity === null
     this.visible = source._isAuthoredVisible()
     this.pixelPerfect = source.pixelPerfect
     return this
@@ -2651,26 +2817,29 @@ export class Sprite2D extends Mesh {
   override clone(recursive?: boolean): this {
     // Ignore recursive parameter - we create a fresh sprite
     void recursive
-    const cloned = new Sprite2D(
-      this._texture
-        ? {
-            texture: this._texture,
-            frame: this._frame ?? undefined,
-            anchor: this._anchor,
-            tint: this.tint,
-            alpha: this.alpha,
-            flipX: this.flipX,
-            flipY: this.flipY,
-            sortLayer: this.sortLayer,
-            zIndex: this.zIndex,
-            pixelPerfect: this.pixelPerfect,
-            lit: this.lit,
-            receiveShadows: this.receiveShadows,
-            castsShadow: this.castsShadow,
-            shadowRadius: this._shadowRadius,
-          }
-        : undefined
-    )
+    const materialWasRegistryManaged = this._materialWasRegistryDefault || this._materialWasRegistryVariant
+    // A managed source material belongs to its current Flatland/world. Stage
+    // through a private schema-complete clone so a destination can resolve its
+    // own default/variant without touching either world or a shared bootstrap.
+    const cloneMaterial = materialWasRegistryManaged ? this.material.clone() : this.material
+    const cloned = new Sprite2D({
+      texture: this._texture ?? undefined,
+      material: cloneMaterial,
+      frame: this._frame ?? undefined,
+      anchor: this._anchor,
+      tint: this.tint,
+      alpha: this.alpha,
+      flipX: this.flipX,
+      flipY: this.flipY,
+      sortLayer: this.sortLayer,
+      zIndex: this.zIndex,
+      pixelPerfect: this.pixelPerfect,
+      lit: this.lit,
+      receiveShadows: this.receiveShadows,
+      castsShadow: this.castsShadow,
+      shadowRadius: this._shadowRadius,
+    })
+    if (materialWasRegistryManaged) markSpriteCloneBootstrapMaterial(cloned)
 
     // Clone effect instances
     for (const effect of this._effects) {
@@ -2681,14 +2850,31 @@ export class Sprite2D extends Mesh {
       const clonedEffect = new EffectClass()
       // Copy snapshot defaults
       for (const field of EffectClass._fields) {
-        const value = effect._defaults[field.name]
+        const value = effect._getField(field.name)
         if (typeof value === 'number') {
           clonedEffect._defaults[field.name] = value
         } else {
-          clonedEffect._defaults[field.name] = [...(value as number[])]
+          clonedEffect._defaults[field.name] = [...(value as readonly number[])]
         }
       }
+      // Primitive constants copy by value; reference constants deliberately
+      // retain identity because material variant routing keys objects by identity.
+      for (const name of Object.keys(effect._constants)) {
+        clonedEffect._constants[name] = effect._constants[name]
+      }
+      // Cloning intentionally reproduces a known effect schema. Register it
+      // explicitly so addEffect does not report the user-facing
+      // late-registration warning for this internal operation.
+      if (cloned.material.registerEffect(EffectClass as unknown as typeof MaterialEffect, clonedEffect._constants)) {
+        cloned._setupInstanceAttributes()
+      }
       cloned.addEffect(clonedEffect)
+    }
+
+    if (this._materialIsBootstrapDefault || this._materialWasRegistryDefault) {
+      cloned._materialIsBootstrapDefault = true
+    } else if (this._materialIsBootstrapVariant || this._materialWasRegistryVariant) {
+      cloned._materialIsBootstrapVariant = true
     }
 
     cloned.position.copy(this.position)
@@ -2747,7 +2933,7 @@ Object.defineProperty(Sprite2D.prototype, 'visible', {
 // A direct `sprite.material = ...` assignment is the only way user code
 // can set the material — there is no other setter — so it's treated as
 // an explicit, permanent choice: it clears the bootstrap/registry-default
-// bookkeeping (`_materialIsBootstrapDefault` / `_materialWasRegistryDefault`)
+// bookkeeping (default and effect-variant bootstrap/registry status)
 // so auto-orchestration's `registerSprite` (orchestration/orchestrator.ts)
 // won't silently resolve the sprite back to a shared default material on
 // the next scene-add sweep, discarding the caller's material. Internal
@@ -2759,14 +2945,100 @@ Object.defineProperty(Sprite2D.prototype, 'material', {
     return this._materialRef
   },
   set(this: Sprite2D, value: Sprite2DMaterial): void {
-    this._materialRef = value
-    this._materialIsBootstrapDefault = false
-    this._materialWasRegistryDefault = false
-    this._batchEnrollmentBlockedMaterial = null
-    if (this._autoRegistry) {
-      this._autoRegistry.standalone.add(this)
-      this._autoRegistry._autoEvalDirty = true
+    const previousMaterial = this._materialRef
+    const interceptionArmed = Reflect.get(this, '_interceptionArmed') === true
+    // Carry attached effects only after validating their complete union with
+    // the replacement's existing schema. An over-cap replacement must leave
+    // the sprite, its ECS route, and the replacement material untouched.
+    if (interceptionArmed) {
+      value._registerEffects(
+        this._effects.map((effect) => ({
+          effectClass: effect.constructor as typeof MaterialEffect,
+          constants: effect._constants,
+        }))
+      )
     }
+    const finalizeOwnership =
+      interceptionArmed && previousMaterial ? notifySpriteMaterialChange(this, previousMaterial, value) : undefined
+    const retireCloneBootstrap =
+      interceptionArmed && previousMaterial && previousMaterial !== value && hasSpriteCloneBootstrapMaterial(this)
+        ? previousMaterial
+        : null
+    let firstError: unknown
+    let didError = false
+    let didAssign = false
+    try {
+      this._materialRef = value
+      didAssign = true
+      this._materialIsBootstrapDefault = false
+      this._materialWasRegistryDefault = false
+      this._materialIsBootstrapVariant = false
+      this._materialWasRegistryVariant = false
+      if (retireCloneBootstrap) consumeSpriteCloneBootstrapMaterial(this)
+      this._batchEnrollmentBlockedMaterial = null
+      const world = spriteWorld(this)
+      const entity = spriteEntity(this)
+      if (world && entity && world.isAlive(entity) && world.has(entity, SpriteMaterialRef)) {
+        const registryEntity = world.view(BatchRegistries)[0]
+        const batchRegistry = registryEntity
+          ? (world.read(registryEntity, BatchRegistry) as RegistryData | undefined)
+          : undefined
+        if (batchRegistry) {
+          batchRegistry.materialRefs.set(value.batchId, {
+            material: value,
+            version: value._effectSchemaVersion,
+          })
+          ensureMaterialDisposeHook(world, batchRegistry, value)
+        }
+        world.patch(entity, SpriteMaterialRef, { materialId: value.batchId })
+        if (batchRegistry && previousMaterial && previousMaterial !== value) {
+          releaseMaterialIfUnused(world, batchRegistry, previousMaterial)
+        }
+      }
+      // Mesh invokes this setter during super(), before Sprite2D has geometry or
+      // instance buffers. Every later public assignment must rebuild the source
+      // geometry's material-dependent effect attributes, including for a
+      // currently batched sprite that may later be demoted to its own Mesh.
+      if (interceptionArmed) {
+        this._setupInstanceAttributes()
+        // This is a cold material-change path. Refresh even while batched so a
+        // later demotion has the current ECS-backed effect values immediately.
+        this._writeEffectDataOwn()
+      }
+      const registry = (this as unknown as { _autoRegistry: Registry | null })._autoRegistry
+      if (registry) {
+        registry.standalone.add(this)
+        registry._autoEvalDirty = true
+      }
+    } catch (error) {
+      firstError = error
+      didError = true
+    }
+    try {
+      finalizeOwnership?.()
+    } catch (error) {
+      if (!didError) {
+        firstError = error
+        didError = true
+      }
+    }
+    if (didAssign && retireCloneBootstrap) {
+      try {
+        retireCloneBootstrap.dispose()
+      } catch (error) {
+        const world = spriteWorld(this)
+        if (!didError && world && !spriteEntity(this)) {
+          // SpriteGroup assigned the destination world but has not enrolled
+          // yet. Let it finish provenance, ECS, and material ownership before
+          // surfacing this exact cleanup value.
+          deferSpriteCloneBootstrapError(this, error)
+        } else if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+    if (didError) throw firstError
   },
   configurable: true,
 })

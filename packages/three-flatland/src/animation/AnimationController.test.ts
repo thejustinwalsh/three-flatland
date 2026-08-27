@@ -242,6 +242,51 @@ describe('AnimationController', () => {
     expect(controller.getAnimationDuration('custom')).toBe(400)
   })
 
+  it('recalculates per-frame duration while catching up a large delta', () => {
+    controller.addAnimation({
+      name: 'variable',
+      frames: [
+        { frame: mockFrames[0]!.frame, duration: 200 },
+        { frame: mockFrames[1]!.frame, duration: 50 },
+        { frame: mockFrames[2]!.frame, duration: 100 },
+      ],
+      loop: false,
+    })
+    controller.play('variable')
+
+    controller.update(260)
+
+    expect(controller.getState()).toMatchObject({ frameIndex: 2, elapsed: 10, playing: true })
+  })
+
+  it('rejects a non-finite delta before mutating playback state', () => {
+    controller.play('test')
+    const before = controller.getState()
+
+    expect(() => controller.update(Number.POSITIVE_INFINITY)).toThrow(
+      'AnimationController.update deltaMs must be finite'
+    )
+    expect(controller.getState()).toEqual(before)
+  })
+
+  it('rejects non-finite speed and elapsed overflow before mutating playback state', () => {
+    controller.play('test')
+    const before = controller.getState()
+
+    expect(() => controller.setSpeed(Number.NaN)).toThrow('AnimationController.setSpeed speed must be finite')
+    expect(() => controller.play('test', { startFrame: 0, speed: Number.POSITIVE_INFINITY })).toThrow(
+      'AnimationController.play speed must be finite'
+    )
+    expect(controller.getState()).toEqual(before)
+
+    controller.setSpeed(Number.MAX_VALUE)
+    const beforeOverflow = controller.getState()
+    expect(() => controller.update(Number.MAX_VALUE)).toThrow(
+      'AnimationController.update resulting elapsed time must be finite'
+    )
+    expect(controller.getState()).toEqual(beforeOverflow)
+  })
+
   it('should respect loop count', () => {
     const loopCountAnim: Animation = {
       name: 'loopcount',

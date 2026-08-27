@@ -1,10 +1,12 @@
-import { createRemoved } from 'koota'
-import type { World, Entity } from 'koota'
-import { IsRenderable, InBatch, BatchSlot, BatchMesh, BatchMeta, BatchRegistry } from '../traits'
+import { removed, select, type Entity, type World } from '../runtime'
+import { IsRenderable, IsBatched, BatchSlot, BatchMesh, BatchMeta, BatchRegistry } from '../traits'
 import type { RegistryData } from '../batchUtils'
 import { computeRunKey, recycleBatchIfEmpty } from '../batchUtils'
 import { unproxyPickFromBatch } from '../../react/batchPicking'
-import { ENTITY_ID_MASK } from '../snapshot'
+import { entitySlot, liveStoredEntity } from '../snapshot'
+import { getSpriteBatchOwnership } from '../../internal/sprite-batch-ownership'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Create a batch-remove system bound to its own change-tracking
@@ -13,51 +15,55 @@ import { ENTITY_ID_MASK } from '../snapshot'
  * Each SpriteGroup constructs one. Removes sprites from batches when
  * they lose IsRenderable.
  *
- * Triggered by Removed(IsRenderable). Reads the InBatch relation to find
- * the batch entity and slot, frees the slot, removes the relation,
+ * Triggered by Removed(IsRenderable). Reads direct `BatchSlot` ownership to
+ * find the batch entity and physical row, frees it, clears the ownership,
  * and recycles the batch if empty.
  *
  * Entity destruction is deferred — zombie entities are returned to the
  * caller and destroyed at the top of the next frame by
- * `deferredDestroySystem`. This pushes koota's cascading trait removal
+ * `deferredDestroySystem`. This pushes full trait teardown
  * cost out of the hot render frame.
  */
-export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity[]) => void {
-  const Removed = createRemoved()
+export function createBatchRemoveSystem(ownerWorld: World): (world: World, pendingDestroy: Entity[]) => void {
+  const RemovedRenderable = removed(IsRenderable)
+  ownerWorld.activate(RemovedRenderable)
+  const batchSlotStore = ownerWorld.store(BatchSlot)
+  const batchMetaStore = ownerWorld.store(BatchMeta)
 
   return function batchRemoveSystem(world: World, pendingDestroy: Entity[]): void {
-    const removed = world.query(Removed(IsRenderable))
-    if (removed.length === 0) return
+    const removedEntities = world.drain(RemovedRenderable)
+    if (removedEntities.length === 0) return
 
-    const registryEntities = world.query(BatchRegistry)
-    if (registryEntities.length === 0) return
-    const registry = registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined
-    if (!registry) return
+    const registryEntity = world.view(BatchRegistries)[0]
+    const registry = registryEntity
+      ? (world.read(registryEntity, BatchRegistry) as RegistryData | undefined)
+      : undefined
 
-    for (const entity of removed) {
-      // Find batch entity via InBatch relation
-      const batchEntity = entity.targetFor(InBatch)
-      if (!batchEntity) continue
+    for (const entity of removedEntities) {
+      // Material/schema eviction deliberately remove+adds IsRenderable on the
+      // same live entity to trigger assignment. Its queued Removed event is
+      // stale by the time this system runs and must not retire the survivor.
+      if (!world.isAlive(entity) || world.has(entity, IsRenderable)) continue
 
-      const batchMesh = batchEntity.get(BatchMesh)
+      const entityIndex = entitySlot(entity)
+      const batchEntity = liveStoredEntity(world, batchSlotStore.batchEntity[entityIndex] ?? 0)
+      const batchMesh = batchEntity ? world.read(batchEntity, BatchMesh) : undefined
 
       // BatchSlot.slot is the authoritative live slot: batchSortSystem keeps it
-      // in sync on swaps, whereas InBatch.slot is never rewritten and can be a
-      // stale pre-swap index that points at another sprite's row. Read it from
-      // the SoA, not sprite._batchSlot — _unenrollFromWorld has already nulled
+      // in sync on swaps. Read it from the SoA, not sprite._batchSlot —
+      // _unenrollFromWorld has already nulled
       // the spriteArr entry by the time this deferred system runs.
-      const slot = entity.get(BatchSlot)?.slot ?? -1
+      const slot = batchSlotStore.slot[entityIndex] ?? -1
 
       if (slot >= 0 && batchMesh?.mesh) {
-        batchMesh.mesh.freeSlot(slot)
+        getSpriteBatchOwnership(batchMesh.mesh).releaseSlot(slot, entity)
         batchMesh.mesh.syncCount()
       }
 
       // Clear the sprite's cached batch references — once we free the
       // slot, setter direct-write paths must fall back to standalone-mode
       // until the next batchAssignSystem pass.
-      const eid = (entity as unknown as number) & ENTITY_ID_MASK
-      const sprite = registry.spriteArr[eid]
+      const sprite = registry?.spriteArr[entityIndex]
       if (sprite) {
         // Drop the picking-broadphase entry. The common removal path
         // (Sprite2D._unenrollFromWorld) has already nulled spriteArr AND
@@ -73,18 +79,24 @@ export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity
         sprite._batchIdx = -1
       }
 
-      // Remove relation and reset BatchSlot
-      entity.remove(InBatch(batchEntity))
-      entity.set(BatchSlot, { batchIdx: -1, slot: -1 }, false)
+      if (world.has(entity, BatchSlot)) {
+        batchSlotStore.batchEntity[entityIndex] = 0
+        batchSlotStore.batchIdx[entityIndex] = -1
+        batchSlotStore.slot[entityIndex] = -1
+      }
+      if (world.has(entity, IsBatched)) world.remove(entity, IsBatched)
 
       // Recycle batch if empty
-      if (batchMesh?.mesh?.isEmpty) {
-        const meta = batchEntity.get(BatchMeta)
-        if (meta) {
-          const key = computeRunKey(meta.sortLayer, meta.materialId, meta.layersMask)
+      if (registry && batchEntity && batchMesh?.mesh?.isEmpty) {
+        const batchIndex = entitySlot(batchEntity)
+        const sortLayer = batchMetaStore.sortLayer[batchIndex]
+        const materialId = batchMetaStore.materialId[batchIndex]
+        const layersMask = batchMetaStore.layersMask[batchIndex]
+        if (sortLayer !== undefined && materialId !== undefined && layersMask !== undefined) {
+          const key = computeRunKey(sortLayer, materialId, layersMask)
           const run = registry.runs.get(key)
           if (run) {
-            recycleBatchIfEmpty(registry, batchEntity, run)
+            recycleBatchIfEmpty(world, registry, batchEntity, run)
           }
         }
       }
@@ -98,15 +110,15 @@ export function createBatchRemoveSystem(): (world: World, pendingDestroy: Entity
 /**
  * Destroy entities deferred from the previous frame's batchRemoveSystem.
  *
- * Runs at the top of the frame before any other system, so koota's
- * cascading trait removal cost is paid outside the hot render path.
+ * Runs at the top of the frame before any other system, so full trait
+ * teardown is paid outside the hot render path.
  * The zombie entities are invisible to all systems (no IsRenderable,
  * no IsBatched) so the one-frame delay is safe.
  */
-export function deferredDestroySystem(pendingDestroy: Entity[]): void {
+export function deferredDestroySystem(world: World, pendingDestroy: Entity[]): void {
   if (pendingDestroy.length === 0) return
   for (const entity of pendingDestroy) {
-    entity.destroy()
+    if (world.isAlive(entity)) world.destroy(entity)
   }
   pendingDestroy.length = 0
 }

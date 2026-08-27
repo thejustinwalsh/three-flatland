@@ -3,6 +3,12 @@ import { Texture } from 'three'
 import { AnimatedSprite2D } from './AnimatedSprite2D'
 import { AlphaMap } from '../events/AlphaMap'
 import type { SpriteSheet, SpriteFrame } from './types'
+import { createMaterialEffect } from '../materials/MaterialEffect'
+import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { createWorld } from '../ecs/runtime'
+import { enrollInWorld, requiredEntity, traitFor } from '../ecs/testUtils.type-test'
+import { Flatland } from '../Flatland'
+import { SpriteGroup } from '../pipeline/SpriteGroup'
 
 describe('AnimatedSprite2D', () => {
   let spriteSheet: SpriteSheet
@@ -209,6 +215,226 @@ describe('AnimatedSprite2D', () => {
     sprite.dispose()
   })
 
+  it('advances enrolled animations as one caller-owned group step', () => {
+    const group = new SpriteGroup()
+    const first = new AnimatedSprite2D({
+      spriteSheet,
+      animationSet: { animations: { idle: { frames: ['idle_0', 'idle_1'], fps: 10 } } },
+      animation: 'idle',
+    })
+    const second = first.clone()
+    group.addSprites(first, second)
+
+    group.advanceAnimations(100)
+
+    expect(first.controller.getState().frameIndex).toBe(1)
+    expect(second.controller.getState().frameIndex).toBe(1)
+
+    group.remove(second)
+    group.advanceAnimations(100)
+
+    expect(first.controller.getState().frameIndex).toBe(0)
+    expect(second.controller.getState().frameIndex).toBe(1)
+
+    group.dispose()
+    first.dispose()
+    second.dispose()
+  })
+
+  it('coalesces identical callback-free timelines behind the group boundary', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const first = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const second = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.addSprites(first, second)
+    const animationState = Reflect.get(group, '_animationState') as {
+      members: AnimatedSprite2D[]
+      sprites: Array<AnimatedSprite2D | null>
+      spriteCount: number
+      cohorts: Array<{ processedTick: number }>
+      bindingCohort: Uint8Array
+      bindingEntity: Float64Array
+    }
+    const scratch = animationState.sprites
+    const bindingEntity = animationState.bindingEntity
+    const bindingCohort = animationState.bindingCohort
+    expect(animationState.members).toEqual([first, second])
+    expect(scratch).toEqual([null, null])
+    expect(animationState.cohorts).toHaveLength(32)
+
+    group.advanceAnimations(100)
+
+    expect(animationState.bindingEntity).toBe(bindingEntity)
+    expect(animationState.bindingCohort).toBe(bindingCohort)
+    expect(animationState.sprites).toBe(scratch)
+    expect(animationState.sprites).toEqual([null, null])
+    expect(animationState.spriteCount).toBe(0)
+    expect(animationState.cohorts.filter((cohort) => cohort.processedTick > 0)).toHaveLength(1)
+    expect(Array.from(bindingCohort).filter((value) => value !== 0)).toEqual([1, 1])
+    expect(first.controller.getState()).toEqual(second.controller.getState())
+    expect(first.frame).toBe(frames.get('idle_1'))
+    expect(second.frame).toBe(frames.get('idle_1'))
+
+    group.advanceAnimations(100)
+    expect(animationState.bindingEntity).toBe(bindingEntity)
+    expect(animationState.bindingCohort).toBe(bindingCohort)
+    expect(animationState.sprites).toBe(scratch)
+    expect(animationState.cohorts.filter((cohort) => cohort.processedTick > 0)).toHaveLength(1)
+    expect(animationState.bindingEntity).toBeInstanceOf(Float64Array)
+
+    group.dispose()
+    expect(animationState.members).toHaveLength(0)
+    expect(animationState.sprites).toHaveLength(0)
+    expect(animationState.bindingEntity).toHaveLength(0)
+    expect(animationState.bindingCohort).toHaveLength(0)
+    expect(animationState.cohorts).toHaveLength(0)
+    first.dispose()
+    second.dispose()
+  })
+
+  it('invalidates a dense timeline binding when an entity slot is reused', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const retired = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.add(retired)
+    group.advanceAnimations(100)
+    const retiredEntity = requiredEntity(retired)
+
+    group.remove(retired)
+    group.update()
+    group.update()
+    const replacement = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.add(replacement)
+    const replacementEntity = requiredEntity(replacement)
+    expect(replacementEntity).not.toBe(retiredEntity)
+    expect(replacementEntity & 0xfffff).toBe(retiredEntity & 0xfffff)
+
+    group.advanceAnimations(100)
+
+    expect(replacement.controller.getState()).toMatchObject({ frameIndex: 1, elapsed: 0 })
+    expect(replacement.frame).toBe(frames.get('idle_1'))
+
+    group.dispose()
+    retired.dispose()
+    replacement.dispose()
+  })
+
+  it('invalidates a dense timeline binding after a direct controller command', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const normal = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const faster = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    group.addSprites(normal, faster)
+    group.advanceAnimations(100)
+
+    faster.speed = 2
+    group.advanceAnimations(100)
+
+    expect(normal.controller.getState()).toMatchObject({ frameIndex: 0, elapsed: 0, speed: 1 })
+    expect(faster.controller.getState()).toMatchObject({ frameIndex: 1, elapsed: 0, speed: 2 })
+
+    group.dispose()
+    normal.dispose()
+    faster.dispose()
+  })
+
+  it('keeps callbacks and multi-frame catch-up on the exact controller path', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const callback = vi.fn()
+    const withCallback = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const catchUp = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    withCallback.play('idle', { startFrame: 0, onFrame: callback })
+    const callbackUpdate = vi.spyOn(withCallback.controller, 'update')
+    const catchUpUpdate = vi.spyOn(catchUp.controller, 'update')
+    group.addSprites(withCallback, catchUp)
+
+    group.advanceAnimations(250)
+
+    expect(callbackUpdate).toHaveBeenCalledOnce()
+    expect(catchUpUpdate).toHaveBeenCalledOnce()
+    expect(callback).toHaveBeenCalledTimes(2)
+    expect(withCallback.controller.getState()).toMatchObject({ frameIndex: 0, elapsed: 50 })
+    expect(catchUp.controller.getState()).toMatchObject({ frameIndex: 0, elapsed: 50 })
+
+    group.dispose()
+    withCallback.dispose()
+    catchUp.dispose()
+  })
+
+  it('keeps a stable frame snapshot when an animation callback removes a later member', () => {
+    const group = new SpriteGroup()
+    const sharedAnimation = {
+      name: 'idle',
+      frames: [{ frame: frames.get('idle_0')! }, { frame: frames.get('idle_1')! }],
+      fps: 10,
+      loop: true,
+    }
+    const first = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation] })
+    const removed = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    const retained = new AnimatedSprite2D({ spriteSheet, animations: [sharedAnimation], animation: 'idle' })
+    first.play('idle', { startFrame: 0, onFrame: () => group.remove(removed) })
+    group.addSprites(first, removed, retained)
+
+    group.advanceAnimations(100)
+
+    expect(first.controller.getState().frameIndex).toBe(1)
+    expect(removed.controller.getState().frameIndex).toBe(0)
+    expect(retained.controller.getState().frameIndex).toBe(1)
+    expect(group.spriteCount).toBe(2)
+    expect(Reflect.get(group, '_animationState').members).toEqual([first, retained])
+
+    group.dispose()
+    first.dispose()
+    removed.dispose()
+    retained.dispose()
+  })
+
+  it('rejects non-finite and reentrant group animation steps', () => {
+    const group = new SpriteGroup()
+    const sprite = new AnimatedSprite2D({
+      spriteSheet,
+      animationSet: { animations: { idle: { frames: ['idle_0', 'idle_1'], fps: 10 } } },
+      animation: 'idle',
+    })
+    sprite.play('idle', {
+      startFrame: 0,
+      onFrame: () => group.advanceAnimations(100),
+    })
+    group.add(sprite)
+
+    expect(() => group.advanceAnimations(Number.NaN)).toThrow('SpriteGroup.advanceAnimations deltaMs must be finite')
+    expect(() => group.advanceAnimations(100)).toThrow(
+      'three-flatland: SpriteGroup.advanceAnimations cannot be used reentrantly'
+    )
+
+    sprite.play('idle', { startFrame: 0 })
+    expect(() => group.advanceAnimations(100)).not.toThrow()
+
+    group.dispose()
+    sprite.dispose()
+  })
+
   it('should pause and resume', () => {
     const sprite = new AnimatedSprite2D({
       spriteSheet,
@@ -408,6 +634,271 @@ describe('AnimatedSprite2D', () => {
     expect(sprite).toBeInstanceOf(AnimatedSprite2D)
     expect(sprite.spriteSheet).toBeNull()
     sprite.dispose()
+  })
+
+  it('pre-registers cloned effects and keeps vector snapshots immutable', () => {
+    const Offset = createMaterialEffect({
+      name: 'animated_clone_offset',
+      schema: {
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const material = new Sprite2DMaterial({ map: spriteSheet.texture, transparent: true })
+    const unrelated = new AnimatedSprite2D({ spriteSheet })
+    const unrelatedMaterial = unrelated.material
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+    const sprite = new AnimatedSprite2D({ spriteSheet, material })
+    const offset = new Offset()
+    offset.offset = [5, 6]
+    sprite.material.registerEffect(Offset)
+    sprite.addEffect(offset)
+    const alphaMap = new AlphaMap(new Uint8Array([255]), 1, 1)
+    sprite.visible = false
+    sprite.lit = true
+    sprite.receiveShadows = false
+    sprite.castsShadow = true
+    sprite.shadowRadius = 7
+    sprite.alphaMap = alphaMap
+    sprite.alphaThreshold = 0.25
+    sprite.hitRadius = 2
+    sprite.hitTestMode = 'alpha'
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+    const store = world.store(traitFor(Offset))
+    const index = world.index(requiredEntity(sprite))
+    store.offset_0![index] = 7
+    store.offset_1![index] = 8
+    expect(offset.offset).toEqual([7, 8])
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cloned: AnimatedSprite2D
+    try {
+      cloned = sprite.clone()
+      expect(warning).not.toHaveBeenCalled()
+      expect(cloned.material.hasEffect(Offset)).toBe(true)
+      expect(cloned.material).toBe(material)
+      expect(cloned.material).not.toBe(unrelatedMaterial)
+      expect(cloned.material._effectTier).toBeGreaterThan(8)
+      expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    } finally {
+      warning.mockRestore()
+    }
+    const clonedOffsetEffect = cloned._effects[0] as InstanceType<typeof Offset>
+    const snapshot = clonedOffsetEffect.offset
+    expect(snapshot).toEqual([7, 8])
+    expect(Object.isFrozen(snapshot)).toBe(true)
+    expect(clonedOffsetEffect.offset).toBe(snapshot)
+    expect(() => {
+      ;(snapshot as unknown as number[])[1] = 99
+    }).toThrow(TypeError)
+    expect(clonedOffsetEffect.offset).toEqual([7, 8])
+    expect(cloned.visible).toBe(false)
+    expect(cloned.lit).toBe(true)
+    expect(cloned.receiveShadows).toBe(false)
+    expect(cloned.castsShadow).toBe(true)
+    expect(cloned.shadowRadius).toBe(7)
+    expect(cloned.alphaMap).toBe(alphaMap)
+    expect(cloned.alphaThreshold).toBe(0.25)
+    expect(cloned.hitRadius).toBe(2)
+    expect(cloned.hitTestMode).toBe('alpha')
+    expect(unrelated.material).toBe(unrelatedMaterial)
+    expect(unrelated.material.hasEffect(Offset)).toBe(false)
+    expect(unrelated.material._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+    cloned.dispose()
+    unrelated.dispose()
+    sprite._unenrollFromWorld()
+    world.dispose()
+    material.dispose()
+  })
+
+  it('preserves authored effect constants when cloned', () => {
+    const ConstantEffect = createMaterialEffect({
+      name: 'animated_clone_constants',
+      schema: {
+        amount: 0,
+        variant: () => 'default',
+        resource: () => ({ kind: 'default' }),
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const resource = { kind: 'authored' }
+    const effect = new ConstantEffect()
+    effect.amount = 4
+    effect.variant = 'authored'
+    effect.resource = resource
+    const sprite = new AnimatedSprite2D({ spriteSheet })
+    sprite.addEffect(effect)
+
+    const cloned = sprite.clone()
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof ConstantEffect>
+    expect(cloned.material).toBe(sprite.material)
+    expect(clonedEffect.amount).toBe(4)
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+
+    cloned.dispose()
+    sprite.dispose()
+  })
+
+  it('re-resolves a registry variant clone across Flatlands with constants and authored state intact', () => {
+    const VariantEffect = createMaterialEffect({
+      name: 'animated_clone_cross_world_variant',
+      schema: {
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+        variant: () => 'default',
+        resource: () => ({ kind: 'default' }),
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const unrelated = new AnimatedSprite2D({ spriteSheet })
+    const unrelatedBootstrap = unrelated.material
+    const sourceFlatland = new Flatland()
+    const destinationFlatland = new Flatland()
+    const source = new AnimatedSprite2D({ spriteSheet })
+    sourceFlatland.add(source)
+    const resource = { kind: 'authored' }
+    const effect = new VariantEffect()
+    effect.offset = [7, 8]
+    effect.variant = 'authored'
+    effect.resource = resource
+    source.addEffect(effect)
+    const alphaMap = new AlphaMap(new Uint8Array([255]), 1, 1)
+    source.visible = false
+    source.lit = true
+    source.receiveShadows = false
+    source.castsShadow = true
+    source.shadowRadius = 7
+    source.alphaMap = alphaMap
+    source.alphaThreshold = 0.25
+    source.hitRadius = 2
+    source.hitTestMode = 'alpha'
+    expect(source._materialWasRegistryVariant).toBe(true)
+
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cloned: AnimatedSprite2D
+    try {
+      cloned = source.clone()
+      expect(warning).not.toHaveBeenCalled()
+    } finally {
+      warning.mockRestore()
+    }
+    const bootstrapVariant = cloned.material
+    const disposeStaging = vi.spyOn(bootstrapVariant, 'dispose')
+    bootstrapVariant.addEventListener('dispose', () => {
+      throw 0
+    })
+    expect(bootstrapVariant).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapVariant).toBe(true)
+    expect(cloned._materialWasRegistryVariant).toBe(false)
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      destinationFlatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
+
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof VariantEffect>
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).not.toBe(bootstrapVariant)
+    expect(cloned.material).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapVariant).toBe(false)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(cloned.material._effectTier).toBeGreaterThan(8)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect(clonedEffect.offset).toEqual([7, 8])
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+    expect(cloned.visible).toBe(false)
+    expect(cloned.lit).toBe(true)
+    expect(cloned.receiveShadows).toBe(false)
+    expect(cloned.castsShadow).toBe(true)
+    expect(cloned.shadowRadius).toBe(7)
+    expect(cloned.alphaMap).toBe(alphaMap)
+    expect(cloned.alphaThreshold).toBe(0.25)
+    expect(cloned.hitRadius).toBe(2)
+    expect(cloned.hitTestMode).toBe('alpha')
+    expect(unrelated.material).toBe(unrelatedBootstrap)
+    expect(unrelatedBootstrap.hasEffect(VariantEffect)).toBe(false)
+    expect(unrelatedBootstrap._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+    expect(destinationFlatland.spriteGroup.spriteCount).toBe(1)
+    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+
+    const destinationMaterial = cloned.material
+    destinationMaterial.dispose()
+    expect(cloned.material).not.toBe(destinationMaterial)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(cloned.material.hasEffect(VariantEffect)).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect(clonedEffect.offset).toEqual([7, 8])
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+
+    destinationFlatland.dispose()
+    sourceFlatland.dispose()
+    cloned.dispose()
+    source.dispose()
+    unrelated.dispose()
+  })
+
+  it('commits same-Flatland default clone adoption before rethrowing staging cleanup', () => {
+    const WideEffect = createMaterialEffect({
+      name: 'animated_clone_same_world_default',
+      schema: {
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const flatland = new Flatland()
+    const source = new AnimatedSprite2D({ spriteSheet })
+    flatland.add(source)
+    source.material.registerEffect(WideEffect)
+    source._setupInstanceAttributes()
+    const effect = new WideEffect()
+    effect.offset = [7, 8]
+    source.addEffect(effect)
+    const cloned = source.clone()
+    const staging = cloned.material
+    const disposeStaging = vi.spyOn(staging, 'dispose')
+    staging.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(flatland.spriteGroup.spriteCount).toBe(2)
+    expect(() => flatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+
+    const managedDefault = cloned.material
+    managedDefault.dispose()
+    expect(cloned.material).not.toBe(managedDefault)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect((cloned._effects[0] as InstanceType<typeof WideEffect>).offset).toEqual([7, 8])
+
+    flatland.dispose()
+    cloned.dispose()
+    source.dispose()
   })
 
   it('adopts the sheet alphaMap for alpha hit-testing (spec §8.4)', () => {

@@ -13,19 +13,16 @@ export {
   IsBatched,
   IsStandalone,
   BatchSlot,
-  InBatch,
   BatchMesh,
   BatchMeta,
   BatchRegistry,
   type BatchRun,
-  PostPassTrait,
-  PostPassRegistry,
   LightEffectTrait,
   LightingContext,
 } from './traits'
 
 // World management
-export { getGlobalWorld, resetGlobalWorld, assignWorld, type WorldProvider } from './world'
+export { getGlobalWorld, resetGlobalWorld, assignWorld } from './world'
 
 // Snapshot utilities
 export { resolveStore } from './snapshot'
@@ -57,12 +54,10 @@ export {
   createSceneGraphSyncSystem,
   deferredDestroySystem,
   transformSyncSystem,
-  postPassSystem,
   lightSyncSystem,
   lightEffectSystem,
   lightMaterialAssignSystem,
   materialVersionSystem,
-  effectTraitsSystem,
   conditionalTransformSyncSystem,
   flushDirtyRangesSystem,
 } from './systems'

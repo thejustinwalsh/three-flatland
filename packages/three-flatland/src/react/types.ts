@@ -6,7 +6,6 @@ import type { SpriteGroup } from '../pipeline/SpriteGroup'
 import type { SortLayerGroup } from '../pipeline/SortLayerGroup'
 import type { Flatland } from '../Flatland'
 import type { TileMap2D } from '../tilemap/TileMap2D'
-import type { TileLayer } from '../tilemap/TileLayer'
 import type { Light2D } from '../lights/Light2D'
 import type { MaterialEffectClass, EffectSchema, EffectValues } from '../materials/MaterialEffect'
 import type { LightEffectClass } from '../lights/LightEffect'
@@ -73,7 +72,6 @@ declare module '@react-three/fiber' {
     sortLayerGroup: ThreeElement<typeof SortLayerGroup>
     flatland: ThreeElement<typeof Flatland>
     tileMap2D: ThreeElement<typeof TileMap2D>
-    tileLayer: ThreeElement<typeof TileLayer>
     light2D: ThreeElement<typeof Light2D>
     pixelPerfectCamera: ThreeElement<typeof PixelPerfectCamera>
   }

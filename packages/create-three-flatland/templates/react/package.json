@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@react-three/fiber": "10.0.0-alpha.3",
-    "koota": "^0.6.5",
     "react": "~19.2.0",
     "react-dom": "~19.2.0",
     "three": "^0.185.1",

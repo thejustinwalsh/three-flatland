@@ -6,7 +6,7 @@ import type { InstanceAttributeConfig, InstanceAttributeType } from '../pipeline
 import type { MaterialEffect, EffectSchemaValue, SchemaToNodeType, ChannelNodeContext } from './MaterialEffect'
 import { channelDefaults } from './channels'
 
-import { EFFECT_BIT_OFFSET } from './effectFlagBits'
+import { EFFECT_BIT_OFFSET, MAX_MATERIAL_EFFECTS } from './effectFlagBits'
 
 // ============================================
 // Color Transform Types
@@ -64,6 +64,12 @@ export interface EffectMaterialOptions {
    * Set to 0 for fully effect-free materials (no effect buffer overhead).
    */
   effectTier?: number
+}
+
+/** One effect registration in an atomic capacity preflight. */
+interface EffectRegistration {
+  effectClass: typeof MaterialEffect
+  constants?: Record<string, unknown>
 }
 
 /**
@@ -154,7 +160,8 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
   _effectBitIndex: Map<string, number> = new Map()
 
   /**
-   * Total floats needed across all registered effects (1 flags + data floats).
+   * Total effect-data floats needed across all registered effects.
+   * Enable flags live separately in `instanceSystem.w`.
    * 0 when no effects are registered.
    * @internal
    */
@@ -316,23 +323,87 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * @returns Whether the buffer tier changed (requiring batch rebuild).
    */
   registerEffect(effectClass: typeof MaterialEffect, constants?: Record<string, unknown>): boolean {
-    // Ensure static initialization
-    effectClass._initialize()
+    return this._registerEffects([{ effectClass, constants }])
+  }
 
-    // Skip if already registered
-    if (this._effectBitIndex.has(effectClass.effectName)) return false
+  /**
+   * Register several effects after validating their combined layout.
+   *
+   * Capacity is checked for the complete unique union before the first
+   * material field changes. This is important when a sprite carries its
+   * attached effects to a replacement material: a later effect must not
+   * discover an over-cap layout after earlier effects have already changed
+   * the replacement.
+   */
+  /** @internal */
+  _registerEffects(registrations: readonly EffectRegistration[]): boolean {
+    const pending = this._preflightEffectRegistrations(registrations)
+    let tierChanged = false
+    for (const { effectClass, constants } of pending) {
+      tierChanged = this._commitEffect(effectClass, constants) || tierChanged
+    }
+    return tierChanged
+  }
 
-    // Prospective per-instance float total if we accept this effect: the
-    // sum of every registered effect's floats plus this one's. Effect
-    // names are unique and already-registered effects short-circuit
-    // above, so no cross-effect slot dedup reduces it — this equals the
-    // total the commit below produces. Computed BEFORE any mutation so an
-    // over-cap registration throws transactionally, leaving `_effects`,
-    // `_effectBitIndex`, `_effectSlots`, `_effectTotalFloats`, and the
-    // geometry strategy all untouched on failure.
-    let dataFloats = effectClass._totalFloats
-    for (const eff of this._effects) {
-      dataFloats += eff._totalFloats
+  /** Validate a registration union without mutating material state. @internal */
+  _assertEffectRegistrations(registrations: readonly EffectRegistration[]): void {
+    this._preflightEffectRegistrations(registrations)
+  }
+
+  private _preflightEffectRegistrations(registrations: readonly EffectRegistration[]): EffectRegistration[] {
+    const pending: EffectRegistration[] = []
+    const effectClasses = new Map(this._effects.map((effectClass) => [effectClass.effectName, effectClass]))
+    const slotOwners = new Map<string, string>()
+    for (const effectClass of this._effects) {
+      for (const field of effectClass._fields) {
+        slotOwners.set(`${effectClass.effectName}_${field.name}`, `${effectClass.effectName}.${field.name}`)
+      }
+    }
+    let dataFloats = this._effectTotalFloats
+
+    for (const registration of registrations) {
+      const { effectClass } = registration
+      effectClass._initialize()
+      const registeredClass = effectClasses.get(effectClass.effectName)
+      if (registeredClass) {
+        if (registeredClass === effectClass) continue
+        throw new Error(
+          `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
+            `a different effect class already owns that name. Effect names must be globally unique per material.`
+        )
+      }
+      for (const field of effectClass._fields) {
+        const key = `${effectClass.effectName}_${field.name}`
+        const owner = slotOwners.get(key)
+        if (owner) {
+          throw new Error(
+            `[EffectMaterial] Cannot register '${effectClass.effectName}.${field.name}': ` +
+              `its packed slot key '${key}' collides with '${owner}'. Rename the effect or field.`
+          )
+        }
+        slotOwners.set(key, `${effectClass.effectName}.${field.name}`)
+      }
+      effectClasses.set(effectClass.effectName, effectClass)
+      dataFloats += effectClass._totalFloats
+      pending.push(registration)
+    }
+
+    if (pending.length === 0) return pending
+
+    // Effect enable bits share one Float32 instance attribute. Only bits
+    // 0..23 are represented exactly, so data-free/provider effects still
+    // consume a finite resource. Validate the complete unique union before
+    // committing any registration to keep every material map and schema
+    // field unchanged on rejection.
+    if (effectClasses.size > MAX_MATERIAL_EFFECTS) {
+      const names = [...effectClasses.keys()].join(', ')
+      const rejected = pending.at(-1)!.effectClass.effectName
+      throw new Error(
+        `[EffectMaterial] Cannot register '${rejected}': ` +
+          `effects would require ${effectClasses.size} enable bits, ` +
+          `exceeding the exact Float32 capacity of ${MAX_MATERIAL_EFFECTS}. ` +
+          `Registered so far: [${names}]. Consolidate effects.`
+      )
     }
 
     // Hard cap: WebGPU allows 8 vertex-buffer bindings per pipeline.
@@ -349,15 +420,23 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     // state changes on the throw path.
     const cap = this._effectFloatCap(dataFloats)
     if (dataFloats > cap) {
-      const names = [...this._effects.map((e) => e.effectName), effectClass.effectName].join(', ')
+      const names = [...effectClasses.keys()].join(', ')
+      const rejected = pending.at(-1)!.effectClass.effectName
       throw new Error(
-        `[EffectMaterial] Cannot register '${effectClass.effectName}': ` +
+        `[EffectMaterial] Cannot register '${rejected}': ` +
           `effects would use ${dataFloats} floats of per-instance data, ` +
           `exceeding the cap of ${cap} ` +
           `(WebGPU 8-buffer limit). Registered so far: [${names}]. ` +
           `Reduce a schema or consolidate effects.`
       )
     }
+
+    return pending
+  }
+
+  /** Commit one effect after the caller has validated the complete layout. */
+  private _commitEffect(effectClass: typeof MaterialEffect, constants?: Record<string, unknown>): boolean {
+    const dataFloats = this._effectTotalFloats + effectClass._totalFloats
 
     // --- Past the cap check: commit the registration. ---
 
@@ -406,13 +485,13 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
 
     const tierChanged = this._effectTier !== oldTier
 
-    // 5. If tier changed, rebuild effect buffer attributes
+    // 6. If tier changed, rebuild effect buffer attributes
     if (tierChanged) {
       this._rebuildEffectBufferAttributes()
       this._effectSchemaVersion++
     }
 
-    // 6. Rebuild colorNode with new effect chain
+    // 7. Rebuild colorNode with new effect chain
     this._rebuildColorNode()
     this.needsUpdate = true
 
@@ -423,7 +502,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
    * Check if an effect class is registered on this material.
    */
   hasEffect(effectClass: typeof MaterialEffect): boolean {
-    return this._effectBitIndex.has(effectClass.effectName)
+    return this._effects.some((registered) => registered === effectClass)
   }
 
   /**
@@ -492,7 +571,7 @@ export class EffectMaterial extends MeshBasicNodeMaterial {
     effectClass: typeof MaterialEffect,
     bufNodes: Node<'vec4'>[]
   ): Record<string, SchemaToNodeType<EffectSchemaValue>> {
-    const attrs: Record<string, SchemaToNodeType<EffectSchemaValue>> = {}
+    const attrs = Object.create(null) as Record<string, SchemaToNodeType<EffectSchemaValue>>
     for (const field of effectClass._fields) {
       const slotKey = `${effectClass.effectName}_${field.name}`
       const slotInfo = this._effectSlots.get(slotKey)!

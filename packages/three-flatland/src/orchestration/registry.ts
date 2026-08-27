@@ -1,11 +1,16 @@
 import type { Scene, Texture } from 'three'
-import type { World } from 'koota'
+import { select, type World } from '../ecs/runtime'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial, Sprite2DMaterialOptions } from '../materials/Sprite2DMaterial'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { BatchRegistry } from '../ecs/traits'
 import { getWorldDefaultMaterial, getWorldEffectVariant, type RegistryData } from '../ecs/batchUtils'
-import { buildBatchQueryView, type BatchQueryView } from '../pipeline/batchQuery'
+import type { BatchQueryView } from '../pipeline/batchQuery'
+import { buildBatchQueryView } from '../internal/batch-query-builder'
+import { getSpriteGroupWorld, isSpriteGroupRuntimeLive } from '../internal/sprite-group-runtime'
+import { spriteWorld } from '../internal/sprite-runtime'
+
+const BatchRegistries = select(BatchRegistry)
 
 /**
  * Module-global registry key. `Symbol.for` survives double-bundling —
@@ -19,6 +24,14 @@ const REGISTRY_SYMBOL = Symbol.for('three-flatland.registry')
 /** Host shape stored on the renderer under {@link REGISTRY_SYMBOL}. */
 interface RegistryHost {
   scenes: WeakMap<Scene, Registry>
+  retirements: WeakMap<Scene, RegistryRetirement>
+}
+
+/** Reentrant terminal-replacement state shared by one host/scene chain. */
+interface RegistryRetirement {
+  depth: number
+  roots: Set<SpriteGroup>
+  survivors: Set<Sprite2D>
 }
 
 /**
@@ -73,6 +86,9 @@ export class Registry {
    */
   readonly standalone = new Set<Sprite2D>()
 
+  /** Authored members carried forward when a terminal registry is replaced. */
+  readonly _recoveryCandidates = new Set<Sprite2D>()
+
   /** Set when standalone membership changed; drained by the scene sweep. */
   _autoEvalDirty = false
 
@@ -89,9 +105,8 @@ export class Registry {
     this.group.name = 'FlatlandOrchestrator'
   }
 
-  /** The Koota world backing this registry (owned by the hidden group). */
-  get world(): World {
-    return this.group.world
+  private get _runtimeWorld(): World {
+    return getSpriteGroupWorld(this.group)
   }
 
   /**
@@ -102,7 +117,7 @@ export class Registry {
   getDefaultMaterial(texture: Texture): Sprite2DMaterial {
     // Accessing `world` materializes the hidden group's ECS world +
     // BatchRegistry singleton on first use.
-    const world = this.world
+    const world = this._runtimeWorld
     const data = this._registryData()!
     return getWorldDefaultMaterial(world, data, texture)
   }
@@ -113,7 +128,7 @@ export class Registry {
    * `getDefaultMaterial`.
    */
   getEffectVariant(texture: Texture, options: Sprite2DMaterialOptions): Sprite2DMaterial {
-    const world = this.world
+    const world = this._runtimeWorld
     const data = this._registryData()!
     return getWorldEffectVariant(world, data, texture, options)
   }
@@ -124,15 +139,15 @@ export class Registry {
    * bookkeeping to drift.
    */
   get batches(): BatchQueryView {
-    return buildBatchQueryView(this.group.world, this._registryData())
+    return buildBatchQueryView(this._runtimeWorld, this._registryData())
   }
 
   /** @internal */
   _registryData(): RegistryData | null {
-    const world = this.group.world
-    const registryEntities = world.query(BatchRegistry)
+    const world = this._runtimeWorld
+    const registryEntities = world.view(BatchRegistries)
     if (registryEntities.length === 0) return null
-    return (registryEntities[0]!.get(BatchRegistry) as RegistryData | undefined) ?? null
+    return (world.read(registryEntities[0]!, BatchRegistry) as RegistryData | undefined) ?? null
   }
 }
 
@@ -146,6 +161,9 @@ export class Registry {
 export function getOrCreateRegistry(renderer: RendererLike, scene: Scene): Registry {
   const host = getOrCreateHost(renderer)
   let registry = host.scenes.get(scene)
+  if (registry && !isSpriteGroupRuntimeLive(registry.group)) {
+    registry = replaceTerminalRegistry(host, registry)
+  }
   if (!registry) {
     registry = new Registry(renderer, scene)
     host.scenes.set(scene, registry)
@@ -153,17 +171,124 @@ export function getOrCreateRegistry(renderer: RendererLike, scene: Scene): Regis
   return registry
 }
 
-/** Get the registry for a tuple if one exists; never creates. */
+/** Get the registry for an existing tuple, replacing terminal metadata only. */
 export function peekRegistry(renderer: RendererLike, scene: Scene): Registry | null {
   const host = (renderer as Record<symbol, unknown>)[REGISTRY_SYMBOL] as RegistryHost | undefined
-  return host?.scenes.get(scene) ?? null
+  const registry = host?.scenes.get(scene)
+  if (!registry) return null
+  if (isSpriteGroupRuntimeLive(registry.group)) return registry
+  return replaceTerminalRegistry(host!, registry)
+}
+
+/** Replace terminal orchestration while retaining only still-authored members. */
+function replaceTerminalRegistry(host: RegistryHost, registry: Registry): Registry {
+  let retirement = host.retirements.get(registry.scene)
+  if (!retirement) {
+    retirement = { depth: 0, roots: new Set(), survivors: new Set() }
+    host.retirements.set(registry.scene, retirement)
+  }
+  retirement.depth++
+  const replacement = new Registry(registry.renderer, registry.scene)
+  retirement.roots.add(replacement.group)
+  // Publish first so a hostile `removed` listener that peeks the tuple sees
+  // the live replacement instead of recursively replacing the same corpse.
+  host.scenes.set(registry.scene, replacement)
+  try {
+    retireRegistry(registry, retirement)
+  } finally {
+    retirement.depth--
+    if (retirement.depth === 0) finishRegistryRetirement(host, registry.scene, retirement)
+  }
+  return host.scenes.get(registry.scene)!
+}
+
+/** Drop old edges and stage eligible members for transactional re-registration. */
+function retireRegistry(registry: Registry, retirement: RegistryRetirement): void {
+  let removalError: unknown
+  let removalFailed = false
+  if (registry.group.parent === registry.scene) {
+    try {
+      registry.scene.remove(registry.group)
+    } catch (error) {
+      removalError = error
+      removalFailed = true
+    }
+  }
+  // A public `removed` listener can synchronously hide this exact terminal
+  // group below any authored descendant, or below the not-yet-attached live
+  // replacement. Canonicalize both ownership roots without redispatching;
+  // leave an intentional parent outside this scene/registry alone.
+  if (isBelow(registry.group, registry.scene) || isBelowAny(registry.group, retirement.roots)) {
+    const parent = registry.group.parent!
+    const index = parent.children.indexOf(registry.group)
+    if (index !== -1) parent.children.splice(index, 1)
+    registry.group.parent = null
+  }
+  const candidates = new Set([...registry.sprites, ...registry.standalone, ...registry._recoveryCandidates])
+  for (const sprite of candidates) {
+    const runtimeSprite = sprite as unknown as { _autoRegistry: Registry | null }
+    if (runtimeSprite._autoRegistry && runtimeSprite._autoRegistry !== registry) continue
+    if (runtimeSprite._autoRegistry === registry) runtimeSprite._autoRegistry = null
+    sprite._setBatchSuppressed(false)
+    if (isAuthoredBelow(registry.scene, sprite)) retirement.survivors.add(sprite)
+  }
+  registry.sprites.clear()
+  registry.standalone.clear()
+  registry._recoveryCandidates.clear()
+  registry._autoEvalDirty = false
+  if (removalFailed) throw removalError
+}
+
+/** Publish survivors to the registry that won the complete replacement chain. */
+function finishRegistryRetirement(host: RegistryHost, scene: Scene, retirement: RegistryRetirement): void {
+  const current = host.scenes.get(scene)
+  if (current) {
+    for (const sprite of retirement.survivors) {
+      const owner = (sprite as unknown as { _autoRegistry: Registry | null })._autoRegistry
+      if (!owner && !spriteWorld(sprite) && isAuthoredBelow(scene, sprite)) current._recoveryCandidates.add(sprite)
+    }
+  }
+  retirement.roots.clear()
+  retirement.survivors.clear()
+  host.retirements.delete(scene)
+}
+
+/** Whether an object is currently parented anywhere below an ownership root. */
+function isBelow(object: SpriteGroup, root: Scene | SpriteGroup): boolean {
+  let parent = object.parent
+  while (parent) {
+    if (parent === root) return true
+    parent = parent.parent
+  }
+  return false
+}
+
+/** Whether an object is below any replacement root in the active chain. */
+function isBelowAny(object: SpriteGroup, roots: Set<SpriteGroup>): boolean {
+  let parent = object.parent
+  while (parent) {
+    if (roots.has(parent as SpriteGroup)) return true
+    parent = parent.parent
+  }
+  return false
+}
+
+/** Keep terminal-registry recovery scoped to the exact authored scene. */
+function isAuthoredBelow(scene: Scene, sprite: Sprite2D): boolean {
+  if (sprite._disposed) return false
+  let parent = sprite.parent
+  while (parent) {
+    if (parent === scene) return true
+    parent = parent.parent
+  }
+  return false
 }
 
 function getOrCreateHost(renderer: RendererLike): RegistryHost {
   const holder = renderer as Record<symbol, unknown>
   let host = holder[REGISTRY_SYMBOL] as RegistryHost | undefined
   if (!host) {
-    host = { scenes: new WeakMap() }
+    host = { scenes: new WeakMap(), retirements: new WeakMap() }
     holder[REGISTRY_SYMBOL] = host
   }
   return host

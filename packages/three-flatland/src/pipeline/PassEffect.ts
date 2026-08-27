@@ -1,4 +1,4 @@
-import { trait, type Entity, type Trait } from 'koota'
+import { trait, type NumericSchema, type NumericStore, type World } from '../ecs/runtime'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
@@ -12,9 +12,29 @@ import type {
   UniformKeys,
   SchemaToNodeType,
 } from '../materials/MaterialEffect'
+import { entitySlot } from '../ecs/snapshot'
+import { validateEffectSchema } from '../internal/effectSchemaValidation'
+import type { SpriteGroup } from './SpriteGroup'
+import { getSpriteGroupWorld } from '../internal/sprite-group-runtime'
+import {
+  getEffectEntity,
+  getEffectTrait,
+  readEffectVectorSnapshot,
+  setEffectEntity,
+  setEffectTrait,
+} from '../internal/effect-runtime'
 
 // Re-export schema types for PassEffect consumers
 export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
+
+function createSchemaRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>
+}
+
+/** Resolve the effect class without trusting a user-defined `constructor` schema field. @internal */
+function passEffectClassOf(effect: PassEffect): typeof PassEffect {
+  return (Object.getPrototypeOf(effect) as { constructor: typeof PassEffect }).constructor
+}
 
 // ============================================
 // PassEffect Types
@@ -33,6 +53,7 @@ export interface PassEffectContext<S extends EffectSchema = EffectSchema> {
 
 // Forward-declare Flatland to avoid circular import
 interface FlatlandLike {
+  readonly spriteGroup: SpriteGroup
   _markPostPassDirty(): void
 }
 
@@ -91,10 +112,12 @@ export abstract class PassEffect {
   /** Per-pass data schema with default values. Must be overridden by subclass. */
   static readonly passSchema: EffectSchema
 
-  /** @internal Auto-generated Koota trait from schema. */
-  static _trait: Trait
   /** @internal Computed field metadata from schema. */
   static _fields: EffectField[]
+  /** @internal Precomputed flattened SoA keys for each field. */
+  static _fieldKeys: Readonly<Record<string, readonly string[]>>
+  /** @internal Constant-time field lookup for property accessors. */
+  static _fieldMap: ReadonlyMap<string, EffectField>
   /** @internal Total float slots needed for this pass's data. */
   static _totalFloats: number
   /** @internal Whether static initialization has been performed. */
@@ -117,19 +140,19 @@ export abstract class PassEffect {
    * @internal
    */
   static _initialize(): void {
-    if (this._initialized) return
-    this._initialized = true
+    if (Object.hasOwn(this, '_initialized') && this._initialized) return
 
     const schema = this.passSchema
     if (!schema) {
       throw new Error(`PassEffect: ${this.name} is missing passSchema`)
     }
+    const schemaEntries = validateEffectSchema('PassEffect', this.passName, schema, this.prototype)
 
     // Compute field metadata from schema defaults (uniform fields only)
     const fields: EffectField[] = []
-    const constantFactories: Record<string, () => unknown> = {}
+    const constantFactories = createSchemaRecord<() => unknown>()
     let totalFloats = 0
-    for (const [fieldName, value] of Object.entries(schema)) {
+    for (const [fieldName, value] of schemaEntries) {
       if (typeof value === 'function') {
         constantFactories[fieldName] = value as () => unknown
       } else if (typeof value === 'number') {
@@ -143,13 +166,21 @@ export abstract class PassEffect {
     }
 
     this._fields = fields
+    const fieldKeys = createSchemaRecord<readonly string[]>()
+    for (const field of fields) {
+      const keys: string[] = []
+      for (let i = 0; i < field.size; i++) keys.push(field.size === 1 ? field.name : `${field.name}_${i}`)
+      fieldKeys[field.name] = keys
+    }
+    this._fieldKeys = fieldKeys
+    this._fieldMap = new Map(fields.map((field) => [field.name, field]))
     this._totalFloats = totalFloats
     this._constantFactories = constantFactories
 
-    // Build flattened trait schema for Koota (uniform fields only):
+    // Build the flattened numeric trait schema (uniform fields only):
     // - float fields → { fieldName: default }
     // - vecN fields  → { fieldName_0: v[0], fieldName_1: v[1], ... }
-    const traitSchema: Record<string, number> = {}
+    const traitSchema = createSchemaRecord<number>()
     for (const field of fields) {
       if (field.size === 1) {
         traitSchema[field.name] = field.default[0]!
@@ -160,7 +191,8 @@ export abstract class PassEffect {
       }
     }
 
-    this._trait = trait(traitSchema)
+    setEffectTrait(this, trait(traitSchema))
+    this._initialized = true
   }
 
   // ============================================
@@ -173,14 +205,17 @@ export abstract class PassEffect {
   /** @internal The Flatland instance this pass is attached to. */
   _flatland: FlatlandLike | null = null
 
-  /** @internal The ECS entity for this pass. */
-  _entity: Entity | null = null
+  /** Cached numeric SoA for allocation-free enrolled property access. */
+  private _numericStore: NumericStore<NumericSchema> | null = null
+
+  /** World owning `_numericStore`; passes may move between Flatland instances. */
+  private _storeWorld: World | null = null
 
   /** @internal Snapshot defaults for pre-enrollment staging. */
   _defaults: Record<string, number | number[]>
 
   /** @internal Per-instance constant values (from factory function schema fields). */
-  _constants: Record<string, unknown> = {}
+  _constants: Record<string, unknown> = createSchemaRecord<unknown>()
 
   /** @internal TSL uniform nodes — one per uniform schema field. */
   _uniforms: Record<string, UniformNodeValue>
@@ -195,7 +230,7 @@ export abstract class PassEffect {
   private _enabled = true
 
   constructor() {
-    const ctor = this.constructor as typeof PassEffect
+    const ctor = passEffectClassOf(this)
 
     // Lazy initialize static metadata
     ctor._initialize()
@@ -203,7 +238,7 @@ export abstract class PassEffect {
     this.name = ctor.passName
 
     // Build defaults snapshot from schema (uniform fields only)
-    this._defaults = {}
+    this._defaults = createSchemaRecord<number | number[]>()
     for (const field of ctor._fields) {
       if (field.size === 1) {
         this._defaults[field.name] = field.default[0]!
@@ -213,7 +248,7 @@ export abstract class PassEffect {
     }
 
     // Create uniform nodes per uniform schema field
-    this._uniforms = {}
+    this._uniforms = createSchemaRecord<UniformNodeValue>()
     for (const field of ctor._fields) {
       const d = field.default
       if (field.size === 1) {
@@ -234,14 +269,12 @@ export abstract class PassEffect {
           get: () => this._getField(field.name),
           set: (v: number) => this._setField(field.name, v),
           enumerable: true,
-          configurable: true,
         })
       } else {
         Object.defineProperty(this, field.name, {
           get: () => this._getField(field.name),
-          set: (v: number[]) => this._setField(field.name, v),
+          set: (v: readonly number[]) => this._setField(field.name, v),
           enumerable: true,
-          configurable: true,
         })
       }
     }
@@ -253,7 +286,6 @@ export abstract class PassEffect {
       Object.defineProperty(this, name, {
         get: () => this._constants[name],
         enumerable: true,
-        configurable: true,
       })
     }
   }
@@ -278,6 +310,7 @@ export abstract class PassEffect {
    */
   _attach(flatland: FlatlandLike): void {
     this._flatland = flatland
+    this._cacheStore(getSpriteGroupWorld(flatland.spriteGroup))
   }
 
   /**
@@ -286,8 +319,19 @@ export abstract class PassEffect {
    */
   _detach(): void {
     this._flatland = null
-    this._entity = null
+    setEffectEntity(this, null)
+    this._numericStore = null
+    this._storeWorld = null
     this._passFn = null
+  }
+
+  private _cacheStore(world: World): NumericStore<NumericSchema> {
+    if (this._storeWorld !== world || !this._numericStore) {
+      const ctor = passEffectClassOf(this)
+      this._numericStore = world.store(getEffectTrait(ctor))
+      this._storeWorld = world
+    }
+    return this._numericStore
   }
 
   /**
@@ -297,7 +341,7 @@ export abstract class PassEffect {
    */
   _buildPassFn(): PassEffectFn {
     if (!this._passFn) {
-      const ctor = this.constructor as typeof PassEffect
+      const ctor = passEffectClassOf(this)
       this._passFn = ctor.buildPass({ uniforms: this._uniforms, constants: this._constants })
     }
     return this._passFn
@@ -308,22 +352,42 @@ export abstract class PassEffect {
    * If attached with an entity, reads from ECS trait. Otherwise reads from defaults.
    * @internal
    */
-  _getField(name: string): number | number[] {
-    const ctor = this.constructor as typeof PassEffect
-    if (this._entity && this._entity.has(ctor._trait)) {
-      const field = ctor._fields.find((f) => f.name === name)!
-      const data = this._entity.get(ctor._trait) as Record<string, number>
+  _getField(name: string): number | readonly number[] {
+    const ctor = passEffectClassOf(this)
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
+    if (entity && world?.has(entity, runtimeTrait)) {
+      const field = ctor._fieldMap.get(name)!
+      const keys = ctor._fieldKeys[name]!
+      const store = this._cacheStore(world)
+      const index = entitySlot(entity)
       if (field.size === 1) {
-        return data[name]!
+        return store[keys[0]!]![index]!
       } else {
-        const result: number[] = []
-        for (let i = 0; i < field.size; i++) {
-          result.push(data[`${name}_${i}`]!)
-        }
-        return result
+        return readEffectVectorSnapshot(
+          this,
+          name,
+          field.size,
+          store[keys[0]!]![index]!,
+          store[keys[1]!]![index]!,
+          field.size >= 3 ? store[keys[2]!]![index]! : 0,
+          field.size >= 4 ? store[keys[3]!]![index]! : 0
+        )
       }
     }
-    return this._defaults[name]!
+    const staged = this._defaults[name]!
+    if (typeof staged === 'number') return staged
+    const field = ctor._fieldMap.get(name)!
+    return readEffectVectorSnapshot(
+      this,
+      name,
+      field.size,
+      staged[0]!,
+      staged[1]!,
+      field.size >= 3 ? staged[2]! : 0,
+      field.size >= 4 ? staged[3]! : 0
+    )
   }
 
   /**
@@ -333,28 +397,60 @@ export abstract class PassEffect {
    * 3. Also updates snapshot defaults
    * @internal
    */
-  _setField(name: string, value: number | number[]): void {
-    const ctor = this.constructor as typeof PassEffect
-    const field = ctor._fields.find((f) => f.name === name)!
+  _setField(name: string, value: number | readonly number[]): void {
+    const ctor = passEffectClassOf(this)
+    const field = ctor._fieldMap.get(name)!
+    let scalar = 0
+    let c0 = 0
+    let c1 = 0
+    let c2 = 0
+    let c3 = 0
+    if (field.size === 1) {
+      if (typeof value !== 'number') throw new TypeError(`PassEffect.${field.name} must be a number`)
+      scalar = value
+    } else {
+      if (!Array.isArray(value) || value.length !== field.size) {
+        throw new TypeError(`PassEffect.${field.name} must provide ${field.size} numeric components`)
+      }
+      c0 = value[0]!
+      c1 = value[1]!
+      if (field.size >= 3) c2 = value[2]!
+      if (field.size >= 4) c3 = value[3]!
+      if (
+        typeof c0 !== 'number' ||
+        typeof c1 !== 'number' ||
+        (field.size >= 3 && typeof c2 !== 'number') ||
+        (field.size >= 4 && typeof c3 !== 'number')
+      ) {
+        throw new TypeError(`PassEffect.${field.name} must provide ${field.size} numeric components`)
+      }
+    }
 
     // Update snapshot defaults
-    if (typeof value === 'number') {
-      this._defaults[name] = value
+    if (field.size === 1) {
+      this._defaults[name] = scalar
     } else {
-      this._defaults[name] = [...value]
+      const defaults = this._defaults[name] as number[]
+      defaults[0] = c0
+      defaults[1] = c1
+      if (field.size >= 3) defaults[2] = c2
+      if (field.size >= 4) defaults[3] = c3
     }
 
     // Write to ECS trait if enrolled
-    if (this._entity && this._entity.has(ctor._trait)) {
+    const world = this._storeWorld
+    const entity = getEffectEntity(this)
+    const runtimeTrait = getEffectTrait(ctor)
+    if (entity && world?.has(entity, runtimeTrait)) {
+      const keys = ctor._fieldKeys[name]!
+      const store = this._cacheStore(world)
+      const index = entitySlot(entity)
       if (field.size === 1) {
-        this._entity.set(ctor._trait, { [name]: value as number })
+        store[keys[0]!]![index] = scalar
       } else {
-        const arr = value as number[]
-        const traitUpdate: Record<string, number> = {}
         for (let i = 0; i < field.size; i++) {
-          traitUpdate[`${name}_${i}`] = arr[i]!
+          store[keys[i]!]![index] = i === 0 ? c0 : i === 1 ? c1 : i === 2 ? c2 : c3
         }
-        this._entity.set(ctor._trait, traitUpdate)
       }
     }
 
@@ -362,18 +458,17 @@ export abstract class PassEffect {
     const uniformNode = this._uniforms[name]
     if (uniformNode) {
       if (field.size === 1) {
-        ;(uniformNode as UniformNode<'float', number>).value = value as number
+        ;(uniformNode as UniformNode<'float', number>).value = scalar
       } else {
-        const arr = value as number[]
         const vecUniform = uniformNode as
           | UniformNode<'vec2', Vector2>
           | UniformNode<'vec3', Vector3>
           | UniformNode<'vec4', Vector4>
         const obj = vecUniform.value
-        obj.x = arr[0]!
-        if (field.size >= 2) (obj as Vector2).y = arr[1]!
-        if (field.size >= 3) (obj as Vector3).z = arr[2]!
-        if (field.size >= 4) (obj as Vector4).w = arr[3]!
+        obj.x = c0
+        ;(obj as Vector2).y = c1
+        if (field.size >= 3) (obj as Vector3).z = c2
+        if (field.size >= 4) (obj as Vector4).w = c3
       }
     }
   }
@@ -401,8 +496,9 @@ export type PassEffectClass<S extends EffectSchema> = {
   new (): PassEffect & EffectValues<S> & EffectConstants<S>
   readonly passName: string
   readonly passSchema: S
-  readonly _trait: Trait
   readonly _fields: EffectField[]
+  readonly _fieldKeys: Readonly<Record<string, readonly string[]>>
+  readonly _fieldMap: ReadonlyMap<string, EffectField>
   readonly _totalFloats: number
   readonly _constantFactories: Record<string, () => unknown>
   readonly _initialized: boolean

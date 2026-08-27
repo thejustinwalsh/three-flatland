@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { worldFor } from '../ecs/testUtils.type-test'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
 import { createMaterialEffect } from '../materials/MaterialEffect'
@@ -9,8 +9,13 @@ import { convexHull, fanTriangulate } from './convexHull'
 import { buildEnvelopeGeometry } from './envelopeGeometry'
 import { registerAtlasMesh, degradeAtlasMesh } from '../loaders/atlasMeshRegistry'
 import { BatchGeometryStrategy } from '../ecs/traits'
+import { readRequired } from '../ecs/testUtils.type-test'
 import type { RegistryData } from '../ecs/batchUtils'
 import type { SpriteFrame, SpriteFrameMesh } from '../sprites/types'
+
+const TIGHT_MESH_DEMOTION_WARNING =
+  'three-flatland: material carries more than 16 effect floats — staying on the ' +
+  'synth-quad path instead of tight-mesh (WebGPU vertex-buffer budget).'
 
 function makeTexture(): Texture {
   const texture = new Texture()
@@ -87,10 +92,6 @@ describe('convex hull + fan triangulation', () => {
 })
 
 describe('per-batch envelope geometry (tight-mesh Option A)', () => {
-  afterEach(() => {
-    universe.reset()
-  })
-
   it('returns null without registered atlas polygons', () => {
     expect(buildEnvelopeGeometry(makeTexture())).toBeNull()
     expect(buildEnvelopeGeometry(null)).toBeNull()
@@ -137,7 +138,6 @@ describe('tight-mesh batch routing', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   function registryData(): RegistryData {
@@ -158,7 +158,7 @@ describe('tight-mesh batch routing', () => {
     const mesh = data.batchSlots.find((m) => m !== null)!
     expect(mesh.geometry.getAttribute('position')).toBeDefined()
     expect(mesh.geometry.getAttribute('position').count).toBe(4) // diamond hull
-    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('tight-mesh')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('tight-mesh')
   })
 
   it('alphaTest materials stay on the synth quad even with atlas polygons', () => {
@@ -178,7 +178,7 @@ describe('tight-mesh batch routing', () => {
     // envelope hull is fan-triangulated from its own hull point count.
     expect(mesh.geometryKind).toBe('synth-quad')
     expect(mesh.geometry.getIndex()!.count).toBe(6)
-    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
   })
 
   it('transparent material without atlas polygons falls back to synth quad', () => {
@@ -195,7 +195,7 @@ describe('tight-mesh batch routing', () => {
     // strategy now that synth-quad geometry ships real attributes.
     expect(mesh.geometryKind).toBe('synth-quad')
     expect(mesh.geometry.getIndex()!.count).toBe(6)
-    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
   })
 
   it('a strategy flip bumps the schema version so existing batches rebuild', () => {
@@ -217,8 +217,15 @@ describe('tight-mesh batch routing', () => {
     const material = new Sprite2DMaterial({ map: texture, transparent: true, effectTier: 20 })
     ;(material as unknown as { _effectTotalFloats: number })._effectTotalFloats = 20
 
-    registerDiamondAtlas(texture)
-    material.setTexture(texture)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      registerDiamondAtlas(texture)
+      material.setTexture(texture)
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(TIGHT_MESH_DEMOTION_WARNING)
+    } finally {
+      warning.mockRestore()
+    }
 
     expect(material._tightMesh).toBe(false) // stayed synth — no uncompilable pipeline
   })
@@ -232,7 +239,7 @@ describe('tight-mesh batch routing', () => {
     group.add(new Sprite2D({ texture, material }))
     group.update()
     const data = registryData()
-    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
 
     // Loader finishes AFTER the sprites batched
     registerDiamondAtlas(texture)
@@ -241,7 +248,7 @@ describe('tight-mesh batch routing', () => {
     expect(material._tightMesh).toBe(true)
     const mesh = data.batchSlots.find((m) => m !== null && !m.isEmpty)!
     expect(mesh.geometry.getAttribute('position')).toBeDefined()
-    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('tight-mesh')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('tight-mesh')
   })
 
   it('tight-mesh strategy shrinks the effect-float budget to 16', () => {
@@ -363,15 +370,11 @@ describe('tight-mesh batch routing', () => {
     const data = registryData()
     const mesh = data.batchSlots.find((m) => m !== null)!
     expect(mesh.geometryKind).toBe('synth-quad')
-    expect(data.activeBatches[0]!.get(BatchGeometryStrategy)!.kind).toBe('synth-quad')
+    expect(readRequired(worldFor(group), data.activeBatches[0]!, BatchGeometryStrategy).kind).toBe('synth-quad')
   })
 })
 
 describe('late effect registration past the tight-mesh effect-float cap', () => {
-  afterEach(() => {
-    universe.reset()
-  })
-
   it('demotes an already-tight material to synth-quad instead of throwing when growth crosses 16', () => {
     const texture = makeTexture()
     registerDiamondAtlas(texture)
@@ -393,7 +396,14 @@ describe('late effect registration past the tight-mesh effect-float cap', () => 
     expect(() => material.registerEffect(Big1)).not.toThrow()
     expect(material._tightMesh).toBe(true) // 12 floats still fits under the 16 cap
 
-    expect(() => material.registerEffect(Big2)).not.toThrow() // would have thrown pre-fix
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => material.registerEffect(Big2)).not.toThrow() // would have thrown pre-fix
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(TIGHT_MESH_DEMOTION_WARNING)
+    } finally {
+      warning.mockRestore()
+    }
     expect(material._tightMesh).toBe(false) // demoted to synth-quad
     expect(material.maxEffectFloats).toBe(24)
     expect(material._effectTotalFloats).toBe(20)
@@ -422,7 +432,14 @@ describe('late effect registration past the tight-mesh effect-float cap', () => 
     })
 
     material.registerEffect(Big1)
-    material.registerEffect(Big2)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      material.registerEffect(Big2)
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(TIGHT_MESH_DEMOTION_WARNING)
+    } finally {
+      warning.mockRestore()
+    }
     expect(material._tightMesh).toBe(false) // already demoted at 24
     expect(material._effectTotalFloats).toBe(24)
 

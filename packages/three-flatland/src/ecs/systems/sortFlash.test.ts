@@ -1,12 +1,12 @@
+import { worldFor } from '../testUtils.type-test'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2DMaterial } from '../../materials/Sprite2DMaterial'
 import { Sprite2D } from '../../sprites/Sprite2D'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import { BatchSlot, BatchRegistry } from '../traits'
-import type { RegistryData } from '../batchUtils'
+import { BatchSlot } from '../traits'
 import type { SpriteBatch } from '../../pipeline/SpriteBatch'
+import { batchFor, readRequired, requiredEntity } from '../testUtils.type-test'
 
 /**
  * Reproducer for the batch-demo sort flash:
@@ -28,17 +28,12 @@ function makeTexture(): Texture {
   return t
 }
 
-function getRegistry(group: SpriteGroup): RegistryData | null {
-  const world = group.world
-  const entities = world.query(BatchRegistry)
-  return entities.length === 0 ? null : (entities[0]!.get(BatchRegistry) as RegistryData)
+function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch {
+  return batchFor(worldFor(group), sprite)
 }
 
-function getBatchForSprite(group: SpriteGroup, sprite: Sprite2D): SpriteBatch | null {
-  const registry = getRegistry(group)
-  if (!registry) return null
-  const bs = sprite.entity!.get(BatchSlot)!
-  return registry.batchSlots[bs.batchIdx] as SpriteBatch | null
+function slotFor(group: SpriteGroup, sprite: Sprite2D): number {
+  return readRequired(worldFor(group), requiredEntity(sprite), BatchSlot).slot
 }
 
 /**
@@ -83,7 +78,6 @@ describe('sort flash — batch-demo repro', () => {
 
   afterEach(() => {
     group.dispose()
-    universe.reset()
   })
 
   it('after adding a higher-Y sprite, every slot matches its owning sprite', () => {
@@ -105,7 +99,7 @@ describe('sort flash — batch-demo repro', () => {
     const batch = getBatchForSprite(group, top)!
 
     for (const sprite of all) {
-      const slot = sprite.entity!.get(BatchSlot)!.slot
+      const slot = slotFor(group, sprite)
       const m = readMatrixTranslation(batch, slot)
       expect(m.x, `slot ${slot} matrix.x mismatch for sprite at world ${sprite.position.x}`).toBe(sprite.position.x)
       expect(m.y, `slot ${slot} matrix.y mismatch for sprite at world ${sprite.position.y}`).toBe(sprite.position.y)
@@ -128,7 +122,7 @@ describe('sort flash — batch-demo repro', () => {
 
     const all = [top, bottomA, bottomB, bottomC]
     for (const sprite of all) {
-      const slot = sprite.entity!.get(BatchSlot)!.slot
+      const slot = slotFor(group, sprite)
       const o = slot * 16 + 4 // OFFSET_COLOR = 4 (in floats relative to slot row start)
       expect(colorAttr[o + 0], `slot ${slot} red mismatch`).toBeCloseTo(sprite.tint.r, 4)
       expect(colorAttr[o + 1], `slot ${slot} green mismatch`).toBeCloseTo(sprite.tint.g, 4)
@@ -156,7 +150,7 @@ describe('sort flash — batch-demo repro', () => {
 
       const batch = getBatchForSprite(group, sprites[0]!)!
       for (const sprite of sprites) {
-        const slot = sprite.entity!.get(BatchSlot)!.slot
+        const slot = slotFor(group, sprite)
         const m = readMatrixTranslation(batch, slot)
         expect(
           m.x,

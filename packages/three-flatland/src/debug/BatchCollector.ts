@@ -242,7 +242,7 @@ export class BatchCollector {
    * Two source families are merged into one output:
    *
    *   - **ECS sources** return a `RegistryData` — tracked by
-   *     `SpriteGroup`'s Koota world. Reads `activeBatches` and pulls
+   *     `SpriteGroup`'s private ECS world. Reads `activeBatches` and pulls
    *     material / layer / sprite-count out of trait data.
    *   - **Mesh sources** return an iterable of `InstancedMesh` —
    *     used by engine code that manages its own instanced meshes
@@ -258,7 +258,7 @@ export class BatchCollector {
     if (!this._capturing) return
     for (const src of sources) {
       const reg = src()
-      if (reg !== null) this.captureBatches(reg)
+      if (reg !== null) this.captureBatches(reg as RegistryData)
     }
     for (const src of meshSources) {
       const iter = src()
@@ -340,8 +340,8 @@ export class BatchCollector {
     const len = active.length
     for (let i = 0; i < len; i++) {
       const e = active[i]!
-      const mesh = e.get(BatchMesh)?.mesh
-      const meta = e.get(BatchMeta)
+      const mesh = registry.world?.read(e, BatchMesh)?.mesh
+      const meta = registry.world?.read(e, BatchMeta)
       if (mesh === undefined || mesh === null || meta === undefined) continue
 
       let info = this._buildBatches[this._buildBatchCount]

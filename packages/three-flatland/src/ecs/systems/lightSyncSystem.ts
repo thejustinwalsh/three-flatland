@@ -1,5 +1,7 @@
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import { LightingContext } from '../traits'
+
+const LightingContexts = select(LightingContext)
 
 /**
  * Sync Light2D array into LightStore DataTexture.
@@ -8,10 +10,10 @@ import { LightingContext } from '../traits'
  * Called once per frame before lightEffectSystem.
  */
 export function lightSyncSystem(world: World): void {
-  const ctxEntities = world.query(LightingContext)
+  const ctxEntities = world.view(LightingContexts)
   if (ctxEntities.length === 0) return
 
-  const ctx = ctxEntities[0]!.get(LightingContext)
+  const ctx = world.read(ctxEntities[0]!, LightingContext)
   if (!ctx) return
   if (!ctx.effect?.enabled || !ctx.lightStore) return
 

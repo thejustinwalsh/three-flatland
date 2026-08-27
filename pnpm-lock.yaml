@@ -18,6 +18,9 @@ catalogs:
     '@jsquash/webp':
       specifier: ^1.5.0
       version: 1.5.0
+    '@pmndrs/labs':
+      specifier: 0.6.0
+      version: 0.6.0
     '@react-three/fiber':
       specifier: 10.0.0-alpha.3
       version: 10.0.0-alpha.3
@@ -336,9 +339,6 @@ importers:
       hast-util-select:
         specifier: ^6.0.4
         version: 6.0.4
-      koota:
-        specifier: 'catalog:'
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       qr-code-styling:
         specifier: ^1.9.2
         version: 1.9.2
@@ -1544,9 +1544,6 @@ importers:
       '@react-three/fiber':
         specifier: 10.0.0-alpha.3
         version: 10.0.0-alpha.3(@types/react@19.2.9)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(three@0.185.1)
-      koota:
-        specifier: ^0.6.5
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       react:
         specifier: ~19.2.0
         version: 19.2.3
@@ -1596,9 +1593,6 @@ importers:
 
   packages/create-three-flatland/templates/three:
     dependencies:
-      koota:
-        specifier: ^0.6.5
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
       three:
         specifier: ^0.185.1
         version: 0.185.1
@@ -1891,9 +1885,6 @@ importers:
       '@three-flatland/normals':
         specifier: workspace:*
         version: link:../normals
-      koota:
-        specifier: 'catalog:'
-        version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
     devDependencies:
       '@react-three/fiber':
         specifier: 'catalog:'
@@ -1983,6 +1974,12 @@ importers:
         specifier: 'catalog:'
         version: 0.6.5(@types/react@19.2.9)(react@19.2.3)
     devDependencies:
+      '@playwright/test':
+        specifier: 1.60.0
+        version: 1.60.0
+      '@pmndrs/labs':
+        specifier: 'catalog:'
+        version: 0.6.0
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.7
@@ -4077,6 +4074,11 @@ packages:
   '@playwright/test@1.61.1':
     resolution: {integrity: sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==}
     engines: {node: '>=18'}
+    hasBin: true
+
+  '@pmndrs/labs@0.6.0':
+    resolution: {integrity: sha512-RBGGNfUgMR6mYh+u7nhPqvPga/gFZaEXUMmkv6vJj0y7JrTT4c0+1fu0H3aQaSMoH/VcCtB6I4ai1i4FB6f3kg==}
+    engines: {node: '>=25.0.0', pnpm: '>=10.0.0'}
     hasBin: true
 
   '@pmndrs/scheduler@0.1.0':
@@ -11308,6 +11310,11 @@ snapshots:
   '@playwright/test@1.61.1':
     dependencies:
       playwright: 1.61.1
+
+  '@pmndrs/labs@0.6.0':
+    dependencies:
+      '@clack/prompts': 1.4.0
+      tsx: 4.21.0
 
   '@pmndrs/scheduler@0.1.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     optionalDependencies:

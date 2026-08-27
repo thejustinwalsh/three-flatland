@@ -13,7 +13,6 @@
 import type { DataTexture, InstancedMesh, Texture } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { BufferDisplayMode, RegistryEntryKind, TexturePixelType } from '../debug-protocol'
-import type { RegistryData } from '../ecs/batchUtils'
 import type { DebugRegistry } from './DebugRegistry'
 import type { DebugTextureRegistry } from './DebugTextureRegistry'
 import type { BatchCollector } from './BatchCollector'
@@ -27,15 +26,15 @@ let _activeBatches: BatchCollector | null = null
 
 /**
  * Batch source registrations. Each source is a getter that resolves to
- * the latest `RegistryData` (or null if the host's registry isn't ready
+ * the latest opaque batch registry (or null if the host isn't ready
  * yet). Getters are called by `BatchCollector.captureAllSources` once
  * per frame; zero work when no consumer is subscribed to `'batches'`.
  *
- * Using getters rather than direct `RegistryData` refs means
+ * Using getters rather than direct registry refs means
  * SpriteGroup / Flatland can register *once* at construction and we
  * always see the live singleton, even if the host recreates it.
  */
-export type BatchSourceFn = () => RegistryData | null
+export type BatchSourceFn = () => object | null
 const _batchSources = new Set<BatchSourceFn>()
 
 /**
@@ -179,9 +178,9 @@ export function unregisterDebugTexture(name: string): void {
 // ─── Batch / pass recording ────────────────────────────────────────────
 
 /** @internal Called by `DevtoolsProvider` — not for app code. */
-export function _setActiveBatchCollector(bc: BatchCollector | null): void {
+export function _setActiveBatchCollector(bc: object | null): void {
   if (process.env.NODE_ENV === 'production' && process.env.FL_DEVTOOLS !== 'true') return
-  _activeBatches = bc
+  _activeBatches = bc as BatchCollector | null
 }
 
 /**
@@ -212,7 +211,7 @@ export function endDebugPass(renderer: WebGPURenderer): void {
 }
 
 /**
- * Register a source of `RegistryData` so the batch collector can pull
+ * Register an opaque batch-registry source so the collector can pull
  * the active-batches snapshot at end-of-frame. Called by engine /
  * framework code (Flatland, `SpriteGroup`) once per owned world.
  *

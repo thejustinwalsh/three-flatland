@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { OrthographicCamera, Scene, NearestFilter, LinearFilter, Vector2 } from 'three'
-import { createWorld, universe } from 'koota'
-import type { World } from 'koota'
+import { createWorld, select, type World } from '../runtime'
+import { readRequired } from '../testUtils.type-test'
 import { shadowPipelineSystem } from './shadowPipelineSystem'
 import { BatchRegistry, LightingContext, ShadowPipeline } from '../traits'
 import { createLightEffect } from '../../lights/LightEffect'
@@ -110,7 +110,7 @@ function setup(world: World, opts: SetupOpts = {}) {
   const registryEntity = world.spawn(BatchRegistry({ occludersDirty: opts.occludersDirty ?? true }))
 
   function setOccludersDirty(value: boolean) {
-    const reg = registryEntity.get(BatchRegistry)!
+    const reg = readRequired(world, registryEntity, BatchRegistry)
     reg.occludersDirty = value
   }
 
@@ -129,7 +129,7 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
   })
 
   afterEach(() => {
-    universe.reset()
+    world.dispose()
   })
 
   it('generates on the first run', () => {
@@ -143,7 +143,7 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
 
   it('sizes shadows from the canonical surface without querying the renderer', () => {
     const { sdfGenerator, occlusionPass } = setup(world)
-    const ctx = world.query(LightingContext)[0]!.get(LightingContext)!
+    const ctx = readRequired(world, world.view(select(LightingContext))[0]!, LightingContext)
     ctx.surfaceSize.set(320, 180)
     const renderer = ctx.renderer as unknown as ReturnType<typeof makeRenderer>
 
@@ -156,7 +156,7 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
 
   it('does not resize either scaled shadow resource when rounding keeps their size unchanged', () => {
     const { sdfGenerator, occlusionPass, setOccludersDirty } = setup(world)
-    const ctx = world.query(LightingContext)[0]!.get(LightingContext)!
+    const ctx = readRequired(world, world.view(select(LightingContext))[0]!, LightingContext)
     ctx.surfaceSize.set(512, 512)
     shadowPipelineSystem(world)
 
@@ -234,7 +234,7 @@ describe('shadowPipelineSystem — shadowFilter resolution', () => {
   })
 
   afterEach(() => {
-    universe.reset()
+    world.dispose()
   })
 
   it("applies LinearFilter for 'auto' + shadowPixelSnapEnabled=false", () => {

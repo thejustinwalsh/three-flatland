@@ -11,11 +11,11 @@
 
 Every claim below was probed against the live code before this plan was written. Three sprite-management modes exist, and they are in **materially different states**:
 
-| Mode | Graph citizen? | Traversal-raycastable? | `instanceMatrix` source | Verified behavior |
-|---|---|---|---|---|
-| Standalone (`scene.add(sprite)`, unbatched) | ✓ | ✓ | n/a (own Mesh) | works |
-| **Auto-batched** (`scene.add(sprite)` ×2 sharing run key) | ✓ (stays in user tree, `visible=false`) | **✓ — already works.** `intersectObjects(scene.children, true)` hits it; `matrixWorld` correct | local TRS recompose (`transformSyncSystem`) | hit-test right, **render wrong under nested parents** |
-| **Explicit** (`spriteGroup.add` / `flatland.add`) | **✗** (`sprite.parent === null`, ECS-only) | **✗** — traversal returns `[]` | local TRS recompose | direct `intersectObject(sprite)` works only via the interim fix |
+| Mode                                                      | Graph citizen?                             | Traversal-raycastable?                                                                         | `instanceMatrix` source                     | Verified behavior                                               |
+| --------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------- | --------------------------------------------------------------- |
+| Standalone (`scene.add(sprite)`, unbatched)               | ✓                                          | ✓                                                                                              | n/a (own Mesh)                              | works                                                           |
+| **Auto-batched** (`scene.add(sprite)` ×2 sharing run key) | ✓ (stays in user tree, `visible=false`)    | **✓ — already works.** `intersectObjects(scene.children, true)` hits it; `matrixWorld` correct | local TRS recompose (`transformSyncSystem`) | hit-test right, **render wrong under nested parents**           |
+| **Explicit** (`spriteGroup.add` / `flatland.add`)         | **✗** (`sprite.parent === null`, ECS-only) | **✗** — traversal returns `[]`                                                                 | local TRS recompose                         | direct `intersectObject(sprite)` works only via the interim fix |
 
 Probe results (exact numbers):
 
@@ -26,9 +26,9 @@ Probe results (exact numbers):
 
 ### Corrections to the briefing diagnosis
 
-- **"#85 never delivered its promise" is half-right.** The Phase-2 orchestration epic DID land: per-(renderer,scene) registry, dual-signal registration, auto-batch with tier ladder/hysteresis, run-key routing (`src/orchestration/*`, all green-tested). Auto-batched sprites ARE graph citizens and ARE traversal-raycastable **today**. What never landed is (a) graph citizenship for the **explicit** SpriteGroup/Flatland path, and (b) the AUTO-BATCH-DESIGN line-29 invariant *"`instanceMatrix` set from `matrixWorld`"* — asserted in the design's promotion-safety proof, implemented nowhere. #127's "interactive for free once #85 lands" was true for the auto path and unspecified for the explicit path.
+- **"#85 never delivered its promise" is half-right.** The Phase-2 orchestration epic DID land: per-(renderer,scene) registry, dual-signal registration, auto-batch with tier ladder/hysteresis, run-key routing (`src/orchestration/*`, all green-tested). Auto-batched sprites ARE graph citizens and ARE traversal-raycastable **today**. What never landed is (a) graph citizenship for the **explicit** SpriteGroup/Flatland path, and (b) the AUTO-BATCH-DESIGN line-29 invariant _"`instanceMatrix` set from `matrixWorld`"_ — asserted in the design's promotion-safety proof, implemented nowhere. #127's "interactive for free once #85 lands" was true for the auto path and unspecified for the explicit path.
 - **R3F never needed scene-graph discoverability.** Verified in installed `@react-three/fiber@10.0.0-alpha.2` (`dist/index.mjs:665`): R3F raycasts its flat interaction list per-object — `state.raycaster.intersectObject(obj, true)` — not the scene. Direct raycast + a fresh matrix is all R3F needs, which is why the interim fix unblocked the starter templates. What R3F DOES need the parent chain for is **event bubbling** (`index.mjs:686`: `eventObject = eventObject.parent`) — with `parent === null`, ancestor handlers never fire.
-- The root-cause statement — duplicated transform math between `Sprite2D.updateMatrix()` (`Sprite2D.ts:2047`) and `transformSyncSystem` (`:63`), so render truth and hit truth cannot agree by construction — is **confirmed**, with the sharper corollary that on the auto path it is the *renderer* that is wrong and the hit test that is right.
+- The root-cause statement — duplicated transform math between `Sprite2D.updateMatrix()` (`Sprite2D.ts:2047`) and `transformSyncSystem` (`:63`), so render truth and hit truth cannot agree by construction — is **confirmed**, with the sharper corollary that on the auto path it is the _renderer_ that is wrong and the hit test that is right.
 
 ---
 
@@ -47,8 +47,8 @@ Per spec §5: a raycast hit on any flatland primitive yields `intersection.objec
 **Why this is viable (the checks the briefing asked for):**
 
 - **Per-frame cost:** today `transformSyncSystem` runs an inline 2D compose per sprite per frame (`autoInvalidateTransforms` defaults true). The new shape is three's propagation (which already calls our fast `Sprite2D.updateMatrix()` override — same 2D math) + one 16-float copy per slot. Net delta ≈ one 4×4 parent-multiply + memcpy per sprite; at 16k sprites ≈ 1 MB/frame of copies, same order as today. **Gate: measure, don't assume** (Phase 1 gate, ±10% on the schedule micro-benchmark and knightmark 60fps).
-- **`matrixWorldAutoUpdate = false` rationale survives intact.** Flatland disables it so *internal passes* (occlusion, SDF, shadow) don't re-trigger the schedule via `renderer.render` (`Flatland.ts:298-303, 1243-1256`). The single explicit `scene.updateMatrixWorld(true)` in `Flatland.render()` remains the one propagation per frame; it now also composes the (new) sprite children. Nothing about the guard model changes; `scheduleRuns` re-entrancy guards stay.
-- **Ordering** is the real work — see §4 (two-stage schedule). The invariant: *slot matrices are copied from `matrixWorld` after the last `matrixWorld` write of the frame and before any render that consumes them (shadow/occlusion/main).*
+- **`matrixWorldAutoUpdate = false` rationale survives intact.** Flatland disables it so _internal passes_ (occlusion, SDF, shadow) don't re-trigger the schedule via `renderer.render` (`Flatland.ts:298-303, 1243-1256`). The single explicit `scene.updateMatrixWorld(true)` in `Flatland.render()` remains the one propagation per frame; it now also composes the (new) sprite children. Nothing about the guard model changes; `scheduleRuns` re-entrancy guards stay.
+- **Ordering** is the real work — see §4 (two-stage schedule). The invariant: _slot matrices are copied from `matrixWorld` after the last `matrixWorld` write of the frame and before any render that consumes them (shadow/occlusion/main)._
 - **Group transforms don't double-apply:** with sprites as group children (D-B), a transformed SpriteGroup flows into `sprite.matrixWorld`; pinning batch matrixWorld to identity prevents the old `batchWorld × instanceLocal` path from applying it twice. Pin with a transformed-SpriteGroup parity test (this behavior — group transform moves batched sprites — works today via the batch's inherited matrixWorld and must not regress).
 - **Bonus honesty:** users with `matrixAutoUpdate=false` hand-managed matrices are respected now (today's recompose from TRS silently ignores them). `sortLayer*10 + zIndex*0.001` z-bake is unchanged — it lives in `updateMatrix()` and rides through `matrixWorld`.
 - **`autoInvalidateTransforms=false`** (manual invalidation, static UIs): the copy pass is gated by the same flag + `invalidateTransforms()`. Divergence between fresh `matrixWorld` and stale slots is inherent to that opt-in mode; document that hits track logical state.
@@ -67,20 +67,20 @@ This makes AUTO-BATCH-DESIGN line 29 true and **fixes probe bug #2** (nested-par
 - **R3F bubbling** now walks sprite → holder → SpriteGroup → flatland.scene, so ancestor handlers and portal-root semantics work.
 - Demotion reparents holder → SpriteGroup (own-mesh draw resumes); `_demoteToStandalone`'s existing `registry.parentAdd` machinery simplifies.
 
-**`sceneGraphSyncSystem` prune must be type-gated to `SpriteBatch` instances** (it currently removes *any* non-batch child — probe bug #4). This one-line class check fixes the demotion-vanish bug and makes the holder safe. Regression-test both.
+**`sceneGraphSyncSystem` prune must be type-gated to `SpriteBatch` instances** (it currently removes _any_ non-batch child — probe bug #4). This one-line class check fixes the demotion-vanish bug and makes the holder safe. Regression-test both.
 
-**Reconciliation with spec §4/§14 ("reverse-lookup apparatus deleted, not deferred"):** honored. No `SpriteBatch.raycast` implementation (it stays the existing no-op override, `SpriteBatch.ts:598` — already correct, and critical: `InstancedMesh.raycast` would otherwise phantom-test every instance), no instance→sprite mapping, no batch participation in events. Discoverability comes from sprites being *real objects in the graph* — exactly the mechanism §5 assumed #85 would provide.
+**Reconciliation with spec §4/§14 ("reverse-lookup apparatus deleted, not deferred"):** honored. No `SpriteBatch.raycast` implementation (it stays the existing no-op override, `SpriteBatch.ts:598` — already correct, and critical: `InstancedMesh.raycast` would otherwise phantom-test every instance), no instance→sprite mapping, no batch participation in events. Discoverability comes from sprites being _real objects in the graph_ — exactly the mechanism §5 assumed #85 would provide.
 
 **Audit obligations:** every consumer of `spriteGroup.children` (`clear()`, `clone()`, devtools batch snapshots, stats) and the R3F removal path (`flatland.remove` → `spriteGroup.remove` must also detach from the holder; R3F StrictMode remount churn) — enumerate and test.
 
 ### D-C — The interim fix survives, upgraded and re-documented
 
-`Sprite2D.raycast()`'s `this.updateMatrixWorld()` (and TileMap2D's) becomes `this.updateWorldMatrix(true, false)` — which also refreshes the *ancestor* chain, making it correct for parented sprites (a plain `updateMatrixWorld()` composes against a possibly-stale parent). Post D-A/D-B it is no longer compensating for a detached object — it is a freshness guarantee for raycasts issued outside the frame loop (setup code, tests, pre-first-render), equally valid for standalone sprites. The spec's "no interim code" clause (D1) is satisfied: the call's *reason* changed from workaround to documented contract. Pin with a pre-first-render raycast test. The `batchedRaycast.test.ts` characterization tests stay green throughout.
+`Sprite2D.raycast()`'s `this.updateMatrixWorld()` (and TileMap2D's) becomes `this.updateWorldMatrix(true, false)` — which also refreshes the _ancestor_ chain, making it correct for parented sprites (a plain `updateMatrixWorld()` composes against a possibly-stale parent). Post D-A/D-B it is no longer compensating for a detached object — it is a freshness guarantee for raycasts issued outside the frame loop (setup code, tests, pre-first-render), equally valid for standalone sprites. The spec's "no interim code" clause (D1) is satisfied: the call's _reason_ changed from workaround to documented contract. Pin with a pre-first-render raycast test. The `batchedRaycast.test.ts` characterization tests stay green throughout.
 
 ### D-D — R3F: no API changes; new coverage obligations
 
 - **Render-to-screen** (`set({ camera: flatland.camera })`, the starter-template pattern) and **portal** (`createPortal(children, flatland.scene, { events: { compute: createFlatlandCompute(...), priority } })`) both already route rays through `flatland.camera`; per the R3F source verification, per-object raycast + correct `matrixWorld` is sufficient. `createFlatlandCompute` (`react/flatlandEvents.ts`) is untouched.
-- New obligations: (a) bubbling test — handler on an ancestor fires for a batched-sprite hit; (b) portal-mode batched-sprite test; (c) `events.update()` hover-under-camera-motion unaffected (spec §8.3); (d) the react starter template's interaction keeps working (it exercises a *batched* sprite — Flatland's explicit path batches even a single sprite).
+- New obligations: (a) bubbling test — handler on an ancestor fires for a batched-sprite hit; (b) portal-mode batched-sprite test; (c) `events.update()` hover-under-camera-motion unaffected (spec §8.3); (d) the react starter template's interaction keeps working (it exercises a _batched_ sprite — Flatland's explicit path batches even a single sprite).
 - **Known, documented limit:** handlers on the `<flatland>` element itself will not receive bubbled sprite hits — `flatland.scene` is not a child of the Flatland group, so the parent walk ends at the scene. Same posture as drei `View`. Document; do not hack the parent chain.
 
 ### D-E — TileMap2D: already a graph citizen; in scope for freshness + tests only
@@ -103,11 +103,11 @@ This makes AUTO-BATCH-DESIGN line 29 true and **fixes probe bug #2** (nested-par
 
 ## 4. The ordering problem (lead-owned design work)
 
-Today the whole `SystemSchedule` runs at the *top* of `SpriteGroup.updateMatrixWorld`, **before** `super.updateMatrixWorld` propagates matrices (`SpriteGroup.ts:444-477`). A matrixWorld-slaved copy cannot live there. Restructure into two stages:
+Today the whole `SystemSchedule` runs at the _top_ of `SpriteGroup.updateMatrixWorld`, **before** `super.updateMatrixWorld` propagates matrices (`SpriteGroup.ts:444-477`). A matrixWorld-slaved copy cannot live there. Restructure into two stages:
 
 ```
 SpriteGroup.updateMatrixWorld(force):
-  stage A (ECS mutation): deferredDestroy → materialVersions → effectTraits →
+  stage A (ECS mutation): deferredDestroy → materialVersions →
       batchAssign → batchReassign → batchSort → sceneGraphSync → batchRemove → lateAssign
       (+ prepended lighting CPU-prep systems)
   super.updateMatrixWorld(force)        // three composes group, holder, sprites, batches(identity-pinned)
@@ -120,10 +120,10 @@ SpriteGroup.updateMatrixWorld(force):
 **Trigger points:**
 
 - **Explicit path (SpriteGroup standalone or under Flatland):** both stages inside `SpriteGroup.updateMatrixWorld` as above. Sprites are holder children, so their `matrixWorld` is fresh when stage B runs. Flatland's `scene.updateMatrixWorld(true)` remains the sole per-frame trigger; re-entrancy (`_inSystems`, `scheduleRuns`) must guard both stages — shadow passes nest `renderer.render` which recurses into this override.
-- **Auto path:** sprites live in the *user's* tree, possibly ordered after the hidden orchestrator group in traversal — a stage-B copy inside `group.updateMatrixWorld` can read stale matrices. Run the copy in `flatlandSceneSweep` (`orchestrator.ts:147`), which fires at `scene.onBeforeRender` — **after** the renderer's `updateMatrixWorld` and **before** `projectObject`. The sweep becomes an unconditional tail when the registry has batched entities (cost: the same O(N) copy the schedule pays today). **Verify the renderer ordering claim against the installed `three/webgpu` `Renderer.js`** (the orchestrator's comment cites updateMatrixWorld @1508 → onBeforeRender @1559 → projectObject @1575 — re-confirm before relying on it, and pin with a comment citing the verified lines).
+- **Auto path:** sprites live in the _user's_ tree, possibly ordered after the hidden orchestrator group in traversal — a stage-B copy inside `group.updateMatrixWorld` can read stale matrices. Run the copy in `flatlandSceneSweep` (`orchestrator.ts:147`), which fires at `scene.onBeforeRender` — **after** the renderer's `updateMatrixWorld` and **before** `projectObject`. The sweep becomes an unconditional tail when the registry has batched entities (cost: the same O(N) copy the schedule pays today). **Verify the renderer ordering claim against the installed `three/webgpu` `Renderer.js`** (the orchestrator's comment cites updateMatrixWorld @1508 → onBeforeRender @1559 → projectObject @1575 — re-confirm before relying on it, and pin with a comment citing the verified lines).
 - Guard double-copies with a per-registry frame stamp; on auto registries, the sweep copy is authoritative.
 
-Contingency if the three-propagation cost regresses the benchmark: keep the 2D-specialized compose but perform it *in the copy pass* as `parentWorld × fastLocal` (single site, still matrixWorld-truth); this preserves D-A's invariant while restoring the specialized math.
+Contingency if the three-propagation cost regresses the benchmark: keep the 2D-specialized compose but perform it _in the copy pass_ as `parentWorld × fastLocal` (single site, still matrixWorld-truth); this preserves D-A's invariant while restoring the specialized math.
 
 ---
 
@@ -131,15 +131,15 @@ Contingency if the three-propagation cost regresses the benchmark: keep the 2D-s
 
 These get explicit before/after evidence at gates; a failure blocks the phase.
 
-| # | Invariant | Proof artifact |
-|---|---|---|
-| P1 | **Pixel parity** — batch-demo, knightmark, lighting, tilemap examples render byte-stable (or visually identical) before vs after | screenshot pairs (e2e or vitexec capture), attached to the PR per repo norm |
-| P2 | **Draw-call parity** — hidden sprite children add zero draw calls (`renderer.info` delta / `flatland.stats`) | stats assertion in test + example probe |
-| P3 | **Slot⇔world agreement** — for every mode (auto flat, auto nested, group, flatland, transformed group): `instanceMatrix[slot] === sprite.matrixWorld` after a frame | new parity suite (the test class that would have caught this bug — see §7) |
-| P4 | **Promotion parity** — same pixels standalone vs batched for the same sprite state (AUTO-BATCH-DESIGN's table, now actually true) | nested-parent render test: promote, compare matrices; demote, compare again |
-| P5 | **Perf floor** — knightmark 60fps; schedule micro-bench (16k sprites) within ±10%; 1→100k tier-ladder stress unchanged | recorded numbers in PR description, before/after |
-| P6 | **No batch in intersections, no duplicate hits** — traversal over scenes with batches present yields only Sprite2D/TileMap2D objects, one record per sprite | traversal suite |
-| P7 | **Sorting/lighting unaffected** — batchSort, sortLayer routing, shadow/lighting suites stay green with stage-B reordering | existing suites + shadow-pass freshness test |
+| #   | Invariant                                                                                                                                                           | Proof artifact                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| P1  | **Pixel parity** — batch-demo, knightmark, lighting, tilemap examples render byte-stable (or visually identical) before vs after                                    | screenshot pairs (e2e or vitexec capture), attached to the PR per repo norm |
+| P2  | **Draw-call parity** — hidden sprite children add zero draw calls (`renderer.info` delta / `flatland.stats`)                                                        | stats assertion in test + example probe                                     |
+| P3  | **Slot⇔world agreement** — for every mode (auto flat, auto nested, group, flatland, transformed group): `instanceMatrix[slot] === sprite.matrixWorld` after a frame | new parity suite (the test class that would have caught this bug — see §7)  |
+| P4  | **Promotion parity** — same pixels standalone vs batched for the same sprite state (AUTO-BATCH-DESIGN's table, now actually true)                                   | nested-parent render test: promote, compare matrices; demote, compare again |
+| P5  | **Perf floor** — knightmark 60fps; schedule micro-bench (16k sprites) within ±10%; 1→100k tier-ladder stress unchanged                                              | recorded numbers in PR description, before/after                            |
+| P6  | **No batch in intersections, no duplicate hits** — traversal over scenes with batches present yields only Sprite2D/TileMap2D objects, one record per sprite         | traversal suite                                                             |
+| P7  | **Sorting/lighting unaffected** — batchSort, sortLayer routing, shadow/lighting suites stay green with stage-B reordering                                           | existing suites + shadow-pass freshness test                                |
 
 ---
 
@@ -224,15 +224,17 @@ Plus targeted regressions: demotion-prune (P0), shadow-pass slot freshness (P7),
 **2. Perf reconciliation — D-A copy pass vs single-writer ECS (must decide, with numbers).**
 D-A as written computes `sprite.matrixWorld` via three's propagation, then copies 16 floats into the slot — adding a 4×4 parent-multiply + copy per sprite per frame, including the flat (identity-parent) common case we skip today. Stakeholder requirement: **keep the ECS direct-access fast path and do not regress.**
 Reconcile one of two ways, and prove it:
+
 - **(a) Prove the copy pass is within ±10%** on knightmark + the 16k bench, and keep D-A as written; or
 - **(b) Single-writer ECS**: `matrixWorldAutoUpdate = false` on batched sprites; the schedule computes world directly (existing fast 2D compose direct-to-slot for identity-parent sprites, fold ancestor matrix only when a parent transform exists) and writes it to **both** the slot and `sprite.matrixWorld`. One compute feeds render + raycast; avoids the two-stage schedule split.
-This interacts with D-B (graph children get propagated by three regardless) — the two must be reconciled explicitly. Phase 0 characterization must measure the copy-pass cost so the choice is evidence-based, not assumed.
+  This interacts with D-B (graph children get propagated by three regardless) — the two must be reconciled explicitly. Phase 0 characterization must measure the copy-pass cost so the choice is evidence-based, not assumed.
 
 **3. Culling — design so it is not foreclosed; do NOT build it now.**
 Confirmed: nothing culls today (`SpriteBatch.frustumCulled = false`, `boundingSphere.radius = Infinity`). World-space instance matrices are the correct substrate for adding it later (whole-batch AABB → spatial clusters → GPU cull). Two constraints to honor now so a future culling pass is not blocked:
+
 - Instance slot data stays **world-space** (falls out of decision 1).
 - Any future cull-with-compaction must be **sort-stable** — batches are sorted by sortLayer/zIndex, so the slot layout and compaction design must preserve draw order. Do not adopt a slot-packing scheme that would make stable compaction impossible.
-No culling code in this PR; this is a reserved-design note only.
+  No culling code in this PR; this is a reserved-design note only.
 
 ## Correction (2026-07-20) — one hit-test contract, no new picking API
 
@@ -245,4 +247,3 @@ Earlier revisions of this plan invented `flatland.pick()` and promoted a hash-gr
 **No scene traversal problem to solve.** `SpriteGroup.add()` already keeps batched sprites out of the scene graph, so nothing does `intersectObjects(scene, true)` over them. Consumers hold refs to the sprites they care about (vanilla) or register handlers (R3F) — both per-object, both the one contract.
 
 **`SpatialGrid` stays as the spec's §7.3 optional acceleration** — built only if profiling shows thousands of simultaneously-interactive sprites, and even then it feeds candidates into the same `raycast()` narrowphase with no public API change. Not in #127.
-

@@ -43,7 +43,9 @@ import type { SpriteBatch } from '../pipeline/SpriteBatch'
 /** Structural slice of R3F's `RootState.internal` that this module touches. */
 interface R3FInternal {
   interaction: Object3D[]
-  initialHits: Object3D[]
+  pointerMap?: Map<number, { initialHits: Object3D[] }>
+  /** @deprecated R3F v9 fallback. */
+  initialHits?: Object3D[]
 }
 
 interface R3FRootState {
@@ -74,8 +76,17 @@ function r3f(object: Sprite2D | SpriteBatch): R3FInstanceSlice | undefined {
 /** Live registration of a batch in an R3F interaction list. */
 interface BatchPickRegistration {
   root: R3FStore
+  /**
+   * Internal state object captured while the store is known-good. R3F can
+   * replace `internal.interaction` when removing an object, so cleanup must
+   * resolve the current array through this stable owner instead of retaining
+   * the array instance observed during registration.
+   */
+  internal: R3FInternal
   /** R3F-managed member sprites whose picking is proxied through the batch. */
   sprites: Set<Sprite2D>
+  /** Whether this batch produced a hit during R3F's current raycast pass. */
+  currentRaycastHit: boolean
 }
 
 const registrations = new WeakMap<SpriteBatch, BatchPickRegistration>()
@@ -113,11 +124,11 @@ const MARKER = (): void => {}
  * drag-over / drop "missed" fire on the whole interaction list unconditionally
  * when the drag/drop hit nothing, so they do NOT filter.
  *
- * The initialHits filter is exact for the dominant click (pointerdown and
- * pointerup on the same target): empty space → every member fires; on a member
- * → the others fire. It differs from R3F only in the cancelled click
- * (pointerdown on member A, pointerup on empty): R3F would fire A's
- * onPointerMissed, this skips it. Niche and arguably preferable (A was pressed).
+ * The batch raycast records whether this event currently hits any member.
+ * R3F's empty-space click path calls missed handlers for every interaction
+ * object even when one was an initial pointerdown hit, so that path forwards
+ * to every member. When the batch did produce the current hit, its forwarding
+ * stands in for R3F's filtered per-object dispatch and excludes initial hits.
  */
 function createMissedForwarder(
   reg: BatchPickRegistration,
@@ -125,7 +136,15 @@ function createMissedForwarder(
   filterInitialHits: boolean
 ): (event: unknown) => void {
   return (event: unknown): void => {
-    const initialHits = filterInitialHits ? reg.root.getState()?.internal?.initialHits : undefined
+    const pointerEvent = event as { pointerId?: number; nativeEvent?: { pointerId?: number } }
+    // R3F v10 maps pointer-less mouse events to DEFAULT_POINTER_ID (0).
+    const pointerId = pointerEvent.pointerId ?? pointerEvent.nativeEvent?.pointerId ?? 0
+    const initialHits =
+      filterInitialHits && reg.currentRaycastHit
+        ? reg.internal.pointerMap
+          ? reg.internal.pointerMap.get(pointerId)?.initialHits
+          : reg.internal.initialHits
+        : undefined
     for (const sprite of reg.sprites) {
       const inst = r3f(sprite)
       if (!inst?.eventCount) continue
@@ -133,6 +152,12 @@ function createMissedForwarder(
       inst.handlers[name]?.(event)
     }
   }
+}
+
+/** Record the result of SpriteBatch's current R3F raycast pass. @internal */
+export function recordBatchRaycastResult(batch: SpriteBatch, hit: boolean): void {
+  const registration = registrations.get(batch)
+  if (registration) registration.currentRaycastHit = hit
 }
 
 /**
@@ -155,7 +180,14 @@ export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
   // Our own proxy installs an own null too, so this doubles as the
   // idempotency guard: a re-proxied sprite already has one.
   if (Object.hasOwn(sprite, 'raycast')) return
-  const state = inst.root.getState()
+  let state: R3FRootState
+  try {
+    state = inst.root.getState()
+  } catch {
+    // Picking integration is auxiliary to batch ownership. A transient or
+    // tearing-down external store must never abort an ECS/GPU transaction.
+    return
+  }
   const interaction = state?.internal?.interaction
   if (!interaction) return
 
@@ -170,7 +202,7 @@ export function proxyPickToBatch(sprite: Sprite2D, batch: SpriteBatch): void {
   // Register the batch once per tenancy.
   let reg = registrations.get(batch)
   if (!reg) {
-    reg = { root: inst.root, sprites: new Set() }
+    reg = { root: inst.root, internal: state.internal, sprites: new Set(), currentRaycastHit: false }
     registrations.set(batch, reg)
     ;(batch as WithR3F).__r3f = {
       root: inst.root,
@@ -201,7 +233,7 @@ export function unproxyPickFromBatch(sprite: Sprite2D, batch: SpriteBatch): void
   if (reg && reg.sprites.delete(sprite) && reg.sprites.size === 0) {
     retireBatchPicking(batch)
   }
-  restoreProxiedSprite(sprite)
+  restoreProxiedSprite(sprite, reg?.internal)
 }
 
 /**
@@ -210,7 +242,7 @@ export function unproxyPickFromBatch(sprite: Sprite2D, batch: SpriteBatch): void
  * interaction list if it still has handlers. Idempotent — a no-op for a
  * sprite that isn't proxied.
  */
-function restoreProxiedSprite(sprite: Sprite2D): void {
+function restoreProxiedSprite(sprite: Sprite2D, knownInternal?: R3FInternal): void {
   if (!sprite._pickProxied) return
   sprite._pickProxied = false
   if (sprite.hitTestMode !== 'none') {
@@ -223,7 +255,14 @@ function restoreProxiedSprite(sprite: Sprite2D): void {
   // is transient: removeInteractivity filters the sprite right back out.
   const inst = r3f(sprite)
   if (inst?.eventCount && sprite.raycast !== null) {
-    const interaction = inst.root.getState()?.internal?.interaction
+    let interaction = knownInternal?.interaction
+    if (!interaction) {
+      try {
+        interaction = inst.root.getState()?.internal?.interaction
+      } catch {
+        return
+      }
+    }
     if (interaction && !interaction.includes(sprite)) interaction.push(sprite)
   }
 }
@@ -243,9 +282,8 @@ export function retireBatchPicking(batch: SpriteBatch): void {
   // a dead raycast target (unpickable, and un-re-proxyable while their
   // `raycast` stays null). Normally the last member's unproxy already
   // emptied the set; this covers dispose()/recycle with live members.
-  for (const sprite of reg.sprites) restoreProxiedSprite(sprite)
-  const interaction = reg.root.getState()?.internal?.interaction
-  if (!interaction) return
+  for (const sprite of reg.sprites) restoreProxiedSprite(sprite, reg.internal)
+  const interaction = reg.internal.interaction
   const idx = interaction.indexOf(batch)
   if (idx > -1) interaction.splice(idx, 1)
 }

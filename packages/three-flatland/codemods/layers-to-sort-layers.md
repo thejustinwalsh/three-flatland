@@ -49,7 +49,7 @@ You are migrating a TypeScript/JavaScript codebase that uses `three-flatland`. T
 
 ```bash
 rg -n '\bLayers\b|\bLayerManager\b|\bLayerConfig\b|\bLayerName\b|\bLayerValue\b|\bLayerType\b|\bSpriteLayer\b|\.layer\b|\blayer\s*[:=]|\[.layer.\]' \
-  --type ts --type tsx --type js --type jsx
+  --type ts --type js
 ```
 
 The `\.layer\b` and `\[.layer.\]` terms are deliberately broad — they surface
@@ -120,7 +120,7 @@ npm test
 The migration is successful when both pass and:
 
 ```bash
-rg -n "from ['\"]three-flatland(/react)?['\"]" -l --type ts --type tsx --type js --type jsx \
+rg -n "from ['\"]three-flatland(/react)?['\"]" -l --type ts --type js \
    --glob '!**/node_modules/**' --glob '!**/dist/**' --glob '!**/build/**' \
  | xargs rg -n '\bLayers\b|\bLayerManager\b|\bLayerConfig\b|\bLayerName\b|\bLayerValue\b|\bSpriteLayer\b' \
    --glob '!**/CHANGELOG*' --glob '!**/codemods/**'

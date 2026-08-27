@@ -76,6 +76,42 @@ When you add sprites to a `SpriteGroup`, they're grouped by material and layer i
   </TabItem>
 </Tabs>
 
+## Capacity hints
+
+`expectedSprites` is a constructor-time hint for scenes whose approximate sprite population is known. It reserves the hot CPU-side enrollment storage used by `SpriteGroup`; it does not pre-create GPU batches or limit how many sprites can be added. `Flatland` accepts the same option and forwards it to its internal `SpriteGroup`.
+
+<Tabs syncKey="framework">
+  <TabItem label="Three.js" icon="simple-icons:threedotjs">
+    ```typescript
+    const spriteGroup = new SpriteGroup({ expectedSprites: 16_384 })
+
+    // Flatland accepts the same constructor option.
+    const flatland = new Flatland({ expectedSprites: 16_384 })
+    ```
+
+  </TabItem>
+  <TabItem label="React" icon="simple-icons:react">
+    ```tsx
+    import { useMemo } from 'react'
+    import type { SpriteGroupOptions } from 'three-flatland/react'
+
+    function World() {
+      const groupArgs = useMemo(
+        () => [{ expectedSprites: 16_384 }] satisfies [SpriteGroupOptions],
+        [],
+      )
+
+      return <spriteGroup args={groupArgs}>{/* sprites */}</spriteGroup>
+    }
+    ```
+
+  </TabItem>
+</Tabs>
+
+The hint is advisory, not a hard cap. Enrollment continues automatically past it with bounded storage growth. `clear()` keeps the reservation available for reuse; `dispose()` releases it.
+
+In React Three Fiber, pass a stable or memoized options tuple through `args`. `expectedSprites` is intentionally not a mutable JSX property, so changing the hint means changing the memoized constructor args and letting React Three Fiber reconstruct the object. Do not write `<spriteGroup expectedSprites={...}>` or `<flatland expectedSprites={...}>`.
+
 ## Renderer Options
 
 The `SpriteGroup` constructor accepts optional batch configuration:
@@ -90,6 +126,9 @@ const spriteGroup = new SpriteGroup({
 })
 scene.add(spriteGroup)
 ```
+
+`maxBatchSize` must be a positive integer no greater than 1,048,576. The default tier ladder is tuned for normal
+sprite workloads; use a fixed size only when a measured scene benefits from a specific batch capacity.
 
 ## Scene-graph hierarchy
 

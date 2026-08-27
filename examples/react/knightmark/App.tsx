@@ -19,6 +19,17 @@ import {
 import { exampleRendererColorConfig } from './rendererColorManagement'
 import { ExampleFallback } from './ExampleFallback'
 import { DevtoolsProvider, usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
+import {
+  DEFAULT_BENCHMARK_SEED,
+  benchmarkParams,
+  booleanParam,
+  createBenchmarkSimulationGate,
+  createSeededRandom,
+  integerParam,
+  numberParam,
+  publishBenchmarkReady,
+  rendererGpuAdapterInfo,
+} from '../../_shared/benchmark'
 // Knightmark doesn't render any gem-background layer — its sprites
 // fill the viewport. The body bg (#16191e) shows through during
 // initial sprite load. GEM/GemBackground imports intentionally
@@ -40,6 +51,14 @@ const TRIP_LERP_RATE = 5
 const IDLE_AFTER_TRIP_MS = 400
 
 const VIEW_SIZE = 640
+
+const benchmarkQuery = benchmarkParams()
+const benchmarkEnabled = benchmarkQuery.get('bench') === '1'
+const requestedSprites = integerParam(benchmarkQuery, 'sprites', integerParam(benchmarkQuery, 'spawn', 10))
+const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
+const collisionsEnabled = booleanParam(benchmarkQuery, 'collisions', true)
+const fixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
+const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
 
 // Tilemap
 const TILE_PX = 16
@@ -204,7 +223,8 @@ function spawnKnight(
   sheet: SpriteSheet,
   spriteGroup: SpriteGroup,
   bounds: { left: number; right: number; top: number; bottom: number },
-  simParams: { speedMin: number; speedMax: number; knightScale: number }
+  simParams: { speedMin: number; speedMax: number; knightScale: number },
+  random: () => number
 ): Knight {
   const margin = simParams.knightScale / 2
   // Opaque alphaTest material enables the GPU depth-test fast path:
@@ -223,11 +243,11 @@ function spawnKnight(
     material,
   })
   sprite.scale.set(simParams.knightScale, simParams.knightScale, 1)
-  const x = bounds.left + margin + Math.random() * (bounds.right - bounds.left - margin * 2)
-  const y = bounds.bottom + margin + Math.random() * (bounds.top - bounds.bottom - margin * 2)
+  const x = bounds.left + margin + random() * (bounds.right - bounds.left - margin * 2)
+  const y = bounds.bottom + margin + random() * (bounds.top - bounds.bottom - margin * 2)
   sprite.position.set(x, y, 0)
-  const speed = simParams.speedMin + Math.random() * (simParams.speedMax - simParams.speedMin)
-  const angle = Math.random() * Math.PI * 2
+  const speed = simParams.speedMin + random() * (simParams.speedMax - simParams.speedMin)
+  const angle = random() * Math.PI * 2
   const baseVx = Math.cos(angle) * speed
   const baseVy = Math.sin(angle) * speed
   const animName = speed < SPEED_THRESHOLD ? 'idle' : 'run'
@@ -267,7 +287,7 @@ function KnightmarkScene({
   knightScale,
   knightStatsRef,
 }: KnightmarkSceneProps) {
-  const { camera, size } = useThree()
+  const { camera, gl: renderer, size } = useThree()
 
   // Load assets (presets automatically apply NearestFilter)
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json')
@@ -277,6 +297,7 @@ function KnightmarkScene({
   const knightsRef = useRef<Knight[]>([])
   const spatialHashRef = useRef(new SpatialHash(hitRadius * 4))
   const boundsRef = useRef({ left: 0, right: 0, top: 0, bottom: 0 })
+  const randomRef = useRef(benchmarkEnabled ? createSeededRandom(benchmarkSeed) : Math.random)
 
   // Store latest sim params in refs for use in useFrame
   const simRef = useRef({ speedMin, speedMax, hitRadius, knightScale })
@@ -356,7 +377,7 @@ function KnightmarkScene({
       const bounds = boundsRef.current
       const sim = simRef.current
       for (let i = 0; i < count; i++) {
-        knightsRef.current.push(spawnKnight(knightSheet, r2d, bounds, sim))
+        knightsRef.current.push(spawnKnight(knightSheet, r2d, bounds, sim, randomRef.current))
       }
     },
     [knightSheet]
@@ -364,17 +385,26 @@ function KnightmarkScene({
 
   // Initial spawn + expose add handler
   useEffect(() => {
-    spawnBatch(10)
+    const group = spriteGroupRef.current
+    const knights = knightsRef.current
+    randomRef.current = benchmarkEnabled ? createSeededRandom(benchmarkSeed) : Math.random
+    spawnBatch(requestedSprites)
     addKnightsRef.current = () => spawnBatch(100)
     return () => {
       addKnightsRef.current = null
+      for (const knight of knights) {
+        group?.remove(knight.sprite)
+        knight.sprite.dispose()
+      }
+      knights.length = 0
     }
   }, [spawnBatch, addKnightsRef])
 
   // Game loop
   useFrame((_, delta) => {
-    const dt = delta
-    const deltaMs = delta * 1000
+    if (!simulationGate.advance()) return
+    const deltaMs = fixedDeltaMs ?? delta * 1000
+    const dt = deltaMs / 1000
     const knights = knightsRef.current
     const spatialHash = spatialHashRef.current
     const bounds = boundsRef.current
@@ -436,31 +466,37 @@ function KnightmarkScene({
       k.sprite.update(deltaMs)
     }
 
-    // Knight-knight collisions via spatial hash
-    spatialHash.clear()
-    for (const k of knights) spatialHash.insert(k)
-    const collisionDist = sim.hitRadius * 2
-    const collisionDistSq = collisionDist * collisionDist
-    for (const k of knights) {
-      if (k.state !== 'WALK') continue
-      spatialHash.forEachNeighbor(k, (other) => {
+    if (collisionsEnabled) {
+      // Knight-knight collisions via spatial hash. Match the Three variant:
+      // one reusable visitor closure per frame, not one per sprite.
+      spatialHash.clear()
+      for (const knight of knights) spatialHash.insert(knight)
+      const collisionDist = sim.hitRadius * 2
+      const collisionDistSq = collisionDist * collisionDist
+      let current = knights[0]!
+      const visitor = (other: Knight): boolean => {
         if (other.state !== 'WALK') return false
-        const dx = other.sprite.position.x - k.sprite.position.x
-        const dy = other.sprite.position.y - k.sprite.position.y
+        const dx = other.sprite.position.x - current.sprite.position.x
+        const dy = other.sprite.position.y - current.sprite.position.y
         const distSq = dx * dx + dy * dy
         if (distSq < collisionDistSq) {
-          const tripChanceA = k.speed / (k.speed + other.speed)
-          if (Math.random() < tripChanceA) {
-            triggerTrip(k)
+          const tripChanceA = current.speed / (current.speed + other.speed)
+          if (randomRef.current() < tripChanceA) {
+            triggerTrip(current)
             triggerRoll(other)
           } else {
             triggerTrip(other)
-            triggerRoll(k)
+            triggerRoll(current)
           }
           return true
         }
         return false
-      })
+      }
+      for (const knight of knights) {
+        if (knight.state !== 'WALK') continue
+        current = knight
+        spatialHash.forEachNeighbor(knight, visitor)
+      }
     }
 
     // Update knight-batch monitors. Refresh bindings every frame — the
@@ -473,6 +509,29 @@ function KnightmarkScene({
       knightStatsRef.current.batches = s.batchCount
     }
   })
+
+  useFrame(
+    () => {
+      const renderedGroup = spriteGroupRef.current
+      if (!benchmarkEnabled || !renderedGroup) return
+      // R3F's finish phase runs after its render phase. Publishing here proves
+      // the first readiness payload observes a completed batching/render pass.
+      publishBenchmarkReady({
+        example: 'knightmark',
+        variant: 'react',
+        seed: benchmarkSeed,
+        fixedDeltaMs: fixedDeltaMs ?? null,
+        collisionsEnabled,
+        requestedSprites,
+        actualSprites: knightsRef.current.length,
+        actualBatches: renderedGroup.stats.batchCount,
+        simulationGated: benchmarkEnabled,
+        simulationFrame: simulationGate.frame(),
+        gpuAdapter: rendererGpuAdapterInfo(renderer),
+      })
+    },
+    { phase: 'finish' }
+  )
 
   return (
     <>

@@ -342,9 +342,9 @@ export class DevtoolsProvider {
    * internal passes complete and the batch set is stable. No-op when
    * no consumer is subscribed to the `'batches'` feature.
    */
-  captureBatches(registry: RegistryData): void {
+  captureBatches(registry: object): void {
     if (!this._active) return
-    this._batches.captureBatches(registry)
+    this._batches.captureBatches(registry as RegistryData)
   }
 
   endFrame(renderer: WebGPURenderer): void {

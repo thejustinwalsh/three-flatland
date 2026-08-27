@@ -2,6 +2,8 @@ import type { Camera, Scene, WebGLRenderer } from 'three'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import { computeRunKey } from '../ecs/batchUtils'
 import { getOrCreateRegistry, peekRegistry, type Registry, type RendererLike } from './registry'
+import { getSpriteGroupWorld, isSpriteGroupRuntimeLive } from '../internal/sprite-group-runtime'
+import { rollbackSpriteManagedMaterialResolution, spriteEntity, spriteWorld } from '../internal/sprite-runtime'
 
 /**
  * Lazy materialization — dual-signal registration.
@@ -30,6 +32,8 @@ import { getOrCreateRegistry, peekRegistry, type Registry, type RendererLike } f
  */
 const PRIME_SYMBOL = Symbol.for('three-flatland.prime')
 
+type AutoRegistrySprite = { _autoRegistry: Registry | null }
+
 interface ScenePrimeState {
   /** Sprites awaiting a renderer — drained by the chained scene hook. */
   pending: Set<Sprite2D>
@@ -55,7 +59,7 @@ function getPrimeState(scene: Scene): ScenePrimeState {
  * or already auto-registered are left alone.
  */
 export function flatlandPrime(scene: Scene, sprite: Sprite2D): void {
-  if (sprite._disposed || sprite._flatlandWorld || sprite._autoRegistry) return
+  if (sprite._disposed || spriteWorld(sprite) || (sprite as unknown as AutoRegistrySprite)._autoRegistry) return
   const state = getPrimeState(scene)
   state.pending.add(sprite)
   sprite._pendingPrimeScene = scene
@@ -68,11 +72,27 @@ export function flatlandPrime(scene: Scene, sprite: Sprite2D): void {
  * frames' orchestration.
  */
 export function flatlandRegister(sprite: Sprite2D, renderer: RendererLike, scene: Scene): void {
-  if (sprite._disposed || sprite._flatlandWorld || sprite._autoRegistry) return
+  if (sprite._disposed || spriteWorld(sprite) || (sprite as unknown as AutoRegistrySprite)._autoRegistry) return
   const state = getPrimeState(scene)
   installSceneHook(scene, state)
   const registry = getOrCreateRegistry(renderer, scene)
-  registerSprite(registry, sprite)
+  try {
+    if (registerSprite(registry, sprite)) {
+      // A same-scene remove/re-add callback may have re-primed this sprite
+      // while material resolution was in flight. The committed ownership is
+      // authoritative; do not leave a duplicate pending registration behind.
+      state.pending.delete(sprite)
+    } else if (isEligibleForAutoRegistration(scene, sprite)) {
+      state.pending.add(sprite)
+      sprite._pendingPrimeScene = scene
+    }
+  } catch (error) {
+    if (isEligibleForAutoRegistration(scene, sprite)) {
+      state.pending.add(sprite)
+      sprite._pendingPrimeScene = scene
+    }
+    throw error
+  }
 }
 
 /**
@@ -81,20 +101,21 @@ export function flatlandRegister(sprite: Sprite2D, renderer: RendererLike, scene
  * enrolled (auto-batch slice); here we drop the bookkeeping.
  */
 export function flatlandUnregister(sprite: Sprite2D): void {
-  const registry = sprite._autoRegistry
+  const runtimeSprite = sprite as unknown as AutoRegistrySprite
+  const registry = runtimeSprite._autoRegistry
   if (registry) {
     registry.sprites.delete(sprite)
     registry.standalone.delete(sprite)
     registry._autoEvalDirty = true
-    sprite._autoRegistry = null
+    runtimeSprite._autoRegistry = null
     // Enrolled? Free the slot through the standard removal path and
     // resume own-mesh drawing (harmless if the sprite left the tree).
-    if (sprite.entity) {
+    if (spriteEntity(sprite)) {
       registry.group._releaseDirectEnrollment(sprite)
     }
     // Auto ownership is scene-scoped. A later authored reparent may adopt
     // this sprite into an explicit SpriteGroup with a different ECS world.
-    sprite._flatlandWorld = null
+    sprite._releaseWorldOwnership()
     sprite._setBatchSuppressed(false)
   }
   // Not yet drained from a pending set? Clear it there too.
@@ -148,37 +169,70 @@ function installSceneHook(scene: Scene, state: ScenePrimeState): void {
  */
 export function flatlandSceneSweep(renderer: RendererLike, scene: Scene): void {
   const state = getPrimeState(scene)
-  const registry = state.pending.size > 0 ? getOrCreateRegistry(renderer, scene) : null
+  // Peeking also replaces a terminal registry and carries its still-authored
+  // members into the replacement's recovery queue. Drain that queue before
+  // choosing whether this sweep has registration work.
+  let registry = peekRegistry(renderer, scene)
+  if (!registry && state.pending.size > 0) registry = getOrCreateRegistry(renderer, scene)
+  if (registry) queueRegistryRecovery(registry, state)
 
-  if (registry) {
-    for (const sprite of state.pending) {
-      registerSprite(registry, sprite)
+  const registrationRegistry = state.pending.size > 0 ? registry : null
+  if (registrationRegistry) {
+    for (const sprite of Array.from(state.pending)) {
+      // Material cleanup may terminalize the hidden group. Never send the
+      // untouched tail of this snapshot through the captured dead registry;
+      // it remains pending for a fresh registry on the next sweep.
+      if (!isSpriteGroupRuntimeLive(registrationRegistry.group)) break
+      // Remove before invoking material disposal callbacks. A callback may
+      // detach the sprite and call flatlandUnregister; leaving it in the set
+      // until the end would resurrect a ghost on the next sweep.
+      state.pending.delete(sprite)
+      try {
+        if (registerSprite(registrationRegistry, sprite)) {
+          state.pending.delete(sprite)
+        } else if (isEligibleForAutoRegistration(scene, sprite)) {
+          state.pending.add(sprite)
+          sprite._pendingPrimeScene = scene
+        }
+      } catch (error) {
+        if (isEligibleForAutoRegistration(scene, sprite)) {
+          state.pending.add(sprite)
+          sprite._pendingPrimeScene = scene
+        }
+        throw error
+      }
     }
-    state.pending.clear()
   }
 
   // Threshold evaluation runs whenever standalone membership changed —
   // Signal-B registrations and removals mark the registry dirty for the
   // next sweep.
-  const evalRegistry = registry ?? peekDirtyRegistry(renderer, scene)
+  const liveRegistry =
+    registrationRegistry && isSpriteGroupRuntimeLive(registrationRegistry.group) ? registrationRegistry : null
+  const evalRegistry = liveRegistry ?? (state.pending.size === 0 && registry?._autoEvalDirty ? registry : null)
   if (evalRegistry && evalRegistry._autoEvalDirty) {
     evaluateAutoBatch(evalRegistry)
   }
 
-  if (registry || evalRegistry) {
+  if (liveRegistry || evalRegistry) {
     // Run the schedule now so this render call's projection picks up any
     // batching mutations (scene.updateMatrixWorld — the normal schedule
     // trigger — already ran earlier in this render call). The
     // scheduleRuns counter keeps this from double-running systems on
     // frames where nothing was pending.
-    ;(registry ?? evalRegistry)!.group._runScheduleNow()
+    ;(liveRegistry ?? evalRegistry)!.group._runScheduleNow()
   }
 }
 
-/** Resolve an existing registry only when it has evaluation work queued. */
-function peekDirtyRegistry(renderer: RendererLike, scene: Scene): Registry | null {
-  const existing = peekRegistry(renderer, scene)
-  return existing && existing._autoEvalDirty ? existing : null
+/** Move terminal-registry survivors into the scene's normal transaction. */
+function queueRegistryRecovery(registry: Registry, state: ScenePrimeState): void {
+  for (const sprite of registry._recoveryCandidates) {
+    if (isEligibleForAutoRegistration(registry.scene, sprite)) {
+      state.pending.add(sprite)
+      sprite._pendingPrimeScene = registry.scene
+    }
+  }
+  registry._recoveryCandidates.clear()
 }
 
 /**
@@ -201,7 +255,7 @@ export function evaluateAutoBatch(registry: Registry): void {
     if (sprite._disposed) {
       registry.standalone.delete(sprite)
       registry.sprites.delete(sprite)
-      sprite._autoRegistry = null
+      ;(sprite as unknown as AutoRegistrySprite)._autoRegistry = null
       continue
     }
     if (sprite._renderOrderOverridden) continue // explicit escape hatch
@@ -230,29 +284,83 @@ export function evaluateAutoBatch(registry: Registry): void {
  * sprite keeps drawing via its own Mesh until the auto-batch slice
  * flips on enrollment/threshold routing.
  */
-function registerSprite(registry: Registry, sprite: Sprite2D): void {
-  if (sprite._disposed) return
-  if (sprite._autoRegistry === registry) return
-  if (sprite._flatlandWorld && sprite._flatlandWorld !== registry.world) return
+function registerSprite(registry: Registry, sprite: Sprite2D): boolean {
+  if (sprite._disposed || !isEligibleForAutoRegistration(registry.scene, sprite)) return false
+  const runtimeSprite = sprite as unknown as AutoRegistrySprite
+  if (runtimeSprite._autoRegistry === registry) return true
+  const world = spriteWorld(sprite)
+  if (world && world !== getSpriteGroupWorld(registry.group)) return false
 
   attachOrchestratorGroup(registry)
-  registry.sprites.add(sprite)
-  sprite._autoRegistry = registry
-  sprite._pendingPrimeScene = null
+  const previousMaterial = sprite.material
+  const bootstrapDefault = sprite._materialIsBootstrapDefault
+  const registryDefault = sprite._materialWasRegistryDefault
+  const bootstrapVariant = sprite._materialIsBootstrapVariant
+  const registryVariant = sprite._materialWasRegistryVariant
 
-  // Resolve the bootstrap default (or bootstrap effect variant) to this
-  // registry's world-scoped store so effect registration / dispose stay
-  // isolated per registry.
-  if (sprite._materialIsBootstrapDefault && sprite.texture) {
-    sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
-  } else if (sprite._materialIsBootstrapVariant && sprite.texture) {
-    sprite._resolveEffectVariantMaterial(registry.getEffectVariant(sprite.texture, sprite._currentVariantOptions()))
+  try {
+    // Resolve before publishing ownership. Staging-material disposal is
+    // user-extensible and may terminalize the hidden group or detach/adopt
+    // the sprite reentrantly.
+    if ((bootstrapDefault || registryDefault) && sprite.texture) {
+      sprite._resolveDefaultMaterial(registry.getDefaultMaterial(sprite.texture))
+    } else if ((bootstrapVariant || registryVariant) && sprite.texture) {
+      sprite._resolveEffectVariantMaterial(registry.getEffectVariant(sprite.texture, sprite._currentVariantOptions()))
+    }
+
+    if (
+      !isSpriteGroupRuntimeLive(registry.group) ||
+      !isEligibleForAutoRegistration(registry.scene, sprite) ||
+      spriteWorld(sprite) ||
+      runtimeSprite._autoRegistry
+    ) {
+      if (!spriteWorld(sprite) && !runtimeSprite._autoRegistry && sprite.material !== previousMaterial) {
+        rollbackSpriteManagedMaterialResolution(
+          sprite,
+          previousMaterial,
+          bootstrapDefault,
+          registryDefault,
+          bootstrapVariant,
+          registryVariant
+        )
+      }
+      return false
+    }
+  } catch (error) {
+    if (!spriteWorld(sprite) && !runtimeSprite._autoRegistry && sprite.material !== previousMaterial) {
+      try {
+        rollbackSpriteManagedMaterialResolution(
+          sprite,
+          previousMaterial,
+          bootstrapDefault,
+          registryDefault,
+          bootstrapVariant,
+          registryVariant
+        )
+      } catch {
+        // Preserve the exact material-resolution failure.
+      }
+    }
+    throw error
   }
 
-  // Queue for threshold evaluation — the sweep decides standalone vs
-  // batched from the live run population.
+  registry.sprites.add(sprite)
   registry.standalone.add(sprite)
+  runtimeSprite._autoRegistry = registry
+  sprite._pendingPrimeScene = null
   registry._autoEvalDirty = true
+  return true
+}
+
+/** True while the sprite is still authored below the scene being swept. */
+function isEligibleForAutoRegistration(scene: Scene, sprite: Sprite2D): boolean {
+  if (sprite._disposed) return false
+  let parent = sprite.parent
+  while (parent) {
+    if (parent === scene) return true
+    parent = parent.parent
+  }
+  return false
 }
 
 /** Parent the hidden orchestrator group into the scene exactly once. */

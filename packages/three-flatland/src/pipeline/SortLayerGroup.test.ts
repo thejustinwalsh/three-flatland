@@ -1,6 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { Group, Mesh, Texture } from 'three'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { SpriteGroup } from './SpriteGroup'
 import { SortLayerGroup } from './SortLayerGroup'
@@ -20,10 +19,6 @@ describe('SortLayerGroup discipline container', () => {
 
   beforeEach(() => {
     texture = makeTexture()
-  })
-
-  afterEach(() => {
-    universe.reset()
   })
 
   it('assigns sortLayer to first-party children and renderOrder to foreign children', () => {

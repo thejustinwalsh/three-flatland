@@ -78,6 +78,21 @@ export class Tileset {
     for (const [id, tile] of data.tiles) {
       this.tiles.set(id, tile)
       if (tile.animation) {
+        if (tile.animation.length === 0) {
+          throw new Error(`Tileset ${data.name} tile ${id} animation must contain at least one frame`)
+        }
+        let cycleDuration = 0
+        for (const [frameIndex, frame] of tile.animation.entries()) {
+          if (!Number.isFinite(frame.duration) || frame.duration <= 0) {
+            throw new Error(
+              `Tileset ${data.name} tile ${id} animation frame ${frameIndex} duration must be a finite positive number`
+            )
+          }
+          cycleDuration += frame.duration
+        }
+        if (!Number.isFinite(cycleDuration)) {
+          throw new Error(`Tileset ${data.name} tile ${id} animation total duration must be finite`)
+        }
         this.animatedTiles.set(id, tile.animation)
       }
     }

@@ -1,0 +1,12 @@
+import { Texture } from 'three'
+import { Flatland, Sprite2D, Sprite2DMaterial } from 'three-flatland'
+
+export function createBasicThreeConsumer(): Flatland {
+  const texture = new Texture()
+  texture.image = { width: 16, height: 16 }
+  const material = new Sprite2DMaterial({ map: texture })
+  const sprite = new Sprite2D({ material, texture })
+  const flatland = new Flatland({ viewSize: 320 })
+  flatland.add(sprite)
+  return flatland
+}

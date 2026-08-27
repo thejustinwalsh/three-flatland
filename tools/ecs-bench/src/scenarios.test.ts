@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createWorld as createKootaWorld, universe as kootaUniverse } from 'koota'
 import { component, type Trait } from './adapter.ts'
 import { createFlatlandRuntimeAdapter } from './adapters/flatland-runtime.ts'
 import { kootaAdapter } from './adapters/koota.ts'
@@ -97,6 +98,7 @@ const FLATLAND_CONTRACT = {
     recycleHorizon: {
       sameIndexThroughout: true,
       everAliasedOriginal: false,
+      firstAliasRecycle: null,
       originalAliveAtEnd: false,
       finalHandleDiffers: true,
     },
@@ -163,6 +165,7 @@ const KOOTA_BASELINE = {
     recycleHorizon: {
       sameIndexThroughout: true,
       everAliasedOriginal: true,
+      firstAliasRecycle: 256,
       originalAliveAtEnd: false,
       finalHandleDiffers: true,
     },
@@ -366,12 +369,13 @@ describe('Flatland entity-store behavior contract', () => {
     // removal; destroy is terminal cleanup and emits no consumer event.
     expect(koota.generationSafety.destruction).toEqual({ removedEvents: 1 })
 
-    // Koota's packed handle has a 12-bit generation and aliases the original
-    // handle on the 4,096th recycle. Flatland uses safe-integer generations
+    // Koota's packed handle has an 8-bit generation and aliases the original
+    // handle on the 256th recycle. Flatland uses safe-integer generations
     // and retires an index when it reaches the last safe generation.
     expect(koota.generationSafety.recycleHorizon).toEqual({
       sameIndexThroughout: true,
       everAliasedOriginal: true,
+      firstAliasRecycle: 256,
       originalAliveAtEnd: false,
       finalHandleDiffers: true,
     })
@@ -380,5 +384,42 @@ describe('Flatland entity-store behavior contract', () => {
     // Flatland treats stale-source unassignment as a structural bug, matching
     // every other mutating operation on a stale handle.
     expect(koota.exclusiveAssignment.staleSourceUnassignThrew).toBe(false)
+  })
+})
+
+describe('Koota packed-handle alias boundaries', () => {
+  it('aliases a stale handle immediately across world reset', () => {
+    kootaUniverse.reset()
+    const world = createKootaWorld()
+
+    try {
+      const stale = world.spawn()
+      world.reset()
+      const current = world.spawn()
+
+      expect(current).toBe(stale)
+      expect(world.has(stale)).toBe(true)
+    } finally {
+      world.destroy()
+      kootaUniverse.reset()
+    }
+  })
+
+  it('aliases a stale handle when a destroyed world ID is reused', () => {
+    kootaUniverse.reset()
+    const first = createKootaWorld()
+    const stale = first.spawn()
+    first.destroy()
+    const second = createKootaWorld()
+
+    try {
+      const current = second.spawn()
+
+      expect(current).toBe(stale)
+      expect(second.has(stale)).toBe(true)
+    } finally {
+      second.destroy()
+      kootaUniverse.reset()
+    }
   })
 })

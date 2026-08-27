@@ -34,6 +34,8 @@ export class AnimationController {
   private loopCount: number = 0
   private speed: number = 1
   private direction: 1 | -1 = 1 // For ping-pong
+  private timelineShareable: boolean = false
+  private timelineRevision: number = 0
 
   // Current play options
   private options: PlayOptions = {}
@@ -84,7 +86,7 @@ export class AnimationController {
   /**
    * Play an animation.
    */
-  play(name: string, options: PlayOptions = {}): this {
+  play(name: string, options?: PlayOptions): this {
     const animation = this.animations.get(name)
     if (!animation) {
       console.warn(`Animation not found: ${name}`)
@@ -93,20 +95,27 @@ export class AnimationController {
 
     // If same animation and already playing, optionally restart
     if (this.current?.name === name && this.playing && !this.paused) {
-      if (options.startFrame === undefined) {
+      if (options?.startFrame === undefined) {
         return this // Continue playing
       }
     }
+    if (options?.speed !== undefined && !Number.isFinite(options.speed)) {
+      throw new Error('AnimationController.play speed must be finite')
+    }
+
+    const resolvedOptions = options ?? {}
 
     this.current = animation
-    this.frameIndex = options.startFrame ?? 0
+    this.frameIndex = resolvedOptions.startFrame ?? 0
     this.elapsed = 0
     this.playing = true
     this.paused = false
     this.loopCount = 0
-    this.speed = options.speed ?? 1
+    this.speed = resolvedOptions.speed ?? 1
     this.direction = 1
-    this.options = options
+    this.options = resolvedOptions
+    this.timelineShareable = options === undefined
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
 
     return this
   }
@@ -116,6 +125,7 @@ export class AnimationController {
    */
   pause(): this {
     this.paused = true
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -124,6 +134,7 @@ export class AnimationController {
    */
   resume(): this {
     this.paused = false
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -136,6 +147,8 @@ export class AnimationController {
     this.current = null
     this.frameIndex = 0
     this.elapsed = 0
+    this.timelineShareable = false
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -146,6 +159,7 @@ export class AnimationController {
     if (this.current && index >= 0 && index < this.current.frames.length) {
       this.frameIndex = index
       this.elapsed = 0
+      this.timelineRevision = (this.timelineRevision + 1) >>> 0
     }
     return this
   }
@@ -157,6 +171,9 @@ export class AnimationController {
    * @param onEvent Callback when frame event fires
    */
   update(deltaMs: number, onFrame?: FrameCallback, onEvent?: EventCallback): void {
+    if (!Number.isFinite(deltaMs)) {
+      throw new Error('AnimationController.update deltaMs must be finite')
+    }
     if (!this.current || !this.playing || this.paused) {
       return
     }
@@ -168,15 +185,23 @@ export class AnimationController {
     const pingPong = animation.pingPong ?? false
     const maxLoops = animation.loopCount ?? -1
 
-    // Calculate frame duration
-    const currentAnimFrame = frames[this.frameIndex]
-    const frameDuration = currentAnimFrame?.duration ?? 1000 / fps
-
-    // Accumulate time
-    this.elapsed += deltaMs * this.speed
+    // Accumulate time only after proving the multiplication cannot poison the
+    // controller or turn the catch-up loop into an infinite loop.
+    const nextElapsed = this.elapsed + deltaMs * this.speed
+    if (!Number.isFinite(nextElapsed)) {
+      throw new Error('AnimationController.update resulting elapsed time must be finite')
+    }
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
+    this.elapsed = nextElapsed
 
     // Check if we need to advance frames
-    while (this.elapsed >= frameDuration && this.playing) {
+    while (this.playing) {
+      // Per-frame durations can differ. Recompute after each transition so a
+      // large delta catches up against the duration of the frame it is
+      // actually consuming rather than reusing the entry frame's duration.
+      const currentAnimFrame = frames[this.frameIndex]
+      const frameDuration = currentAnimFrame?.duration ?? 1000 / fps
+      if (!(frameDuration > 0) || this.elapsed < frameDuration) break
       this.elapsed -= frameDuration
 
       // Determine next frame
@@ -298,7 +323,11 @@ export class AnimationController {
    * Set playback speed.
    */
   setSpeed(speed: number): this {
+    if (!Number.isFinite(speed)) {
+      throw new Error('AnimationController.setSpeed speed must be finite')
+    }
     this.speed = speed
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
     return this
   }
 
@@ -324,5 +353,7 @@ export class AnimationController {
     this.animations.clear()
     this.current = null
     this.options = {}
+    this.timelineShareable = false
+    this.timelineRevision = (this.timelineRevision + 1) >>> 0
   }
 }

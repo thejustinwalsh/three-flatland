@@ -1,11 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { entityFor, traitFor, enrollInWorld } from '../ecs/testUtils.type-test'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { BufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Texture } from 'three'
 import { getCurrentStack, setCurrentStack, stack } from 'three/tsl'
 import { EventNode } from 'three/webgpu'
-import { createWorld, universe } from 'koota'
+import { createWorld } from '../ecs/runtime'
+import { requiredEntity } from '../ecs/testUtils.type-test'
+import { SpriteMaterialRef } from '../ecs/traits'
 import { MaterialEffect, createMaterialEffect } from './MaterialEffect'
 import type { EffectNodeContext } from './MaterialEffect'
 import { Sprite2DMaterial } from './Sprite2DMaterial'
+import { MAX_MATERIAL_EFFECTS } from './effectFlagBits'
 import {
   Sprite2D,
   LIT_FLAG_MASK,
@@ -13,6 +17,7 @@ import {
   PIXEL_PERFECT_MASK,
   EFFECT_BIT_OFFSET,
 } from '../sprites/Sprite2D'
+import { Flatland } from '../Flatland'
 
 // Default low bits set by the coordinated pixel-art preset.
 const DEFAULT_FLAGS = LIT_FLAG_MASK | RECEIVE_SHADOWS_MASK | PIXEL_PERFECT_MASK
@@ -32,6 +37,88 @@ const E4 = E(4) // fifth
 // ============================================
 
 describe('createMaterialEffect', () => {
+  it('rejects reserved and flattened-collision schema keys atomically', () => {
+    const make = (name: string, schema: Record<string, unknown>) =>
+      createMaterialEffect({
+        name,
+        schema: schema as never,
+        node: ({ inputColor }) => inputColor,
+      })
+    const Effects = [
+      make('reserved_constructor', { constructor: 1 }),
+      make('reserved_own', { name: 1 }),
+      make('reserved_method', { _setField: 1 }),
+      make('flattened_collision', { vector: [0, 0], vector_0: 1 }),
+      make('invalid_non_array', { value: 'invalid' }),
+      make('invalid_vec1', { value: [1] }),
+      make('invalid_vec5', { value: [1, 2, 3, 4, 5] }),
+      make('invalid_component', { value: [1, 'invalid'] }),
+      make('invalid_scalar', { value: Number.NaN }),
+    ]
+
+    for (const Effect of Effects) {
+      expect(() => new Effect()).toThrow(/conflicts|flatten|numeric tuple|finite/)
+      expect(Effect._initialized).toBe(false)
+    }
+  })
+
+  it('rejects schema accessors and initializes from one cloned descriptor snapshot', () => {
+    let getterReads = 0
+    const accessorSchema = Object.defineProperty({}, 'vector', {
+      enumerable: true,
+      get() {
+        getterReads++
+        return [1, 2]
+      },
+    })
+    const AccessorEffect = createMaterialEffect({
+      name: 'material_accessor_schema',
+      schema: accessorSchema as never,
+      node: ({ inputColor }) => inputColor,
+    })
+    expect(() => new AccessorEffect()).toThrow(/own data property; accessors are not supported/)
+    expect(getterReads).toBe(0)
+    expect(AccessorEffect._initialized).toBe(false)
+
+    let descriptorReads = 0
+    const proxySchema = new Proxy(
+      { vector: [1, 2] },
+      {
+        getOwnPropertyDescriptor(target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, property)!
+          descriptorReads++
+          return { ...descriptor, value: descriptorReads === 1 ? [1, 2] : [1, 2, 3, 4, 5] }
+        },
+      }
+    )
+    const SnapshotEffect = createMaterialEffect({
+      name: 'material_snapshot_schema',
+      schema: proxySchema as never,
+      node: ({ inputColor }) => inputColor,
+    })
+    const snapshot = new SnapshotEffect()
+    expect(descriptorReads).toBe(1)
+    expect(SnapshotEffect._fields).toEqual([{ name: 'vector', size: 2, default: [1, 2] }])
+    expect(snapshot.vector).toEqual([1, 2])
+  })
+
+  it('uses null-prototype records for valid schema metadata and instance snapshots', () => {
+    const Effect = createMaterialEffect({
+      name: 'null_proto_records',
+      schema: { constructor_value: 1, toString_value: () => 7 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const effect = new Effect()
+
+    expect(Object.getPrototypeOf(Effect._fieldKeys)).toBeNull()
+    expect(Object.getPrototypeOf(Effect._constantFactories)).toBeNull()
+    expect(Object.getPrototypeOf(effect._defaults)).toBeNull()
+    expect(Object.getPrototypeOf(effect._constants)).toBeNull()
+    effect.constructor_value = 9
+    expect(effect.constructor_value).toBe(9)
+    expect(effect.toString_value).toBe(7)
+  })
+
   it('should create a class with correct effectName and schema', () => {
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
@@ -43,7 +130,7 @@ describe('createMaterialEffect', () => {
     expect(Dissolve.effectSchema.progress).toBe(0)
   })
 
-  it('should auto-create a Koota trait from schema', () => {
+  it('should auto-create a numeric ECS trait from schema', () => {
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
       schema: { progress: 0 },
@@ -52,7 +139,7 @@ describe('createMaterialEffect', () => {
 
     // Initialize to create the trait
     Dissolve._initialize()
-    expect(typeof Dissolve._trait).toBe('function')
+    expect(typeof traitFor(Dissolve)).toBe('function')
   })
 
   it('should compute field metadata from schema', () => {
@@ -175,6 +262,58 @@ describe('class-based MaterialEffect', () => {
     const dissolve = new DissolveEffect()
     expect(dissolve.name).toBe('dissolve')
     expect(dissolve.progress).toBe(0)
+    expect(Object.getOwnPropertyDescriptor(dissolve, 'progress')?.configurable).toBe(false)
+  })
+
+  it('rejects emitted subclass fields that would shadow uniform or constant accessors', () => {
+    class UniformShadow extends MaterialEffect {
+      static readonly effectName = 'uniform_shadow'
+      static readonly effectSchema = { progress: 0 } as const
+      progress = 1
+      static override buildNode({ inputColor }: EffectNodeContext) {
+        return inputColor
+      }
+    }
+    class ConstantShadow extends MaterialEffect {
+      static readonly effectName = 'constant_shadow'
+      static readonly effectSchema = { mode: () => 'base' } as const
+      mode = 'field'
+      static override buildNode({ inputColor }: EffectNodeContext) {
+        return inputColor
+      }
+    }
+
+    expect(() => new UniformShadow()).toThrow(/Cannot redefine property: progress/)
+    expect(() => new ConstantShadow()).toThrow(/Cannot redefine property: mode/)
+  })
+
+  it('initializes independent metadata for second-level subclasses', () => {
+    class ParentEffect extends MaterialEffect {
+      static readonly effectName = 'parent_effect'
+      static readonly effectSchema: typeof MaterialEffect.effectSchema = { parentValue: 1 }
+      declare parentValue: number
+      static override buildNode({ inputColor }: EffectNodeContext) {
+        return inputColor
+      }
+    }
+    class ChildEffect extends ParentEffect {
+      static override readonly effectName = 'child_effect'
+      static override readonly effectSchema: typeof MaterialEffect.effectSchema = { childValue: 2 }
+      declare childValue: number
+      static override buildNode({ inputColor }: EffectNodeContext) {
+        return inputColor
+      }
+    }
+
+    const parent = new ParentEffect()
+    const child = new ChildEffect()
+
+    expect(parent.parentValue).toBe(1)
+    expect(child.childValue).toBe(2)
+    expect(ParentEffect._fields.map(({ name }) => name)).toEqual(['parentValue'])
+    expect(ChildEffect._fields.map(({ name }) => name)).toEqual(['childValue'])
+    expect(Object.hasOwn(ChildEffect, '_initialized')).toBe(true)
+    expect(traitFor(ChildEffect)).not.toBe(traitFor(ParentEffect))
   })
 })
 
@@ -214,10 +353,93 @@ describe('MaterialEffect instances', () => {
     })
 
     const flash = new Flash()
+    const initial = flash.color
+    expect(initial).toEqual([1, 0, 0])
+    expect(flash.color).toBe(initial)
+    expect(Object.isFrozen(initial)).toBe(true)
+    expect(() => {
+      ;(initial as unknown as number[])[0] = 9
+    }).toThrow(TypeError)
     expect(flash.color).toEqual([1, 0, 0])
 
     flash.color = [0, 1, 0]
-    expect(flash.color).toEqual([0, 1, 0])
+    const updated = flash.color
+    expect(updated).toEqual([0, 1, 0])
+    expect(updated).not.toBe(initial)
+    expect(flash.color).toBe(updated)
+    expect(initial).toEqual([1, 0, 0])
+
+    flash.color = [0, 1, 0]
+    expect(flash.color).toBe(updated)
+  })
+
+  it('keeps changed vector writes allocation-free until the next read', () => {
+    const Effect = createMaterialEffect({
+      name: 'lazy_material_vector_snapshot',
+      schema: { vector: [0, 0, 0] as const },
+      node: ({ inputColor }) => inputColor,
+    })
+    const effect = new Effect()
+    const staging = effect._defaults.vector
+    const freeze = vi.spyOn(Object, 'freeze')
+
+    try {
+      for (let i = 1; i <= 3_000; i++) effect.vector = [i, i + 1, i + 2]
+
+      expect(effect._defaults.vector).toBe(staging)
+      expect(freeze).not.toHaveBeenCalled()
+
+      const snapshot = effect.vector
+      expect(snapshot).toEqual([3_000, 3_001, 3_002])
+      expect(freeze).toHaveBeenCalledOnce()
+      expect(effect.vector).toBe(snapshot)
+      expect(freeze).toHaveBeenCalledOnce()
+    } finally {
+      freeze.mockRestore()
+    }
+  })
+
+  it('keeps ordinary scalar reads off the TileMap override lookup path', () => {
+    const Effect = createMaterialEffect({
+      name: 'direct_material_scalar_read',
+      schema: { amount: 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const detached = new Effect()
+    let detachedGets = -1
+    const detachedGet = vi.spyOn(WeakMap.prototype, 'get')
+    try {
+      for (let i = 0; i < 100; i++) void detached.amount
+      detachedGets = detachedGet.mock.calls.length
+    } finally {
+      detachedGet.mockRestore()
+    }
+    expect(detachedGets).toBe(0)
+
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Effect)
+    const sprite = new Sprite2D({ texture, material })
+    const enrolled = new Effect()
+    sprite.addEffect(enrolled)
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+    let enrolledGets = -1
+    const enrolledGet = vi.spyOn(WeakMap.prototype, 'get')
+    try {
+      for (let i = 0; i < 100; i++) void enrolled.amount
+      enrolledGets = enrolledGet.mock.calls.length
+    } finally {
+      enrolledGet.mockRestore()
+    }
+    // Entity + trait resolution are the two existing ECS lookups; there is
+    // no third lookup for a TileMap-only transactional override.
+    expect(enrolledGets).toBe(200)
+
+    sprite.dispose()
+    world.dispose()
+    material.dispose()
   })
 
   it('should have independent instances', () => {
@@ -235,6 +457,155 @@ describe('MaterialEffect instances', () => {
     expect(d1.progress).toBe(0.3)
     expect(d2.progress).toBe(0.7)
   })
+
+  it('atomically rejects a second instance of the same effect class standalone and enrolled', () => {
+    const Effect = createMaterialEffect({
+      name: 'single_instance_per_class',
+      schema: { value: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Effect)
+    const sprite = new Sprite2D({ texture, material })
+    const first = new Effect()
+    const rejected = new Effect()
+    sprite.addEffect(first)
+
+    expect(() => sprite.addEffect(rejected)).toThrow(/only one 'single_instance_per_class' instance/)
+    expect(sprite._effects).toEqual([first])
+    expect(sprite._effectFlags).toBe(E0)
+    expect(rejected._sprite).toBeNull()
+    expect(entityFor(rejected)).toBeNull()
+
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+    const entity = requiredEntity(sprite)
+    const routeBefore = world.read(entity, SpriteMaterialRef)
+    const traitBefore = world.read(entity, traitFor(Effect))
+
+    expect(() => sprite.addEffect(rejected)).toThrow(/only one 'single_instance_per_class' instance/)
+    expect(sprite._effects).toEqual([first])
+    expect(sprite._effectFlags).toBe(E0)
+    expect(world.read(entity, SpriteMaterialRef)).toEqual(routeBefore)
+    expect(world.read(entity, traitFor(Effect))).toEqual(traitBefore)
+    expect(rejected._sprite).toBeNull()
+    expect(entityFor(rejected)).toBeNull()
+    world.dispose()
+  })
+
+  it('atomically rejects an effect instance owned by a different sprite', () => {
+    const Effect = createMaterialEffect({
+      name: 'cross_owner_rejection',
+      schema: { value: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const materialA = new Sprite2DMaterial({ map: texture })
+    const materialB = new Sprite2DMaterial({ map: texture })
+    materialA.registerEffect(Effect)
+    materialB.registerEffect(Effect)
+    const spriteA = new Sprite2D({ texture, material: materialA })
+    const spriteB = new Sprite2D({ texture, material: materialB })
+    const effect = new Effect()
+    effect.value = 0.75
+    spriteA.addEffect(effect)
+
+    const world = createWorld()
+    enrollInWorld(spriteA, world)
+    enrollInWorld(spriteB, world)
+    const entityA = requiredEntity(spriteA)
+    const entityB = requiredEntity(spriteB)
+    const traitA = world.read(entityA, traitFor(Effect))
+    const routeA = world.read(entityA, SpriteMaterialRef)
+    const routeB = world.read(entityB, SpriteMaterialRef)
+
+    expect(() => spriteB.addEffect(effect)).toThrow(/already attached to a different sprite/)
+    expect(spriteA._effects).toEqual([effect])
+    expect(spriteB._effects).toEqual([])
+    expect(spriteA._effectFlags).toBe(E0)
+    expect(spriteB._effectFlags).toBe(0)
+    expect(spriteA.material).toBe(materialA)
+    expect(spriteB.material).toBe(materialB)
+    expect(world.read(entityA, SpriteMaterialRef)).toEqual(routeA)
+    expect(world.read(entityB, SpriteMaterialRef)).toEqual(routeB)
+    expect(world.read(entityA, traitFor(Effect))).toEqual(traitA)
+    expect(world.has(entityB, traitFor(Effect))).toBe(false)
+    expect(effect._sprite).toBe(spriteA)
+    expect(entityFor(effect)).toBe(entityA)
+    world.dispose()
+  })
+
+  it('uses injective constant-variant keys and reuses only identical references', () => {
+    const ConstantEffect = createMaterialEffect({
+      name: 'injective_constants',
+      schema: { left: () => null as unknown, right: () => null as unknown },
+      node: ({ inputColor }) => inputColor,
+    })
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const materialFor = (left: unknown, right: unknown): Sprite2DMaterial => {
+      const sprite = new Sprite2D({ texture })
+      const effect = new ConstantEffect()
+      effect.left = left
+      effect.right = right
+      sprite.addEffect(effect)
+      return sprite.material
+    }
+
+    const primitiveMaterials = [materialFor(1, false), materialFor('1', false), materialFor(true, false)]
+    expect(new Set(primitiveMaterials).size).toBe(3)
+
+    const delimiterLeft = materialFor('x,right=y', 'z')
+    const delimiterRight = materialFor('x', 'y,right=z')
+    expect(delimiterLeft).not.toBe(delimiterRight)
+
+    const sharedObject = { id: 1 }
+    const sameObjectA = materialFor(sharedObject, null)
+    const sameObjectB = materialFor(sharedObject, null)
+    const differentObject = materialFor({ id: 1 }, null)
+    expect(sameObjectA).toBe(sameObjectB)
+    expect(differentObject).not.toBe(sameObjectA)
+
+    const sharedFunction = () => 1
+    const sameFunctionA = materialFor(sharedFunction, undefined)
+    const sameFunctionB = materialFor(sharedFunction, undefined)
+    const differentFunction = materialFor(() => 1, undefined)
+    expect(sameFunctionA).toBe(sameFunctionB)
+    expect(differentFunction).not.toBe(sameFunctionA)
+  })
+
+  it('frames effect names and constant segments across composed variants', () => {
+    const A = createMaterialEffect({
+      name: 'a',
+      schema: { x: () => 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const B = createMaterialEffect({
+      name: 'b',
+      schema: { x: () => 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const ImpersonatingComposition = createMaterialEffect({
+      name: 'a:1:x:8:number:1;b',
+      schema: { x: () => 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const composed = new Sprite2D({ texture })
+    const single = new Sprite2D({ texture })
+
+    composed.addEffect(new A())
+    composed.addEffect(new B())
+    single.addEffect(new ImpersonatingComposition())
+
+    expect(composed.material).not.toBe(single.material)
+    expect(composed.material.getEffects()).toEqual([A, B])
+    expect(single.material.getEffects()).toEqual([ImpersonatingComposition])
+  })
 })
 
 // ============================================
@@ -242,6 +613,158 @@ describe('MaterialEffect instances', () => {
 // ============================================
 
 describe('EffectMaterial.registerEffect', () => {
+  it('atomically rejects cross-effect packed slot-key collisions', () => {
+    const First = createMaterialEffect({
+      name: 'a_b',
+      schema: { c: 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const Colliding = createMaterialEffect({
+      name: 'a',
+      schema: { b_c: 2 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const material = new Sprite2DMaterial()
+    material.registerEffect(First)
+    const before = {
+      effects: [...material._effects],
+      bits: [...material._effectBitIndex],
+      slots: [...material._effectSlots],
+      total: material._effectTotalFloats,
+      tier: material._effectTier,
+      version: material._effectSchemaVersion,
+    }
+
+    expect(() => material.registerEffect(Colliding)).toThrow(/packed slot key 'a_b_c' collides/)
+    expect({
+      effects: [...material._effects],
+      bits: [...material._effectBitIndex],
+      slots: [...material._effectSlots],
+      total: material._effectTotalFloats,
+      tier: material._effectTier,
+      version: material._effectSchemaVersion,
+    }).toEqual(before)
+  })
+
+  it('rejects a different effect class with the same name in material and sprite add paths', () => {
+    const First = createMaterialEffect({
+      name: 'duplicate_class_name',
+      schema: { first: 1 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const Different = createMaterialEffect({
+      name: 'duplicate_class_name',
+      schema: { second: 2 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(First)
+    const sprite = new Sprite2D({ texture, material })
+    const effect = new Different()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(() => sprite.addEffect(effect)).toThrow(/different effect class already owns that name/)
+      expect(warning).toHaveBeenCalledOnce()
+    } finally {
+      warning.mockRestore()
+    }
+    expect(material.getEffects()).toEqual([First])
+    expect(material.hasEffect(Different)).toBe(false)
+    expect(sprite._effects).toHaveLength(0)
+    expect(sprite._effectFlags).toBe(0)
+    expect(effect._sprite).toBeNull()
+  })
+
+  it('accepts 24 data-free effects and atomically rejects the 25th enable bit', () => {
+    const Effects = Array.from({ length: MAX_MATERIAL_EFFECTS + 1 }, (_, index) =>
+      createMaterialEffect({
+        name: `zero-data-${index}`,
+        schema: {},
+        node: ({ inputColor }) => inputColor,
+      })
+    )
+    const material = new Sprite2DMaterial()
+
+    for (const Effect of Effects.slice(0, MAX_MATERIAL_EFFECTS)) material.registerEffect(Effect)
+
+    expect(material.getEffects()).toHaveLength(MAX_MATERIAL_EFFECTS)
+    expect(material._effectBitIndex.get('zero-data-0')).toBe(EFFECT_BIT_OFFSET)
+    expect(material._effectBitIndex.get(`zero-data-${MAX_MATERIAL_EFFECTS - 1}`)).toBe(
+      EFFECT_BIT_OFFSET + MAX_MATERIAL_EFFECTS - 1
+    )
+    expect(material._effectTotalFloats).toBe(0)
+
+    const before = {
+      effects: [...material._effects],
+      constants: [...material._effectConstants],
+      slots: [...material._effectSlots].map(([key, slot]) => [key, { ...slot }] as const),
+      bitIndices: [...material._effectBitIndex],
+      totalFloats: material._effectTotalFloats,
+      tier: material._effectTier,
+      defaultTier: material._defaultEffectTier,
+      schemaVersion: material._effectSchemaVersion,
+      instanceAttributes: [...material._instanceAttributes],
+      colorNode: material.colorNode,
+    }
+
+    expect(() => material.registerEffect(Effects[MAX_MATERIAL_EFFECTS]!)).toThrow(
+      `exceeding the exact Float32 capacity of ${MAX_MATERIAL_EFFECTS}`
+    )
+
+    expect({
+      effects: [...material._effects],
+      constants: [...material._effectConstants],
+      slots: [...material._effectSlots].map(([key, slot]) => [key, { ...slot }] as const),
+      bitIndices: [...material._effectBitIndex],
+      totalFloats: material._effectTotalFloats,
+      tier: material._effectTier,
+      defaultTier: material._defaultEffectTier,
+      schemaVersion: material._effectSchemaVersion,
+      instanceAttributes: [...material._instanceAttributes],
+      colorNode: material.colorNode,
+    }).toEqual(before)
+  })
+
+  it('atomically rejects a 25th constants effect before changing sprite, ECS route, or cache', () => {
+    const Effects = Array.from({ length: MAX_MATERIAL_EFFECTS + 1 }, (_, index) =>
+      createMaterialEffect({
+        name: `constant-provider-${index}`,
+        schema: { variant: () => index },
+        node: ({ inputColor }) => inputColor,
+      })
+    )
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const sprite = new Sprite2D({ texture })
+    for (const Effect of Effects.slice(0, MAX_MATERIAL_EFFECTS)) sprite.addEffect(new Effect())
+
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+    const entity = requiredEntity(sprite)
+    const RejectedEffect = Effects[MAX_MATERIAL_EFFECTS]!
+    const rejected = new RejectedEffect()
+    const materialBefore = sprite.material
+    const effectsBefore = [...sprite._effects]
+    const flagsBefore = sprite._effectFlags
+    const routeBefore = world.read(entity, SpriteMaterialRef)
+    const getShared = vi.spyOn(Sprite2DMaterial, 'getShared')
+
+    expect(() => sprite.addEffect(rejected)).toThrow(`exceeding the exact Float32 capacity of ${MAX_MATERIAL_EFFECTS}`)
+    expect(getShared).not.toHaveBeenCalled()
+    getShared.mockRestore()
+    expect(sprite.material).toBe(materialBefore)
+    expect(sprite._effects).toEqual(effectsBefore)
+    expect(sprite._effectFlags).toBe(flagsBefore)
+    expect(world.read(entity, SpriteMaterialRef)).toEqual(routeBefore)
+    expect(rejected._sprite).toBeNull()
+    expect(entityFor(rejected)).toBeNull()
+    expect(materialBefore.getEffects()).toHaveLength(MAX_MATERIAL_EFFECTS)
+    expect(materialBefore.hasEffect(RejectedEffect)).toBe(false)
+    world.dispose()
+  })
+
   it('should register effect class and assign slot offsets', () => {
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
@@ -467,7 +990,14 @@ describe('Sprite2D.addEffect', () => {
 
     const dissolve = new Dissolve()
     dissolve.progress = 0.5
-    sprite.addEffect(dissolve)
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      sprite.addEffect(dissolve)
+      expect(warning).toHaveBeenCalledOnce()
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('auto-registering now triggers a shader recompile'))
+    } finally {
+      warning.mockRestore()
+    }
 
     // Now registered
     expect(material.hasEffect(Dissolve)).toBe(true)
@@ -481,6 +1011,7 @@ describe('Sprite2D.addEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new Dissolve()
     dissolve.progress = 0.5
@@ -507,6 +1038,7 @@ describe('Sprite2D.addEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new Dissolve()
     dissolve.progress = 0.75
@@ -532,6 +1064,7 @@ describe('Sprite2D.addEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DamageFlash)
     const sprite = new Sprite2D({ texture, material })
     const flash = new DamageFlash()
     flash.intensity = 0.8
@@ -561,6 +1094,8 @@ describe('Sprite2D.addEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
+    material.registerEffect(Flash)
     const sprite = new Sprite2D({ texture, material })
 
     const dissolve = new Dissolve()
@@ -658,6 +1193,7 @@ describe('Sprite2D.removeEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new Dissolve()
     dissolve.progress = 0.5
@@ -678,6 +1214,7 @@ describe('Sprite2D.removeEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new Dissolve()
     dissolve.progress = 0.75
@@ -706,6 +1243,8 @@ describe('Sprite2D.removeEffect', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
+    material.registerEffect(Flash)
     const sprite = new Sprite2D({ texture, material })
 
     const dissolve = new Dissolve()
@@ -770,6 +1309,7 @@ describe('Enable flags bitmask', () => {
     )
 
     const material = new Sprite2DMaterial({ map: texture, effectTier: 16 })
+    for (const EffectClass of effects) material.registerEffect(EffectClass)
     const sprite = new Sprite2D({ texture, material })
 
     // Enable all 5 effects
@@ -806,6 +1346,9 @@ describe('Enable flags bitmask', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(A)
+    material.registerEffect(B)
+    material.registerEffect(C)
     const sprite = new Sprite2D({ texture, material })
 
     const a = new A()
@@ -856,11 +1399,11 @@ describe('Snapshot pattern', () => {
 })
 
 // ============================================
-// _setField: trait-only writes for enrolled sprites
+// _setField: direct ECS/batch writes for enrolled sprites
 // ============================================
 
 describe('_setField ECS integration', () => {
-  // Create effect classes at describe level so traits survive universe.reset()
+  // Create effect classes once so each case exercises the same declarations.
   const DissolveEnrolled = createMaterialEffect({
     name: 'dissolve_enrolled',
     schema: { progress: 0 },
@@ -880,15 +1423,16 @@ describe('_setField ECS integration', () => {
     texture.image = { width: 100, height: 100 }
   })
 
-  it('on enrolled sprite: writes trait, no buffer sync', () => {
+  it('on enrolled unbatched sprite: writes ECS state without mutating its own buffer', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveEnrolled)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new DissolveEnrolled()
     sprite.addEffect(dissolve)
 
     // Enroll in world
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Get initial own buffer value — progress is now at slot 0
     // (effectBuf0.x) since system flags/enable bits moved off effectBuf0.
@@ -896,20 +1440,22 @@ describe('_setField ECS integration', () => {
     const array = (buf0 as unknown as { array: Float32Array }).array
     const initialValue = array[0]
 
-    // Change progress — should write to trait only, NOT to own buffer
+    // Change progress — ECS state changes, while the standalone own buffer
+    // remains staged until this enrolled sprite is demoted back to it.
     dissolve.progress = 0.9
 
     // Own buffer should NOT have changed
     expect(array[0]).toBe(initialValue)
 
-    // But reading progress should return new value (from trait)
+    // Reading progress returns the new value from the cached ECS store.
     expect(dissolve.progress).toBeCloseTo(0.9)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('on standalone sprite: writes snapshot + own buffer', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveStandalone)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new DissolveStandalone()
     sprite.addEffect(dissolve)
@@ -923,6 +1469,124 @@ describe('_setField ECS integration', () => {
     const array = (buf0 as unknown as { array: Float32Array }).array
     expect(array[0]).toBeCloseTo(0.9)
   })
+
+  it('returns immutable memoized vector snapshots while enrolled', () => {
+    const VectorEffect = createMaterialEffect({
+      name: 'enrolled_vector_snapshot',
+      schema: { vector: [1, 2, 3] as const },
+      node: ({ inputColor }) => inputColor,
+    })
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(VectorEffect)
+    const sprite = new Sprite2D({ texture, material })
+    const effect = new VectorEffect()
+    sprite.addEffect(effect)
+    const world = createWorld()
+    enrollInWorld(sprite, world)
+
+    const initial = effect.vector
+    expect(initial).toEqual([1, 2, 3])
+    expect(effect.vector).toBe(initial)
+    expect(Object.isFrozen(initial)).toBe(true)
+    expect(() => {
+      ;(initial as unknown as number[])[1] = 99
+    }).toThrow(TypeError)
+    expect(effect.vector).toEqual([1, 2, 3])
+
+    const trait = traitFor(VectorEffect)
+    const entity = requiredEntity(sprite)
+    const store = world.store(trait)
+    const index = world.index(entity)
+    store.vector_0![index] = 7
+    store.vector_1![index] = 8
+    store.vector_2![index] = 9
+    const ecsUpdated = effect.vector
+    expect(ecsUpdated).toEqual([7, 8, 9])
+    expect(ecsUpdated).not.toBe(initial)
+    expect(effect.vector).toBe(ecsUpdated)
+    expect(initial).toEqual([1, 2, 3])
+
+    const cloned = sprite.clone()
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof VectorEffect>
+    expect(clonedEffect.vector).toEqual([7, 8, 9])
+
+    effect.vector = [1, 2, 3]
+    expect(store.vector_0![index]).toBe(1)
+    expect(store.vector_1![index]).toBe(2)
+    expect(store.vector_2![index]).toBe(3)
+    const restored = effect.vector
+    expect(restored).toEqual([1, 2, 3])
+    expect(restored).not.toBe(ecsUpdated)
+    expect(ecsUpdated).toEqual([7, 8, 9])
+
+    effect.vector = [4, 5, 6]
+    const updated = effect.vector
+    expect(updated).toEqual([4, 5, 6])
+    expect(updated).not.toBe(ecsUpdated)
+    expect(effect.vector).toBe(updated)
+    expect(initial).toEqual([1, 2, 3])
+    expect(ecsUpdated).toEqual([7, 8, 9])
+
+    sprite._unenrollFromWorld()
+    const detached = effect.vector
+    expect(detached).toEqual([4, 5, 6])
+    expect(Object.isFrozen(detached)).toBe(true)
+    expect(effect.vector).toBe(detached)
+    expect(() => {
+      ;(detached as unknown as number[])[2] = 99
+    }).toThrow(TypeError)
+    expect(effect.vector).toEqual([4, 5, 6])
+
+    cloned.dispose()
+    world.dispose()
+  })
+
+  it('rejects an oversized standalone vector without corrupting the following packed lane', () => {
+    const VectorAndSentinel = createMaterialEffect({
+      name: 'vector_and_sentinel',
+      schema: { vector: [1, 2] as const, sentinel: 73 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(VectorAndSentinel)
+    const sprite = new Sprite2D({ texture, material })
+    const effect = new VectorAndSentinel()
+    sprite.addEffect(effect)
+    const buffer = sprite.geometry.getAttribute('effectBuf0') as unknown as { array: Float32Array }
+    const before = buffer.array.slice()
+    expect([...before.subarray(0, 4)]).toEqual([1, 2, 73, 0])
+
+    expect(() => effect._setField('vector', [9, 8, 404])).toThrow(/2 numeric components/)
+
+    expect(effect.vector).toEqual([1, 2])
+    expect(effect.sentinel).toBe(73)
+    expect(buffer.array[2]).toBe(73)
+    expect(buffer.array).toEqual(before)
+
+    const reads = [0, 0]
+    const divergent = new Proxy([9, 8], {
+      get(target, property, receiver) {
+        if (property === '0' || property === '1') reads[Number(property)]!++
+        return Reflect.get(target, property, receiver)
+      },
+    })
+    effect._setField('vector', divergent)
+    expect(reads).toEqual([1, 1])
+    expect(effect.vector).toEqual([9, 8])
+    expect(buffer.array[2]).toBe(73)
+
+    const beforeThrow = buffer.array.slice()
+    const throwing = new Proxy([4, 5], {
+      get(target, property, receiver) {
+        if (property === '1') throw new Error('component read failed')
+        return Reflect.get(target, property, receiver)
+      },
+    })
+    expect(() => effect._setField('vector', throwing)).toThrow('component read failed')
+    expect(effect.vector).toEqual([9, 8])
+    expect(effect.sentinel).toBe(73)
+    expect(buffer.array).toEqual(beforeThrow)
+  })
 })
 
 // ============================================
@@ -934,10 +1598,10 @@ describe('_setField ECS integration', () => {
 // ============================================
 
 // ============================================
-// addEffect for already-enrolled sprites (Changed trigger)
+// addEffect for already-enrolled sprites (trait publication)
 // ============================================
 
-describe('addEffect triggers Changed for enrolled sprites', () => {
+describe('addEffect publishes traits for enrolled sprites', () => {
   const DissolveChanged = createMaterialEffect({
     name: 'dissolve_changed',
     schema: { progress: 0 },
@@ -952,33 +1616,35 @@ describe('addEffect triggers Changed for enrolled sprites', () => {
     texture.image = { width: 100, height: 100 }
   })
 
-  it('should trigger Changed when adding effect to enrolled sprite', () => {
+  it('should publish the effect trait when adding to an enrolled sprite', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveChanged)
     const sprite = new Sprite2D({ texture, material })
 
     // Enroll first, then add effect (simulates conditional rendering)
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     const dissolve = new DissolveChanged()
     dissolve.progress = 0.6
     sprite.addEffect(dissolve)
 
     // Trait should exist with correct value
-    expect(sprite.entity!.has(DissolveChanged._trait)).toBe(true)
-    const traitData = sprite.entity!.get(DissolveChanged._trait) as Record<string, number>
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveChanged))).toBe(true)
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveChanged)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.6)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('should preserve defaults when adding to enrolled sprite', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveChanged)
     const sprite = new Sprite2D({ texture, material })
 
     // Enroll first
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Create effect, set props, then add (simulates R3F applyProps before attach)
     const dissolve = new DissolveChanged()
@@ -987,10 +1653,10 @@ describe('addEffect triggers Changed for enrolled sprites', () => {
     sprite.addEffect(dissolve)
 
     // Trait should have value from _defaults (set before attachment)
-    const traitData = sprite.entity!.get(DissolveChanged._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveChanged)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.42)
 
-    world.destroy()
+    world.dispose()
   })
 })
 
@@ -1014,12 +1680,9 @@ describe('Effect remove + add cycle', () => {
     texture.image = { width: 100, height: 100 }
   })
 
-  afterEach(() => {
-    universe.reset()
-  })
-
   it('standalone: removeEffect + addEffect cycle preserves functionality', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveRA)
     const sprite = new Sprite2D({ texture, material })
 
     const d1 = new DissolveRA()
@@ -1050,6 +1713,7 @@ describe('Effect remove + add cycle', () => {
 
   it('enrolled: removeEffect + addEffect cycle preserves trait functionality', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveRA)
     const sprite = new Sprite2D({ texture, material })
 
     const d1 = new DissolveRA()
@@ -1058,16 +1722,16 @@ describe('Effect remove + add cycle', () => {
 
     // Enroll
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Verify initial state
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(true)
 
     // Simulate R3F detach
     sprite.removeEffect(d1)
 
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(false)
-    expect(d1._entity).toBeNull()
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(false)
+    expect(entityFor(d1)).toBeNull()
     expect(d1._sprite).toBeNull()
 
     // Simulate R3F attach with new instance
@@ -1077,19 +1741,20 @@ describe('Effect remove + add cycle', () => {
 
     // New effect should be attached with correct entity
     expect(d2._sprite).toBe(sprite)
-    expect(d2._entity).toBe(sprite.entity)
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+    expect(entityFor(d2)).toBe(entityFor(sprite))
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(true)
 
     // Property updates should write to trait (enrolled path)
     d2.progress = 0.95
-    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveRA)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.95)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('enrolled: property updates work after removeEffect + addEffect cycle', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveRA)
     const sprite = new Sprite2D({ texture, material })
 
     const d1 = new DissolveRA()
@@ -1098,10 +1763,10 @@ describe('Effect remove + add cycle', () => {
 
     // Enroll (simulates spriteGroup.add)
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Verify enrolled state
-    expect(sprite.entity!.has(DissolveRA._trait)).toBe(true)
+    expect(world.has(requiredEntity(sprite), traitFor(DissolveRA))).toBe(true)
 
     // Remove and re-add
     sprite.removeEffect(d1)
@@ -1111,22 +1776,23 @@ describe('Effect remove + add cycle', () => {
 
     // The critical test: can we update progress on the new instance?
     d2.progress = 0.85
-    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveRA)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.85)
 
     // And does _effects contain the new instance?
     expect(sprite._effects.find((e) => e.name === 'dissolve_ra')).toBe(d2)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('enrolled: effect ref functional after multiple cycles', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveRA)
     const sprite = new Sprite2D({ texture, material })
 
     // Enroll first, then add effect (like conditional rendering)
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     // Cycle 1
     const d1 = new DissolveRA()
@@ -1145,18 +1811,19 @@ describe('Effect remove + add cycle', () => {
 
     // Update directly on effect ref — the actual game pattern
     d2.progress = 0.75
-    const traitData = sprite.entity!.get(DissolveRA._trait) as Record<string, number>
+    const traitData = world.read(requiredEntity(sprite), traitFor(DissolveRA)) as Record<string, number>
     expect(traitData['progress']).toBeCloseTo(0.75)
 
-    world.destroy()
+    world.dispose()
   })
 
   it('enrolled: effect flags correct after remove + add cycle', () => {
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(DissolveRA)
     const sprite = new Sprite2D({ texture, material })
 
     const world = createWorld()
-    sprite._enrollInWorld(world)
+    enrollInWorld(sprite, world)
 
     const d1 = new DissolveRA()
     sprite.addEffect(d1)
@@ -1169,7 +1836,7 @@ describe('Effect remove + add cycle', () => {
     sprite.addEffect(d2)
     expect(sprite._effectFlags).toBe(E0)
 
-    world.destroy()
+    world.dispose()
   })
 })
 
@@ -1220,6 +1887,40 @@ describe('Sprite2D.dispose does not dispose shared material', () => {
     expect(material.getEffects()).toHaveLength(0)
   })
 
+  it('runs all internal dispose hooks and public disposal while preserving the exact first error', () => {
+    const Dissolve = createMaterialEffect({
+      name: 'dispose_first_error',
+      schema: { progress: 0 },
+      node: ({ inputColor }) => inputColor,
+    })
+    const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
+    const secondInternal = vi.fn()
+    const publicListener = vi.fn()
+    material._addPreDisposeHook(() => {
+      throw 0
+    })
+    material._addPreDisposeHook(secondInternal)
+    material.addEventListener('dispose', publicListener)
+
+    let thrown: unknown = Symbol('not-thrown')
+    try {
+      material.dispose()
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(secondInternal).toHaveBeenCalledOnce()
+    expect(publicListener).toHaveBeenCalledOnce()
+    expect(material.getEffects()).toEqual([])
+    expect(material._effectConstants.size).toBe(0)
+    expect(material._effectSlots.size).toBe(0)
+    expect(material._effectBitIndex.size).toBe(0)
+    expect(material._effectTotalFloats).toBe(0)
+    expect(material._effectTier).toBe(0)
+  })
+
   it('sprite dispose cleans up own geometry and effects', () => {
     const Dissolve = createMaterialEffect({
       name: 'dissolve_disp3',
@@ -1228,6 +1929,7 @@ describe('Sprite2D.dispose does not dispose shared material', () => {
     })
 
     const material = new Sprite2DMaterial({ map: texture })
+    material.registerEffect(Dissolve)
     const sprite = new Sprite2D({ texture, material })
     const dissolve = new Dissolve()
     sprite.addEffect(dissolve)
@@ -1247,26 +1949,224 @@ describe('Sprite2D clone with effects', () => {
 
     const Dissolve = createMaterialEffect({
       name: 'dissolve',
-      schema: { progress: 0 },
+      schema: {
+        progress: 0,
+        offset: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
       node: ({ inputColor }) => inputColor,
     })
 
     const material = new Sprite2DMaterial({ map: texture })
-    const sprite = new Sprite2D({ texture, material })
+    const unrelated = new Sprite2D({ texture })
+    const unrelatedMaterial = unrelated.material
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
     const dissolve = new Dissolve()
     dissolve.progress = 0.7
+    dissolve.offset = [3, 4]
+    material.registerEffect(Dissolve)
+    const sprite = new Sprite2D({ texture, material })
     sprite.addEffect(dissolve)
 
-    const cloned = sprite.clone()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cloned: Sprite2D
+    try {
+      cloned = sprite.clone()
+      expect(warning).not.toHaveBeenCalled()
+    } finally {
+      warning.mockRestore()
+    }
     expect(cloned._effects).toHaveLength(1)
     expect(cloned._systemFlags).toBe(DEFAULT_FLAGS)
     expect(cloned._effectFlags).toBe(E0)
+    expect(cloned.material).toBe(material)
+    expect(cloned.material).not.toBe(unrelatedMaterial)
+    expect(cloned.material._effectTier).toBeGreaterThan(8)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect(unrelated.material).toBe(unrelatedMaterial)
+    expect(unrelated.material.hasEffect(Dissolve)).toBe(false)
+    expect(unrelated.material._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
 
     // Cloned effect should be independent
     const clonedDissolve = cloned._effects[0]!
     expect(clonedDissolve).not.toBe(dissolve)
     expect(clonedDissolve.name).toBe('dissolve')
     expect((clonedDissolve as any).progress).toBeCloseTo(0.7)
+    const clonedOffset = (clonedDissolve as InstanceType<typeof Dissolve>).offset
+    expect(clonedOffset).toEqual([3, 4])
+    expect(Object.isFrozen(clonedOffset)).toBe(true)
+    expect(() => {
+      ;(clonedOffset as unknown as number[])[0] = 99
+    }).toThrow(TypeError)
+    expect((clonedDissolve as InstanceType<typeof Dissolve>).offset).toEqual([3, 4])
+    cloned.dispose()
+    unrelated.dispose()
+    sprite.dispose()
+    material.dispose()
+  })
+
+  it('preserves authored primitive and reference constants', () => {
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const ConstantEffect = createMaterialEffect({
+      name: 'sprite_clone_constants',
+      schema: {
+        amount: 0,
+        variant: () => 'default',
+        resource: () => ({ kind: 'default' }),
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const resource = { kind: 'authored' }
+    const effect = new ConstantEffect()
+    effect.amount = 4
+    effect.variant = 'authored'
+    effect.resource = resource
+    const sprite = new Sprite2D({ texture })
+    sprite.addEffect(effect)
+
+    const cloned = sprite.clone()
+    const clonedEffect = cloned._effects[0] as InstanceType<typeof ConstantEffect>
+    expect(cloned.material).toBe(sprite.material)
+    expect(clonedEffect.amount).toBe(4)
+    expect(clonedEffect.variant).toBe('authored')
+    expect(clonedEffect.resource).toBe(resource)
+
+    cloned.dispose()
+    sprite.dispose()
+  })
+
+  it('re-resolves a registry-default clone into another Flatland without touching bootstrap schema', () => {
+    const texture = new Texture()
+    texture.image = { width: 32, height: 32 }
+    const WideEffect = createMaterialEffect({
+      name: 'sprite_clone_cross_world_wide',
+      schema: {
+        direction: [0, 0] as const,
+        padding0: [0, 0, 0, 0] as const,
+        padding1: [0, 0, 0, 0] as const,
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const unrelated = new Sprite2D({ texture })
+    const unrelatedBootstrap = unrelated.material
+    const sourceFlatland = new Flatland()
+    const destinationFlatland = new Flatland()
+    const source = new Sprite2D({ texture })
+    sourceFlatland.add(source)
+    source.material.registerEffect(WideEffect)
+    source._setupInstanceAttributes()
+    const effect = new WideEffect()
+    effect.direction = [7, 8]
+    source.addEffect(effect)
+    expect(source._materialWasRegistryDefault).toBe(true)
+
+    const cloned = source.clone()
+    const stagingMaterial = cloned.material
+    const disposeStaging = vi.spyOn(stagingMaterial, 'dispose')
+    stagingMaterial.addEventListener('dispose', () => {
+      throw 0
+    })
+    expect(stagingMaterial).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapDefault).toBe(true)
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      destinationFlatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).not.toBe(stagingMaterial)
+    expect(cloned.material).not.toBe(source.material)
+    expect(cloned._materialIsBootstrapDefault).toBe(false)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(cloned.material._effectTier).toBeGreaterThan(8)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect((cloned._effects[0] as InstanceType<typeof WideEffect>).direction).toEqual([7, 8])
+    expect((Reflect.get(sourceFlatland, '_spriteMaterials') as Set<Sprite2DMaterial>).has(source.material)).toBe(true)
+    expect((Reflect.get(destinationFlatland, '_spriteMaterials') as Set<Sprite2DMaterial>).has(cloned.material)).toBe(
+      true
+    )
+    expect(entityFor(cloned)).not.toBeNull()
+    expect(destinationFlatland.spriteGroup.spriteCount).toBe(1)
+    expect(() => destinationFlatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(unrelated.material).toBe(unrelatedBootstrap)
+    expect(unrelatedBootstrap.hasEffect(WideEffect)).toBe(false)
+    expect(unrelatedBootstrap._effectTier).toBe(8)
+    expect(unrelated.geometry.getAttribute('effectBuf2')).toBeUndefined()
+
+    const destinationMaterial = cloned.material
+    destinationMaterial.dispose()
+    expect(cloned.material).not.toBe(destinationMaterial)
+    expect(cloned._materialWasRegistryDefault).toBe(true)
+    expect(cloned.material.hasEffect(WideEffect)).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+
+    destinationFlatland.dispose()
+    sourceFlatland.dispose()
+    cloned.dispose()
+    source.dispose()
+    unrelated.dispose()
+  })
+
+  it('commits same-Flatland variant clone adoption before rethrowing staging cleanup', () => {
+    const texture = new Texture()
+    texture.image = { width: 16, height: 16 }
+    const VariantEffect = createMaterialEffect({
+      name: 'sprite_clone_same_world_variant',
+      schema: {
+        amount: [0, 0, 0, 0] as const,
+        padding: [0, 0, 0, 0] as const,
+        tail: [0, 0] as const,
+        variant: () => 'default',
+      },
+      node: ({ inputColor }) => inputColor,
+    })
+    const flatland = new Flatland()
+    const source = new Sprite2D({ texture })
+    flatland.add(source)
+    const effect = new VariantEffect()
+    effect.amount = [1, 2, 3, 4]
+    effect.variant = 'authored'
+    source.addEffect(effect)
+    const cloned = source.clone()
+    const staging = cloned.material
+    const disposeStaging = vi.spyOn(staging, 'dispose')
+    staging.addEventListener('dispose', () => {
+      throw 0
+    })
+
+    let thrown: unknown = Symbol('not thrown')
+    try {
+      flatland.add(cloned)
+    } catch (error) {
+      thrown = error
+    }
+    expect(thrown).toBe(0)
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(entityFor(cloned)).not.toBeNull()
+    expect(flatland.spriteGroup.spriteCount).toBe(2)
+    expect(() => flatland.add(cloned)).not.toThrow()
+    expect(disposeStaging).toHaveBeenCalledTimes(1)
+
+    const managedVariant = cloned.material
+    managedVariant.dispose()
+    expect(cloned.material).not.toBe(managedVariant)
+    expect(cloned.material).toBe(source.material)
+    expect(cloned._materialWasRegistryVariant).toBe(true)
+    expect(cloned.geometry.getAttribute('effectBuf2')).toBeDefined()
+    expect((cloned._effects[0] as InstanceType<typeof VariantEffect>).amount).toEqual([1, 2, 3, 4])
+
+    flatland.dispose()
+    cloned.dispose()
+    source.dispose()
   })
 })
 

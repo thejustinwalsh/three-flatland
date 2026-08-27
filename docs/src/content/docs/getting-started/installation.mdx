@@ -3,10 +3,11 @@ title: Installation
 description: Install three-flatland in your project.
 ---
 
-import { Tabs, TabItem, Aside } from 'starlight-theme/components';
+import { Tabs, TabItem, Aside } from 'starlight-theme/components'
 
 <Aside type="caution" title="Alpha Release">
-  three-flatland is in alpha. Expect breaking changes between releases. Consider pinning the exact version in your `package.json` until you're ready to migrate.
+  three-flatland is in alpha. Expect breaking changes between releases. Consider pinning the exact version in your
+  `package.json` until you're ready to migrate.
 </Aside>
 
 ## Package Manager
@@ -14,22 +15,22 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 <Tabs syncKey="pkg">
   <TabItem label="npm" icon="simple-icons:npm">
     ```bash
-    npm install three-flatland three koota
+    npm install three-flatland three
     ```
   </TabItem>
   <TabItem label="pnpm" icon="simple-icons:pnpm">
     ```bash
-    pnpm add three-flatland three koota
+    pnpm add three-flatland three
     ```
   </TabItem>
   <TabItem label="yarn" icon="simple-icons:yarn">
     ```bash
-    yarn add three-flatland three koota
+    yarn add three-flatland three
     ```
   </TabItem>
   <TabItem label="bun" icon="simple-icons:bun">
     ```bash
-    bun add three-flatland three koota
+    bun add three-flatland three
     ```
   </TabItem>
   <TabItem label="agents" icon="lucide:sparkles">
@@ -39,8 +40,8 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
 
     Read the API reference: https://tjw.dev/three-flatland/llms-full.txt
 
-    Install: npm install three-flatland three koota
-    Requires: three.js ^0.185.1, koota, WebGPURenderer from "three/webgpu"
+    Install: npm install three-flatland three
+    Requires: three.js ^0.185.1 and WebGPURenderer from "three/webgpu"
     Import from: "three-flatland"
 
     Create a minimal project with a Sprite2D on screen. Include:
@@ -48,6 +49,7 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components';
     - Orthographic camera
     - A sprite loaded with TextureLoader
     ```
+
   </TabItem>
 </Tabs>
 
@@ -68,7 +70,7 @@ React is not required. If you're using React Three Fiber, add the additional dep
   </TabItem>
   <TabItem label="yarn" icon="simple-icons:yarn">
     ```bash
-    yarn add three-flatland @react-three/fiber@10.0.0-alpha.3 three koota react@~19.2.0 react-dom@~19.2.0
+    yarn add three-flatland @react-three/fiber@10.0.0-alpha.3 three react@~19.2.0 react-dom@~19.2.0
     ```
   </TabItem>
   <TabItem label="bun" icon="simple-icons:bun">
@@ -96,13 +98,13 @@ React is not required. If you're using React Three Fiber, add the additional dep
     - useFrame for per-frame animation (refs + imperative updates)
     - useState(() => ...) for WASM objects (SkiaPaint, SkiaPath) — survives strict mode
     ```
+
   </TabItem>
 </Tabs>
 
 ## Requirements
 
 - **Three.js**: ^0.185.1 (required for TSL/WebGPU support)
-- **koota**: ^0.6.5 (ECS for batch rendering)
 - **React**: ~19.2.0 (for `three-flatland/react`; R3F alpha.3 requires `React < 19.3`)
 - **@react-three/fiber**: 10.0.0-alpha.3 (for `three-flatland/react`)
 - **Node.js**: >= 22 (LTS)

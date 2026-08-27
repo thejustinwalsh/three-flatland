@@ -76,6 +76,19 @@ function measureCurrentKernelSizes(): EvidenceReport {
 const currentSizeReport = measureCurrentKernelSizes()
 
 describe('checked-in ECS evidence', () => {
+  it('keeps every final-manifest checksum synchronized with its artifact', () => {
+    const manifest = readFileSync(resolve(resultDirectory, 'final-evidence-manifest.md'), 'utf8')
+    const checksums = [...manifest.matchAll(/^\| `([^`]+)`\s+\| `([a-f0-9]{64})`\s+\|$/gm)]
+
+    expect(checksums.length).toBeGreaterThan(0)
+    for (const [, artifact, expected] of checksums) {
+      const actual = createHash('sha256')
+        .update(readFileSync(resolve(resultDirectory, artifact!)))
+        .digest('hex')
+      expect(actual, artifact).toBe(expected)
+    }
+  })
+
   it.each(['kernel-baseline.json', 'kernel-size.json', 'numeric-storage.json'])(
     '%s matches the current harness source',
     (name) => {
@@ -94,9 +107,9 @@ describe('checked-in ECS evidence', () => {
     expect(signature!.brotliBytes).toBeLessThanOrEqual(3_800)
   })
 
-  it('keeps the private production runtime under the isolated size caps', () => {
+  it('keeps the statically shipped private runtime under the isolated size caps', () => {
     const runtime = currentSizeReport.measurements?.find(
-      ({ artifact }) => artifact === 'Flatland private production runtime'
+      ({ artifact }) => artifact === 'Flatland shipped runtime with capacity'
     )
     expect(runtime).toBeDefined()
     expect(runtime!.minifiedBytes).toBeLessThanOrEqual(12_000)

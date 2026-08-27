@@ -1,6 +1,8 @@
-import type { World } from 'koota'
+import { select, type World } from '../runtime'
 import { LightingContext } from '../traits'
 import type { ChannelName } from '../../materials/channels'
+
+const LightingContexts = select(LightingContext)
 
 /**
  * Push wrappedLightFn + requiredChannels to all tracked sprite materials.
@@ -9,10 +11,10 @@ import type { ChannelName } from '../../materials/channels'
  * Clears the dirty flag after processing.
  */
 export function lightMaterialAssignSystem(world: World): void {
-  const ctxEntities = world.query(LightingContext)
+  const ctxEntities = world.view(LightingContexts)
   if (ctxEntities.length === 0) return
 
-  const ctx = ctxEntities[0]!.get(LightingContext)
+  const ctx = world.read(ctxEntities[0]!, LightingContext)
   if (!ctx || !ctx.dirty) return
 
   ctx.dirty = false

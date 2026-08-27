@@ -1,4 +1,5 @@
-export { entityGeneration, entityIndex, type Entity } from './entity'
+export { entityGeneration, entityIndex, type Entity, type EntityHandle } from './entity'
+export type { TraitHandle, WorldHandle } from '../../internal/ecs-handles'
 export {
   added,
   changed,

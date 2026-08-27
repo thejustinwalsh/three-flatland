@@ -2,9 +2,9 @@ import { Activity, act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Texture } from 'three'
 import { createRoot, extend } from '@react-three/fiber/webgpu'
-import { universe } from 'koota'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
+import { spriteEntity } from '../internal/sprite-runtime'
 
 extend({ Sprite2D, SpriteGroup })
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -18,7 +18,6 @@ const renderer = {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  universe.reset()
 })
 
 describe('React Activity', () => {
@@ -136,25 +135,25 @@ describe('React Activity', () => {
     const scene = store.getState().scene
     scene.updateMatrixWorld(true)
     const sprite = spriteRef.current!
-    expect(sprite.entity).not.toBeNull()
+    expect(spriteEntity(sprite)).not.toBeNull()
     expect(sprite._hierarchyManaged).toBe(false)
     expect(sprite.visible).toBe(true)
     // Direct SpriteGroup sources are not Object3D children, so their own
     // Mesh discriminator can remain intact without creating a second draw.
     expect(sprite.isMesh).toBe(true)
     expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(20)
-    const retainedEntity = sprite.entity
+    const retainedEntity = spriteEntity(sprite)
 
     await renderView('hidden')
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).toBe(retainedEntity)
+    expect(spriteEntity(sprite)).toBe(retainedEntity)
     expect(sprite.visible).toBe(false)
     expect(sprite.isMesh).toBe(true)
     expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(0)
 
     await renderView('visible')
     scene.updateMatrixWorld(true)
-    expect(sprite.entity).toBe(retainedEntity)
+    expect(spriteEntity(sprite)).toBe(retainedEntity)
     expect(sprite.visible).toBe(true)
     expect(sprite.isMesh).toBe(true)
     expect((sprite._batchMesh!.instanceMatrix.array as Float32Array)[sprite._batchSlot * 16]).toBe(20)

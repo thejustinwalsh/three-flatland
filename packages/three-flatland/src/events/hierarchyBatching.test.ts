@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { autoRegistryFor, worldFor, entityFor } from '../ecs/testUtils.type-test'
+import { describe, expect, it, vi } from 'vitest'
 import { Group, Raycaster, Scene, Texture, Vector3 } from 'three'
-import { universe } from 'koota'
 import { SpriteGroup } from '../pipeline/SpriteGroup'
 import { Sprite2D } from '../sprites/Sprite2D'
 import { flatlandRegister, flatlandSceneSweep, flatlandUnregister } from '../orchestration/orchestrator'
+import { getSpriteBatchOwnership } from '../internal/sprite-batch-ownership'
 
 function makeSprite(scale = 20, texture = new Texture()): Sprite2D {
   const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
@@ -27,10 +28,6 @@ function batchRaycastAt(sprite: Sprite2D, x: number, y: number): number {
   const raycaster = new Raycaster(new Vector3(x, y, 100), new Vector3(0, 0, -1))
   return raycaster.intersectObject(sprite._batchMesh!).filter((hit) => hit.object === sprite).length
 }
-
-afterEach(() => {
-  universe.reset()
-})
 
 describe('auto batching preserves the source hierarchy', () => {
   it('projects public visibility writes into a directly owned batch slot', () => {
@@ -58,6 +55,136 @@ describe('auto batching preserves the source hierarchy', () => {
     spriteGroup.dispose()
   })
 
+  it.each(['remove', 'dispose'] as const)(
+    'hides a hierarchy-owned row when updateMatrix reentrantly %ss its sprite',
+    (action) => {
+      const scene = new Scene()
+      const spriteGroup = new SpriteGroup()
+      const parent = new Group()
+      const texture = new Texture()
+      const sprite = makeSprite(20, texture)
+      const peer = makeSprite(20, texture)
+      parent.add(sprite, peer)
+      spriteGroup.add(parent)
+      scene.add(spriteGroup)
+      scene.updateMatrixWorld(true)
+
+      const batch = sprite._batchMesh!
+      const ownership = getSpriteBatchOwnership(batch)
+      const slot = sprite._batchSlot
+      const owner = entityFor(sprite)!
+      const updateMatrix = sprite.updateMatrix.bind(sprite)
+      let releaseDuringUpdate = true
+      sprite.updateMatrix = () => {
+        updateMatrix()
+        if (!releaseDuringUpdate) return
+        releaseDuringUpdate = false
+        if (action === 'remove') parent.remove(sprite)
+        else sprite.dispose()
+      }
+
+      sprite.position.x = 12
+      scene.updateMatrixWorld(true)
+
+      expect(entityFor(sprite)).toBeNull()
+      expect(ownership.slotEntities[slot]).toBe(owner)
+      expect(Array.from((batch.instanceMatrix.array as Float32Array).slice(slot * 16, slot * 16 + 16))).toEqual(
+        Array(16).fill(0)
+      )
+      expect((batch.getColorAttribute().array as Float32Array)[slot * 16 + 4 + 3]).toBe(0)
+      expect(batch.grid.size).toBe(1)
+
+      scene.updateMatrixWorld(true)
+      expect(ownership.slotEntities[slot]).toBe(0)
+      spriteGroup.dispose()
+    }
+  )
+
+  it('invalidates a cached shared path after virtual updateMatrix changes parent visibility', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const parent = new Group()
+    const leading = makeSprite()
+    const mutator = makeSprite()
+    const trailing = makeSprite()
+    parent.add(leading, mutator, trailing)
+    spriteGroup.add(parent)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+
+    const updateMatrix = mutator.updateMatrix.bind(mutator)
+    mutator.updateMatrix = () => {
+      updateMatrix()
+      parent.visible = false
+    }
+    mutator.position.x = 1
+    scene.updateMatrixWorld(true)
+
+    // The leading row was already committed before user code changed the
+    // parent. The custom sprite and every later standard sprite observe the
+    // new authored visibility during the same pass.
+    expect(instanceSlot(leading)[0]).toBe(20)
+    expect(instanceSlot(mutator)[0]).toBe(0)
+    expect(instanceSlot(trailing)[0]).toBe(0)
+
+    spriteGroup.dispose()
+  })
+
+  it('keeps transform scratch isolated across nested updates in two worlds', () => {
+    const sceneA = new Scene()
+    const sceneB = new Scene()
+    const groupA = new SpriteGroup()
+    const groupB = new SpriteGroup()
+    const parentA = new Group()
+    const parentB = new Group()
+    const texture = new Texture()
+    const spriteA = makeSprite(20, texture)
+    const peerA = makeSprite(20, texture)
+    const spriteB = makeSprite(20, texture)
+    const peerB = makeSprite(20, texture)
+
+    groupA.position.x = 100
+    parentA.position.x = 10
+    spriteA.position.x = 1
+    parentA.add(spriteA, peerA)
+    groupA.add(parentA)
+    sceneA.add(groupA)
+
+    groupB.position.x = 1_000
+    parentB.position.x = 20
+    spriteB.position.x = 2
+    parentB.add(spriteB, peerB)
+    groupB.add(parentB)
+    sceneB.add(groupB)
+
+    sceneA.updateMatrixWorld(true)
+    sceneB.updateMatrixWorld(true)
+
+    const updateMatrixA = spriteA.updateMatrix.bind(spriteA)
+    let nestedUpdate = true
+    spriteA.updateMatrix = () => {
+      updateMatrixA()
+      if (!nestedUpdate) return
+      nestedUpdate = false
+      spriteB.position.x = 4
+      sceneB.updateMatrixWorld(true)
+    }
+    spriteA.position.x = 3
+    sceneA.updateMatrixWorld(true)
+
+    expect(instanceSlot(spriteA)[12]).toBe(13)
+    expect(spriteA.matrixWorld.elements[12]).toBe(113)
+    expect(instanceSlot(spriteB)[12]).toBe(24)
+    expect(spriteB.matrixWorld.elements[12]).toBe(1_024)
+
+    // Release both independent registries so their WeakMap-keyed scratch can
+    // be collected with the worlds instead of retaining cross-world parents.
+    groupA.dispose()
+    groupB.dispose()
+    expect(entityFor(spriteA)).toBeNull()
+    expect(entityFor(spriteB)).toBeNull()
+  })
+
   it('projects public visibility writes into an auto-owned batch slot', () => {
     const renderer = {}
     const scene = new Scene()
@@ -72,7 +199,7 @@ describe('auto batching preserves the source hierarchy', () => {
     flatlandSceneSweep(renderer, scene)
     scene.updateMatrixWorld(true)
 
-    expect(sprite._autoRegistry).not.toBeNull()
+    expect(autoRegistryFor(sprite)).not.toBeNull()
     expect(sprite.visible).toBe(true)
     expect(sprite.isMesh).toBe(false)
     expect(instanceSlot(sprite)[0]).toBe(20)
@@ -158,6 +285,96 @@ describe('auto batching preserves the source hierarchy', () => {
     expect(instanceSlot(first)[0]).toBe(20)
     expect(instanceSlot(first)[12]).toBe(105)
     expect(batchRaycastAt(first, 105, 0)).toBe(1)
+    spriteGroup.dispose()
+  })
+
+  it('preserves the old R3F picking proxy when reassignment preparation fails', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const sprite = makeSprite()
+    const interaction: object[] = [sprite]
+    const root = {
+      getState: () => ({ internal: { interaction, initialHits: [] } }),
+    }
+    ;(sprite as unknown as { __r3f: unknown }).__r3f = {
+      root,
+      eventCount: 1,
+      handlers: { onClick() {} },
+    }
+
+    spriteGroup.add(sprite)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+
+    const oldBatch = sprite._batchMesh
+    const oldSlot = sprite._batchSlot
+    expect(oldBatch).not.toBeNull()
+    expect(sprite._pickProxied).toBe(true)
+    expect(Object.hasOwn(sprite, 'raycast')).toBe(true)
+    expect(sprite.raycast).toBeNull()
+    expect(interaction).toEqual([oldBatch])
+
+    const updateMatrix = vi.spyOn(sprite, 'updateMatrix').mockImplementation(() => {
+      throw new Error('reassignment preparation failed')
+    })
+    sprite.texture = new Texture()
+
+    expect(() => scene.updateMatrixWorld(true)).toThrow('reassignment preparation failed')
+    expect(sprite._batchMesh).toBe(oldBatch)
+    expect(sprite._batchSlot).toBe(oldSlot)
+    expect(getSpriteBatchOwnership(oldBatch!).slotEntities[oldSlot]).not.toBe(0)
+    expect(getSpriteBatchOwnership(oldBatch!).spriteAtSlot(oldSlot)).toBe(sprite)
+    expect(sprite._pickProxied).toBe(true)
+    expect(Object.hasOwn(sprite, 'raycast')).toBe(true)
+    expect(sprite.raycast).toBeNull()
+    expect(interaction).toEqual([oldBatch])
+
+    updateMatrix.mockRestore()
+    scene.updateMatrixWorld(true)
+    expect(sprite._batchMesh).not.toBe(oldBatch)
+    expect(sprite._pickProxied).toBe(true)
+    expect(interaction).toEqual([sprite._batchMesh])
+    spriteGroup.dispose()
+  })
+
+  it('keeps ownership coherent when the R3F store fails during picking handoff', () => {
+    const scene = new Scene()
+    const spriteGroup = new SpriteGroup()
+    const sprite = makeSprite()
+    const interaction: object[] = [sprite]
+    let storeAvailable = true
+    const root = {
+      getState: () => {
+        if (!storeAvailable) throw new Error('store unavailable')
+        return { internal: { interaction, initialHits: [] } }
+      },
+    }
+    ;(sprite as unknown as { __r3f: unknown }).__r3f = {
+      root,
+      eventCount: 1,
+      handlers: { onClick() {} },
+    }
+
+    spriteGroup.add(sprite)
+    scene.add(spriteGroup)
+    scene.updateMatrixWorld(true)
+    const oldBatch = sprite._batchMesh!
+    const oldSlot = sprite._batchSlot
+
+    storeAvailable = false
+    sprite.texture = new Texture()
+    expect(() => scene.updateMatrixWorld(true)).not.toThrow()
+
+    const newBatch = sprite._batchMesh!
+    const newSlot = sprite._batchSlot
+    expect(newBatch).not.toBe(oldBatch)
+    expect(getSpriteBatchOwnership(oldBatch).slotEntities[oldSlot]).toBe(0)
+    expect(getSpriteBatchOwnership(newBatch).slotEntities[newSlot]).not.toBe(0)
+    expect(getSpriteBatchOwnership(newBatch).spriteAtSlot(newSlot)).toBe(sprite)
+    expect(interaction).not.toContain(oldBatch)
+    expect(interaction).toContain(sprite)
+    expect(sprite._pickProxied).toBe(false)
+
     spriteGroup.dispose()
   })
 
@@ -323,7 +540,7 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.updateMatrixWorld(true)
     expect(first._hierarchyManaged).toBe(false)
     expect(first._hierarchyOwner).toBeNull()
-    expect(first.entity).toBeNull()
+    expect(entityFor(first)).toBeNull()
     expect(first.visible).toBe(true)
     expect(first.isMesh).toBe(true)
     expect(spriteGroup.spriteCount).toBe(0)
@@ -355,7 +572,7 @@ describe('auto batching preserves the source hierarchy', () => {
 
     expect(first._hierarchyManaged).toBe(true)
     expect(first._hierarchyOwner).toBe(inner)
-    expect(first._flatlandWorld).toBe(inner.world)
+    expect(worldFor(first)).toBe(worldFor(inner))
     expect(inner.spriteCount).toBe(2)
     expect(outer.spriteCount).toBe(0)
 
@@ -381,15 +598,15 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.updateMatrixWorld(true)
 
     expect(first._hierarchyOwner).toBe(left)
-    expect(first._flatlandWorld).toBe(left.world)
+    expect(worldFor(first)).toBe(worldFor(left))
     const oldBatch = first._batchMesh!
 
     // Only movingSubtree receives Three.js's removed/added events.
     rightHost.add(movingSubtree)
     scene.updateMatrixWorld(true)
     expect(first._hierarchyOwner).toBe(right)
-    expect(first._flatlandWorld).toBe(right.world)
-    expect(first.entity).not.toBeNull()
+    expect(worldFor(first)).toBe(worldFor(right))
+    expect(entityFor(first)).not.toBeNull()
     expect(left.spriteCount).toBe(0)
     expect(left.batchCount).toBe(0)
     expect(oldBatch.activeCount).toBe(0)
@@ -401,8 +618,8 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.updateMatrixWorld(true)
     scene.updateMatrixWorld(true)
     expect(first._hierarchyOwner).toBe(left)
-    expect(first._flatlandWorld).toBe(left.world)
-    expect(first.entity).not.toBeNull()
+    expect(worldFor(first)).toBe(worldFor(left))
+    expect(entityFor(first)).not.toBeNull()
     expect(left.spriteCount).toBe(2)
     expect(right.spriteCount).toBe(0)
     expect(first.isMesh).toBe(false)
@@ -434,7 +651,7 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.updateMatrixWorld(true)
 
     expect(first._hierarchyOwner).toBe(right)
-    expect(first._flatlandWorld).toBe(right.world)
+    expect(worldFor(first)).toBe(worldFor(right))
     expect(left.spriteCount).toBe(1)
     expect(oldBatch.activeCount).toBe(1)
     expect(right.spriteCount).toBe(1)
@@ -469,7 +686,7 @@ describe('auto batching preserves the source hierarchy', () => {
 
     scene.updateMatrixWorld(true)
     expect(sprite._hierarchyOwner).toBe(left)
-    expect(sprite._flatlandWorld).toBe(left.world)
+    expect(worldFor(sprite)).toBe(worldFor(left))
     expect(left.spriteCount).toBe(1)
     expect(right.spriteCount).toBe(0)
 
@@ -490,7 +707,7 @@ describe('auto batching preserves the source hierarchy', () => {
     flatlandRegister(second, renderer, scene)
     flatlandSceneSweep(renderer, scene)
     scene.updateMatrixWorld(true)
-    expect(first._autoRegistry).not.toBeNull()
+    expect(autoRegistryFor(first)).not.toBeNull()
 
     const explicit = new SpriteGroup()
     const explicitHost = new Group()
@@ -499,9 +716,9 @@ describe('auto batching preserves the source hierarchy', () => {
     explicitHost.add(sourceRoot)
     scene.updateMatrixWorld(true)
 
-    expect(first._autoRegistry).toBeNull()
+    expect(autoRegistryFor(first)).toBeNull()
     expect(first._hierarchyOwner).toBe(explicit)
-    expect(first._flatlandWorld).toBe(explicit.world)
+    expect(worldFor(first)).toBe(worldFor(explicit))
     expect(explicit.spriteCount).toBe(2)
     explicit.dispose()
   })
@@ -521,7 +738,7 @@ describe('auto batching preserves the source hierarchy', () => {
     flatlandRegister(second, renderer, scene)
     flatlandSceneSweep(renderer, scene)
     scene.updateMatrixWorld(true)
-    expect(first._autoRegistry).not.toBeNull()
+    expect(autoRegistryFor(first)).not.toBeNull()
 
     const explicit = new SpriteGroup()
     explicit.position.x = 100
@@ -529,9 +746,9 @@ describe('auto batching preserves the source hierarchy', () => {
     explicit.add(first)
     scene.updateMatrixWorld(true)
 
-    expect(first._autoRegistry).toBeNull()
+    expect(autoRegistryFor(first)).toBeNull()
     expect(first._hierarchyManaged).toBe(false)
-    expect(first._flatlandWorld).toBe(explicit.world)
+    expect(worldFor(first)).toBe(worldFor(explicit))
     expect(instanceSlot(first)[12]).toBe(20)
     expect(raycastAt(first, 120, 0)).toBe(1)
     expect(raycastAt(first, 1_020, 0)).toBe(0)
@@ -556,14 +773,14 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.updateMatrixWorld(true)
     expect(first._hierarchyManaged).toBe(true)
     expect(first._hierarchyOwner).toBe(spriteGroup)
-    expect(first.entity).not.toBeNull()
+    expect(entityFor(first)).not.toBeNull()
     expect(spriteGroup.spriteCount).toBe(2)
 
     host.remove(first)
     scene.updateMatrixWorld(true)
     expect(first._hierarchyManaged).toBe(false)
     expect(first._hierarchyOwner).toBeNull()
-    expect(first.entity).toBeNull()
+    expect(entityFor(first)).toBeNull()
     expect(first.visible).toBe(true)
     expect(first.isMesh).toBe(true)
     expect(spriteGroup.spriteCount).toBe(1)
@@ -582,11 +799,11 @@ describe('auto batching preserves the source hierarchy', () => {
     scene.add(spriteGroup)
     scene.updateMatrixWorld(true)
 
-    const entity = first.entity
+    const entity = entityFor(first)
     const slot = first._batchSlot
     spriteGroup.removeSprites(first)
 
-    expect(first.entity).toBe(entity)
+    expect(entityFor(first)).toBe(entity)
     expect(first._batchSlot).toBe(slot)
     expect(first._hierarchyManaged).toBe(true)
     expect(first._hierarchyOwner).toBe(spriteGroup)
@@ -594,7 +811,7 @@ describe('auto batching preserves the source hierarchy', () => {
     expect(spriteGroup.spriteCount).toBe(2)
 
     scene.updateMatrixWorld(true)
-    expect(first.entity).toBe(entity)
+    expect(entityFor(first)).toBe(entity)
     expect(first._batchSlot).toBe(slot)
     expect(spriteGroup.spriteCount).toBe(2)
     spriteGroup.dispose()
@@ -615,7 +832,7 @@ describe('auto batching preserves the source hierarchy', () => {
     const batch = first._batchMesh!
     first.dispose()
 
-    expect(first.entity).toBeNull()
+    expect(entityFor(first)).toBeNull()
     expect(first._hierarchyManaged).toBe(false)
     expect(first._hierarchyOwner).toBeNull()
     expect(first.isMesh).toBe(false)
@@ -626,7 +843,7 @@ describe('auto batching preserves the source hierarchy', () => {
     expect(disposedHits).toHaveLength(0)
 
     scene.updateMatrixWorld(true)
-    expect(first.entity).toBeNull()
+    expect(entityFor(first)).toBeNull()
     expect(first._hierarchyManaged).toBe(false)
     expect(first._hierarchyOwner).toBeNull()
     expect(first.isMesh).toBe(false)
@@ -651,14 +868,14 @@ describe('auto batching preserves the source hierarchy', () => {
     expect(spriteGroup.spriteCount).toBe(0)
     expect(spriteGroup.batchCount).toBe(0)
     expect(spriteGroup.children).toHaveLength(0)
-    expect(first.entity).toBeNull()
+    expect(entityFor(first)).toBeNull()
     expect(first._batchMesh).toBeNull()
     expect(first._hierarchyManaged).toBe(false)
     expect(first._hierarchyOwner).toBeNull()
     expect(first.isMesh).toBe(true)
 
     scene.updateMatrixWorld(true)
-    expect(first.entity).toBeNull()
+    expect(entityFor(first)).toBeNull()
     expect(spriteGroup.spriteCount).toBe(0)
     spriteGroup.dispose()
   })
@@ -787,6 +1004,7 @@ describe('auto batching preserves the source hierarchy', () => {
   it('syncs a late assignment when automatic invalidation is disabled', () => {
     const scene = new Scene()
     const spriteGroup = new SpriteGroup({ autoInvalidateTransforms: false })
+    void worldFor(spriteGroup)
     type BatchAssign = (...args: unknown[]) => boolean
     const internal = spriteGroup as unknown as { _batchAssignSystem: BatchAssign }
     const assign = internal._batchAssignSystem

@@ -1,36 +1,38 @@
 # Internal ECS migration and rollout plan
 
-Status: implementation in progress — design and first evidence gate approved
+Status: implementation and final evidence accepted; release stack assembly pending
 
-Date: 2026-08-22
+Date: 2026-08-24
 
 ## Branch and PR shape
 
 Work begins in a clean worktree rebased onto the then-current `origin/main`. Do not use the Driller branch or the camera stack worktrees.
 
-Delivery uses a small five-PR stack so CodeRabbit and human reviewers can assess one claim at a time:
+The first three planned review slices landed together in PR #231: design evidence, the differential
+harness, and a private typed runtime with no production consumer. The planned production and cleanup
+stack has now landed on the migration branch:
 
-1. Design and migration contract, targeting `main`.
-2. Differential, size, storage, and performance evidence, targeting PR 1.
-3. Private typed runtime with no production consumer, targeting PR 2.
-4. Core migration, compiled event/selectors, and direct batch ownership, targeting PR 3.
-5. Koota removal, documentation, representative-consumer size gates, and live verification, targeting PR 4.
+1. Core migration, compiled event/selectors, direct batch ownership, deterministic browser
+   fixtures, and live renderer A/B evidence, targeting `main`.
+2. Koota dependency removal, installation documentation, and representative-consumer attribution,
+   targeting the core migration PR.
 
-Only PR 5 removes Koota. Earlier PRs remain inert or private, giving the stack a clean rollback boundary while keeping each review focused.
+The cleanup commits remove Koota from the package manifest, starters, public declarations, and
+published output. Their atomic history keeps dependency and documentation cleanup independently
+reversible. The final Node, consumer, and 24-report headed browser evidence is complete.
 
-Proposed commit sequence:
+Implemented and proposed commit sequence:
 
-1. `test(three-flatland): add ecs reference and benchmark harnesses`
-2. `feat(three-flatland): add private typed entity runtime`
-3. `refactor(three-flatland): migrate traits and entity operations`
-4. `perf(three-flatland): migrate selectors and routing event queues`
-5. `perf(three-flatland): replace batch relation with direct slot ownership`
-6. `refactor(three-flatland): remove koota peer dependency`
-7. `docs(three-flatland): remove koota installation requirement`
+1. `test(ecs): add deterministic browser benchmarks`
+2. `perf(three-flatland)!: migrate batching to the private ecs`
+3. `docs(internal-ecs): record production migration evidence`
+4. `refactor(three-flatland): remove koota peer dependency`
+5. `docs(three-flatland): remove koota installation requirement`
 
-The exact split follows diff cohesion. Every package change receives a hand-written changeset under
-the repository's current release policy. This includes the private `tools/ecs-bench` package because
-private and out-of-`packages/` workspaces are not discovered by the historical generator.
+The exact split follows diff cohesion. Conventional Commit metadata determines the bump under the
+repository's current release policy. CI changeset generation is disabled, so agents hand-author
+release-visible changesets according to `.changeset/README.md`. Private tooling changes are not
+release-visible.
 
 ## Phase 0: approved design and fresh baseline
 
@@ -108,8 +110,8 @@ Exit gate: lifecycle, routing, sort, transform, effect, lighting, and post-pass 
 - Add `batchEntity` to `BatchSlot`.
 - Add batch-owned packed-handle and direct sprite-reference arrays with `0`/`null` hole sentinels;
   maintain them atomically on allocate, swap, free, and recycle.
-- Make transform sync iterate batches and their physical slots directly; remove its world-wide
-  batched-entity traversal and cross-buffer hopping.
+- Make transform sync iterate each batch's packed active-member table, following its physical-slot
+  indirection only for the final GPU write; remove world-wide traversal and cross-buffer hopping.
 - Make batch sorting consume the batch-owned slot map instead of scanning and rebucketing every
   batched entity from the world.
 - Update assignment, reassignment, removal, recycle, and sort repair paths.
@@ -118,8 +120,9 @@ Exit gate: lifecycle, routing, sort, transform, effect, lighting, and post-pass 
   failed-assignment rollback tests.
 - Verify the public batch-query facade remains unchanged.
 
-Exit gate: relation-free runtime, coherent entity-to-batch and slot-to-entity ownership, batch-local
-physical-slot traversal, no world-wide rebucketing, and all batch lifecycle tests pass.
+Exit gate: relation-free runtime, coherent entity-to-batch/member-to-slot/slot-to-entity ownership,
+batch-local packed transform traversal plus physical-row sort traversal, no world-wide rebucketing,
+and all batch lifecycle tests pass.
 
 ## Phase 6: dependency and documentation cleanup
 
@@ -158,7 +161,9 @@ Exit gate: every hard acceptance threshold passes.
 
 ## Rollback strategy
 
-Before dependency removal, rollback is a call-site revert to the Koota adapter. After dependency removal, the atomic commit structure allows reverting phases 3–6 together while retaining the useful benchmark/reference harness.
+Before dependency removal, rollback is a revert of the production migration commit. After dependency
+removal, the atomic commit structure allows reverting the cleanup and migration independently while
+retaining the useful benchmark/reference harness.
 
 Do not ship a runtime feature flag or dual ECS implementations. That would add bytes and double the state paths. The reversible boundary is the Git history and local adapter during development, not production configuration.
 
@@ -184,9 +189,10 @@ Internal planning and code comments should document:
 
 The rendered API does not intentionally break, and removing a required peer dependency is a
 compatibility improvement. The emitted TypeScript surface does change: accidental ECS members are
-removed rather than exposing the private runtime. The migration therefore receives a breaking
-hand-written changeset. The Conventional Commit describes commit intent; it does not replace or
-determine the changeset.
+removed rather than exposing the private runtime. The migration therefore uses a breaking
+Conventional Commit with a `BREAKING CHANGE:` footer and a hand-authored `minor` changeset with an
+explicit `BREAKING CHANGES` section, following the alpha pre-release policy in
+`.changeset/README.md`.
 
 The declaration audit confirmed 24 built declaration leaves currently reference Koota. The migration
 must remove those reachable references and prove the private runtime is not substituted into them.

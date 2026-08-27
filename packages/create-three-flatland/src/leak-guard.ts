@@ -13,4 +13,4 @@ export const BANNED_EVERYWHERE: readonly string[] = [
 ]
 
 /** Excluded from the starter. Checked against package.json only — prose may name them. */
-export const BANNED_AS_DEPENDENCY: readonly string[] = ['@three-flatland/devtools', 'tweakpane']
+export const BANNED_AS_DEPENDENCY: readonly string[] = ['@three-flatland/devtools', 'koota', 'tweakpane']

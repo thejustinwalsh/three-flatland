@@ -116,6 +116,47 @@ describe('LightStore', () => {
     }
   })
 
+  it('should clear only slots made stale when the live count shrinks', () => {
+    const store = new LightStore({ maxLights: 6 })
+    const lights = Array.from({ length: 4 }, (_, index) => new Light2D({ type: 'point', intensity: index + 1 }))
+
+    store.sync(lights)
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+    const neverLiveOffset = 4 * 4
+    data[lineSize + neverLiveOffset + 1] = 17
+    data[3 * lineSize + neverLiveOffset + 1] = 19
+
+    store.sync(lights.slice(0, 1))
+
+    for (let index = 1; index < 4; index++) {
+      const offset = index * 4
+      expect(data[lineSize + offset + 1]).toBe(0)
+      expect(data[3 * lineSize + offset + 1]).toBe(0)
+    }
+    expect(data[lineSize + neverLiveOffset + 1]).toBe(17)
+    expect(data[3 * lineSize + neverLiveOffset + 1]).toBe(19)
+  })
+
+  it('should not rewrite never-live capacity when the live count is stable', () => {
+    const store = new LightStore({ maxLights: 4 })
+    const light = new Light2D({ type: 'point', intensity: 1 })
+
+    store.sync([light])
+
+    const data = store.lightsTexture.image.data as Float32Array
+    const lineSize = store.maxLights * 4
+    const neverLiveOffset = 2 * 4
+    data[lineSize + neverLiveOffset + 1] = 23
+    data[3 * lineSize + neverLiveOffset + 1] = 29
+
+    store.sync([light])
+
+    expect(data[lineSize + neverLiveOffset + 1]).toBe(23)
+    expect(data[3 * lineSize + neverLiveOffset + 1]).toBe(29)
+  })
+
   it('should encode light types correctly', () => {
     const store = new LightStore({ maxLights: 8 })
     const lights = [
@@ -216,5 +257,49 @@ describe('LightStore', () => {
     const store = new LightStore()
     // Should not throw
     store.dispose()
+  })
+
+  it('is terminal and preserves a falsy texture disposal error under reentry', () => {
+    const store = new LightStore()
+    const texture = store.lightsTexture
+    const textureNode = store.lightsTextureNode
+    const countNode = store.countNode
+    let disposeCount = 0
+    texture.addEventListener('dispose', () => {
+      disposeCount++
+      store.dispose()
+      throw false
+    })
+
+    let didThrow = false
+    let thrown: unknown
+    try {
+      store.dispose()
+    } catch (error) {
+      didThrow = true
+      thrown = error
+    }
+
+    expect(didThrow).toBe(true)
+    expect(thrown).toBe(false)
+    expect(disposeCount).toBe(1)
+    const textureVersion = texture.version
+    const count = countNode.value
+    const data = Array.from(texture.image.data as Float32Array)
+    expect(() => store.sync([new Light2D()])).toThrow('three-flatland: LightStore.sync cannot be used after dispose()')
+    expect(() => store.readLightData(0 as unknown as Node<'float'>)).toThrow(
+      'three-flatland: LightStore.readLightData cannot be used after dispose()'
+    )
+    expect(() => store.lightsTexture).toThrow('three-flatland: LightStore.lightsTexture cannot be used after dispose()')
+    expect(() => store.lightsTextureNode).toThrow(
+      'three-flatland: LightStore.lightsTextureNode cannot be used after dispose()'
+    )
+    expect(() => store.countNode).toThrow('three-flatland: LightStore.countNode cannot be used after dispose()')
+    expect(texture.version).toBe(textureVersion)
+    expect(textureNode).toBeDefined()
+    expect(countNode.value).toBe(count)
+    expect(Array.from(texture.image.data as Float32Array)).toEqual(data)
+    expect(() => store.dispose()).not.toThrow()
+    expect(disposeCount).toBe(1)
   })
 })

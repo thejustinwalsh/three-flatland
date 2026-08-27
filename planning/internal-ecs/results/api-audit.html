@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>three-flatland renderer architecture API audit</title>
+    <style>
+      :root {
+        --bg: #111418;
+        --surface: #171b21;
+        --surface-raised: #1d222a;
+        --line: #303844;
+        --text: #f5f7fa;
+        --muted: #aeb7c4;
+        --diamond: #75d7ff;
+        --emerald: #58e6a9;
+        --gold: #ffd166;
+        --ruby: #ff6b86;
+        --amethyst: #c59cff;
+        --code: #0c0f13;
+        --max: 1160px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background:
+          radial-gradient(circle at 85% 0%, rgb(117 215 255 / 9%), transparent 26rem),
+          radial-gradient(circle at 8% 12%, rgb(197 156 255 / 7%), transparent 24rem), var(--bg);
+        color: var(--text);
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        line-height: 1.55;
+      }
+
+      a {
+        color: var(--diamond);
+        text-underline-offset: 0.18em;
+      }
+
+      a:hover {
+        color: #b4eaff;
+      }
+
+      code,
+      pre,
+      .mono {
+        font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+      }
+
+      code {
+        color: #dbf4ff;
+        font-size: 0.92em;
+      }
+
+      header,
+      main,
+      footer {
+        width: min(calc(100% - 2rem), var(--max));
+        margin-inline: auto;
+      }
+
+      header {
+        padding: 4.5rem 0 2.25rem;
+      }
+
+      .eyebrow {
+        margin: 0 0 0.75rem;
+        color: var(--diamond);
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin-top: 0;
+        line-height: 1.14;
+        letter-spacing: -0.025em;
+      }
+
+      h1 {
+        max-width: 900px;
+        margin-bottom: 1rem;
+        font-size: clamp(2.35rem, 7vw, 5.4rem);
+      }
+
+      h2 {
+        margin-bottom: 1.1rem;
+        font-size: clamp(1.55rem, 3vw, 2.25rem);
+      }
+
+      h3 {
+        margin-bottom: 0.55rem;
+        font-size: 1rem;
+      }
+
+      p {
+        margin: 0.6rem 0 1rem;
+      }
+
+      .lede {
+        max-width: 800px;
+        color: var(--muted);
+        font-size: clamp(1rem, 2vw, 1.22rem);
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        margin-top: 1.6rem;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 0.38rem 0.72rem;
+        background: rgb(255 255 255 / 3%);
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .chip strong {
+        color: var(--text);
+      }
+
+      nav {
+        position: sticky;
+        z-index: 10;
+        top: 0;
+        border-block: 1px solid var(--line);
+        background: rgb(17 20 24 / 92%);
+        backdrop-filter: blur(14px);
+      }
+
+      nav ul {
+        display: flex;
+        width: min(calc(100% - 2rem), var(--max));
+        margin: 0 auto;
+        padding: 0.7rem 0;
+        gap: 1rem;
+        overflow-x: auto;
+        list-style: none;
+      }
+
+      nav a {
+        color: var(--muted);
+        font-size: 0.78rem;
+        font-weight: 650;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      main {
+        padding: 2rem 0 5rem;
+      }
+
+      section {
+        padding: 2.75rem 0;
+        border-bottom: 1px solid var(--line);
+        scroll-margin-top: 4rem;
+      }
+
+      .verdict {
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 0.8fr);
+        gap: 1rem;
+      }
+
+      .card,
+      .callout {
+        border: 1px solid var(--line);
+        border-radius: 1rem;
+        background: linear-gradient(145deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%));
+        padding: 1.2rem;
+      }
+
+      .card p:last-child,
+      .callout p:last-child {
+        margin-bottom: 0;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        color: var(--emerald);
+        font-weight: 750;
+      }
+
+      .status::before {
+        width: 0.65rem;
+        height: 0.65rem;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 1rem currentColor;
+        content: '';
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 1.25rem 0 0;
+      }
+
+      .metric {
+        border: 1px solid var(--line);
+        border-radius: 0.8rem;
+        background: var(--surface);
+        padding: 1rem;
+      }
+
+      .metric strong {
+        display: block;
+        margin-bottom: 0.2rem;
+        color: var(--diamond);
+        font-size: 1.45rem;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      .grid-2,
+      .grid-3 {
+        display: grid;
+        gap: 0.9rem;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .label {
+        display: inline-block;
+        margin-bottom: 0.65rem;
+        color: var(--amethyst);
+        font-size: 0.72rem;
+        font-weight: 750;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .good {
+        color: var(--emerald);
+      }
+
+      .warn {
+        color: var(--gold);
+      }
+
+      .break {
+        color: var(--ruby);
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 0.9rem;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: rgb(12 15 19 / 62%);
+        font-size: 0.87rem;
+      }
+
+      th,
+      td {
+        padding: 0.8rem 0.9rem;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--surface-raised);
+        color: var(--muted);
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      ul.clean {
+        margin: 0;
+        padding-left: 1.15rem;
+      }
+
+      ul.clean li {
+        margin: 0.5rem 0;
+      }
+
+      .finding {
+        border-left: 3px solid var(--gold);
+      }
+
+      .proof {
+        border-left: 3px solid var(--emerald);
+      }
+
+      pre {
+        overflow-x: auto;
+        margin: 1rem 0 0;
+        border: 1px solid var(--line);
+        border-radius: 0.8rem;
+        background: var(--code);
+        padding: 1rem;
+        color: #d9e2ec;
+        font-size: 0.78rem;
+        line-height: 1.55;
+      }
+
+      .roots {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .roots code {
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        background: var(--code);
+        padding: 0.3rem 0.5rem;
+      }
+
+      footer {
+        padding: 0 0 3rem;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      @media (max-width: 820px) {
+        header {
+          padding-top: 3rem;
+        }
+
+        .verdict,
+        .grid-2,
+        .grid-3,
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+      }
+
+      @media print {
+        :root {
+          --bg: #fff;
+          --surface: #f5f7fa;
+          --surface-raised: #edf1f5;
+          --line: #c7ced8;
+          --text: #101318;
+          --muted: #4d5663;
+          --code: #f0f3f6;
+          --diamond: #006b91;
+          --emerald: #087a4f;
+          --gold: #8b5c00;
+          --ruby: #9e2440;
+          --amethyst: #7040a0;
+        }
+
+        body {
+          background: #fff;
+        }
+
+        nav {
+          display: none;
+        }
+
+        section,
+        .card,
+        .callout,
+        .table-wrap {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p class="eyebrow">Release reference · 2026-08-24</p>
+      <h1>Renderer architecture API audit</h1>
+      <p class="lede">
+        Public-package comparison for Flatland's renderer-specialized data architecture. This report separates
+        intentional alpha breaking changes from private implementation detail, records the Koota foundation that made
+        the design possible, and names the remaining work before a stable API freeze.
+      </p>
+      <div class="meta" aria-label="Audit revisions">
+        <span class="chip"><strong>Base</strong> <span class="mono">bd19dd506f64</span></span>
+        <span class="chip"><strong>Audit head</strong> <span class="mono">969b677d9eac</span></span>
+        <span class="chip"><strong>Source freeze</strong> <span class="mono">969b677d9eac</span></span>
+        <span class="chip"><strong>Live recertification</strong> <span class="mono">158e51006590</span></span>
+        <span class="chip"><strong>Package</strong> <span class="mono">three-flatland@0.1.0-alpha.10</span></span>
+      </div>
+    </header>
+
+    <nav aria-label="Report sections">
+      <ul>
+        <li><a href="#verdict">Verdict</a></li>
+        <li><a href="#surface">Surface delta</a></li>
+        <li><a href="#boundary">Private boundary</a></li>
+        <li><a href="#migration">Migration coverage</a></li>
+        <li><a href="#exports">Export roots</a></li>
+        <li><a href="#findings">Findings</a></li>
+        <li><a href="#evidence">Evidence</a></li>
+      </ul>
+    </nav>
+
+    <main>
+      <section id="verdict">
+        <div class="verdict">
+          <div class="card proof">
+            <div class="status">Approved for the stacked alpha PR</div>
+            <h2>The private ECS does not become an application API</h2>
+            <p>
+              The published package no longer depends on Koota. Public declarations do not expose the replacement world,
+              entity, trait, registry, or slot-mutation types. The root and React entry points retain their existing
+              export-map shape, while the migration guide and changeset describe every intentional consumer-facing
+              break.
+            </p>
+            <p>
+              <a href="https://github.com/pmndrs/koota">Koota</a> made this design possible. Its typed traits, SoA
+              storage, queries, and systems established the architectural foundation that Flatland specialized for a
+              renderer-owned workload. Koota remains our recommended general-purpose ECS for application and gameplay
+              state; this private renderer path does not supersede it.
+            </p>
+            <p>
+              This is an alpha-release approval, not a stable-API freeze. One inherited declaration hygiene class
+              remains: <code>@internal</code> members and wildcard helper modules are still type-addressable. They are
+              excluded from generated API docs but should be erased or explicitly stabilized before leaving alpha.
+            </p>
+          </div>
+          <aside class="card" aria-label="Decision boundaries">
+            <span class="label">Decision boundaries</span>
+            <ul class="clean">
+              <li><span class="good">No release blocker</span> in the ECS boundary.</li>
+              <li><span class="break">Breaking changes</span> are intentional and documented.</li>
+              <li><span class="warn">Pre-stable work</span> remains for broad internal declarations.</li>
+              <li>Source and deterministic evidence are current at <code>969b677d</code>.</li>
+            </ul>
+          </aside>
+        </div>
+
+        <div class="metrics" aria-label="Audit counts">
+          <div class="metric"><strong>26</strong><span>export-map keys, unchanged</span></div>
+          <div class="metric"><strong>112 → 105</strong><span>reachable declaration files</span></div>
+          <div class="metric"><strong>7</strong><span>private implementation declarations removed</span></div>
+          <div class="metric">
+            <strong>28 / 28</strong><span>surfaces built, typed, linted, and live-rendered</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="surface">
+        <p class="eyebrow">Consumer-facing delta</p>
+        <h2>Public API changes</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Area</th>
+                <th>Change</th>
+                <th>Classification</th>
+                <th>Coverage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Renderer ECS</td>
+                <td>
+                  <code>Flatland.world</code>, <code>SpriteGroup.world</code>, <code>Sprite2D.entity</code>, effect
+                  trait/entity handles, and concrete world-provider conformance are removed.
+                </td>
+                <td class="break">Breaking</td>
+                <td>Migration guide, declaration verifier, type fixtures, changeset</td>
+              </tr>
+              <tr>
+                <td>Batch query</td>
+                <td>
+                  <code>buildBatchQueryView</code> is private. <code>BatchQueryView</code> no longer accepts a world
+                  handle and uses string run keys.
+                </td>
+                <td class="break">Breaking</td>
+                <td>Migration guide and declaration tests</td>
+              </tr>
+              <tr>
+                <td>Batch slots</td>
+                <td>
+                  Public slot allocation, release, swap, reset, and raw member-table seams are removed from
+                  <code>SpriteBatch</code>.
+                </td>
+                <td class="break">Breaking</td>
+                <td>Named declaration-boundary rejection</td>
+              </tr>
+              <tr>
+                <td>React Three Fiber</td>
+                <td>
+                  Direct <code>&lt;tileLayer&gt;</code> construction is removed. <code>TileMap2D</code> owns and
+                  replaces its layers.
+                </td>
+                <td class="break">Breaking</td>
+                <td>Migration guide, React type fixtures, paired examples</td>
+              </tr>
+              <tr>
+                <td>Effect vectors</td>
+                <td>
+                  Numeric vector getters return immutable tuple snapshots. A complete tuple assignment publishes a
+                  change.
+                </td>
+                <td class="break">Breaking</td>
+                <td>Reviewed codemod, dogfood report, runtime and type tests</td>
+              </tr>
+              <tr>
+                <td>Validation</td>
+                <td>
+                  Sort layers require finite signed 32-bit integers; batch ceilings and effect schemas reject malformed
+                  values.
+                </td>
+                <td class="break">Stricter input</td>
+                <td>Migration guide and adversarial tests</td>
+              </tr>
+              <tr>
+                <td>Capacity</td>
+                <td>
+                  <code>FlatlandOptions.expectedSprites</code> and <code>SpriteGroupOptions.expectedSprites</code> add
+                  constructor-only planning hints.
+                </td>
+                <td class="good">Additive</td>
+                <td>JSDoc, Three and React examples, frozen capacity evidence</td>
+              </tr>
+              <tr>
+                <td>Effect capacity</td>
+                <td><code>MAX_MATERIAL_EFFECTS</code> exposes the exact supported material-effect flag capacity.</td>
+                <td class="good">Additive</td>
+                <td>JSDoc, emitted declaration, and capacity tests</td>
+              </tr>
+              <tr>
+                <td>Tile ownership</td>
+                <td>
+                  Layer and generated-material identities may change after data, chunk-size, or effect projection
+                  rebuilds.
+                </td>
+                <td>Behavior clarified</td>
+                <td>Migration guide and lifecycle tests</td>
+              </tr>
+              <tr>
+                <td>Renderer projections</td>
+                <td>
+                  Render/pass ownership, synchronized animation playback, animated tile timers, bounded light storage,
+                  and stable hierarchy paths use private data-oriented projections while Three.js objects retain public
+                  ownership.
+                </td>
+                <td class="good">Private implementation</td>
+                <td>Evolution ledger, focused Labs comparisons, lifecycle and adversarial tests</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="boundary">
+        <p class="eyebrow">Declaration and package proof</p>
+        <h2>Private ECS boundary</h2>
+        <div class="grid-2">
+          <article class="card proof">
+            <span class="label good">Proved absent</span>
+            <h3>Application-visible ECS machinery</h3>
+            <p>
+              The 105-file reachable declaration graph rejects <code>ecs/runtime</code>, world, entity, trait and
+              registry handles, <code>createWorld</code>, the batch-query builder, direct tile-layer JSX, and every
+              named slot/member mutation seam.
+            </p>
+            <p>
+              The packed tarball contains no Koota dependency, import, export, declaration, source-map reference, or
+              duplicated runtime. Koota remains only in the private comparison harness and independently authored
+              showcase code where it is used directly.
+            </p>
+          </article>
+          <article class="card">
+            <span class="label">Type-erasure result</span>
+            <h3>Ownership remains behind public objects</h3>
+            <p>
+              <code>_autoRegistry</code> emits as a TypeScript-private field and no longer imports an internal handle
+              type. Cross-module package behavior uses non-exported runtime seams and erased structural views. The
+              public surface stays <code>Flatland</code>, <code>SpriteGroup</code>, sprites, effects, lights, passes,
+              and tilemaps.
+            </p>
+          </article>
+        </div>
+        <pre aria-label="Declaration verifier output">
+three-flatland: 105 reachable public declaration files exclude
+ecs/runtime, WorldHandle, EntityHandle, TraitHandle, RegistryHandle,
+createWorld, buildBatchQueryView, tileLayer, and named slot/member mutation APIs</pre>
+      </section>
+
+      <section id="migration">
+        <p class="eyebrow">Breaking-change support</p>
+        <h2>Migration coverage is complete for this release</h2>
+        <div class="grid-3">
+          <article class="card">
+            <span class="label">How-to</span>
+            <h3>Alpha API migration guide</h3>
+            <p>
+              Covers Koota removal, application-owned gameplay state, removed ECS seams, tile-layer ownership, complete
+              effect tuple assignment, validation, effect ownership, terminal disposal, layer/material reacquisition,
+              and constructor capacity hints for Three.js and React Three Fiber.
+            </p>
+            <a href="../../../docs/src/content/docs/guides/private-ecs-migration.mdx">Read the guide source</a>
+          </article>
+          <article class="card">
+            <span class="label">Codemod</span>
+            <h3>Effect vector whole-tuple migration</h3>
+            <p>
+              The reviewed prompt preserves receiver evaluation order and tuple width, rewrites safe literal-index
+              mutations, and flags dynamic indexes, aliases, reflection, mutation methods, and logical assignment for
+              human review.
+            </p>
+            <a href="../../../packages/three-flatland/codemods/effect-vector-whole-tuple.md">Read the codemod</a>
+          </article>
+          <article class="card">
+            <span class="label">Release note</span>
+            <h3>Owned changeset</h3>
+            <p>
+              The minor alpha changeset names the private-runtime replacement and carries an explicit breaking-changes
+              section for removed seams, tuple snapshots, stricter validation, single-owner effects, and terminal
+              resources.
+            </p>
+            <a href="../../../.changeset/private-ecs-runtime-migration.md">Read the changeset</a>
+          </article>
+        </div>
+      </section>
+
+      <section id="exports">
+        <p class="eyebrow">Export-map inventory</p>
+        <h2>All package roots still resolve</h2>
+        <p>
+          The base and audit head expose the same 26 export-map keys. Wildcard expansion resolves the same number of
+          declaration roots at every key. The reachable graph shrinks because seven private implementation declarations
+          no longer sit behind public types.
+        </p>
+        <div class="roots" aria-label="Package export roots">
+          <code>.</code><code>./react</code><code>./debug-protocol</code><code>./sprites</code><code>./sprites/*</code>
+          <code>./animation</code><code>./animation/*</code><code>./materials</code><code>./materials/*</code>
+          <code>./loaders</code><code>./loaders/*</code><code>./cameras</code><code>./cameras/*</code>
+          <code>./config</code><code>./config/*</code><code>./pipeline</code><code>./pipeline/*</code>
+          <code>./lights</code><code>./lights/*</code><code>./tilemap</code><code>./tilemap/*</code> <code>./color</code
+          ><code>./color/*</code><code>./events</code><code>./events/*</code><code>./react/*</code>
+        </div>
+        <div class="table-wrap" style="margin-top: 1rem">
+          <table>
+            <thead>
+              <tr>
+                <th>Root family</th>
+                <th>Resolved roots, base → head</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Root, React, debug protocol</td>
+                <td>1 → 1 each</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Sprites</td>
+                <td>1 → 1 barrel; 5 → 5 wildcard</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Animation</td>
+                <td>1 → 1 barrel; 4 → 4 wildcard</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Materials and loaders</td>
+                <td>1 → 1 barrels; 8 → 8 wildcards</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Cameras and config</td>
+                <td>1 → 1 barrels; 3 → 3 wildcards</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Pipeline</td>
+                <td>1 → 1 barrel; 15 → 15 wildcard</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Lights</td>
+                <td>1 → 1 barrel; 10 → 10 wildcard</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Tilemap</td>
+                <td>1 → 1 barrel; 5 → 5 wildcard</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>Color and events</td>
+                <td>1 → 1 barrels; 7 → 7 and 5 → 5 wildcards</td>
+                <td class="good">Unchanged</td>
+              </tr>
+              <tr>
+                <td>React wildcard</td>
+                <td>18 → 18</td>
+                <td class="good">Unchanged</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="findings">
+        <p class="eyebrow">Remaining API work</p>
+        <h2>Stable-release follow-ups</h2>
+        <div class="grid-2">
+          <article class="callout finding">
+            <span class="label warn">Required before stable</span>
+            <h3>Erase or stabilize remaining <code>@internal</code> declarations</h3>
+            <p>
+              Generated API pages correctly omit internal members, but TypeScript declarations still contain 240
+              <code>@internal</code> annotations across 28 reachable files. This is mostly inherited renderer plumbing
+              rather than ECS handles, yet a consumer can still name some underscore members. Before the stable API
+              freeze, move cross-module state behind private fields or erased friend seams, or deliberately document the
+              members that become supported.
+            </p>
+          </article>
+          <article class="callout finding">
+            <span class="label warn">Required before stable</span>
+            <h3>Replace broad wildcard access to React helpers</h3>
+            <p>
+              <code>./react/*</code> makes internal helper modules importable by path. The new
+              <code>recordBatchRaycastResult</code> helper is marked <code>@internal</code> and excluded from TypeDoc,
+              but remains reachable through <code>three-flatland/react/batchPicking</code>. Enumerate supported React
+              subpaths or move helper modules outside the wildcard before 1.0.
+            </p>
+          </article>
+        </div>
+        <div class="callout proof" style="margin-top: 0.9rem">
+          <span class="label good">Not a blocker for this alpha stack</span>
+          <p>
+            Neither finding leaks the private ECS world, entity, trait, registry, or slot ownership model. The wildcard
+            family and broad internal declarations predate this release. The audit records them now so the eventual
+            stable surface is chosen deliberately instead of inherited accidentally.
+          </p>
+        </div>
+      </section>
+
+      <section id="evidence">
+        <p class="eyebrow">Verification record</p>
+        <h2>Evidence used by this audit</h2>
+        <div class="grid-2">
+          <article class="card">
+            <h3>API and package checks</h3>
+            <ul class="clean">
+              <li>Base and head package export maps compared key-for-key.</li>
+              <li>Declaration roots expanded and their transitive import graphs compared.</li>
+              <li>TypeScript symbol surfaces compared for every resolved root.</li>
+              <li>Current package build and 105-file declaration verifier passed.</li>
+              <li>Generated TypeDoc output checked for new public options and internal omissions.</li>
+              <li>Peer dependencies and packed-publication Koota checks reviewed.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Consumer and runtime checks</h3>
+            <ul class="clean">
+              <li>Current-head uncached typecheck, production build, and typed lint for all 28 application surfaces</li>
+              <li>
+                <a href="./example-smoke-summary.md">Current-head WebGPU render and visual recertification, 28 / 28</a>
+              </li>
+              <li><a href="../09-private-ecs-evolution-ledger.md">Durable private-runtime evolution ledger</a></li>
+              <li><a href="../07-private-ecs-convergence-plan.md">Evidence decisions and scoped Labs verdicts</a></li>
+              <li><a href="./renderer-labs-summary.md">Foundational Labs renderer timing verdict</a></li>
+              <li><a href="./expected-sprites.json">Capacity planning evidence</a></li>
+              <li><a href="./consumer-bundle-budget.json">Reviewed consumer bundle budget</a></li>
+            </ul>
+          </article>
+        </div>
+        <p>
+          The API comparison base is <code>origin/main</code> at <code>bd19dd506f64cbb060e69148e01fc7b9ceb4bee8</code>.
+          The audit and source-freeze head is <code>969b677d9eacf050a677a565f0bf2199275acf13</code>. The focused
+          render/pass, animation, tile, lighting, and hierarchy comparisons are recorded in the evolution ledger and
+          convergence plan. Deterministic consumer evidence was captured twice, reviewed, accepted, and then reproduced
+          with zero deltas from a clean tree at this stack tip. All 28 application surfaces were subsequently launched
+          and visually reviewed at <code>158e510065908aec3836e4076f1f68c82c232bc1</code>; the intervening commits
+          changed evidence, documentation, fixture generation, and test/size policy without changing the frozen package
+          runtime.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Reference artifact for final human review. The source migration remains alpha-scoped until the
+        declaration-hygiene findings above are resolved or explicitly accepted for the stable API.
+      </p>
+    </footer>
+  </body>
+</html>

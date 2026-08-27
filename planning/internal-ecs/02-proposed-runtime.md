@@ -337,11 +337,13 @@ conversion helper owns the boundary back to branded `Entity`: it rejects `0`, va
 the receiving world, and only then casts the full packed value. Systems do not cast raw slot fields
 individually.
 
-Frame systems process one batch at a time in ascending physical slot order, skipping only explicit
-holes, instead of walking a world-wide selector and jumping among batch buffers. The entity-indexed
-SoA remains authoritative for sprite state; the batch reverse map is authoritative for physical
-batch traversal. Tests cover hole reuse, swap repair, free/recycle clearing, stale generations, and
-failure atomicity.
+Frame systems process one batch at a time instead of walking a world-wide selector and jumping among
+batch buffers. Transform sync traverses a packed active-member table whose sprite/SoA order remains
+stable across physical sort permutations, then follows one integer indirection to the current GPU
+row. Swap-removal keeps that table hole-free; sorting separately traverses occupied physical rows.
+The entity-indexed SoA remains authoritative for sprite state, and the reciprocal batch maps are
+authoritative for member-to-row and row-to-owner traversal. Tests cover hole reuse, swap repair,
+free/recycle clearing, stale generations, and failure atomicity.
 
 No generalized relation API is included.
 

@@ -61,19 +61,19 @@ The `flatland-r3f` skill (see Skills below) is the full integration guide — ex
 
 Reach for a package by intent (React users: each package follows the same `/react` subpath pattern as `three-flatland/react`):
 
-| Package | Reach for it when |
-| --- | --- |
-| `three-flatland` | Default entry. Sprites, animation, tilemaps, materials, lights, events, everyday loaders. |
-| `@three-flatland/nodes` | You want a specific 2D shader effect (retro/CRT, blur, distortion, color, upscale) without writing TSL by hand. |
-| `@three-flatland/presets` | You want lit sprites working immediately. Thin — two symbols (`DefaultLightEffect`, `NormalMapProvider`). |
-| `@three-flatland/normals` | Dynamic lighting on flat 2D art without hand-authoring normal maps. |
-| `@three-flatland/atlas` | Loose sprite PNGs that should become one draw-call-friendly atlas, optionally polygon-trimmed for overdraw. |
-| `@three-flatland/alphamap` | Pixel-perfect pointer hit testing on transparent sprites (`hitTestMode: "alpha"`) instead of bounding-box hits. |
-| `@three-flatland/image` | PNG/WebP/AVIF/KTX2 encode and decode, plus `Ktx2Loader`. Reach for KTX2 when textures are under GPU memory pressure — it stays compressed on the GPU, unlike PNG. |
-| `@three-flatland/bake` | Authoring a new baker, or you just need the `flatland-bake` binary. |
-| `@three-flatland/devtools` | Live inspection of scene/material/sprite state. Seven required peers — heaviest install in the ecosystem. |
-| `@three-flatland/skia` | A general immediate-mode 2D canvas in the scene: arbitrary paths, boolean ops, filters, gradients, images. |
-| `@three-flatland/slug` | Text that must stay sharp at any zoom or perspective, or thousands of glyphs in one draw call. |
+| Package                    | Reach for it when                                                                                                                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `three-flatland`           | Default entry. Sprites, animation, tilemaps, materials, lights, events, everyday loaders.                                                                         |
+| `@three-flatland/nodes`    | You want a specific 2D shader effect (retro/CRT, blur, distortion, color, upscale) without writing TSL by hand.                                                   |
+| `@three-flatland/presets`  | You want lit sprites working immediately. Thin — two symbols (`DefaultLightEffect`, `NormalMapProvider`).                                                         |
+| `@three-flatland/normals`  | Dynamic lighting on flat 2D art without hand-authoring normal maps.                                                                                               |
+| `@three-flatland/atlas`    | Loose sprite PNGs that should become one draw-call-friendly atlas, optionally polygon-trimmed for overdraw.                                                       |
+| `@three-flatland/alphamap` | Pixel-perfect pointer hit testing on transparent sprites (`hitTestMode: "alpha"`) instead of bounding-box hits.                                                   |
+| `@three-flatland/image`    | PNG/WebP/AVIF/KTX2 encode and decode, plus `Ktx2Loader`. Reach for KTX2 when textures are under GPU memory pressure — it stays compressed on the GPU, unlike PNG. |
+| `@three-flatland/bake`     | Authoring a new baker, or you just need the `flatland-bake` binary.                                                                                               |
+| `@three-flatland/devtools` | Live inspection of scene/material/sprite state. Seven required peers — heaviest install in the ecosystem.                                                         |
+| `@three-flatland/skia`     | A general immediate-mode 2D canvas in the scene: arbitrary paths, boolean ops, filters, gradients, images.                                                        |
+| `@three-flatland/slug`     | Text that must stay sharp at any zoom or perspective, or thousands of glyphs in one draw call.                                                                    |
 
 **Never recommend installing `@three-flatland/schemas` or `@three-flatland/io` — they are `private: true` and unpublished.**
 
@@ -116,7 +116,7 @@ The governing idea: meet your assets where they already are. Load the formats yo
 
 **Sprite atlases — three formats, all first-class.** `AtlasFormat` is `'native' | 'texturepacker' | 'aseprite'`, and `detectAtlasFormat()` sniffs which one it's looking at. Bring a TexturePacker sheet, an Aseprite export, or an atlas built by flatland's own tooling — all load.
 
-- The native format is deliberately richer, not merely different: `meta.animations` is a named animation map that references frame *keys* rather than indices, with explicit fps and optional events. Aseprite's `frameTags` sits alongside under `meta.frameTags`; readers prefer `meta.animations` and fall back to converting `frameTags` + per-frame `duration`. Adopting the native format is an upgrade path, never a lock-in tax.
+- The native format is deliberately richer, not merely different: `meta.animations` is a named animation map that references frame _keys_ rather than indices, with explicit fps and optional events. Aseprite's `frameTags` sits alongside under `meta.frameTags`; readers prefer `meta.animations` and fall back to converting `frameTags` + per-frame `duration`. Adopting the native format is an upgrade path, never a lock-in tax.
 - Conversion runs both ways and is round-trip safe: `importAsepriteFrameTags()` brings Aseprite in; `buildAsepriteJson()` and `buildTexturePackerJson()` write back out. Rotation, trim, pivot, polygon mesh, and duration all survive.
 - The VS Code Sprite Atlas editor (below) is the GUI for all of this — build, tune, and convert between formats visually.
 
@@ -127,13 +127,13 @@ The governing idea: meet your assets where they already are. Load the formats yo
 - Install: `code --install-extension three-flatland.fl-tools` (requires VS Code `^1.94.0`)
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=three-flatland.fl-tools) · [Open VSX](https://open-vsx.org/extension/three-flatland/fl-tools)
 
-| You want to… | Use |
-| --- | --- |
-| Build or edit a sprite atlas | **Sprite Atlas** editor — a custom editor on `*.png`. Reads/writes an `*.atlas.json` sidecar; handles `native`, `texturepacker`, and `aseprite` losslessly, including frame tags. |
-| Combine several atlases | **Merge Atlases…** — explorer multi-select. |
-| Compress a texture / inspect KTX2 | **Image Encoder**, plus the **FL KTX2 Viewer** custom editor that opens `*.ktx2` by default. |
-| Bake a normal map visually | **Normal Baker**. |
-| Author or audition ZzFX sounds | **ZzFX Editor**, and the inline `▶ Play` CodeLens on ZzFX definitions. |
+| You want to…                      | Use                                                                                                                                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build or edit a sprite atlas      | **Sprite Atlas** editor — a custom editor on `*.png`. Reads/writes an `*.atlas.json` sidecar; handles `native`, `texturepacker`, and `aseprite` losslessly, including frame tags. |
+| Combine several atlases           | **Merge Atlases…** — explorer multi-select.                                                                                                                                       |
+| Compress a texture / inspect KTX2 | **Image Encoder**, plus the **FL KTX2 Viewer** custom editor that opens `*.ktx2` by default.                                                                                      |
+| Bake a normal map visually        | **Normal Baker**.                                                                                                                                                                 |
+| Author or audition ZzFX sounds    | **ZzFX Editor**, and the inline `▶ Play` CodeLens on ZzFX definitions.                                                                                                            |
 
 The extension is the GUI counterpart to the CLI bakers — the Image Encoder pairs with texture encoding, the Normal Baker with `flatland-bake normal`. Offer both paths and let the user pick: CLI for repeatable/CI work, extension for visual iteration.
 

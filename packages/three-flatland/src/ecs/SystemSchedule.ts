@@ -1,8 +1,8 @@
-import type { World } from 'koota'
+import type { World } from './runtime'
 import { perfMeasure, PERF_TRACK, type PerfTrackName } from '../debug/perf-track'
 
 // Types the build-time `process.env` reads without requiring @types/node (shadows the global where present; erased at compile).
-declare const process: { env: { NODE_ENV?: string; FL_DEVTOOLS?: string } }
+declare const process: { env: { NODE_ENV?: string; FL_PROFILE?: string } }
 
 /**
  * A system function takes only a world — all context comes from world resource traits.
@@ -33,10 +33,10 @@ interface SystemEntry {
  * to allow the next execution.
  *
  * Every registration carries a perf label (`{ track, name }`). When
- * devtools is bundled, `run()` emits a `performance.measure` span per
- * system plus an outer `ecs:run` span on the Schedule track. In prod
- * the instrumented branch is dead code (terser folds the devtools build
- * gate) and `run()` is the plain loop.
+ * profiling is enabled, `run()` emits a `performance.measure` span per
+ * system plus an outer `ecs:run` span on the Schedule track. Ordinary
+ * production builds use the plain loop; `FL_PROFILE=true` produces a
+ * separately identifiable production-profile build for diagnostics.
  *
  * @example
  * ```typescript
@@ -52,6 +52,7 @@ interface SystemEntry {
  */
 export class SystemSchedule {
   private _systems: SystemEntry[] = []
+  private _finalizers: SystemFn[] = []
   private _frameId = 0
   private _lastRunFrame = -1
 
@@ -71,6 +72,12 @@ export class SystemSchedule {
     return this
   }
 
+  /** Register cleanup that runs once after every schedule attempt, even on throw. */
+  addFinalizer(finalizer: SystemFn): this {
+    if (!this._finalizers.includes(finalizer)) this._finalizers.push(finalizer)
+    return this
+  }
+
   /** Unregister a system. */
   remove(system: SystemFn): this {
     const idx = this._systems.findIndex((entry) => entry.system === system)
@@ -83,18 +90,27 @@ export class SystemSchedule {
     if (this._lastRunFrame === this._frameId) return
     this._lastRunFrame = this._frameId
 
-    // Dev-only: the per-system perf-track instrumentation (two `performance.now()`
-    // reads + a `perfMeasure` with an allocated detail payload per system, every
-    // frame) is a development profiling aid. It is gated on dev mode alone — NOT
-    // on FL_DEVTOOLS — so a production build (even one that force-enables the
-    // devtools dashboard via FL_DEVTOOLS) dead-strips it to the plain loop below
-    // and pays zero per-frame overhead.
-    if (process.env.NODE_ENV !== 'production') {
-      const schedStart = performance.now()
+    // Development and explicit production-profile builds emit Chrome timing
+    // spans. FL_PROFILE is deliberately separate from FL_DEVTOOLS: enabling a
+    // dashboard must not silently add two clocks + an allocated detail payload
+    // per system, per frame, to an otherwise representative production build.
+    this._execute(world, process.env.NODE_ENV !== 'production' || process.env.FL_PROFILE === 'true')
+  }
+
+  private _execute(world: World, instrumented: boolean): void {
+    const scheduleStart = instrumented ? performance.now() : 0
+    let failed = false
+    let failure: unknown
+
+    try {
       for (const entry of this._systems) {
-        const t0 = performance.now()
+        if (!instrumented) {
+          entry.system(world)
+          continue
+        }
+        const start = performance.now()
         entry.system(world)
-        perfMeasure(entry.track, entry.name, t0, performance.now(), {
+        perfMeasure(entry.track, entry.name, start, performance.now(), {
           tooltipText: `${entry.name} (${entry.track})`,
           properties: [
             ['system', entry.name],
@@ -102,13 +118,39 @@ export class SystemSchedule {
           ],
         })
       }
-      perfMeasure(PERF_TRACK.Schedule, 'ecs:run', schedStart, performance.now(), {
-        tooltipText: 'Full ECS schedule run',
-        properties: [['systems', String(this._systems.length)]],
-      })
-    } else {
-      for (const e of this._systems) e.system(world)
+    } catch (error) {
+      failed = true
+      failure = error
     }
+
+    for (const finalizer of this._finalizers) {
+      try {
+        finalizer(world)
+      } catch (error) {
+        // Cleanup failures must not prevent later finalizers or obscure the
+        // system error that made cleanup necessary.
+        if (!failed) {
+          failed = true
+          failure = error
+        }
+      }
+    }
+
+    if (instrumented) {
+      try {
+        perfMeasure(PERF_TRACK.Schedule, 'ecs:run', scheduleStart, performance.now(), {
+          tooltipText: 'Full ECS schedule run',
+          properties: [['systems', String(this._systems.length)]],
+        })
+      } catch (error) {
+        if (!failed) {
+          failed = true
+          failure = error
+        }
+      }
+    }
+
+    if (failed) throw failure
   }
 
   /** Advance the frame counter, allowing the next `run()` to execute. */

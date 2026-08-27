@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "esbuild": "0.28.1",
-  "harnessSha256": "9f3798570565f130d127f92dcb9613f48899f8684ae21ff1fa1ab0364929f0bb",
+  "harnessSha256": "b7aa215c82ab497c31b3549dd218ae57dddb499a5d052d34458818d7e28418cf",
   "harnessSources": [
     "adapter.ts",
     "candidates/anchored-scan.ts",
@@ -9,13 +9,18 @@
     "candidates/signature-persistent.ts",
     "candidates/sparse-persistent.ts",
     "fixtures/anchored-scan-size-entry.ts",
+    "fixtures/flatland-capacity-size-entry.ts",
     "fixtures/flatland-runtime-size-entry.ts",
+    "fixtures/flatland-shipped-runtime-size-entry.ts",
     "fixtures/koota-size-entry.ts",
     "fixtures/signature-persistent-size-entry.ts",
     "fixtures/sparse-persistent-size-entry.ts",
     "provenance.ts",
     "measure-kernels-size.ts",
+    "../../../packages/three-flatland/src/internal/capacity.ts",
+    "../../../packages/three-flatland/src/internal/reserved-world.ts",
     "../../../packages/three-flatland/src/ecs/runtime/entity.ts",
+    "../../../packages/three-flatland/src/ecs/runtime/error.ts",
     "../../../packages/three-flatland/src/ecs/runtime/index.ts",
     "../../../packages/three-flatland/src/ecs/runtime/selector.ts",
     "../../../packages/three-flatland/src/ecs/runtime/sparse-set.ts",
@@ -26,9 +31,21 @@
   "measurements": [
     {
       "artifact": "Flatland private production runtime",
-      "brotliBytes": 3427,
-      "gzipBytes": 3824,
-      "minifiedBytes": 11647
+      "brotliBytes": 3507,
+      "gzipBytes": 3865,
+      "minifiedBytes": 10905
+    },
+    {
+      "artifact": "Flatland optional capacity extension",
+      "brotliBytes": 60,
+      "gzipBytes": 71,
+      "minifiedBytes": 56
+    },
+    {
+      "artifact": "Flatland shipped runtime with capacity",
+      "brotliBytes": 3529,
+      "gzipBytes": 3887,
+      "minifiedBytes": 10954
     },
     {
       "artifact": "Koota seven-import tree-shaken browser kernel",
@@ -55,7 +72,7 @@
       "minifiedBytes": 8623
     }
   ],
-  "mergeBase": "93c7d9cc9a5c35844ea2f08daf090c3bc06080e5",
+  "mergeBase": "bd19dd506f64cbb060e69148e01fc7b9ceb4bee8",
   "methodology": {
     "brotli": "node:zlib brotliCompressSync defaults",
     "bundle": "esbuild browser ESM bundle with minification and tree shaking",

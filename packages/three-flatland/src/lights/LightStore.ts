@@ -35,7 +35,7 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * Thin DataTexture storage for 2D lights.
  *
  * Stores per-light data in a DataTexture (width=maxLights, height=4 rows,
- * RGBAFormat, FloatType). Supports up to `maxLights` (default 256, configurable).
+ * RGBAFormat, FloatType). Supports up to `maxLights` (default 1024, configurable).
  *
  * DataTexture layout:
  * | Row | R      | G         | B             | A              |
@@ -60,6 +60,8 @@ export type TileLookupFn = (tileIndex: Node<'int'>, slotIndex: Node<'int'>) => N
  * @internal
  */
 export class LightStore {
+  private _disposed = false
+
   /** Maximum number of lights this store can handle */
   readonly maxLights: number
 
@@ -68,6 +70,7 @@ export class LightStore {
   private _lightsTexture: DataTexture
   private _lightsTextureNode: Node<'vec4'>
   private _countNode: UniformNode<'float', number>
+  private _previousCount = 0
 
   /**
    * @param options - Optional configuration.
@@ -115,16 +118,19 @@ export class LightStore {
 
   /** Get the lights DataTexture (for use by GPU systems that sample lights directly) */
   get lightsTexture(): DataTexture {
+    this._assertUsable('lightsTexture')
     return this._lightsTexture
   }
 
   /** Get the TSL node for the lights DataTexture */
   get lightsTextureNode(): Node<'vec4'> {
+    this._assertUsable('lightsTextureNode')
     return this._lightsTextureNode
   }
 
   /** Get the current light count uniform node */
   get countNode(): UniformNode<'float', number> {
+    this._assertUsable('countNode')
     return this._countNode
   }
 
@@ -134,6 +140,7 @@ export class LightStore {
    * DataTexture backing array. No shader recompilation.
    */
   sync(lights: readonly Light2D[]): void {
+    this._assertUsable('sync')
     const count = Math.min(lights.length, this.maxLights)
     this._countNode.value = count
 
@@ -184,14 +191,17 @@ export class LightStore {
       data[3 * lineSize + offset + 3] = light._categoryBucket
     }
 
-    // Zero out unused slots (enabled=0)
-    for (let i = count; i < this.maxLights; i++) {
+    // Retire only slots that were live in the previous projection. The backing
+    // array starts zeroed, so never-live capacity does not need frame-by-frame
+    // clearing.
+    for (let i = count; i < this._previousCount; i++) {
       const offset = i * 4
       // Row 1: intensity = 0
       data[lineSize + offset + 1] = 0
       // Row 3: enabled = 0
       data[3 * lineSize + offset + 1] = 0
     }
+    this._previousCount = count
 
     this._lightsTexture.needsUpdate = true
     touchDebugArray('lightStore.data')
@@ -208,6 +218,7 @@ export class LightStore {
     row2: Node<'vec4'>
     row3: Node<'vec4'>
   } {
+    this._assertUsable('readLightData')
     const i = int(lightIndex)
     const row0 = textureLoad(this._lightsTexture, ivec2(i, int(0)))
     const row1 = textureLoad(this._lightsTexture, ivec2(i, int(1)))
@@ -218,8 +229,29 @@ export class LightStore {
 
   /** Dispose of GPU resources. */
   dispose(): void {
-    this._lightsTexture.dispose()
-    unregisterDebugArray('lightStore.data')
-    unregisterDebugTexture('lightStore.lights')
+    if (this._disposed) return
+    this._disposed = true
+
+    let firstError: unknown
+    let didError = false
+    const runCleanup = (cleanup: () => void): void => {
+      try {
+        cleanup()
+      } catch (error) {
+        if (!didError) {
+          firstError = error
+          didError = true
+        }
+      }
+    }
+
+    runCleanup(() => this._lightsTexture.dispose())
+    runCleanup(() => unregisterDebugArray('lightStore.data'))
+    runCleanup(() => unregisterDebugTexture('lightStore.lights'))
+    if (didError) throw firstError
+  }
+
+  private _assertUsable(member: string): void {
+    if (this._disposed) throw new Error(`three-flatland: LightStore.${member} cannot be used after dispose()`)
   }
 }

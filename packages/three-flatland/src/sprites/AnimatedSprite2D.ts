@@ -6,6 +6,8 @@ import type { MaterialEffect } from '../materials/MaterialEffect'
 import type { SpriteSheet, SpriteAnimation, SpriteFrame } from './types'
 import type { SortLayerValue } from '../pipeline/sortLayers'
 import type { Animation, AnimationSetDefinition, PlayOptions } from '../animation/types'
+import { markSpriteCloneBootstrapMaterial } from '../internal/sprite-runtime'
+import { registerAnimatedSprite } from '../internal/animation-runtime'
 
 /**
  * Options for creating an AnimatedSprite2D.
@@ -97,6 +99,15 @@ export class AnimatedSprite2D extends Sprite2D {
     })
 
     this.controller = new AnimationController()
+    // Stored only for exact identity checks; these methods are never invoked unbound.
+    // oxlint-disable typescript/unbound-method
+    registerAnimatedSprite(
+      this,
+      AnimatedSprite2D.prototype.update,
+      Sprite2D.prototype.setFrame,
+      AnimationController.prototype.update
+    )
+    // oxlint-enable typescript/unbound-method
     this.name = 'AnimatedSprite2D'
 
     // If no options, we're being created by R3F - properties will be set via setters
@@ -418,8 +429,13 @@ export class AnimatedSprite2D extends Sprite2D {
       if (anim) animations.push(anim)
     }
 
+    const materialWasRegistryManaged = this._materialWasRegistryDefault || this._materialWasRegistryVariant
+    const cloneMaterial = materialWasRegistryManaged ? this.material.clone() : this.material
     const cloned = new AnimatedSprite2D({
       spriteSheet: this._spriteSheet,
+      // Stage a managed source through a private schema-complete material;
+      // destination enrollment will resolve its own world-scoped instance.
+      material: cloneMaterial,
       animations,
       animation: this.currentAnimation ?? undefined,
       anchor: this.anchor,
@@ -431,10 +447,20 @@ export class AnimatedSprite2D extends Sprite2D {
       zIndex: this.zIndex,
       pixelPerfect: this.pixelPerfect,
     })
+    if (materialWasRegistryManaged) markSpriteCloneBootstrapMaterial(cloned)
 
     cloned.position.copy(this.position)
     cloned.rotation.copy(this.rotation)
     cloned.scale.copy(this.scale)
+    cloned.visible = this._isAuthoredVisible()
+    cloned.lit = this.lit
+    cloned.receiveShadows = this.receiveShadows
+    cloned.castsShadow = this.castsShadow
+    cloned.shadowRadius = this.shadowRadius
+    cloned.alphaMap = this.alphaMap
+    cloned.alphaThreshold = this.alphaThreshold
+    cloned.hitRadius = this.hitRadius
+    cloned.hitTestMode = this.hitTestMode
 
     // Clone effect instances from parent
     for (const effect of this._effects) {
@@ -444,14 +470,31 @@ export class AnimatedSprite2D extends Sprite2D {
       }
       const clonedEffect = new EffectClass()
       for (const field of EffectClass._fields) {
-        const value = effect._defaults[field.name]!
+        const value = effect._getField(field.name)
         if (typeof value === 'number') {
           clonedEffect._defaults[field.name] = value
         } else {
           clonedEffect._defaults[field.name] = [...value]
         }
       }
+      // Primitive constants copy by value; reference constants deliberately
+      // retain identity because material variant routing keys objects by identity.
+      for (const name of Object.keys(effect._constants)) {
+        clonedEffect._constants[name] = effect._constants[name]
+      }
+      // Cloning intentionally reproduces a known effect schema. Register it
+      // explicitly so addEffect does not report the user-facing
+      // late-registration warning for this internal operation.
+      if (cloned.material.registerEffect(EffectClass as unknown as typeof MaterialEffect, clonedEffect._constants)) {
+        cloned._setupInstanceAttributes()
+      }
       cloned.addEffect(clonedEffect)
+    }
+
+    if (this._materialIsBootstrapDefault || this._materialWasRegistryDefault) {
+      cloned._materialIsBootstrapDefault = true
+    } else if (this._materialIsBootstrapVariant || this._materialWasRegistryVariant) {
+      cloned._materialIsBootstrapVariant = true
     }
 
     return cloned as this

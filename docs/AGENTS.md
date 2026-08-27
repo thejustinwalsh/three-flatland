@@ -16,6 +16,21 @@ cd docs && npx astro check
 
 A full production build uses `astro check && astro build` (the `build` script in `docs/package.json`). The turbo `docs#build` task depends on every example package and several workspace packages — running it from the root via `turbo run docs#build` is the canonical full build, but it is slow. Use `astro check` for fast iteration.
 
+## REQUIRED: preserve Koota design provenance
+
+Every public page that discusses three-flatland's private or internal renderer ECS must retain all
+three parts of the project's Koota attribution:
+
+1. Link to [Koota](https://github.com/pmndrs/koota).
+2. State that Koota's typed-trait, structure-of-arrays, query, and system model made the specialized
+   Flatland design possible.
+3. State that Koota remains the recommended general-purpose ECS for application and gameplay state.
+
+This applies to guides, explanations, README prose, release notes, migration notes, and future public
+architecture material. Removing Koota as a former package peer must never be framed as replacing or
+superseding Koota. `privateArchitectureContract.test.ts` enforces the attribution on public files that
+describe the private system; this instruction is the authoring rule for new pages.
+
 ## Gotchas
 
 ### Workspace deps must be built first
