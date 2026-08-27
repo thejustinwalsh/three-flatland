@@ -10,6 +10,49 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components'
   `package.json` until you're ready to migrate.
 </Aside>
 
+## Scaffold a New Project
+
+`create-three-flatland` generates a Vite-powered WebGPU starter: an interactive sprite scene, a Suspense
+loading overlay, oxlint/oxfmt, unit and Playwright tests, and `AGENTS.md`/`CLAUDE.md` so coding agents
+know the ropes.
+
+<Tabs syncKey="pkg">
+  <TabItem label="npm" icon="simple-icons:npm">
+    ```bash
+    npm create three-flatland@latest
+    ```
+  </TabItem>
+  <TabItem label="pnpm" icon="simple-icons:pnpm">
+    ```bash
+    pnpm create three-flatland
+    ```
+  </TabItem>
+  <TabItem label="yarn" icon="simple-icons:yarn">
+    ```bash
+    yarn create three-flatland
+    ```
+  </TabItem>
+</Tabs>
+
+You are prompted for a project directory and a template. Pass both as arguments to skip the prompts:
+
+```bash
+npm create three-flatland@latest my-app -- --template three
+```
+
+| Template | Stack |
+| --- | --- |
+| `three` | Plain Three.js + WebGPU (`three/webgpu` + TSL) on Vite |
+| `react` | React Three Fiber (`@react-three/fiber/webgpu`) on Vite |
+
+| Flag | Meaning |
+| --- | --- |
+| `-t, --template <name>` | Template to scaffold: `three` \| `react` |
+| `--overwrite` | Scaffold into a non-empty target directory |
+| `--help` | Show usage |
+
+To add three-flatland to a project you already have, install the packages directly instead.
+
 ## Package Manager
 
 <Tabs syncKey="pkg">
