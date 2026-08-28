@@ -81,14 +81,13 @@ constructor option, method, and uniform.
 </Tabs>
 
 :::caution[R3F render phase]
-In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). R3F then skips its default render, and Flatland controls rendering. Game logic and ECS updates should run in the default update phase.
+In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). This tells R3F to skip its default render and lets Flatland control rendering. Game logic and ECS updates should run in the default update phase.
 :::
 
 ## Add objects
 
 `flatland.add()` dispatches on type, described in [object routing](../flatland/#object-routing).
 
-```typescript
 ```typescript
 // Sprite2D → batched via SpriteGroup
 const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
@@ -102,7 +101,6 @@ flatland.add(light)
 const mesh = new Mesh(geometry, material)
 flatland.add(mesh)
 ```
-```
 
 ## Turn on lighting
 
@@ -115,11 +113,9 @@ const lighting = new DefaultLightEffect()
 lighting.resolutionScale = 0.5 // Optional: half-resolution effect resources
 flatland.setLighting(lighting)
 ```
-```
 
 ```typescript
 const indicator = new Sprite2D({ texture, lit: false }) // always full brightness
-```
 ```
 
 Flatland disposes an attached effect's GPU resources when you replace or clear it. See
@@ -133,7 +129,6 @@ function animate() {
   flatland.render(renderer)
   requestAnimationFrame(animate)
 }
-```
 ```
 
 Flatland sizes its camera from the render surface on its own. Call `resize(width, height)` only to
@@ -155,7 +150,6 @@ const material = new Sprite2DMaterial({
   },
 })
 ```
-```
 
 ## Check batching
 
@@ -165,7 +159,6 @@ const stats = flatland.spriteGroup.stats
 console.log(`Sprites: ${stats.spriteCount}`)
 console.log(`Batches: ${stats.batchCount}`)
 console.log(`Visible: ${stats.visibleSprites}`)
-```
 ```
 
 Draw calls are not part of `stats`. Read them from `renderer.info.render.calls` after a frame, or
@@ -193,7 +186,6 @@ flatland.addPass(post)
 // Zero-cost parameter updates
 post.bands = 10
 ```
-```
 
 Passes chain in insertion order, and each one receives the previous pass's output. The pipeline
 initializes on the first `addPass()` call, which is why that call costs more than the second. See
@@ -215,7 +207,6 @@ mesh.material.map = flatland.texture
 flatland.render(renderer)
 renderer.render(scene3D, camera3D)
 ```
-```
 
 Flatland defaults a render target with no color-space metadata to sRGB, which suits 2D color output.
 Set the target's color space before its first GPU use, or pass a fresh target: changing that
@@ -232,7 +223,6 @@ const hdrTarget = new RenderTarget(512, 512, {
   colorSpace: LinearSRGBColorSpace,
 })
 const hdrFlatland = new Flatland({ renderTarget: hdrTarget })
-```
 ```
 
 ## Dispose
