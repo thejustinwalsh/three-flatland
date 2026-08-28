@@ -94,7 +94,7 @@ The code below drops into any project that already has three-flatland installed.
 </Tabs>
 
 :::caution[The `await renderer.init()` line is not optional]
-WebGPU initialization is async. Forgetting `await renderer.init()` before the first render is the single most common bug in fresh three-flatland projects. If you see a blank canvas with no errors, this is almost always why.
+WebGPU initialization is async. Without `await renderer.init()` before the first render, the canvas stays blank and nothing is logged.
 :::
 
 ## Next Steps
