@@ -27,6 +27,35 @@ what belongs on it, and the audit). When writing or auditing a docs page, use
 both: `documentation` decides the page's type and contents, this skill decides
 how it reads.
 
+**REQUIRED SUB-FILE: `anti-slop.md`** — the banned-pattern sections below cover the
+*marketing* tells. `anti-slop.md` covers what survives that filter and still reads
+as machine-written: metaphor discipline, sentence complexity, rhythm, and the
+vocabulary substitutions. Read it before drafting, not after.
+
+## Voice precedence
+
+Three layers, applied in this order. A lower layer never overrides a higher one.
+
+1. **Author core voice** — who is talking. Sourced from the author's home-dir
+   `voice-register` skill (`~/.claude/skills/voice-register/`), which is distilled
+   from real writing samples rather than invented. `voice-samples.md` holds the
+   anchors; `composition-craft.md` holds the how-to-write laws; `scorers.md` holds
+   the pass/fail rubric.
+2. **Surface register** — how hot. The calm and dialed-up registers below, chosen
+   by surface. This decides temperature, never identity.
+3. **Anti-trope rules** — what never ships. The banned patterns below plus
+   `anti-slop.md`. These are subtractive and apply to every register.
+
+When layer 1 and layer 2 disagree on a sentence, layer 1 wins: the register is a
+dial on the author's voice, not a different writer.
+
+**This dependency is one-directional and optional.** `voice-register` lives outside
+this repo and knows nothing about it. If the home-dir skill is absent — a fresh
+machine, CI, a contributor who is not the author — this skill still works on its
+own: layers 2 and 3 are fully self-contained. Check for the file, use it when it is
+there, and do not block on it. Never copy its contents into this repo; it is the
+author's personal corpus, and a stale duplicate is worse than no copy.
+
 ## The voice in one line
 
 A senior engineer explaining a tool to another senior engineer. Direct
