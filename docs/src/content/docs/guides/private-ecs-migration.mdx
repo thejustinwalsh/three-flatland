@@ -15,16 +15,16 @@ renderer dependency; it does not replace Koota.
 
 ## Remove the Koota peer dependency
 
-`three-flatland` no longer requires Koota. Remove `koota` from your application when it was installed only to satisfy the former peer dependency. Keep it when your game has its own Koota world or systems.
+`three-flatland` no longer requires Koota. Remove `koota` from your application when it was installed
+only to satisfy the former peer dependency, and keep it when your game has its own Koota world or
+systems.
 
-```diff title="package.json"
-  "dependencies": {
--   "koota": "^0.6.5",
-    "three": "^0.185.1"
-  }
-```
+The [`koota-peer-dependency-removal` codemod](https://github.com/thejustinwalsh/three-flatland/blob/main/packages/three-flatland/codemods/koota-peer-dependency-removal.md)
+makes that decision per manifest. After installing, it ships at
+`node_modules/three-flatland/codemods/koota-peer-dependency-removal.md`.
 
-Application state can still use any ECS. Store a `Sprite2D` reference or an application-owned ID in that world instead of storing a three-flatland entity handle.
+Application state can still use any ECS. Store a `Sprite2D` reference or an application-owned ID in
+that world instead of a three-flatland entity handle.
 
 ## Replace engine-ECS coupling
 
@@ -68,22 +68,12 @@ The [codemod index](https://github.com/thejustinwalsh/three-flatland/blob/main/p
 
 ## Assign complete effect tuples
 
-Effect vector getters return read-only tuple snapshots. Assign the complete tuple to publish through the effect's live backing storage. Material effects update their attached sprite or tile projection, while light and pass effects update their live ECS/uniform state.
+Effect vector getters return read-only tuple snapshots. Assign the complete tuple to publish through
+the effect's live backing storage. Mutating a returned snapshot, such as `offset.amount[0] = 4`, does
+not update the attached effect.
 
-```ts
-const Offset = createMaterialEffect({
-  name: 'offset',
-  schema: { amount: [0, 0] as const },
-  node: ({ inputColor }) => inputColor,
-})
-
-const offset = new Offset()
-
-// This publishes both components.
-offset.amount = [4, 8]
-```
-
-Replace component mutation such as `offset.amount[0] = 4`. Mutating a returned snapshot does not update the attached effect.
+The [`effect-vector-whole-tuple` codemod](https://github.com/thejustinwalsh/three-flatland/blob/main/packages/three-flatland/codemods/effect-vector-whole-tuple.md)
+rewrites component writes and flags dynamic or aliased mutations for review.
 
 ## Fix values rejected by strict validation
 
