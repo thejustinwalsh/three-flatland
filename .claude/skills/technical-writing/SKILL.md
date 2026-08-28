@@ -80,9 +80,25 @@ the target, not a tone.
 ## The rules that break most often here
 
 **No figurative language.** Google bans metaphors, idioms, colloquialisms, and slang outright,
-because they are less precise and harder to translate. Do not write that a draw call is a phone call
-to the GPU, that units are *in play*, or that something happens *under the hood*. State the
-mechanism.
+because they are less precise and harder to translate.
+
+A banned-phrase list cannot enforce this. Idioms are an open class, so a list only ever catches the
+ones already written down. Use a test instead.
+
+**The verb test.** Read every verb in the draft and ask one question: is this the established term
+for the operation, or a figure you introduced?
+
+| Established, keep | Introduced, cut |
+| --- | --- |
+| returns, throws, wraps, holds, calls, points to, inherits, allocates, dispatches, blocks | stand up, spin up, drive, reach for, live in, sit on, hand off, wire up, hook into |
+
+Programming has dead metaphors that are now the precise term: a function *returns*, a promise
+*resolves*, a class *inherits*. Those stay. What goes is a figure you reached for in place of the
+plain verb, because `stand up a Flatland` means `create a Flatland` and only the second one is
+unambiguous.
+
+Applying this test to prose written under the previous list-based rule found three violations on
+pages that had already passed the check.
 
 **No anthropomorphism.** Google treats this as a subtype of figurative language. Software does not
 see, want, know, believe, or decide.
@@ -204,6 +220,32 @@ Use this prompt line verbatim:
 > it. It exists only to vary your phrasing away from your default.
 
 **Model:** Sonnet, for the variant fallback only. The primary path is you writing the prose.
+
+## Never ship a first draft
+
+Three passes, minimum, and they are separate acts. Do not merge them.
+
+1. **Draft.** Write from the source-fact list. Get the facts down in order. Do not polish, do not
+   check anything, do not stop to reword.
+2. **Audit.** Put the draft aside, then read it as an adversary hunting for violations. Work through
+   `checklist.md` and the verb test. Write down every hit. **Fix nothing during this pass.**
+3. **Rewrite.** Fix everything the audit recorded.
+
+Repeat steps 2 and 3 until an audit finds nothing.
+
+**The separation is the point.** Auditing while drafting finds almost nothing, because you read what
+you meant rather than what you wrote. Every violation a reviewer has caught in this repo's docs
+survived a checklist run performed during drafting: an invented figurative verb, a question-shaped
+heading, jargon linked two paragraphs after first use, and an equivalence table that taught the
+reader nothing.
+
+**Audit passes are cheap and rewrites are cheap. Reviewer time is not.** A third pass costs minutes.
+A violation that reaches review costs a round trip and a rebase.
+
+**A clean audit is not a good page.** The checklist gates violations. It cannot tell you whether the
+prose is worth reading, whether a section earns its place, or whether the order makes sense. Read the
+finished page once as a reader before you call it done, and expect a human reviewer to catch things
+no pass will.
 
 ## Before prose ships
 

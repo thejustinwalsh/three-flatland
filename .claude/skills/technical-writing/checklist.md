@@ -1,6 +1,10 @@
-# Pre-ship checklist
+# Audit checklist
 
-Run this on every piece of prose before it ships. Stop at the first failure, fix it, restart.
+Run this as a **separate audit pass**, after drafting and with the draft set aside, never while
+writing. Record every hit and fix nothing until the pass is finished. Then rewrite, then audit again.
+Repeat until a pass finds nothing.
+
+Auditing while drafting finds almost nothing. You read what you meant rather than what you wrote.
 
 ## 1. Type
 
@@ -24,9 +28,13 @@ Run this on every piece of prose before it ships. Stop at the first failure, fix
 
 ## 4. Figurative language
 
+- [ ] **Verb test:** list every verb. For each, is it the established term for the operation, or a
+      figure you introduced? `returns`, `throws`, `wraps`, `inherits` stay. `stand up`, `spin up`,
+      `drive`, `reach for`, `live in`, `hand off`, `wire up` go.
 - [ ] No metaphors, analogies, idioms, or slang.
 - [ ] No human verbs on software: sees, wants, knows, believes, decides, tells.
 - [ ] No inanimate subject performing an action a person performs.
+- [ ] No meta-narration: `This page covers`, `In this section`, `The rest of this guide`.
 
 ## 5. Sentences
 
