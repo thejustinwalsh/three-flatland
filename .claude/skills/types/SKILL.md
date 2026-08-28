@@ -2,27 +2,6 @@
 name: types
 description: |
   Master TypeScript development with type-safe patterns, generics, and modern tooling. This skill provides comprehensive guidance for TypeScript 5.9+, covering type system fundamentals (generics, mapped types, conditional types, satisfies operator), type based patterns (error handling, validation), React integration for type-safe frontends. Use when building type-safe applications, migrating JavaScript codebases, configuring modern toolchains (Vite 7, pnpm, ESLint, Vitest), implementing advanced type patterns, or comparing TypeScript with Java/Python approaches.
-version: 1.0.0
-category: programming-languages
-triggers:
-  - typescript
-  - ts
-  - type-safe
-  - generics
-  - react typescript
-  - typescript migration
-  - tsconfig
-  - type guards
-  - mapped types
-  - conditional types
-  - satisfies operator
-author: Adapted from Richard Hightower
-license: MIT
-tags:
-  - typescript
-  - type-safety
-  - react
-  - vite
 ---
 
 # Types

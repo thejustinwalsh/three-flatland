@@ -1,3 +1,8 @@
+---
+name: frontend-design
+description: Design, implement, or audit polished frontend interfaces with deliberate UX, color, typography, visual effects, and motion. Use when creating or revising UI components, pages, layouts, design systems, or frontend visual direction.
+---
+
 # Frontend Design System
 
 > **Philosophy:** Every pixel has purpose. Restraint is luxury. User psychology drives decisions.
