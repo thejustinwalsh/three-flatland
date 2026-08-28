@@ -46,7 +46,7 @@ If you're writing steps and you find yourself explaining *why* or listing *every
 1. **Name the page's one type out loud** before writing. If you can't, the page is two pages.
 2. **Write only to that type's shape.** Use the must/must-not columns as a gate on every section.
 3. **Other-type content gets a cross-link, never an inlined section.** A how-to links to the API page for the full option list; an explanation links to the how-to for setup; a tutorial links to explanation for the theory. The link carries the rest — that is *not* duplication.
-4. **Voice:** apply `marketing-voice` (calm register for all docs pages).
+4. **Prose:** apply `technical-writing` (Google developer documentation style guide).
 
 ## Mode-mixing smells (from this repo)
 
