@@ -81,7 +81,7 @@ constructor option, method, and uniform.
 </Tabs>
 
 :::caution[R3F render phase]
-In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). This tells R3F to skip its default render and lets Flatland control rendering. Game logic and ECS updates should run in the default update phase.
+In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). R3F then skips its default render, and Flatland controls rendering. Game logic and ECS updates should run in the default update phase.
 :::
 
 ## Add objects
@@ -104,7 +104,7 @@ flatland.add(mesh)
 
 ## Turn on lighting
 
-Call `setLighting()` with a preset. All sprites are lit by default; set `lit: false` to opt one out.
+Call `setLighting()` with a preset. All sprites are lit by default; set `lit: false` on a sprite to opt out.
 
 ```typescript
 import { DefaultLightEffect } from '@three-flatland/presets'
@@ -131,8 +131,8 @@ function animate() {
 }
 ```
 
-Flatland sizes its camera from the render surface on its own. Call `resize(width, height)` only to
-override that, and see the API reference for the unit rules that apply to a manual sizing session.
+Flatland derives its camera size from the render surface automatically. To override that, call
+`resize(width, height)`; the API reference has the unit rules for a manual sizing session.
 
 ## Read global uniforms in a shader
 
@@ -161,8 +161,7 @@ console.log(`Batches: ${stats.batchCount}`)
 console.log(`Visible: ${stats.visibleSprites}`)
 ```
 
-Draw calls are not part of `stats`. Read them from `renderer.info.render.calls` after a frame, or
-subscribe to the debug bus `stats` feature in the `@three-flatland/debug` subpath.
+Draw calls are not part of `stats`. Read `renderer.info.render.calls` after a frame instead.
 
 ## Add a post-processing pass
 
@@ -188,9 +187,9 @@ post.bands = 10
 ```
 
 Passes chain in insertion order, and each one receives the previous pass's output. The pipeline
-initializes on the first `addPass()` call, which is why that call costs more than the second. See
-[post-processing cost](../flatland/#post-processing-cost) and the
-[pass effects guide](../pass-effects/).
+initializes on the first `addPass()` call. See
+[post-processing cost](../flatland/#post-processing-cost) for the performance implications, and the
+[pass effects guide](../pass-effects/) for creating custom effects.
 
 ## Render to a texture
 
