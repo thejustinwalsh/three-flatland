@@ -22,30 +22,10 @@ pnpm create three-flatland
 
 # yarn
 yarn create three-flatland
+
+# bun
+bun create three-flatland
 ```
-
-You'll be prompted for a project directory and a template. Then:
-
-```bash
-cd my-app
-npm install
-npm run dev
-```
-
-### Non-interactive
-
-Pass the target directory and template as arguments (create-vite-compatible flags):
-
-```bash
-npm create three-flatland@latest my-app -- --template three
-npm create three-flatland@latest my-app -- --template react
-```
-
-| Flag | Meaning |
-| --- | --- |
-| `-t, --template <name>` | Template to scaffold: `three` \| `react` |
-| `--overwrite` | Scaffold into a non-empty target directory |
-| `--help` | Show usage |
 
 ## Templates
 
@@ -53,8 +33,6 @@ npm create three-flatland@latest my-app -- --template react
 | --- | --- |
 | `three` | Plain Three.js + WebGPU (`three/webgpu` + TSL) on Vite |
 | `react` | React Three Fiber (`@react-three/fiber/webgpu`) on Vite |
-
-Both render an interactive sprite scene, share the same loading overlay, and ship with linting, formatting, unit tests, and Playwright end-to-end tests wired up.
 
 ## Documentation
 

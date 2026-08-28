@@ -23,6 +23,15 @@
 
 ## Installation
 
+Scaffold a new project — a Vite-powered WebGPU starter with an interactive sprite scene, tests, and
+agent guidance:
+
+```bash
+npm create three-flatland@latest my-app -- --template three   # or: --template react
+```
+
+Or add the packages to a project you already have:
+
 ```bash
 # Core library (Three.js)
 npm install three-flatland three
@@ -176,12 +185,19 @@ flash.intensity = 0.8 // Animate per frame
 
 | Package                                                                              | Description                                                                      |
 | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| [`three-flatland`](https://www.npmjs.com/package/three-flatland)                     | Core library. Sprites, materials, animation, loaders, tilemaps, render pipeline. |
-| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland)               | React Three Fiber subpath. Re-exports core plus JSX type augmentation.           |
-| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes)       | TSL shader nodes for effects (per-category subpaths).                            |
-| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia)         | Skia compiled to WASM. GPU vector graphics, text, paths, image filters.          |
-| [`@three-flatland/devtools`](https://www.npmjs.com/package/@three-flatland/devtools) | Tweakpane v4 theme + React hooks. Devtools panel for Flatland scenes.            |
-| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets)   | Pre-configured effect combinations (in development).                             |
+| [`three-flatland`](https://www.npmjs.com/package/three-flatland) | Default entry. Sprites, animation, tilemaps, materials, lights, events, everyday loaders. |
+| [`three-flatland/react`](https://www.npmjs.com/package/three-flatland) | React Three Fiber subpath. Re-exports core plus JSX type augmentation. |
+| [`create-three-flatland`](https://www.npmjs.com/package/create-three-flatland) | Project scaffolder. `npm create three-flatland@latest`. |
+| [`@three-flatland/nodes`](https://www.npmjs.com/package/@three-flatland/nodes) | A specific 2D shader effect (retro/CRT, blur, distortion, color, upscale) without hand-writing TSL. |
+| [`@three-flatland/presets`](https://www.npmjs.com/package/@three-flatland/presets) | Lit sprites working immediately. Thin — `DefaultLightEffect` and `NormalMapProvider`. |
+| [`@three-flatland/normals`](https://www.npmjs.com/package/@three-flatland/normals) | Dynamic lighting on flat 2D art without hand-authoring normal maps. |
+| [`@three-flatland/atlas`](https://www.npmjs.com/package/@three-flatland/atlas) | Loose sprite PNGs into one draw-call-friendly atlas, optionally polygon-trimmed for overdraw. |
+| [`@three-flatland/alphamap`](https://www.npmjs.com/package/@three-flatland/alphamap) | Pixel-perfect pointer hit testing on transparent sprites instead of bounding-box hits. |
+| [`@three-flatland/image`](https://www.npmjs.com/package/@three-flatland/image) | PNG/WebP/AVIF/KTX2 encode and decode, plus `Ktx2Loader`. |
+| [`@three-flatland/bake`](https://www.npmjs.com/package/@three-flatland/bake) | Offline-bake framework and the `flatland-bake` binary. |
+| [`@three-flatland/slug`](https://www.npmjs.com/package/@three-flatland/slug) | Text that stays sharp at any zoom or perspective; thousands of glyphs in one draw call. |
+| [`@three-flatland/skia`](https://www.npmjs.com/package/@three-flatland/skia) | Immediate-mode 2D canvas in the scene: arbitrary paths, boolean ops, filters, gradients, images. |
+| [`@three-flatland/devtools`](https://www.npmjs.com/package/@three-flatland/devtools) | Live inspection of scene, material, and sprite state. |
 
 ## Requirements
 
@@ -209,10 +225,13 @@ Full docs, interactive examples, and API reference at **[tjw.dev/three-flatland]
 - [x] React Three Fiber integration
 - [x] Skia GPU text rendering via WASM
 - [x] Render targets for 2D-on-3D (via `Flatland` class)
-- [ ] Slug text rendering (in development)
-- [ ] 2D lighting & shadows (in development)
-- [ ] VS Code tools (in development)
-- [ ] Effect presets
+- [x] 2D lighting & shadows (`@three-flatland/presets`, SDF occlusion)
+- [x] Slug text rendering (`@three-flatland/slug`)
+- [x] Effect presets (`@three-flatland/presets`)
+- [x] Offline asset baking (`flatland-bake`, atlases, normal maps, alpha hitmasks)
+- [x] Project scaffolder (`npm create three-flatland@latest`)
+- [x] VS Code tools (`three-flatland.fl-tools`, alpha)
+- [ ] Radiance-cascade global illumination (in development)
 - [ ] Particles
 
 ## License
