@@ -8,5 +8,4 @@ directory first. The CLI's own help is accurate ("Empty a non-empty target
 directory (preserves .git)") and `scaffold.test.ts` pins the behaviour, so the
 README was the only place understating a destructive flag.
 
-Also documents the `bun create` form and the direct `npx` / `pnpm dlx` / `yarn dlx` / `bunx`
-equivalents, which the README never mentioned.
+Also adds the `bun create` form, which the README never listed.

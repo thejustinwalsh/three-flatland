@@ -12,9 +12,8 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components'
 
 ## Scaffold a New Project
 
-`create-three-flatland` generates a Vite-powered WebGPU starter: an interactive sprite scene, a Suspense
-loading overlay, oxlint/oxfmt, unit and Playwright tests, and `AGENTS.md`/`CLAUDE.md` so coding agents
-know the ropes.
+`create-three-flatland` generates a Vite starter with a running WebGPU sprite scene, linting, unit and
+Playwright tests, and agent guidance files.
 
 <Tabs syncKey="pkg">
   <TabItem label="npm" icon="simple-icons:npm">
@@ -39,16 +38,6 @@ know the ropes.
   </TabItem>
 </Tabs>
 
-Each `create` command is shorthand for running the `create-three-flatland` binary directly. Both
-forms do the same thing:
-
-| Shorthand | Direct |
-| --- | --- |
-| `npm create three-flatland@latest` | `npx create-three-flatland@latest` |
-| `pnpm create three-flatland` | `pnpm dlx create-three-flatland` |
-| `yarn create three-flatland` | `yarn dlx create-three-flatland` |
-| `bun create three-flatland` | `bunx create-three-flatland` |
-
 You are prompted for a project directory and a template. Pass both as arguments to skip the prompts:
 
 ```bash
@@ -60,13 +49,8 @@ npm create three-flatland@latest my-app -- --template three
 | `three` | Plain Three.js + WebGPU (`three/webgpu` + TSL) on Vite |
 | `react` | React Three Fiber (`@react-three/fiber/webgpu`) on Vite |
 
-| Flag | Meaning |
-| --- | --- |
-| `-t, --template <name>` | Template to scaffold: `three` \| `react` |
-| `--overwrite` | Delete everything in the target directory except `.git`, then scaffold |
-| `--help` | Show usage |
-
-To add three-flatland to a project you already have, install the packages directly instead.
+`--overwrite` deletes everything in the target directory except `.git`, then scaffolds. Run `--help`
+for the full flag list.
 
 ## Package Manager
 
