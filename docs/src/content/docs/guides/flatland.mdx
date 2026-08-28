@@ -1,6 +1,6 @@
 ---
 title: Flatland
-description: What the Flatland pipeline owns in a frame, and when that ownership is the right trade.
+description: What the Flatland pipeline owns in a frame, and when that ownership is the right trade-off.
 ---
 
 import Diagram from '../../../components/Diagram.astro'
@@ -24,76 +24,76 @@ For setup, the render loop, post-processing, and disposal, see
 | **Global uniforms** | Automatic time, viewport, tint             | Not included                      |
 | **Render call**     | `flatland.render(...)`                     | `renderer.render(...)`            |
 
-The difference is which object owns the frame. `Flatland` owns the camera, the sizing, and the draw,
-so a 2D scene needs no render loop beyond one `render()` call. `SpriteGroup` owns none of those,
-which is what you want when sprites are one layer inside a 3D scene that already has a camera and a
-loop.
+The difference is which object owns the frame. `Flatland` owns the camera, the sizing, and the
+render call, so a 2D scene needs no render loop beyond one `render()` call. `SpriteGroup` owns
+none of those, so it fits inside a 3D scene that already has a camera and a render loop of its own.
 
-Use `SpriteGroup` when an existing scene is authoritative. Use `Flatland` when the 2D scene is the
-application.
+Use `SpriteGroup` when an existing scene already owns the camera and the render loop. Use
+`Flatland` when none does.
 
 ## Frame synchronization
 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
-`render()` synchronizes four things and then draws: the camera, the global uniforms, the lighting
-buffers, and the sprite batches. All four are derived state, so your application does not maintain
-them between frames.
+`render()` synchronizes four things before it draws: the camera, the global uniforms, the
+lighting buffers, and the sprite batches. Flatland recomputes all four every frame, so your
+application does not maintain them between frames.
 
 Flatland also tracks the render surface. It reads the size of the renderer's drawing buffer, or of
 the active render target, and updates the camera when that size changes. You do not need a resize
 listener.
 
-Two size units are in use. Surface-dependent GPU resources are measured in physical drawing-buffer
-pixels, which puts canvas device pixel ratio and render-target texels in one coordinate space.
-[Pixel-perfect rendering](../pixel-perfect-rendering/) covers both, and the sizing rules in full.
-`globals.viewportSize` reports the renderer's logical size instead, paired with
-`globals.pixelRatio`. Effects allocate against physical pixels; shader layout code uses the logical
-size.
+Two size units are in use. Surface-dependent GPU resources are measured in physical
+drawing-buffer pixels, which puts canvas device pixel ratio and render-target texels in one
+coordinate space. [Pixel-perfect rendering](../pixel-perfect-rendering/) covers both units and the
+sizing rules in full. `globals.viewportSize` reports the renderer's logical size instead, paired
+with `globals.pixelRatio`.
 
-The default camera, `PixelPerfectCamera`, selects a whole-number scale and centers the viewport
-inside the surface. That scale usually does not fill the surface exactly, so bars remain along two
-edges. `resolvedAspect` then reports the ratio of the viewport rather than of the whole surface.
+The default camera, `PixelPerfectCamera`, selects an integer scale and centers the resulting
+viewport inside the surface. When that viewport does not fill the surface, bars remain along two
+edges, and `resolvedAspect` then reports the ratio of the viewport rather than of the whole
+surface.
 
 ## Object routing
 
-`add()` dispatches on type, so the caller does not choose a destination. `Sprite2D` instances go to
-the internal `SpriteGroup` and become batch candidates. `Light2D` instances register with the
-lighting system. Anything else is a plain `Object3D` and joins the internal scene directly.
+`add()` dispatches on type, so the caller does not choose a destination. `Sprite2D` instances go
+to the internal `SpriteGroup` and become batch candidates, and `Light2D` instances register with
+the lighting system. Anything else is a plain `Object3D` that joins the internal scene directly.
 
-Global uniforms are wired to a sprite's material at `add()` time. A sprite added on frame 200 reads
-the same `time` and `globalTint` as one added on frame 1.
+Flatland connects global uniforms to a sprite's material when `add()` places it. This holds
+regardless of when the sprite joins the scene, so every sprite reads the same global uniform
+values, including `time`.
 
 ## Global time
 
-`globals.time` is `undefined` by default, and Flatland accumulates elapsed seconds itself. Assigning
-a number takes that over: the value you set is the value shaders read, and Flatland stops advancing
-it. Fixed-step simulations and deterministic replays need that control; most scenes do not.
+`globals.time` is `undefined` by default, and Flatland accumulates elapsed seconds automatically.
+Assigning it a number overrides that: shaders read the value you set instead, and Flatland stops
+advancing it.
 
 ## Effect ownership
 
-An attached `LightEffect` belongs to the `Flatland` that holds it. Replacing the active effect, or
-clearing it, disposes the effect's GPU resources before detaching it. The instance can be attached
-again and receives a fresh `init → resize → update` sequence. Handles it produced while attached
-become invalid once it is detached.
+A `LightEffect` is the lighting pipeline a `Flatland` instance runs each frame. An attached
+instance belongs to the `Flatland` that holds it. Replacing the active effect, or clearing it,
+disposes the effect's GPU resources before detaching it. Attaching it again produces a fresh
+`init → resize → update` sequence. A handle the effect produced while attached must not be used
+once the effect is detached.
 
-`dispose()` applies the same contract to the whole object. The ECS world, the sprite batches, the
-render pipeline, and every pass effect entity are destroyed together. Ownership is never shared, so
-two objects cannot hold conflicting claims on one buffer.
+`dispose()` applies the same contract to the whole object: it destroys the entity-component-system
+(ECS) world, the sprite batches, the render pipeline, and every pass effect entity together.
 
 ## Post-processing cost
 
-Adding the first pass changes how a frame is drawn. With no passes, the scene draws straight to the
-destination. With one or more, the scene renders to an offscreen target and each pass runs as a
-full-screen draw over it.
+Adding the first pass changes how a frame is drawn. With no passes, the scene draws directly to
+the destination. With one or more, the scene renders to an offscreen target, and each pass runs as
+a full-screen draw over it.
 
 :::tip[Performance note]
-One or two passes are cheap. A long chain costs a full-screen sample per pass per frame, so combine
-effects into a single pass where the math allows it.
+One or two passes are cheap. A long chain costs a full-screen sample per pass per frame, so
+combine effects into a single pass where you can.
 :::
 
-That switch is invisible from the API, and it is why the first `addPass()` call costs more than the
-second.
+That switch is invisible from the API. Because the render pipeline initializes on the first
+`addPass()` call, that call costs more than each one after it.
 
 ## Next steps
 
