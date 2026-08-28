@@ -1,15 +1,20 @@
 ---
 title: Flatland
-description: Self-contained 2D rendering pipeline with camera, post-processing, and global uniforms.
+description: What the Flatland pipeline owns in a frame, and when that ownership is the right trade.
 ---
 
-import { Tabs, TabItem } from 'starlight-theme/components'
+import Diagram from '../../../components/Diagram.astro'
+import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw'
 
-`Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an orthographic camera, global uniforms, post-processing pipeline, and render target support into a single object.
+`Flatland` is the high-level entry point for three-flatland. It wraps a `SpriteGroup` with an
+orthographic camera, global uniforms, a post-processing pipeline, and render-target support in a
+single object.
 
-If you're new and not sure whether you need `Flatland` or `SpriteGroup` — start here. The table below tells you when to graduate.
+This page explains what `Flatland` owns and why. For setup, the render loop, post-processing, and
+disposal, see [Set up a Flatland scene](../flatland-setup/). For every constructor option and method,
+see the [`Flatland` API reference](/three-flatland/api/three-flatland/src/classes/flatland/).
 
-## When to Use Flatland vs SpriteGroup
+## Flatland compared with SpriteGroup
 
 |                     | Flatland                                   | SpriteGroup                       |
 | ------------------- | ------------------------------------------ | --------------------------------- |
@@ -19,334 +24,81 @@ If you're new and not sure whether you need `Flatland` or `SpriteGroup` — star
 | **Global uniforms** | Automatic time, viewport, tint             | Not included                      |
 | **Render call**     | `flatland.render(...)`                     | `renderer.render(...)`            |
 
-Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` when you need to mix sprites into an existing 3D scene with your own camera and render loop.
+The difference is which object owns the frame. `Flatland` owns the camera, the sizing, and the draw,
+so a 2D scene needs no render loop beyond one `render()` call. `SpriteGroup` owns none of those,
+which is what you want when sprites are one layer inside a 3D scene that already has a camera and a
+loop.
 
-## Basic Setup
+Use `SpriteGroup` when an existing scene is authoritative. Use `Flatland` when the 2D scene is the
+application.
 
-<Tabs syncKey="framework">
-  <TabItem label="Three.js" icon="simple-icons:threedotjs">
-    ```typescript
-    import { WebGPURenderer } from 'three/webgpu'
-    import { Flatland, Sprite2D, TextureLoader } from 'three-flatland'
-
-    const renderer = new WebGPURenderer()
-    await renderer.init()
-    document.body.appendChild(renderer.domElement)
-
-    function resizeRenderer() {
-      renderer.setSize(window.innerWidth, window.innerHeight)
-    }
-    resizeRenderer()
-    window.addEventListener('resize', resizeRenderer)
-
-    const flatland = new Flatland({ viewSize: 400, clearColor: 0x1a1a2e })
-    const texture = await new TextureLoader().loadAsync('/sprites/hero.png')
-
-    flatland.add(new Sprite2D({ texture }))
-
-    function animate() {
-      flatland.render(renderer)
-      requestAnimationFrame(animate)
-    }
-    animate()
-    ```
-
-  </TabItem>
-  <TabItem label="React" icon="simple-icons:react">
-    ```tsx
-    import { useRef } from 'react'
-    import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-    import { Flatland, Sprite2D, Sprite2DMaterial } from 'three-flatland/react'
-    import type { Flatland as FlatlandType } from 'three-flatland/react'
-    import type { WebGPURenderer } from 'three/webgpu'
-
-    extend({ Flatland, Sprite2D, Sprite2DMaterial })
-
-    function Scene() {
-      const flatlandRef = useRef<FlatlandType>(null)
-      const renderer = useThree((state) => state.renderer)
-
-      // Render in the 'render' phase so R3F skips its own render
-      useFrame(() => {
-        flatlandRef.current?.render(renderer as unknown as WebGPURenderer)
-      }, { phase: 'render' })
-
-      return (
-        <flatland ref={flatlandRef} viewSize={400} clearColor={0x1a1a2e}>
-          <sprite2D texture={texture} />
-        </flatland>
-      )
-    }
-
-    export default function App() {
-      return (
-        <Canvas renderer={{ antialias: false }}>
-          <Scene />
-        </Canvas>
-      )
-    }
-    ```
-
-  </TabItem>
-</Tabs>
-
-:::caution[R3F render phase]
-In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). This tells R3F to skip its default render and lets Flatland control rendering. Game logic and ECS updates should run in the default update phase.
-:::
-
-## Constructor Options
-
-```typescript
-const flatland = new Flatland({
-  viewSize: 400, // Orthographic view height in world units
-  pixelPerfect: true, // Managed PixelPerfectCamera (system default)
-  clearColor: 0x1a1a2e, // Background color
-  clearAlpha: 1, // Background alpha (< 1 for transparent)
-  autoClear: true, // Clear before each render
-  postProcessing: false, // Enable post-processing pipeline
-  aspect: undefined, // Regular camera only: auto-sync, or set a number to pin it
-  camera: null, // Custom OrthographicCamera (null = internal)
-  renderTarget: null, // RenderTarget (null = render to viewport)
-})
-```
-
-See the [FlatlandOptions API reference](/three-flatland/api/three-flatland/src/interfaces/flatlandoptions/) for full type details.
-
-Flatland's managed camera follows the library-wide `pixel-art` preset by default. See [Pixel-Perfect Rendering](../pixel-perfect-rendering/) for the camera, object snapping, HiDPI behavior, and the `FlatlandConfig` hierarchy. Pass `pixelPerfect: false` for a regular orthographic camera.
-
-## Adding Objects
-
-`flatland.add()` routes objects automatically:
-
-- **Sprite2D** instances go to the internal `SpriteGroup` for batched rendering
-- **Light2D** instances are tracked for the lighting system
-- **Other Object3D** instances are added directly to the internal scene
-
-```typescript
-// Sprite2D → batched via SpriteGroup
-const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
-flatland.add(sprite)
-
-// Light2D → tracked by lighting system
-const light = new Light2D({ type: 'point', position: [50, 50], color: 0xff6600 })
-flatland.add(light)
-
-// Other Three.js objects → added to internal scene
-const mesh = new Mesh(geometry, material)
-flatland.add(mesh)
-```
-
-Global uniforms are automatically wired to each sprite's material on `add()`.
-
-## Lighting
-
-Flatland manages 2D lighting with `Light2D` sources and a `LightEffect` pipeline. Activate lighting by calling `setLighting()` with a preset:
-
-```typescript
-import { DefaultLightEffect } from '@three-flatland/presets'
-
-const lighting = new DefaultLightEffect()
-lighting.resolutionScale = 0.5 // Optional: half-resolution effect resources
-flatland.setLighting(lighting)
-```
-
-All sprites receive lighting by default. Set `lit: false` to opt out:
-
-```typescript
-const indicator = new Sprite2D({ texture, lit: false }) // always full brightness
-```
-
-| Method / Property        | Description                                                           |
-| ------------------------ | --------------------------------------------------------------------- |
-| `setLighting(effect)`    | Set the active LightEffect (or `null` to disable)                     |
-| `lighting`               | Current LightEffect (read-only)                                       |
-| `lights`                 | All tracked Light2D instances (read-only)                             |
-| `effect.resolutionScale` | Processing resolution relative to the physical surface (default: `1`) |
-
-`resolutionScale` belongs to the effect that owns the surface-dependent resources. A value of `0.5` receives half-width and half-height dimensions in `LightEffect.resize()`, reducing area to one quarter while leaving camera framing, canvas resolution, renderer DPR, and logical viewport uniforms unchanged. Change Three.js `renderer.setPixelRatio()` or R3F `<Canvas dpr={...}>` instead when the entire frame should render at a lower resolution.
-
-Flatland owns an attached effect's lifecycle. Replacing the active effect or calling `setLighting(null)` disposes its GPU resources before detaching it. The effect instance can be attached again and will receive a fresh `init → resize → update` sequence, but effect-owned GPU resource handles must not be used while it is detached.
-
-See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types, and custom effects.
-
-## Render Loop
-
-import Diagram from '../../../components/Diagram.astro'
-import framePipeline from '../../../assets/diagrams/frame-pipeline.svg?raw'
+## Frame synchronization
 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
-Each frame, call `render()`. `Flatland` reads the renderer drawing buffer or active render target size and updates its camera when the surface dimensions change:
+`render()` synchronizes four things and then draws: the camera, the global uniforms, the lighting
+buffers, and the sprite batches. All four are derived state, so your application does not maintain
+them between frames.
 
-```typescript
-function animate() {
-  flatland.render(renderer)
-  requestAnimationFrame(animate)
-}
-```
+Flatland also tracks the render surface. It reads the size of the renderer's drawing buffer, or of
+the active render target, and updates the camera when that size changes. You do not need a resize
+listener.
 
-`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches before drawing. Surface-dependent GPU resources use physical drawing-buffer pixels so canvas DPR and render-target texels stay in the same coordinate space; `globals.viewportSize` remains the renderer's logical size and is paired with `globals.pixelRatio`. The default `PixelPerfectCamera` selects and centers an integer-sized viewport inside the physical surface, so `resolvedAspect` can differ from the full surface when letterboxing is active. With `pixelPerfect: false`, pass `aspect` or assign `flatland.aspect` to pin the regular internal camera.
+Two size units are in use. Surface-dependent GPU resources are measured in physical drawing-buffer
+pixels, which puts canvas device pixel ratio and render-target texels in one coordinate space.
+[Pixel-perfect rendering](../pixel-perfect-rendering/) covers both, and the sizing rules in full.
+`globals.viewportSize` reports the renderer's logical size instead, paired with
+`globals.pixelRatio`. Effects allocate against physical pixels; shader layout code uses the logical
+size.
 
-Calling `resize(width, height)` starts a manual sizing session, and the active destination at that moment fixes the unit for the session. With no render target attached, pass logical CSS pixels; the renderer's current DPR is applied on every render. A target attached later is therefore sized to `width × DPR` by `height × DPR`. With a render target attached, pass physical texels, matching `RenderTarget.setSize()`; those dimensions remain physical across later target swaps or a return to the canvas. Automatic sizing only observes user-owned render targets and never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` ends the manual sizing session and resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. Read `flatland.resolvedAspect` when you need the current numeric ratio.
+The default camera, `PixelPerfectCamera`, selects a whole-number scale and centers the viewport
+inside the surface. That scale usually does not fill the surface exactly, so bars remain along two
+edges. `resolvedAspect` then reports the ratio of the viewport rather than of the whole surface.
 
-When you supply a camera through `camera`, Flatland preserves its authored frustum. The aspect controls above apply to the internal camera; `resolvedAspect` reports the supplied camera's actual frustum ratio.
+## Object routing
 
-:::caution[Breaking default]
-`Flatland` previously kept `aspect = 1` until `resize()` was called. Pass `aspect: 1` when that fixed square frustum was intentional. Remove per-frame or `useThree(state => state.size)` resize bridges when the camera should follow the render surface.
-:::
+`add()` dispatches on type, so the caller does not choose a destination. `Sprite2D` instances go to
+the internal `SpriteGroup` and become batch candidates. `Light2D` instances register with the
+lighting system. Anything else is a plain `Object3D` and joins the internal scene directly.
 
-## Global Uniforms
+Global uniforms are wired to a sprite's material at `add()` time. A sprite added on frame 200 reads
+the same `time` and `globalTint` as one added on frame 1.
 
-Every Flatland instance exposes a `globals` object with shared uniforms. These update once per frame and are available to all sprite materials via TSL nodes.
+## Global time
 
-| Uniform        | Description                          |
-| -------------- | ------------------------------------ |
-| `time`         | Elapsed seconds (`undefined` = auto) |
-| `globalTint`   | Color tint for all sprites           |
-| `viewportSize` | Logical viewport size in pixels      |
-| `pixelRatio`   | Device pixel ratio                   |
-| `wind`         | Wind direction and strength          |
-| `fogColor`     | Fog color                            |
-| `fogRange`     | Fog near/far range                   |
+`globals.time` is `undefined` by default, and Flatland accumulates elapsed seconds itself. Assigning
+a number takes that over: the value you set is the value shaders read, and Flatland stops advancing
+it. Fixed-step simulations and deterministic replays need that control; most scenes do not.
 
-### Auto vs Manual Time
+## Effect ownership
 
-By default, `time` is `undefined` and Flatland accumulates elapsed time automatically. Set it to a number for manual control:
+An attached `LightEffect` belongs to the `Flatland` that holds it. Replacing the active effect, or
+clearing it, disposes the effect's GPU resources before detaching it. The instance can be attached
+again and receives a fresh `init → resize → update` sequence. Handles it produced while attached
+become invalid once it is detached.
 
-```typescript
-// Auto mode (default) — time accumulates each frame
-flatland.globals.time = undefined
+`dispose()` applies the same contract to the whole object. The ECS world, the sprite batches, the
+render pipeline, and every pass effect entity are destroyed together. Ownership is never shared, so
+two objects cannot hold conflicting claims on one buffer.
 
-// Manual mode — set exact value
-flatland.globals.time = performance.now() / 1000
-```
+## Post-processing cost
 
-### Using Uniforms in TSL
-
-Access the TSL node directly for custom material effects:
-
-```typescript
-import { Sprite2DMaterial } from 'three-flatland'
-
-const material = new Sprite2DMaterial({
-  colorTransform: (ctx) => {
-    // Use the global tint node in a custom effect
-    const tinted = ctx.color.rgb.mul(flatland.globals.globalTintNode)
-    return tinted.toVec4(ctx.color.a)
-  },
-})
-```
-
-Each global has a corresponding TSL node: `timeNode`, `globalTintNode`, `viewportSizeNode`, `pixelRatioNode`, `windNode`, `fogColorNode`, `fogRangeNode`.
-
-## Statistics
-
-Monitor batching with `flatland.spriteGroup.stats`:
-
-```typescript
-const stats = flatland.spriteGroup.stats
-
-console.log(`Sprites: ${stats.spriteCount}`)
-console.log(`Batches: ${stats.batchCount}`)
-console.log(`Visible: ${stats.visibleSprites}`)
-```
-
-Draw calls aren't part of `stats` — read them from the renderer after a frame: `renderer.info.render.calls` reflects actual GPU work.
-
-## Post-Processing
-
-Add full-screen pass effects with `addPass()`:
-
-```typescript
-import { Flatland, createPassEffect } from 'three-flatland'
-import { posterize } from '@three-flatland/nodes'
-
-const PosterizePass = createPassEffect({
-  name: 'posterize',
-  schema: { bands: 6 },
-  pass:
-    ({ uniforms }) =>
-    (input, uv) =>
-      posterize(input, uniforms.bands),
-})
-
-const flatland = new Flatland({ viewSize: 400 })
-const post = new PosterizePass()
-flatland.addPass(post)
-
-// Zero-cost parameter updates
-post.bands = 10
-```
-
-The render pipeline auto-initializes on the first `addPass()` call. Passes chain in insertion order — each receives the previous pass's output.
+Adding the first pass changes how a frame is drawn. With no passes, the scene draws straight to the
+destination. With one or more, the scene renders to an offscreen target and each pass runs as a
+full-screen draw over it.
 
 :::tip[Performance note]
-Adding the first pass switches Flatland onto the render-pipeline path: the scene renders to an offscreen target, then each pass runs as a full-screen draw. One or two passes are cheap; a long chain costs a full-screen sample per pass per frame, so fuse effects into a single pass where you can.
+One or two passes are cheap. A long chain costs a full-screen sample per pass per frame, so combine
+effects into a single pass where the math allows it.
 :::
 
-| Method                  | Description                       |
-| ----------------------- | --------------------------------- |
-| `addPass(pass, order?)` | Add a pass effect                 |
-| `removePass(pass)`      | Remove a specific pass            |
-| `clearPasses()`         | Remove all passes                 |
-| `passes`                | Read-only array of current passes |
+That switch is invisible from the API, and it is why the first `addPass()` call costs more than the
+second.
 
-See the [Pass Effects guide](../pass-effects/) for creating custom effects and the full node library.
+## Next steps
 
-## Render to Texture
-
-Render Flatland output to a texture for use in 3D scenes:
-
-```typescript
-import { RenderTarget } from 'three'
-
-const target = new RenderTarget(512, 512)
-const flatland = new Flatland({ renderTarget: target })
-
-// Use the texture on a 3D mesh
-mesh.material.map = flatland.texture
-
-// Each frame: render 2D first, then 3D
-flatland.render(renderer)
-renderer.render(scene3D, camera3D)
-```
-
-Flatland defaults a render target with no color-space metadata to sRGB, which is
-the usual choice for 2D color output. It also keeps the pipeline write and the
-target metadata aligned, so sampling `flatland.texture` in another Flatland or
-Three.js scene preserves the source colors without a manual transfer function.
-
-Set the target's color space before its first GPU use (or pass a fresh target to
-Flatland). Changing color-space metadata after Three has allocated the target
-does not recreate its GPU attachment format.
-
-For linear or HDR output, declare that intent on the target. Flatland preserves
-explicit color-space and texture-type settings:
-
-```typescript
-import { HalfFloatType, LinearSRGBColorSpace, RenderTarget } from 'three'
-
-const hdrTarget = new RenderTarget(512, 512, {
-  type: HalfFloatType,
-  colorSpace: LinearSRGBColorSpace,
-})
-const hdrFlatland = new Flatland({ renderTarget: hdrTarget })
-```
-
-## Disposal
-
-Clean up all resources when done:
-
-```typescript
-flatland.dispose()
-```
-
-This destroys the ECS world, sprite batches, render pipeline, and all pass effect entities.
-
-## Next Steps
-
-- [2D Lighting](../lighting/) — Light2D sources and LightEffect presets
-- [Pass Effects](../pass-effects/) — Full-screen post-processing effects
-- [Batch Rendering](../batch-rendering/) — How sprite batching works under the hood
-- [Pixel-Perfect Rendering](../pixel-perfect-rendering/) — Camera scaling, projected-pivot snapping, and presets
-- [TSL Nodes](../tsl-nodes/) — Per-sprite material effects and low-level TSL usage
+- [Set up a Flatland scene](../flatland-setup/) — constructing, adding objects, passes, and targets
+- [2D lighting](../lighting/) — Light2D sources and LightEffect presets
+- [Pass effects](../pass-effects/) — full-screen post-processing effects
+- [Batch rendering](../batch-rendering/) — how sprite batching works
+- [Pixel-perfect rendering](../pixel-perfect-rendering/) — camera scaling, snapping, and presets
