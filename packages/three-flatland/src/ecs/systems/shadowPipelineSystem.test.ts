@@ -63,12 +63,21 @@ function ShadowEffectClass() {
 
 interface SetupOpts {
   occludersDirty?: boolean
+  shadowPipelineMode?: 'sdf' | 'occlusion'
   /** Overrides merged onto the effect's `constants` (DefaultLightEffect-style). */
   constants?: Record<string, unknown>
 }
 
 function setup(world: World, opts: SetupOpts = {}) {
-  const Effect = ShadowEffectClass()
+  const Effect = opts.shadowPipelineMode
+    ? createLightEffect({
+        name: 'shadowRepresentationTest',
+        schema: { ambientIntensity: 0.2 },
+        needsShadows: true,
+        shadowPipelineMode: opts.shadowPipelineMode,
+        light: () => stubLightFn,
+      })
+    : ShadowEffectClass()
   Effect._initialize()
   const effect = new Effect()
 
@@ -139,6 +148,23 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
 
     expect(occlusionPass.render).toHaveBeenCalledTimes(1)
     expect(sdfGenerator.generate).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the binary caster pass but retires the SDF for occlusion-only effects', () => {
+    const { sdfGenerator, occlusionPass } = setup(world, {
+      occludersDirty: true,
+      shadowPipelineMode: 'occlusion',
+    })
+
+    shadowPipelineSystem(world)
+
+    const pipelineEntity = world.view(select(ShadowPipeline))[0]!
+    const pipeline = readRequired(world, pipelineEntity, ShadowPipeline)
+    expect(pipeline.sdfGenerator).toBeNull()
+    expect(pipeline.occlusionPass).not.toBeNull()
+    expect(sdfGenerator.dispose).toHaveBeenCalledOnce()
+    expect(sdfGenerator.generate).not.toHaveBeenCalled()
+    expect(occlusionPass.render).toHaveBeenCalledOnce()
   })
 
   it('sizes shadows from the canonical surface without querying the renderer', () => {

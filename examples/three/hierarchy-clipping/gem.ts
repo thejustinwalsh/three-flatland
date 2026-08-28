@@ -4,4 +4,4 @@
 
 import type { Gem } from './GemBackground'
 
-export const GEM = 'amethyst' as const satisfies Gem
+export const GEM = 'ruby' as const satisfies Gem

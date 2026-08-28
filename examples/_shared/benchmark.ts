@@ -9,7 +9,7 @@ export interface BenchmarkGpuAdapterInfo {
 }
 
 export interface BenchmarkReadyDetail {
-  example: 'knightmark' | 'lighting'
+  example: 'knightmark' | 'lighting' | 'radiance-dungeon'
   variant: 'three' | 'react'
   seed: number
   fixedDeltaMs: number | null

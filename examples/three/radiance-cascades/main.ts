@@ -1,8 +1,14 @@
-import { CanvasTexture, SRGBColorSpace } from 'three'
+import { CanvasTexture, Color, SRGBColorSpace } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
-import { Flatland, Light2D, Sprite2D } from 'three-flatland'
-import { HierarchicalRadianceLightEffect, RadianceLightEffect } from '@three-flatland/presets'
+import { EmissiveEffect, Flatland, Light2D, Sprite2D } from 'three-flatland'
+import {
+  DdaFixedRadianceLightEffect,
+  HierarchicalRadianceLightEffect,
+  RadianceLightEffect,
+} from '@three-flatland/presets'
 import { createPane } from '@three-flatland/devtools'
+import { initializeRenderer } from './renderStartupError'
+import { configureExampleRendererColor } from './rendererColorManagement'
 
 let activeRenderer: WebGPURenderer | null = null
 let activeFlatland: Flatland | null = null
@@ -85,7 +91,7 @@ function cloneProbeSnapshot<T>(value: T): T {
 }
 
 function halfToFloat(value: number): number {
-  const sign = (value & 0x8000) ? -1 : 1
+  const sign = value & 0x8000 ? -1 : 1
   const exponent = (value >> 10) & 0x1f
   const fraction = value & 0x03ff
   if (exponent === 0) return sign * Math.pow(2, -14) * (fraction / 1024)
@@ -160,7 +166,9 @@ function sampleLuminance(image: LuminanceImage, u: number, v: number): number {
 
 function sobelAt(image: LuminanceImage, x: number, y: number): number {
   const at = (dx: number, dy: number): number =>
-    image.data[Math.max(0, Math.min(image.height - 1, y + dy)) * image.width + Math.max(0, Math.min(image.width - 1, x + dx))] ?? 0
+    image.data[
+      Math.max(0, Math.min(image.height - 1, y + dy)) * image.width + Math.max(0, Math.min(image.width - 1, x + dx))
+    ] ?? 0
   const gx = -at(-1, -1) + at(1, -1) - 2 * at(-1, 0) + 2 * at(1, 0) - at(-1, 1) + at(1, 1)
   const gy = -at(-1, -1) - 2 * at(0, -1) - at(1, -1) + at(-1, 1) + 2 * at(0, 1) + at(1, 1)
   return Math.hypot(gx, gy)
@@ -171,7 +179,10 @@ function highFrequencyAt(image: LuminanceImage, x: number, y: number): number {
   let count = 0
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
-      sum += image.data[Math.max(0, Math.min(image.height - 1, y + dy)) * image.width + Math.max(0, Math.min(image.width - 1, x + dx))] ?? 0
+      sum +=
+        image.data[
+          Math.max(0, Math.min(image.height - 1, y + dy)) * image.width + Math.max(0, Math.min(image.width - 1, x + dx))
+        ] ?? 0
       count++
     }
   }
@@ -192,7 +203,11 @@ function countProfilePeaks(image: LuminanceImage, yRatio: number): number {
   const threshold = mean + Math.sqrt(variance) * 2.25
   let peaks = 0
   for (let i = 1; i < derivatives.length - 1; i++) {
-    if ((derivatives[i] ?? 0) > threshold && (derivatives[i] ?? 0) >= (derivatives[i - 1] ?? 0) && (derivatives[i] ?? 0) >= (derivatives[i + 1] ?? 0)) {
+    if (
+      (derivatives[i] ?? 0) > threshold &&
+      (derivatives[i] ?? 0) >= (derivatives[i - 1] ?? 0) &&
+      (derivatives[i] ?? 0) >= (derivatives[i + 1] ?? 0)
+    ) {
       peaks++
     }
   }
@@ -280,6 +295,21 @@ function solidTexture(color: string): CanvasTexture {
   return texture
 }
 
+function emitterTexture(color: number): CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 32
+  canvas.height = 32
+  const ctx = canvas.getContext('2d')!
+  ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`
+  ctx.beginPath()
+  ctx.arc(16, 16, 13, 0, Math.PI * 2)
+  ctx.fill()
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  texture.needsUpdate = true
+  return texture
+}
+
 function addRect(
   flatland: Flatland,
   color: string,
@@ -300,36 +330,60 @@ function addRect(
   return sprite
 }
 
-const DEFAULT_RADIANCE = {
-  algorithm: 'hrc' as 'rc' | 'hrc',
-  hrcCompositionMode: 'holographic' as 'hierarchical' | 'holographic',
-  intensity: 0.005,
-  filterRadius: 0.7,
-  filterStrength: 1.0,
-  filterDiagonals: false,
-  filterJitterStrength: 0,
-  raymarchSteps: 64,
-  blueNoiseStrength: 0,
-  intervalOverlap: 0,
-  sceneRadianceDownsampleFactor: 1,
-  mipBlur: 0,
-  mipStrength: 0.4,
-  wideDownsampleFactor: 2,
-  wideLevels: 1,
-  hrcShortIntervalCount: 4,
-  hrcCompositionLevels: 2,
-  hrcFinalResolutionScale: 2,
+function addEmitter(flatland: Flatland, color: number, x: number, y: number, intensity: number) {
+  const sprite = new Sprite2D({
+    texture: emitterTexture(color),
+    lit: false,
+    // Sources must not enter the occluder SDF or they shadow themselves.
+    castsShadow: false,
+  })
+  sprite.scale.set(22, 22, 1)
+  sprite.position.set(x, y, 3)
+
+  const emission = new EmissiveEffect()
+  const linearColor = new Color(color)
+  emission.color = [linearColor.r, linearColor.g, linearColor.b]
+  // Keep the on-screen source visibly saturated while the transport remains
+  // HDR. A 1:1 display emission clips toward white under tone mapping.
+  emission.intensity = intensity * 0.15
+  sprite.addEffect(emission)
+  flatland.add(sprite)
+
+  // RC/HRC trace analytic sources exactly, so a finite emitter cannot be
+  // skipped by a long sphere-trace step. Keep that source co-located with the
+  // visible sprite until arbitrary emissive silhouettes have a separate
+  // emitter distance field.
+  const light = new Light2D({ type: 'point', color, position: [x, y], intensity })
+  flatland.add(light)
+
+  return {
+    get intensity(): number {
+      return light.intensity
+    },
+    set intensity(value: number) {
+      light.intensity = value
+      emission.intensity = value * 0.15
+    },
+    setPosition(nextX: number, nextY: number): void {
+      sprite.position.set(nextX, nextY, sprite.position.z)
+      light.position.set(nextX, nextY, light.position.z)
+    },
+  }
 }
 
-const COMPARISON_BASELINE = {
+type Algorithm = 'rc' | 'dda-rc-fixed' | 'hrc' | 'dda-float' | 'dda-integer' | 'dda-fixed'
+const requestedAlgorithm = new URLSearchParams(location.search).get('algorithm')
+const DEFAULT_EXAMPLE = {
+  algorithm: (['rc', 'dda-rc-fixed', 'hrc', 'dda-float', 'dda-integer', 'dda-fixed'].includes(requestedAlgorithm ?? '')
+    ? requestedAlgorithm
+    : 'hrc') as Algorithm,
+}
+
+const RAW_TRANSPORT_DIAGNOSTIC = {
   filterRadius: 0,
   filterStrength: 0,
-  filterDiagonals: false,
-  filterJitterStrength: 0,
   raymarchSteps: 64,
-  blueNoiseStrength: 0,
   intervalOverlap: 0,
-  sceneRadianceDownsampleFactor: 1,
   mipBlur: 0,
   mipStrength: 0,
   wideDownsampleFactor: 2,
@@ -340,55 +394,113 @@ const COMPARISON_BASELINE = {
 }
 
 const DEFAULT_LIGHTS = {
-  warmIntensity: 6.1,
-  coolIntensity: 9.7,
+  warmIntensity: 1,
+  coolIntensity: 1,
 }
 
 async function main(): Promise<void> {
+  // The built-in stats producer resolves the same Three.js timestamp-query
+  // pool as the explicit benchmark hook below. Disable that producer only for
+  // isolated benchmark pages so each resolved duration belongs to one frame
+  // instead of a coalesced batch. Normal example/dev-panel sessions keep the
+  // standard Flatland GPU graph enabled.
+  if (new URLSearchParams(location.search).get('gpuBenchmark') === '1') {
+    ;(window as Window & { __FLATLAND_DEVTOOLS__?: boolean }).__FLATLAND_DEVTOOLS__ = false
+  }
   const status = document.querySelector<HTMLDivElement>('#status')!
+  const initialWidth = Math.max(1, document.documentElement.clientWidth)
+  const initialHeight = Math.max(1, document.documentElement.clientHeight)
   const renderer = new WebGPURenderer({ antialias: false })
+  configureExampleRendererColor(renderer)
   activeRenderer = renderer
-  renderer.setSize(window.innerWidth, window.innerHeight)
+  renderer.setSize(initialWidth, initialHeight, false)
   renderer.setPixelRatio(1)
   document.body.appendChild(renderer.domElement)
-  await renderer.init()
+  if (!(await initializeRenderer(renderer))) return
 
   const flatland = new Flatland({
     viewSize: 360,
-    aspect: window.innerWidth / window.innerHeight,
+    aspect: initialWidth / initialHeight,
     clearColor: 0x111418,
   })
   activeFlatland = flatland
-  flatland.resize(window.innerWidth, window.innerHeight)
+  flatland.resize(initialWidth, initialHeight)
 
-  const rcLighting = new RadianceLightEffect()
-  const hrcLighting = new HierarchicalRadianceLightEffect()
-  rcLighting.radianceIntensity = DEFAULT_RADIANCE.intensity
-  hrcLighting.radianceIntensity = DEFAULT_RADIANCE.intensity
-  for (const radiance of [rcLighting.radiance, hrcLighting.radiance]) {
-    radiance.filterRadius = DEFAULT_RADIANCE.filterRadius
-    radiance.filterStrength = DEFAULT_RADIANCE.filterStrength
-    radiance.filterDiagonals = DEFAULT_RADIANCE.filterDiagonals
-    radiance.filterJitterStrength = DEFAULT_RADIANCE.filterJitterStrength
-    radiance.raymarchSteps = DEFAULT_RADIANCE.raymarchSteps
-    radiance.blueNoiseStrength = DEFAULT_RADIANCE.blueNoiseStrength
-    radiance.sceneRadianceDownsampleFactor = DEFAULT_RADIANCE.sceneRadianceDownsampleFactor
-    radiance.mipBlur = DEFAULT_RADIANCE.mipBlur
-    radiance.mipStrength = DEFAULT_RADIANCE.mipStrength
-    radiance.wideDownsampleFactor = DEFAULT_RADIANCE.wideDownsampleFactor
-    radiance.wideLevels = DEFAULT_RADIANCE.wideLevels
-  }
-  rcLighting.radiance.intervalOverlap = DEFAULT_RADIANCE.intervalOverlap
-  hrcLighting.radiance.intervalOverlap = DEFAULT_RADIANCE.intervalOverlap
-  hrcLighting.radiance.shortIntervalCount = DEFAULT_RADIANCE.hrcShortIntervalCount
-  hrcLighting.radiance.compositionLevels = DEFAULT_RADIANCE.hrcCompositionLevels
-  hrcLighting.radiance.compositionMode = DEFAULT_RADIANCE.hrcCompositionMode
-  hrcLighting.radiance.holographicFinalResolutionScale = DEFAULT_RADIANCE.hrcFinalResolutionScale
+  let rcLighting = new RadianceLightEffect()
+  let ddaRcLighting = new DdaFixedRadianceLightEffect()
+  let hrcLighting = new HierarchicalRadianceLightEffect()
+  let rcLightingUsable = true
+  let ddaRcLightingUsable = true
+  let hrcLightingUsable = true
+  // The panel is populated from these live effects below; it must never become
+  // a second, hidden source of defaults.
   let lighting:
     | InstanceType<typeof RadianceLightEffect>
+    | InstanceType<typeof DdaFixedRadianceLightEffect>
     | InstanceType<typeof HierarchicalRadianceLightEffect> =
-    DEFAULT_RADIANCE.algorithm === 'hrc' ? hrcLighting : rcLighting
+    DEFAULT_EXAMPLE.algorithm === 'rc'
+      ? rcLighting
+      : DEFAULT_EXAMPLE.algorithm === 'dda-rc-fixed'
+        ? ddaRcLighting
+        : hrcLighting
   flatland.setLighting(lighting)
+
+  function ensureRcLighting(): InstanceType<typeof RadianceLightEffect> {
+    if (!rcLightingUsable) {
+      rcLighting = new RadianceLightEffect()
+      rcLightingUsable = true
+    }
+    return rcLighting
+  }
+
+  function ensureHrcLighting(): InstanceType<typeof HierarchicalRadianceLightEffect> {
+    if (!hrcLightingUsable) {
+      hrcLighting = new HierarchicalRadianceLightEffect()
+      hrcLightingUsable = true
+    }
+    return hrcLighting
+  }
+
+  function ensureDdaRcLighting(): InstanceType<typeof DdaFixedRadianceLightEffect> {
+    if (!ddaRcLightingUsable) {
+      ddaRcLighting = new DdaFixedRadianceLightEffect()
+      ddaRcLightingUsable = true
+    }
+    return ddaRcLighting
+  }
+
+  function switchLighting(
+    algorithm: 'rc' | 'dda-rc-fixed' | 'hrc' | 'dda-float' | 'dda-integer' | 'dda-fixed',
+    intensity: number
+  ): void {
+    const next =
+      algorithm === 'rc'
+        ? ensureRcLighting()
+        : algorithm === 'dda-rc-fixed'
+          ? ensureDdaRcLighting()
+          : ensureHrcLighting()
+    next.radianceIntensity = intensity
+    if (next === hrcLighting) {
+      next.radiance.compositionMode = 'holographic'
+      next.radiance.holographicTraversal =
+        algorithm === 'dda-float'
+          ? 'dda-float'
+          : algorithm === 'dda-integer'
+            ? 'dda-integer'
+            : algorithm === 'dda-fixed'
+              ? 'dda-fixed'
+              : 'sdf'
+    }
+    if (next === lighting) return
+
+    const previous = lighting
+    flatland.setLighting(next)
+    if (previous === rcLighting) rcLightingUsable = false
+    if (previous === ddaRcLighting) ddaRcLightingUsable = false
+    if (previous === hrcLighting) hrcLightingUsable = false
+    lighting = next
+  }
+  switchLighting(DEFAULT_EXAMPLE.algorithm, lighting.radianceIntensity)
 
   addRect(flatland, '#d8d6ca', 0, 0, 330, 210, { z: -20 })
   const occluders = [
@@ -397,28 +509,8 @@ async function main(): Promise<void> {
     addRect(flatland, '#252b35', 94, 58, 82, 18, { lit: false, castsShadow: true, z: 2 }),
   ]
   const occluderPositions = occluders.map((occluder) => occluder.position.clone())
-  addRect(flatland, '#b84a3d', -122, 70, 36, 36, { castsShadow: false, z: 1 })
-  addRect(flatland, '#3b76c4', 124, -70, 36, 36, { castsShadow: false, z: 1 })
-
-  const warm = new Light2D({
-    type: 'point',
-    color: 0xff8a45,
-    intensity: DEFAULT_LIGHTS.warmIntensity,
-    distance: 135,
-    decay: 2,
-    position: [-128, 4],
-  })
-  flatland.add(warm)
-
-  const cool = new Light2D({
-    type: 'point',
-    color: 0x4c9dff,
-    intensity: DEFAULT_LIGHTS.coolIntensity,
-    distance: 120,
-    decay: 2,
-    position: [128, -10],
-  })
-  flatland.add(cool)
+  const warm = addEmitter(flatland, 0xff8a45, -128, 4, DEFAULT_LIGHTS.warmIntensity)
+  const cool = addEmitter(flatland, 0x4c9dff, 128, -10, DEFAULT_LIGHTS.coolIntensity)
 
   const ambient = new Light2D({
     type: 'ambient',
@@ -428,390 +520,520 @@ async function main(): Promise<void> {
   flatland.add(ambient)
 
   const params = {
-    algorithm: DEFAULT_RADIANCE.algorithm as 'rc' | 'hrc',
+    algorithm: DEFAULT_EXAMPLE.algorithm as 'rc' | 'dda-rc-fixed' | 'hrc' | 'dda-float' | 'dda-integer' | 'dda-fixed',
     intensity: lighting.radianceIntensity,
-    filterRadius: rcLighting.radiance.filterRadius,
-    filterStrength: rcLighting.radiance.filterStrength,
-    filterDiagonals: rcLighting.radiance.filterDiagonals,
-    filterJitterStrength: rcLighting.radiance.filterJitterStrength,
-    raymarchSteps: rcLighting.radiance.raymarchSteps,
-    blueNoiseStrength: rcLighting.radiance.blueNoiseStrength,
-    intervalOverlap: rcLighting.radiance.intervalOverlap,
-    sceneRadianceDownsampleFactor: rcLighting.radiance.sceneRadianceDownsampleFactor,
-    mipBlur: rcLighting.radiance.mipBlur,
-    mipStrength: rcLighting.radiance.mipStrength,
-    wideDownsampleFactor: rcLighting.radiance.wideDownsampleFactor,
-    wideLevels: rcLighting.radiance.wideLevels,
+    filterRadius: lighting.radiance.filterRadius,
+    filterStrength: lighting.radiance.filterStrength,
+    raymarchSteps: lighting.radiance.raymarchSteps,
+    intervalOverlap: lighting.radiance.intervalOverlap,
+    mipBlur: lighting.radiance.mipBlur,
+    mipStrength: lighting.radiance.mipStrength,
+    wideDownsampleFactor: lighting.radiance.wideDownsampleFactor,
+    wideLevels: lighting.radiance.wideLevels,
+    lightSourceRadius: lighting.radiance.lightSourceRadius,
     hrcCompositionMode: hrcLighting.radiance.compositionMode,
     hrcShortIntervalCount: hrcLighting.radiance.shortIntervalCount,
     hrcCompositionLevels: hrcLighting.radiance.compositionLevels,
     hrcFinalResolutionScale: hrcLighting.radiance.holographicFinalResolutionScale,
+    ddaPixelSize: hrcLighting.radiance.ddaPixelSize,
+    ddaBleedThreshold: hrcLighting.radiance.ddaBleedThreshold,
+    ddaQuantizationBits: hrcLighting.radiance.ddaQuantizationBits,
+    ddaTransferRange: hrcLighting.radiance.ddaTransferRange,
+    ddaRadianceRange: hrcLighting.radiance.ddaRadianceRange,
+    ddaPaletteBands: hrcLighting.radiance.ddaPaletteBands,
+    ddaPaletteExposure: hrcLighting.radiance.ddaPaletteExposure,
     warmIntensity: warm.intensity,
     coolIntensity: cool.intensity,
     occluders: true,
     wallOpen: false,
     paused: false,
   }
+  function syncOccluderState(): void {
+    for (const [index, occluder] of occluders.entries()) {
+      const enabled = params.occluders && !(params.wallOpen && index === 0)
+      // Keep the ECS batch row enrolled and move disabled casters outside the
+      // lighting domain. Visibility and packed shadow-bit changes otherwise
+      // reach the shadow pre-pass on different projection frames.
+      occluder.castsShadow = enabled
+      occluder.position.copy(enabled ? occluderPositions[index]! : occluderPositions[index]!.clone().setX(10000))
+    }
+  }
   function syncParamsFromActiveRadiance(): void {
     const radiance = lighting.radiance
     params.filterRadius = radiance.filterRadius
     params.filterStrength = radiance.filterStrength
-    params.filterDiagonals = radiance.filterDiagonals
-    params.filterJitterStrength = radiance.filterJitterStrength
     params.raymarchSteps = radiance.raymarchSteps
-    params.blueNoiseStrength = radiance.blueNoiseStrength
     params.intervalOverlap = radiance.intervalOverlap
-    params.sceneRadianceDownsampleFactor = radiance.sceneRadianceDownsampleFactor
     params.mipBlur = radiance.mipBlur
     params.mipStrength = radiance.mipStrength
     params.wideDownsampleFactor = radiance.wideDownsampleFactor
     params.wideLevels = radiance.wideLevels
+    params.lightSourceRadius = radiance.lightSourceRadius
     params.hrcCompositionMode = hrcLighting.radiance.compositionMode
     params.hrcShortIntervalCount = hrcLighting.radiance.shortIntervalCount
     params.hrcCompositionLevels = hrcLighting.radiance.compositionLevels
     params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
+    const ddaRadiance = params.algorithm === 'dda-rc-fixed' ? ddaRcLighting.radiance : hrcLighting.radiance
+    params.ddaPixelSize = ddaRadiance.ddaPixelSize
+    params.ddaBleedThreshold = ddaRadiance.ddaBleedThreshold
+    params.ddaQuantizationBits = ddaRadiance.ddaQuantizationBits
+    params.ddaTransferRange = hrcLighting.radiance.ddaTransferRange
+    params.ddaRadianceRange = ddaRadiance.ddaRadianceRange
+    params.ddaPaletteBands = ddaRadiance.ddaPaletteBands
+    params.ddaPaletteExposure = ddaRadiance.ddaPaletteExposure
   }
   const paneBundle = createPane({ driver: 'manual' })
   const { pane } = paneBundle
   const updateDevtools = () => paneBundle.update()
+  let refreshingPane = false
+  const refreshPane = (): void => {
+    if (refreshingPane) return
+    refreshingPane = true
+    try {
+      pane.refresh()
+    } finally {
+      refreshingPane = false
+    }
+  }
   const folder = pane.addFolder({ title: 'Radiance Cascades', expanded: true })
   folder
     .addBinding(params, 'algorithm', {
-      options: { RC: 'rc', HRC: 'hrc' },
+      options: {
+        RC: 'rc',
+        'DDA RC Fixed': 'dda-rc-fixed',
+        HRC: 'hrc',
+        'DDA Float': 'dda-float',
+        'DDA Integer': 'dda-integer',
+        'DDA Fixed': 'dda-fixed',
+      },
     })
     .on('change', () => {
-      lighting = params.algorithm === 'hrc' ? hrcLighting : rcLighting
+      switchLighting(params.algorithm, params.intensity)
       syncParamsFromActiveRadiance()
-      lighting.radianceIntensity = params.intensity
-      flatland.setLighting(lighting)
-      pane.refresh()
+      refreshPane()
+      syncAlgorithmVisibility()
     })
-  folder
+  const hrcModeBinding = folder
     .addBinding(params, 'hrcCompositionMode', {
       label: 'HRC mode',
-      options: { Holographic: 'holographic', Hierarchical: 'hierarchical' },
+      options: { Holographic: 'holographic', 'Legacy interval': 'hierarchical' },
     })
     .on('change', () => {
       hrcLighting.radiance.compositionMode = params.hrcCompositionMode
-      pane.refresh()
+      refreshPane()
+      syncAlgorithmVisibility()
     })
-  folder.addBinding(params, 'intensity', { min: 0, max: 0.12, step: 0.005 }).on('change', () => {
+  folder.addBinding(params, 'intensity', { min: 0, max: 4, step: 0.01 }).on('change', () => {
     rcLighting.radianceIntensity = params.intensity
+    ddaRcLighting.radianceIntensity = params.intensity
     hrcLighting.radianceIntensity = params.intensity
   })
-  folder.addBinding(params, 'warmIntensity', { min: 0, max: 12, step: 0.1 }).on('change', () => {
+  folder.addBinding(params, 'warmIntensity', { min: 0, max: 4, step: 0.01 }).on('change', () => {
     warm.intensity = params.warmIntensity
   })
-  folder.addBinding(params, 'coolIntensity', { min: 0, max: 12, step: 0.1 }).on('change', () => {
+  folder.addBinding(params, 'coolIntensity', { min: 0, max: 4, step: 0.01 }).on('change', () => {
     cool.intensity = params.coolIntensity
   })
   folder.addBinding(params, 'occluders', { label: 'Occluders' }).on('change', () => {
-    for (const [index, occluder] of occluders.entries()) {
-      occluder.visible = params.occluders
-      occluder.castsShadow = params.occluders
-      occluder.position.copy(
-        params.occluders ? occluderPositions[index]! : occluderPositions[index]!.clone().setX(10000)
-      )
-    }
+    syncOccluderState()
   })
-  folder.addBinding(params, 'wallOpen').on('change', () => {
-    warm.position.x = params.wallOpen ? -38 : -128
+  folder.addBinding(params, 'wallOpen', { label: 'center wall open' }).on('change', () => {
+    syncOccluderState()
   })
   folder.addBinding(params, 'paused')
 
   const advanced = pane.addFolder({ title: 'Advanced', expanded: false })
   advanced.addBinding(params, 'filterRadius', { min: 0, max: 3, step: 0.05 }).on('change', () => {
-    rcLighting.radiance.filterRadius = params.filterRadius
-    hrcLighting.radiance.filterRadius = params.filterRadius
+    lighting.radiance.filterRadius = params.filterRadius
   })
   advanced.addBinding(params, 'filterStrength', { min: 0, max: 1, step: 0.05 }).on('change', () => {
-    rcLighting.radiance.filterStrength = params.filterStrength
-    hrcLighting.radiance.filterStrength = params.filterStrength
+    lighting.radiance.filterStrength = params.filterStrength
   })
-  advanced.addBinding(params, 'filterDiagonals').on('change', () => {
-    rcLighting.radiance.filterDiagonals = params.filterDiagonals
-    hrcLighting.radiance.filterDiagonals = params.filterDiagonals
-  })
-  advanced
-    .addBinding(params, 'filterJitterStrength', { min: 0, max: 1, step: 0.05 })
+  const raymarchStepsBinding = advanced
+    .addBinding(params, 'raymarchSteps', { min: 8, max: 96, step: 1 })
     .on('change', () => {
-      rcLighting.radiance.filterJitterStrength = params.filterJitterStrength
-      hrcLighting.radiance.filterJitterStrength = params.filterJitterStrength
+      lighting.radiance.raymarchSteps = params.raymarchSteps
+      params.raymarchSteps = lighting.radiance.raymarchSteps
+      refreshPane()
     })
-  advanced.addBinding(params, 'raymarchSteps', { min: 8, max: 96, step: 1 }).on('change', () => {
-    rcLighting.radiance.raymarchSteps = params.raymarchSteps
-    hrcLighting.radiance.raymarchSteps = params.raymarchSteps
-    params.raymarchSteps = rcLighting.radiance.raymarchSteps
-    pane.refresh()
-  })
-  advanced
-    .addBinding(params, 'blueNoiseStrength', { min: 0, max: 1, step: 0.05 })
-    .on('change', () => {
-      rcLighting.radiance.blueNoiseStrength = params.blueNoiseStrength
-      hrcLighting.radiance.blueNoiseStrength = params.blueNoiseStrength
-    })
-  advanced
-    .addBinding(params, 'intervalOverlap', { min: 0, max: 0.3, step: 0.01 })
+  const intervalOverlapBinding = advanced
+    .addBinding(params, 'intervalOverlap', { label: 'interval overlap (RC)', min: 0, max: 0.3, step: 0.01 })
     .on('change', () => {
       rcLighting.radiance.intervalOverlap = params.intervalOverlap
-      hrcLighting.radiance.intervalOverlap = params.intervalOverlap
     })
-  advanced
-    .addBinding(params, 'sceneRadianceDownsampleFactor', { min: 1, max: 4, step: 1 })
-    .on('change', () => {
-      rcLighting.radiance.sceneRadianceDownsampleFactor = params.sceneRadianceDownsampleFactor
-      hrcLighting.radiance.sceneRadianceDownsampleFactor = params.sceneRadianceDownsampleFactor
-      params.sceneRadianceDownsampleFactor = rcLighting.radiance.sceneRadianceDownsampleFactor
-      pane.refresh()
-    })
-  advanced.addBinding(params, 'mipBlur', { min: 0, max: 1, step: 0.05 }).on('change', () => {
-    rcLighting.radiance.mipBlur = params.mipBlur
-    hrcLighting.radiance.mipBlur = params.mipBlur
-  })
-  advanced.addBinding(params, 'mipStrength', { min: 0, max: 1, step: 0.05 }).on('change', () => {
-    rcLighting.radiance.mipStrength = params.mipStrength
-    hrcLighting.radiance.mipStrength = params.mipStrength
+  advanced.addBinding(params, 'mipBlur', { label: 'approx GI blur', min: 0, max: 1, step: 0.05 }).on('change', () => {
+    lighting.radiance.mipBlur = params.mipBlur
   })
   advanced
-    .addBinding(params, 'wideDownsampleFactor', { min: 2, max: 4, step: 1 })
+    .addBinding(params, 'mipStrength', { label: 'approx GI blend', min: 0, max: 1, step: 0.05 })
     .on('change', () => {
-      rcLighting.radiance.wideDownsampleFactor = params.wideDownsampleFactor
-      params.wideDownsampleFactor = rcLighting.radiance.wideDownsampleFactor
-      hrcLighting.radiance.wideDownsampleFactor = params.wideDownsampleFactor
-      pane.refresh()
+      lighting.radiance.mipStrength = params.mipStrength
     })
+  advanced.addBinding(params, 'wideDownsampleFactor', { min: 2, max: 4, step: 1 }).on('change', () => {
+    lighting.radiance.wideDownsampleFactor = params.wideDownsampleFactor
+    params.wideDownsampleFactor = lighting.radiance.wideDownsampleFactor
+    refreshPane()
+  })
   advanced.addBinding(params, 'wideLevels', { min: 1, max: 2, step: 1 }).on('change', () => {
-    rcLighting.radiance.wideLevels = params.wideLevels
-    hrcLighting.radiance.wideLevels = params.wideLevels
+    lighting.radiance.wideLevels = params.wideLevels
   })
   advanced
-    .addBinding(params, 'hrcShortIntervalCount', { min: 4, max: 16, step: 1 })
+    .addBinding(params, 'lightSourceRadius', { label: 'emitter radius (0=auto)', min: 0, max: 24, step: 0.25 })
+    .on('change', () => {
+      lighting.radiance.lightSourceRadius = params.lightSourceRadius
+    })
+  const hrcShortIntervalBinding = advanced
+    .addBinding(params, 'hrcShortIntervalCount', { label: 'legacy interval count', min: 4, max: 16, step: 1 })
     .on('change', () => {
       hrcLighting.radiance.shortIntervalCount = params.hrcShortIntervalCount
       params.hrcShortIntervalCount = hrcLighting.radiance.shortIntervalCount
-      pane.refresh()
+      refreshPane()
     })
-  advanced
-    .addBinding(params, 'hrcCompositionLevels', { min: 1, max: 4, step: 1 })
+  const hrcCompositionLevelsBinding = advanced
+    .addBinding(params, 'hrcCompositionLevels', { label: 'legacy composition levels', min: 1, max: 4, step: 1 })
     .on('change', () => {
       hrcLighting.radiance.compositionLevels = params.hrcCompositionLevels
       params.hrcCompositionLevels = hrcLighting.radiance.compositionLevels
-      pane.refresh()
+      refreshPane()
     })
-  advanced
-    .addBinding(params, 'hrcFinalResolutionScale', { min: 1, max: 4, step: 1 })
+  const hrcResolutionBinding = advanced
+    .addBinding(params, 'hrcFinalResolutionScale', {
+      label: 'HRC hierarchy scale',
+      options: { 'Full / default (4x)': 4, 'Mobile (2x)': 2, 'Diagnostic (1x)': 1 },
+    })
     .on('change', () => {
       hrcLighting.radiance.holographicFinalResolutionScale = params.hrcFinalResolutionScale
       params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
-      pane.refresh()
+      refreshPane()
     })
+  const ddaPixelSizeBinding = advanced
+    .addBinding(params, 'ddaPixelSize', { label: 'lighting pixel size', min: 1, max: 32, step: 1 })
+    .on('change', () => {
+      hrcLighting.radiance.ddaPixelSize = params.ddaPixelSize
+      ddaRcLighting.radiance.ddaPixelSize = params.ddaPixelSize
+      params.ddaPixelSize = hrcLighting.radiance.ddaPixelSize
+      refreshPane()
+    })
+  const ddaBleedThresholdBinding = advanced
+    .addBinding(params, 'ddaBleedThreshold', { label: 'bleed color threshold', min: 0, max: 2, step: 0.05 })
+    .on('change', () => {
+      hrcLighting.radiance.ddaBleedThreshold = params.ddaBleedThreshold
+      ddaRcLighting.radiance.ddaBleedThreshold = params.ddaBleedThreshold
+      params.ddaBleedThreshold = hrcLighting.radiance.ddaBleedThreshold
+      refreshPane()
+    })
+  const ddaQuantizationBitsBinding = advanced
+    .addBinding(params, 'ddaQuantizationBits', { label: 'fixed-point bits', min: 2, max: 8, step: 1 })
+    .on('change', () => {
+      hrcLighting.radiance.ddaQuantizationBits = params.ddaQuantizationBits
+      ddaRcLighting.radiance.ddaQuantizationBits = params.ddaQuantizationBits
+      params.ddaQuantizationBits = hrcLighting.radiance.ddaQuantizationBits
+      refreshPane()
+    })
+  const ddaRadianceRangeBinding = advanced
+    .addBinding(params, 'ddaRadianceRange', { label: 'fixed R0 range', min: 0.25, max: 16, step: 0.25 })
+    .on('change', () => {
+      hrcLighting.radiance.ddaRadianceRange = params.ddaRadianceRange
+      ddaRcLighting.radiance.ddaRadianceRange = params.ddaRadianceRange
+      params.ddaRadianceRange = hrcLighting.radiance.ddaRadianceRange
+      refreshPane()
+    })
+  const ddaTransferRangeBinding = advanced
+    .addBinding(params, 'ddaTransferRange', { label: 'fixed transfer range', min: 0.25, max: 16, step: 0.25 })
+    .on('change', () => {
+      hrcLighting.radiance.ddaTransferRange = params.ddaTransferRange
+      params.ddaTransferRange = hrcLighting.radiance.ddaTransferRange
+      refreshPane()
+    })
+  const ddaPaletteBandsBinding = advanced
+    .addBinding(params, 'ddaPaletteBands', {
+      label: 'lighting palette',
+      options: { Off: 0, '4 bands': 4, '8 bands': 8, '16 bands': 16, '32 bands': 32 },
+    })
+    .on('change', () => {
+      hrcLighting.radiance.ddaPaletteBands = params.ddaPaletteBands
+      ddaRcLighting.radiance.ddaPaletteBands = params.ddaPaletteBands
+      params.ddaPaletteBands = hrcLighting.radiance.ddaPaletteBands
+      refreshPane()
+    })
+  const ddaPaletteExposureBinding = advanced
+    .addBinding(params, 'ddaPaletteExposure', { label: 'palette exposure', min: 0.25, max: 64, step: 0.25 })
+    .on('change', () => {
+      hrcLighting.radiance.ddaPaletteExposure = params.ddaPaletteExposure
+      ddaRcLighting.radiance.ddaPaletteExposure = params.ddaPaletteExposure
+      params.ddaPaletteExposure = hrcLighting.radiance.ddaPaletteExposure
+      refreshPane()
+    })
+  function syncAlgorithmVisibility(): void {
+    const usesHrc = params.algorithm !== 'rc' && params.algorithm !== 'dda-rc-fixed'
+    const usesDdaTraversal =
+      params.algorithm === 'dda-rc-fixed' ||
+      params.algorithm === 'dda-float' ||
+      params.algorithm === 'dda-integer' ||
+      params.algorithm === 'dda-fixed'
+    const usesLogicalPixelGrid =
+      params.algorithm === 'dda-rc-fixed' || params.algorithm === 'dda-integer' || params.algorithm === 'dda-fixed'
+    const usesFixedPoint = params.algorithm === 'dda-rc-fixed' || params.algorithm === 'dda-fixed'
+    const usesLegacyIntervals = params.algorithm === 'hrc' && params.hrcCompositionMode === 'hierarchical'
+    hrcModeBinding.hidden = params.algorithm !== 'hrc'
+    intervalOverlapBinding.hidden = usesHrc
+    raymarchStepsBinding.hidden = usesDdaTraversal
+    hrcShortIntervalBinding.hidden = !usesLegacyIntervals
+    hrcCompositionLevelsBinding.hidden = !usesLegacyIntervals
+    // Integer DDA resolution is defined solely by viewport / pixel size.
+    // The legacy HRC hierarchy scale must not shadow that contract.
+    hrcResolutionBinding.hidden = !usesHrc || usesLogicalPixelGrid
+    ddaPixelSizeBinding.hidden = !usesLogicalPixelGrid
+    ddaBleedThresholdBinding.hidden = !usesLogicalPixelGrid
+    ddaQuantizationBitsBinding.hidden = !usesFixedPoint
+    ddaTransferRangeBinding.hidden = params.algorithm !== 'dda-fixed'
+    ddaRadianceRangeBinding.hidden = !usesFixedPoint
+    ddaPaletteBandsBinding.hidden = !usesDdaTraversal
+    ddaPaletteExposureBinding.hidden = !usesDdaTraversal
+  }
+  syncAlgorithmVisibility()
   ;(
     window as Window & {
       __radianceCascadeControls?: {
-        setAlgorithm: (algorithm: 'rc' | 'hrc') => void
+        setAlgorithm: (algorithm: 'rc' | 'dda-rc-fixed' | 'hrc' | 'dda-float' | 'dda-integer' | 'dda-fixed') => void
         setRadianceIntensity: (intensity: number) => void
-        setLocalFilter: (radius: number, strength: number, diagonals?: boolean) => void
+        setLocalFilter: (radius: number, strength: number) => void
         setRaymarchSteps: (steps: number) => void
         setMipFilter: (blur: number, strength: number, levels?: number) => void
-        setBlueNoise: (strength: number) => void
         setIntervalOverlap: (overlap: number) => void
-        setSceneRadianceDownsampleFactor: (factor: number) => void
-        setFilterDiagonals: (enabled: boolean) => void
-        setFilterJitter: (strength: number) => void
         setWideDownsampleFactor: (factor: number) => void
+        setLightSourceRadius: (radius: number) => void
         setHrcComposition: (shortIntervalCount: number, compositionLevels?: number) => void
         setHrcCompositionMode: (mode: 'hierarchical' | 'holographic') => void
         setHrcFinalResolutionScale: (scale: number) => void
+        setDdaPixelSize: (pixelSize: number) => void
+        setDdaBleedThreshold: (threshold: number) => void
+        setDdaFixedPoint: (bits: number, radianceRange?: number, transferRange?: number) => void
+        setDdaPaletteBands: (bands: number) => void
+        setDdaPaletteExposure: (exposure: number) => void
         setComparisonResolutionCap: (cap: number) => void
         setLightIntensities: (warmIntensity: number, coolIntensity: number) => void
+        setLightPositions: (warmX: number, warmY: number, coolX: number, coolY: number) => void
+        setOccluderPosition: (index: number, x: number, y: number) => void
         setOccluders: (enabled: boolean) => void
         setWallOpen: (open: boolean) => void
         setRenderSize: (width: number, height: number) => void
         setComparisonBaseline: () => void
+        captureFinalRadiance: () => Promise<{
+          width: number
+          height: number
+          byteLength: number
+          hash: string
+          byteSum: number
+        }>
+        sampleGpuTime: (sampleCount?: number) => Promise<{
+          supported: boolean
+          samples: number[]
+          median: number | null
+          p95: number | null
+          min: number | null
+          max: number | null
+        }>
         compareFinalRadiance: () => Promise<unknown>
         comparePerceptual: () => Promise<PerceptualCompareResult>
         auditHrcBuffers: () => Promise<BufferAuditResult>
       }
     }
   ).__radianceCascadeControls = {
-    setAlgorithm(algorithm: 'rc' | 'hrc'): void {
+    setAlgorithm(algorithm: 'rc' | 'dda-rc-fixed' | 'hrc' | 'dda-float' | 'dda-integer' | 'dda-fixed'): void {
       params.algorithm = algorithm
-      lighting = algorithm === 'hrc' ? hrcLighting : rcLighting
+      switchLighting(algorithm, params.intensity)
       syncParamsFromActiveRadiance()
-      lighting.radianceIntensity = params.intensity
-      flatland.setLighting(lighting)
-      pane.refresh()
+      refreshPane()
     },
     setRadianceIntensity(intensity: number): void {
       params.intensity = intensity
       rcLighting.radianceIntensity = intensity
+      ddaRcLighting.radianceIntensity = intensity
       hrcLighting.radianceIntensity = intensity
-      pane.refresh()
+      refreshPane()
     },
-    setLocalFilter(radius: number, strength: number, diagonals = params.filterDiagonals): void {
+    setLocalFilter(radius: number, strength: number): void {
       params.filterRadius = radius
       params.filterStrength = strength
-      params.filterDiagonals = diagonals
-      rcLighting.radiance.filterRadius = radius
-      rcLighting.radiance.filterStrength = strength
-      rcLighting.radiance.filterDiagonals = diagonals
-      hrcLighting.radiance.filterRadius = radius
-      hrcLighting.radiance.filterStrength = strength
-      hrcLighting.radiance.filterDiagonals = diagonals
-      pane.refresh()
+      lighting.radiance.filterRadius = radius
+      lighting.radiance.filterStrength = strength
+      refreshPane()
     },
     setRaymarchSteps(steps: number): void {
-      rcLighting.radiance.raymarchSteps = steps
-      hrcLighting.radiance.raymarchSteps = steps
-      params.raymarchSteps = rcLighting.radiance.raymarchSteps
-      pane.refresh()
+      lighting.radiance.raymarchSteps = steps
+      params.raymarchSteps = lighting.radiance.raymarchSteps
+      refreshPane()
     },
     setMipFilter(blur: number, strength: number, levels = params.wideLevels): void {
       params.mipBlur = blur
       params.mipStrength = strength
       params.wideLevels = levels
-      rcLighting.radiance.mipBlur = blur
-      rcLighting.radiance.mipStrength = strength
-      rcLighting.radiance.wideLevels = levels
-      hrcLighting.radiance.mipBlur = blur
-      hrcLighting.radiance.mipStrength = strength
-      hrcLighting.radiance.wideLevels = levels
-      pane.refresh()
-    },
-    setBlueNoise(strength: number): void {
-      params.blueNoiseStrength = strength
-      rcLighting.radiance.blueNoiseStrength = strength
-      hrcLighting.radiance.blueNoiseStrength = strength
-      pane.refresh()
+      lighting.radiance.mipBlur = blur
+      lighting.radiance.mipStrength = strength
+      lighting.radiance.wideLevels = levels
+      refreshPane()
     },
     setIntervalOverlap(overlap: number): void {
       params.intervalOverlap = overlap
       rcLighting.radiance.intervalOverlap = overlap
-      hrcLighting.radiance.intervalOverlap = overlap
-      pane.refresh()
-    },
-    setSceneRadianceDownsampleFactor(factor: number): void {
-      rcLighting.radiance.sceneRadianceDownsampleFactor = factor
-      hrcLighting.radiance.sceneRadianceDownsampleFactor = factor
-      params.sceneRadianceDownsampleFactor = rcLighting.radiance.sceneRadianceDownsampleFactor
-      pane.refresh()
-    },
-    setFilterDiagonals(enabled: boolean): void {
-      params.filterDiagonals = enabled
-      rcLighting.radiance.filterDiagonals = enabled
-      hrcLighting.radiance.filterDiagonals = enabled
-      pane.refresh()
-    },
-    setFilterJitter(strength: number): void {
-      rcLighting.radiance.filterJitterStrength = strength
-      hrcLighting.radiance.filterJitterStrength = strength
-      params.filterJitterStrength = rcLighting.radiance.filterJitterStrength
-      pane.refresh()
+      ddaRcLighting.radiance.intervalOverlap = overlap
+      refreshPane()
     },
     setWideDownsampleFactor(factor: number): void {
-      rcLighting.radiance.wideDownsampleFactor = factor
-      params.wideDownsampleFactor = rcLighting.radiance.wideDownsampleFactor
-      hrcLighting.radiance.wideDownsampleFactor = params.wideDownsampleFactor
-      pane.refresh()
+      lighting.radiance.wideDownsampleFactor = factor
+      params.wideDownsampleFactor = lighting.radiance.wideDownsampleFactor
+      refreshPane()
+    },
+    setLightSourceRadius(radius: number): void {
+      lighting.radiance.lightSourceRadius = radius
+      params.lightSourceRadius = lighting.radiance.lightSourceRadius
+      refreshPane()
     },
     setHrcComposition(shortIntervalCount: number, compositionLevels = params.hrcCompositionLevels): void {
       hrcLighting.radiance.shortIntervalCount = shortIntervalCount
       hrcLighting.radiance.compositionLevels = compositionLevels
       params.hrcShortIntervalCount = hrcLighting.radiance.shortIntervalCount
       params.hrcCompositionLevels = hrcLighting.radiance.compositionLevels
-      pane.refresh()
+      refreshPane()
     },
     setHrcCompositionMode(mode: 'hierarchical' | 'holographic'): void {
       hrcLighting.radiance.compositionMode = mode
       params.hrcCompositionMode = hrcLighting.radiance.compositionMode
-      pane.refresh()
+      refreshPane()
     },
     setHrcFinalResolutionScale(scale: number): void {
       hrcLighting.radiance.holographicFinalResolutionScale = scale
       params.hrcFinalResolutionScale = hrcLighting.radiance.holographicFinalResolutionScale
-      pane.refresh()
+      refreshPane()
+    },
+    setDdaPixelSize(pixelSize: number): void {
+      hrcLighting.radiance.ddaPixelSize = pixelSize
+      ddaRcLighting.radiance.ddaPixelSize = pixelSize
+      params.ddaPixelSize =
+        params.algorithm === 'dda-rc-fixed' ? ddaRcLighting.radiance.ddaPixelSize : hrcLighting.radiance.ddaPixelSize
+      refreshPane()
+    },
+    setDdaBleedThreshold(threshold: number): void {
+      hrcLighting.radiance.ddaBleedThreshold = threshold
+      ddaRcLighting.radiance.ddaBleedThreshold = threshold
+      params.ddaBleedThreshold = threshold
+      refreshPane()
+    },
+    setDdaFixedPoint(
+      bits: number,
+      radianceRange = params.ddaRadianceRange,
+      transferRange = params.ddaTransferRange
+    ): void {
+      hrcLighting.radiance.ddaQuantizationBits = bits
+      hrcLighting.radiance.ddaRadianceRange = radianceRange
+      hrcLighting.radiance.ddaTransferRange = transferRange
+      ddaRcLighting.radiance.ddaQuantizationBits = bits
+      ddaRcLighting.radiance.ddaRadianceRange = radianceRange
+      params.ddaQuantizationBits = bits
+      params.ddaRadianceRange = radianceRange
+      params.ddaTransferRange = hrcLighting.radiance.ddaTransferRange
+      refreshPane()
+    },
+    setDdaPaletteBands(bands: number): void {
+      hrcLighting.radiance.ddaPaletteBands = bands
+      ddaRcLighting.radiance.ddaPaletteBands = bands
+      params.ddaPaletteBands = bands
+      refreshPane()
+    },
+    setDdaPaletteExposure(exposure: number): void {
+      hrcLighting.radiance.ddaPaletteExposure = exposure
+      ddaRcLighting.radiance.ddaPaletteExposure = exposure
+      params.ddaPaletteExposure = exposure
+      refreshPane()
     },
     setComparisonResolutionCap(cap: number): void {
       const resolutionCap = Math.max(128, Math.min(2048, Math.round(cap)))
       rcLighting.radiance.config.maxAutoCascadeResolution = resolutionCap
+      ddaRcLighting.radiance.config.maxAutoCascadeResolution = resolutionCap
       hrcLighting.radiance.config.maxAutoCascadeResolution = resolutionCap
       flatland.setLighting(lighting)
-      pane.refresh()
+      refreshPane()
     },
     setLightIntensities(warmIntensity: number, coolIntensity: number): void {
       params.warmIntensity = warmIntensity
       params.coolIntensity = coolIntensity
       warm.intensity = warmIntensity
       cool.intensity = coolIntensity
-      pane.refresh()
+      refreshPane()
+    },
+    setLightPositions(warmX: number, warmY: number, coolX: number, coolY: number): void {
+      warm.setPosition(warmX, warmY)
+      cool.setPosition(coolX, coolY)
+    },
+    setOccluderPosition(index: number, x: number, y: number): void {
+      const occluder = occluders[index]
+      const position = occluderPositions[index]
+      if (!occluder || !position) return
+      position.set(x, y, position.z)
+      occluder.position.copy(params.occluders ? position : position.clone().setX(10000))
     },
     setOccluders(enabled: boolean): void {
       params.occluders = enabled
-      for (const [index, occluder] of occluders.entries()) {
-        occluder.visible = enabled
-        occluder.castsShadow = enabled
-        occluder.position.copy(
-          enabled ? occluderPositions[index]! : occluderPositions[index]!.clone().setX(10000)
-        )
-      }
-      pane.refresh()
+      syncOccluderState()
+      refreshPane()
     },
     setWallOpen(open: boolean): void {
       params.wallOpen = open
-      warm.position.x = open ? -38 : -128
-      pane.refresh()
+      syncOccluderState()
+      refreshPane()
     },
     setRenderSize(width: number, height: number): void {
       const nextWidth = Math.max(1, Math.round(width))
       const nextHeight = Math.max(1, Math.round(height))
-      renderer.setSize(nextWidth, nextHeight)
+      renderer.setSize(nextWidth, nextHeight, false)
       flatland.resize(nextWidth, nextHeight)
-      pane.refresh()
+      refreshPane()
     },
     setComparisonBaseline(): void {
-      params.filterRadius = COMPARISON_BASELINE.filterRadius
-      params.filterStrength = COMPARISON_BASELINE.filterStrength
-      params.filterDiagonals = COMPARISON_BASELINE.filterDiagonals
-      params.filterJitterStrength = COMPARISON_BASELINE.filterJitterStrength
-      params.raymarchSteps = COMPARISON_BASELINE.raymarchSteps
-      params.blueNoiseStrength = COMPARISON_BASELINE.blueNoiseStrength
-      params.intervalOverlap = COMPARISON_BASELINE.intervalOverlap
-      params.sceneRadianceDownsampleFactor = COMPARISON_BASELINE.sceneRadianceDownsampleFactor
-      params.mipBlur = COMPARISON_BASELINE.mipBlur
-      params.mipStrength = COMPARISON_BASELINE.mipStrength
-      params.wideDownsampleFactor = COMPARISON_BASELINE.wideDownsampleFactor
-      params.wideLevels = COMPARISON_BASELINE.wideLevels
-      params.hrcShortIntervalCount = COMPARISON_BASELINE.hrcShortIntervalCount
-      params.hrcCompositionLevels = COMPARISON_BASELINE.hrcCompositionLevels
-      params.hrcFinalResolutionScale = COMPARISON_BASELINE.hrcFinalResolutionScale
+      params.filterRadius = RAW_TRANSPORT_DIAGNOSTIC.filterRadius
+      params.filterStrength = RAW_TRANSPORT_DIAGNOSTIC.filterStrength
+      params.raymarchSteps = RAW_TRANSPORT_DIAGNOSTIC.raymarchSteps
+      params.intervalOverlap = RAW_TRANSPORT_DIAGNOSTIC.intervalOverlap
+      params.mipBlur = RAW_TRANSPORT_DIAGNOSTIC.mipBlur
+      params.mipStrength = RAW_TRANSPORT_DIAGNOSTIC.mipStrength
+      params.wideDownsampleFactor = RAW_TRANSPORT_DIAGNOSTIC.wideDownsampleFactor
+      params.wideLevels = RAW_TRANSPORT_DIAGNOSTIC.wideLevels
+      params.hrcShortIntervalCount = RAW_TRANSPORT_DIAGNOSTIC.hrcShortIntervalCount
+      params.hrcCompositionLevels = RAW_TRANSPORT_DIAGNOSTIC.hrcCompositionLevels
+      params.hrcFinalResolutionScale = RAW_TRANSPORT_DIAGNOSTIC.hrcFinalResolutionScale
 
       for (const radiance of [rcLighting.radiance, hrcLighting.radiance]) {
-        radiance.filterRadius = COMPARISON_BASELINE.filterRadius
-        radiance.filterStrength = COMPARISON_BASELINE.filterStrength
-        radiance.filterDiagonals = COMPARISON_BASELINE.filterDiagonals
-        radiance.filterJitterStrength = COMPARISON_BASELINE.filterJitterStrength
-        radiance.raymarchSteps = COMPARISON_BASELINE.raymarchSteps
-        radiance.blueNoiseStrength = COMPARISON_BASELINE.blueNoiseStrength
-        radiance.sceneRadianceDownsampleFactor = COMPARISON_BASELINE.sceneRadianceDownsampleFactor
-        radiance.mipBlur = COMPARISON_BASELINE.mipBlur
-        radiance.mipStrength = COMPARISON_BASELINE.mipStrength
-        radiance.wideDownsampleFactor = COMPARISON_BASELINE.wideDownsampleFactor
-        radiance.wideLevels = COMPARISON_BASELINE.wideLevels
+        radiance.filterRadius = RAW_TRANSPORT_DIAGNOSTIC.filterRadius
+        radiance.filterStrength = RAW_TRANSPORT_DIAGNOSTIC.filterStrength
+        radiance.raymarchSteps = RAW_TRANSPORT_DIAGNOSTIC.raymarchSteps
+        radiance.mipBlur = RAW_TRANSPORT_DIAGNOSTIC.mipBlur
+        radiance.mipStrength = RAW_TRANSPORT_DIAGNOSTIC.mipStrength
+        radiance.wideDownsampleFactor = RAW_TRANSPORT_DIAGNOSTIC.wideDownsampleFactor
+        radiance.wideLevels = RAW_TRANSPORT_DIAGNOSTIC.wideLevels
       }
-      rcLighting.radiance.intervalOverlap = COMPARISON_BASELINE.intervalOverlap
-      hrcLighting.radiance.intervalOverlap = COMPARISON_BASELINE.intervalOverlap
-      hrcLighting.radiance.shortIntervalCount = COMPARISON_BASELINE.hrcShortIntervalCount
-      hrcLighting.radiance.compositionLevels = COMPARISON_BASELINE.hrcCompositionLevels
-      hrcLighting.radiance.holographicFinalResolutionScale = COMPARISON_BASELINE.hrcFinalResolutionScale
+      rcLighting.radiance.intervalOverlap = RAW_TRANSPORT_DIAGNOSTIC.intervalOverlap
+      hrcLighting.radiance.intervalOverlap = RAW_TRANSPORT_DIAGNOSTIC.intervalOverlap
+      hrcLighting.radiance.shortIntervalCount = RAW_TRANSPORT_DIAGNOSTIC.hrcShortIntervalCount
+      hrcLighting.radiance.compositionLevels = RAW_TRANSPORT_DIAGNOSTIC.hrcCompositionLevels
+      hrcLighting.radiance.holographicFinalResolutionScale = RAW_TRANSPORT_DIAGNOSTIC.hrcFinalResolutionScale
       params.hrcCompositionMode = hrcLighting.radiance.compositionMode
-      pane.refresh()
+      refreshPane()
     },
-    async compareFinalRadiance(): Promise<unknown> {
-      const waitFrames = async (count: number): Promise<void> => {
-        for (let i = 0; i < count; i++) await new Promise(requestAnimationFrame)
-      }
-      const readTarget = async (target: ReadableRenderTarget): Promise<RadianceReadback> => {
-        const readAsync = (renderer as unknown as {
+    async captureFinalRadiance(): Promise<{
+      width: number
+      height: number
+      byteLength: number
+      hash: string
+      byteSum: number
+    }> {
+      const target = (
+        lighting.radiance as unknown as {
+          _finalRadianceRT: ReadableRenderTarget
+        }
+      )._finalRadianceRT
+      const readAsync = (
+        renderer as unknown as {
           readRenderTargetPixelsAsync?: (
             renderTarget: unknown,
             x: number,
@@ -819,7 +1041,101 @@ async function main(): Promise<void> {
             width: number,
             height: number
           ) => Promise<ArrayBufferView>
-        }).readRenderTargetPixelsAsync
+        }
+      ).readRenderTargetPixelsAsync
+      if (typeof readAsync !== 'function') {
+        throw new Error('renderer.readRenderTargetPixelsAsync is unavailable')
+      }
+      const pixels = await readAsync.call(renderer, target, 0, 0, target.width, target.height)
+      const bytes = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength)
+      let hash = 0x811c9dc5
+      let byteSum = 0
+      for (const byte of bytes) {
+        hash = Math.imul(hash ^ byte, 0x01000193) >>> 0
+        byteSum += byte
+      }
+      return {
+        width: target.width,
+        height: target.height,
+        byteLength: bytes.byteLength,
+        hash: hash.toString(16).padStart(8, '0'),
+        byteSum,
+      }
+    },
+    async sampleGpuTime(sampleCount = 12): Promise<{
+      supported: boolean
+      samples: number[]
+      median: number | null
+      p95: number | null
+      min: number | null
+      max: number | null
+    }> {
+      const backend = renderer.backend as unknown as {
+        trackTimestamp?: boolean
+        device?: { features?: { has(name: string): boolean } }
+      }
+      const supported = backend.device?.features?.has('timestamp-query') === true
+      const resolve = (
+        renderer as unknown as {
+          resolveTimestampsAsync?: (type: 'render') => Promise<void>
+        }
+      ).resolveTimestampsAsync
+      if (!supported || typeof resolve !== 'function') {
+        return { supported: false, samples: [], median: null, p95: null, min: null, max: null }
+      }
+
+      const previousTracking = backend.trackTimestamp
+      backend.trackTimestamp = true
+      const samples: number[] = []
+      const requested = Math.max(1, Math.min(60, Math.round(sampleCount)))
+      try {
+        // Warm the timestamp pool after enabling it, then resolve one completed
+        // render batch at a time. Three reports milliseconds in
+        // `info.render.timestamp` after the async pool resolve lands.
+        for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame)
+        for (let i = 0; i < requested * 3 && samples.length < requested; i++) {
+          await new Promise(requestAnimationFrame)
+          await resolve.call(renderer, 'render')
+          const value = renderer.info.render.timestamp
+          if (Number.isFinite(value) && value > 0) samples.push(value)
+        }
+      } finally {
+        if (previousTracking !== true) {
+          await resolve.call(renderer, 'render').catch(() => undefined)
+          backend.trackTimestamp = previousTracking
+        }
+      }
+
+      const sorted = [...samples].sort((a, b) => a - b)
+      const quantile = (q: number): number | null => {
+        if (sorted.length === 0) return null
+        return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))] ?? null
+      }
+      return {
+        supported: true,
+        samples,
+        median: quantile(0.5),
+        p95: quantile(0.95),
+        min: sorted[0] ?? null,
+        max: sorted.at(-1) ?? null,
+      }
+    },
+    async compareFinalRadiance(): Promise<unknown> {
+      const waitFrames = async (count: number): Promise<void> => {
+        for (let i = 0; i < count; i++) await new Promise(requestAnimationFrame)
+      }
+      const readTarget = async (target: ReadableRenderTarget): Promise<RadianceReadback> => {
+        const readAsync = (
+          renderer as unknown as {
+            readRenderTargetPixelsAsync?: (
+              renderTarget: unknown,
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            ) => Promise<ArrayBufferView>
+          }
+        ).readRenderTargetPixelsAsync
         if (typeof readAsync !== 'function') {
           throw new Error('renderer.readRenderTargetPixelsAsync is unavailable')
         }
@@ -839,11 +1155,9 @@ async function main(): Promise<void> {
       }
       const setAlgorithmAndWait = async (algorithm: 'rc' | 'hrc'): Promise<void> => {
         params.algorithm = algorithm
-        lighting = algorithm === 'hrc' ? hrcLighting : rcLighting
+        switchLighting(algorithm, params.intensity)
         syncParamsFromActiveRadiance()
-        lighting.radianceIntensity = params.intensity
-        flatland.setLighting(lighting)
-        pane.refresh()
+        refreshPane()
         await waitFrames(8)
       }
 
@@ -902,15 +1216,17 @@ async function main(): Promise<void> {
         for (let i = 0; i < count; i++) await new Promise(requestAnimationFrame)
       }
       const readTarget = async (target: ReadableRenderTarget): Promise<RadianceReadback> => {
-        const readAsync = (renderer as unknown as {
-          readRenderTargetPixelsAsync?: (
-            renderTarget: unknown,
-            x: number,
-            y: number,
-            width: number,
-            height: number
-          ) => Promise<ArrayBufferView>
-        }).readRenderTargetPixelsAsync
+        const readAsync = (
+          renderer as unknown as {
+            readRenderTargetPixelsAsync?: (
+              renderTarget: unknown,
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            ) => Promise<ArrayBufferView>
+          }
+        ).readRenderTargetPixelsAsync
         if (typeof readAsync !== 'function') {
           throw new Error('renderer.readRenderTargetPixelsAsync is unavailable')
         }
@@ -930,11 +1246,9 @@ async function main(): Promise<void> {
       }
       const setAlgorithmAndWait = async (algorithm: 'rc' | 'hrc'): Promise<void> => {
         params.algorithm = algorithm
-        lighting = algorithm === 'hrc' ? hrcLighting : rcLighting
+        switchLighting(algorithm, params.intensity)
         syncParamsFromActiveRadiance()
-        lighting.radianceIntensity = params.intensity
-        flatland.setLighting(lighting)
-        pane.refresh()
+        refreshPane()
         await waitFrames(12)
       }
       const captureCanvas = async (): Promise<LuminanceImage> => {
@@ -967,13 +1281,17 @@ async function main(): Promise<void> {
       const rcCanvas = await captureCanvas()
       const rcTarget = (rcLighting.radiance as unknown as { _finalRadianceRT: ReadableRenderTarget })._finalRadianceRT
       const rcFinal = await readTarget(rcTarget)
-      const rcProbe = cloneProbeSnapshot((window as Window & { __radianceCascadeProbe?: unknown }).__radianceCascadeProbe)
+      const rcProbe = cloneProbeSnapshot(
+        (window as Window & { __radianceCascadeProbe?: unknown }).__radianceCascadeProbe
+      )
 
       await setAlgorithmAndWait('hrc')
       const hrcCanvas = await captureCanvas()
       const hrcTarget = (hrcLighting.radiance as unknown as { _finalRadianceRT: ReadableRenderTarget })._finalRadianceRT
       const hrcFinal = await readTarget(hrcTarget)
-      const hrcProbe = cloneProbeSnapshot((window as Window & { __radianceCascadeProbe?: unknown }).__radianceCascadeProbe)
+      const hrcProbe = cloneProbeSnapshot(
+        (window as Window & { __radianceCascadeProbe?: unknown }).__radianceCascadeProbe
+      )
 
       const result = {
         canvas: compareLuminanceImages(rcCanvas, hrcCanvas),
@@ -997,15 +1315,17 @@ async function main(): Promise<void> {
         for (let i = 0; i < count; i++) await new Promise(requestAnimationFrame)
       }
       const readTarget = async (target: ReadableRenderTarget): Promise<RadianceReadback> => {
-        const readAsync = (renderer as unknown as {
-          readRenderTargetPixelsAsync?: (
-            renderTarget: unknown,
-            x: number,
-            y: number,
-            width: number,
-            height: number
-          ) => Promise<ArrayBufferView>
-        }).readRenderTargetPixelsAsync
+        const readAsync = (
+          renderer as unknown as {
+            readRenderTargetPixelsAsync?: (
+              renderTarget: unknown,
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            ) => Promise<ArrayBufferView>
+          }
+        ).readRenderTargetPixelsAsync
         if (typeof readAsync !== 'function') {
           throw new Error('renderer.readRenderTargetPixelsAsync is unavailable')
         }
@@ -1069,15 +1389,12 @@ async function main(): Promise<void> {
       }
 
       params.algorithm = 'hrc'
-      lighting = hrcLighting
+      switchLighting('hrc', params.intensity)
       syncParamsFromActiveRadiance()
-      lighting.radianceIntensity = params.intensity
-      flatland.setLighting(lighting)
-      pane.refresh()
+      refreshPane()
       await waitFrames(12)
 
       const internals = hrcLighting.radiance as unknown as {
-        _sceneRadianceRT: ReadableRenderTarget | null
         _holographicTransferRTs: ReadableRenderTarget[]
         _holographicRadianceRTs: ReadableRenderTarget[]
         _rawFinalRadianceRT: ReadableRenderTarget
@@ -1088,9 +1405,12 @@ async function main(): Promise<void> {
         _finalRadianceRT: ReadableRenderTarget
       }
       const targets: Array<[string, ReadableRenderTarget | null | undefined]> = [
-        ['hrc.sceneRadiance', internals._sceneRadianceRT],
-        ...internals._holographicTransferRTs.map((target, index) => [`hrc.T${index}`, target] as [string, ReadableRenderTarget]),
-        ...internals._holographicRadianceRTs.map((target, index) => [`hrc.R${index}`, target] as [string, ReadableRenderTarget]),
+        ...internals._holographicTransferRTs.map(
+          (target, index) => [`hrc.T${index}`, target] as [string, ReadableRenderTarget]
+        ),
+        ...internals._holographicRadianceRTs.map(
+          (target, index) => [`hrc.R${index}`, target] as [string, ReadableRenderTarget]
+        ),
         ['hrc.finalRadiance', internals._finalRadianceRT],
       ]
       if (hrcLighting.radiance.wideFilterEnabled) {
@@ -1135,15 +1455,54 @@ async function main(): Promise<void> {
     },
   }
 
-  window.addEventListener('resize', () => {
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    flatland.resize(window.innerWidth, window.innerHeight)
+  const automatedGpuSampleCount = Number(new URLSearchParams(location.search).get('autoGpuBenchmark') ?? 0)
+  if (automatedGpuSampleCount > 0) {
+    const benchmarkControls = (
+      window as Window & {
+        __radianceCascadeControls?: {
+          sampleGpuTime: (sampleCount?: number) => Promise<unknown>
+        }
+      }
+    ).__radianceCascadeControls
+    setTimeout(() => {
+      void benchmarkControls
+        ?.sampleGpuTime(automatedGpuSampleCount)
+        .then((result) => {
+          status.dataset.gpuBenchmark = JSON.stringify(result)
+        })
+        .catch((error: unknown) => {
+          status.dataset.gpuBenchmark = JSON.stringify({ error: String(error) })
+        })
+    }, 500)
+  }
+
+  let renderSurfaceWidth = initialWidth
+  let renderSurfaceHeight = initialHeight
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null
+  const resizeObserver = new ResizeObserver(() => {
+    const width = Math.max(1, document.documentElement.clientWidth)
+    const height = Math.max(1, document.documentElement.clientHeight)
+    if (width === renderSurfaceWidth && height === renderSurfaceHeight) return
+    if (resizeTimer !== null) clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null
+      const settledWidth = Math.max(1, document.documentElement.clientWidth)
+      const settledHeight = Math.max(1, document.documentElement.clientHeight)
+      if (settledWidth === renderSurfaceWidth && settledHeight === renderSurfaceHeight) return
+      renderSurfaceWidth = settledWidth
+      renderSurfaceHeight = settledHeight
+      renderer.setSize(settledWidth, settledHeight, false)
+      flatland.resize(settledWidth, settledHeight)
+    }, 120)
   })
+  resizeObserver.observe(document.documentElement)
 
   let frames = 0
   function animate(): void {
-    if (!params.paused) frames++
-    flatland.render(renderer)
+    if (!params.paused) {
+      frames++
+      flatland.render(renderer)
+    }
     updateDevtools()
     const finalImage = lighting.radiance.finalRadianceTexture.image as {
       width: number
@@ -1155,7 +1514,6 @@ async function main(): Promise<void> {
       _wideRadianceRT2: { width: number; height: number }
     }
     const hrcInternals = hrcLighting.radiance as unknown as {
-      _sceneRadianceRT: { width: number; height: number } | null
       _shortIntervalAtlasRT: { width: number; height: number }
       _compositionRTs: Array<{ width: number; height: number }>
       _rawFinalRadianceRT: { width: number; height: number }
@@ -1163,7 +1521,8 @@ async function main(): Promise<void> {
       _wideRadianceRT2: { width: number; height: number }
       _lastComposedSpan: number
     }
-    const activeMode = params.algorithm === 'hrc' ? `/${hrcLighting.radiance.compositionMode}` : ''
+    const activeMode =
+      params.algorithm === 'rc' || params.algorithm === 'dda-rc-fixed' ? '' : `/${hrcLighting.radiance.compositionMode}`
     status.textContent = `${params.algorithm}${activeMode} frames:${frames} final:${finalImage.width}x${finalImage.height}`
     const activeRadiance = lighting.radiance
     const activeInternals = activeRadiance as unknown as {
@@ -1172,7 +1531,7 @@ async function main(): Promise<void> {
     }
     ;(
       window as Window & {
-      __radianceCascadeProbe?: unknown
+        __radianceCascadeProbe?: unknown
       }
     ).__radianceCascadeProbe = {
       algorithm: params.algorithm,
@@ -1183,22 +1542,16 @@ async function main(): Promise<void> {
         height: finalImage.height,
       },
       world: {
-        size: activeInternals._worldSize
-          ? { x: activeInternals._worldSize.x, y: activeInternals._worldSize.y }
-          : null,
+        size: activeInternals._worldSize ? { x: activeInternals._worldSize.x, y: activeInternals._worldSize.y } : null,
         offset: activeInternals._worldOffset
           ? { x: activeInternals._worldOffset.x, y: activeInternals._worldOffset.y }
           : null,
       },
       radiance: {
         intensity: lighting.radianceIntensity,
-        blueNoiseStrength: activeRadiance.blueNoiseStrength,
-        intervalOverlap: rcLighting.radiance.intervalOverlap,
-        sceneRadianceDownsampleFactor: activeRadiance.sceneRadianceDownsampleFactor,
+        intervalOverlap: activeRadiance.intervalOverlap,
         filterRadius: activeRadiance.filterRadius,
         filterStrength: activeRadiance.filterStrength,
-        filterDiagonals: activeRadiance.filterDiagonals,
-        filterJitterStrength: activeRadiance.filterJitterStrength,
         raymarchSteps: activeRadiance.raymarchSteps,
         mipBlur: activeRadiance.mipBlur,
         mipStrength: activeRadiance.mipStrength,
@@ -1218,31 +1571,26 @@ async function main(): Promise<void> {
         estimatedCompositionPassCount: hrcLighting.radiance.estimatedCompositionPassCount,
         estimatedPassCount: hrcLighting.radiance.estimatedPassCount,
         estimatedRaymarchTexelCount: hrcLighting.radiance.estimatedRaymarchTexelCount,
-        estimatedPhysicalRaymarchTexelCount:
-          hrcLighting.radiance.estimatedPhysicalRaymarchTexelCount,
+        estimatedPhysicalRaymarchTexelCount: hrcLighting.radiance.estimatedPhysicalRaymarchTexelCount,
         estimatedUnusedRaymarchTexelCount: hrcLighting.radiance.estimatedUnusedRaymarchTexelCount,
         estimatedRaymarchSampleCount: hrcLighting.radiance.estimatedRaymarchSampleCount,
-        estimatedHolographicDirectTransferPassCount:
-          hrcLighting.radiance.estimatedHolographicDirectTransferPassCount,
-        estimatedHolographicDirectTransferTexelCount:
-          hrcLighting.radiance.estimatedHolographicDirectTransferTexelCount,
+        estimatedHolographicDirectTransferPassCount: hrcLighting.radiance.estimatedHolographicDirectTransferPassCount,
+        estimatedHolographicDirectTransferTexelCount: hrcLighting.radiance.estimatedHolographicDirectTransferTexelCount,
         estimatedHolographicDirectTransferSampleCount:
           hrcLighting.radiance.estimatedHolographicDirectTransferSampleCount,
         estimatedHolographicRecursiveTransferPassCount:
           hrcLighting.radiance.estimatedHolographicRecursiveTransferPassCount,
         estimatedHolographicRecursiveTransferTexelCount:
           hrcLighting.radiance.estimatedHolographicRecursiveTransferTexelCount,
-        estimatedHolographicRadiancePassCount:
-          hrcLighting.radiance.estimatedHolographicRadiancePassCount,
-        estimatedHolographicRadianceTexelCount:
-          hrcLighting.radiance.estimatedHolographicRadianceTexelCount,
+        estimatedHolographicRadiancePassCount: hrcLighting.radiance.estimatedHolographicRadiancePassCount,
+        estimatedHolographicRadianceTexelCount: hrcLighting.radiance.estimatedHolographicRadianceTexelCount,
         holographicLevelCount: hrcLighting.radiance.holographicLevelCount,
         holographicLevelInfo: hrcLighting.radiance.holographicLevelInfo,
         holographicFinalResolutionScale: hrcLighting.radiance.holographicFinalResolutionScale,
-        estimatedHolographicTransferValueCount:
-          hrcLighting.radiance.estimatedHolographicTransferValueCount,
-        estimatedHolographicRadianceValueCount:
-          hrcLighting.radiance.estimatedHolographicRadianceValueCount,
+        estimatedHolographicTransferValueCount: hrcLighting.radiance.estimatedHolographicTransferValueCount,
+        estimatedHolographicRadianceValueCount: hrcLighting.radiance.estimatedHolographicRadianceValueCount,
+        holographicStorageBytesPerTexel: hrcLighting.radiance.holographicStorageBytesPerTexel,
+        estimatedHolographicStorageBytes: hrcLighting.radiance.estimatedHolographicStorageBytes,
         shortIntervalCount: hrcLighting.radiance.shortIntervalCount,
         compositionLevels: hrcLighting.radiance.compositionLevels,
         effectiveBaseInterval: hrcLighting.radiance.effectiveBaseInterval,
@@ -1267,12 +1615,6 @@ async function main(): Promise<void> {
           height: hrcInternals._wideRadianceRT2.height,
         },
         lastComposedSpan: hrcInternals._lastComposedSpan,
-        sceneRadiance: hrcInternals._sceneRadianceRT
-          ? {
-              width: hrcInternals._sceneRadianceRT.width,
-              height: hrcInternals._sceneRadianceRT.height,
-            }
-          : null,
       },
       rc: {
         config: rcLighting.radiance.config,
@@ -1281,6 +1623,16 @@ async function main(): Promise<void> {
         estimatedPassCount: rcLighting.radiance.estimatedPassCount,
         estimatedRaymarchTexelCount: rcLighting.radiance.estimatedRaymarchTexelCount,
         estimatedRaymarchSampleCount: rcLighting.radiance.estimatedRaymarchSampleCount,
+      },
+      ddaRcFixed: {
+        config: ddaRcLighting.radiance.config,
+        wideFilterEnabled: ddaRcLighting.radiance.wideFilterEnabled,
+        wideBlurEnabled: ddaRcLighting.radiance.wideBlurEnabled,
+        estimatedPassCount: ddaRcLighting.radiance.estimatedPassCount,
+        estimatedRaymarchTexelCount: ddaRcLighting.radiance.estimatedRaymarchTexelCount,
+        estimatedRaymarchSampleCount: ddaRcLighting.radiance.estimatedRaymarchSampleCount,
+        cascadeStorageBytesPerTexel: ddaRcLighting.radiance.cascadeStorageBytesPerTexel,
+        estimatedCascadeStorageBytes: ddaRcLighting.radiance.estimatedCascadeStorageBytes,
       },
       lights: {
         warmIntensity: warm.intensity,

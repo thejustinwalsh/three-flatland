@@ -1,19 +1,18 @@
 import {
   ClampToEdgeWrapping,
-  DataTexture,
   HalfFloatType,
   LinearFilter,
+  NearestFilter,
   RenderTarget,
+  UnsignedByteType,
   Vector2,
+  type DataTexture,
+  type OrthographicCamera,
+  type Scene,
   type Texture,
 } from 'three'
 import { NodeMaterial, QuadMesh, RendererUtils, type WebGPURenderer } from 'three/webgpu'
-import {
-  beginDebugPass,
-  endDebugPass,
-  registerDebugTexture,
-  unregisterDebugTexture,
-} from '../debug/debug-sink'
+import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import {
   Break,
   Fn,
@@ -40,14 +39,18 @@ import {
 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
+import type TextureNode from 'three/src/nodes/accessors/TextureNode.js'
 import {
   RadianceCascades,
+  collectAmbientRadiance,
   getSharedBlueNoiseTexture,
   RADIANCE_CASCADES_PRESETS,
+  traceAnalyticLightSources,
   type RadianceCascadesConfig,
   type RadianceCascadesQuality,
 } from './RadianceCascades'
 import { worldToUV, uvToWorld } from './coordUtils'
+import { rayBoundsInterval } from './ddaGrid'
 
 /**
  * Hierarchical and Holographic Radiance Cascades renderer for Flatland.
@@ -68,14 +71,236 @@ import { worldToUV, uvToWorld } from './coordUtils'
  */
 
 const TAU = Math.PI * 2
-const EPS = 0.5
 const BLUE_NOISE_SIZE = 32
+const AUTO_LIGHT_SOURCE_VIEW_FRACTION = 0.02
+const AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS = 4
 const _quadMesh = new QuadMesh()
 let _rendererState: ReturnType<typeof RendererUtils.resetRendererState>
+
+function normalizeHolographicResolutionScale(value: number): 1 | 2 | 4 {
+  const rounded = Math.max(1, Math.min(4, Math.round(value)))
+  return rounded >= 3 ? 4 : (rounded as 1 | 2)
+}
+
+function normalizeDdaPaletteBands(value: number): number {
+  if (!Number.isFinite(value) || value < 2) return 0
+  return Math.max(2, Math.min(64, Math.round(value)))
+}
+
+/**
+ * Traverse the binary occlusion mask one deliberately coarse grid cell at a
+ * time. Geometry stays floating point in this oracle backend, but cell
+ * coordinates and mask reads are discrete so later fixed-point backends have
+ * an exact behavioral reference.
+ *
+ * Returns `<transmittance, reachedTraceLimit>`.
+ */
+function traceDdaFloatOcclusion(
+  occlusionTexture: Texture,
+  occlusionTextureSize: Node<'vec2'>,
+  rayOrigin: Node<'vec2'>,
+  rayDirection: Node<'vec2'>,
+  traceEntry: Node<'float'>,
+  traceExit: Node<'float'>,
+  intersectsWorld: Node<'bool'>,
+  worldSize: Node<'vec2'>,
+  worldOffset: Node<'vec2'>,
+  gridSize: Node<'vec2'>,
+  maxSteps: number
+): Node<'vec2'> {
+  const entryWorld = rayOrigin.add(rayDirection.mul(traceEntry))
+  const entryWorldUV = worldToUV(entryWorld, worldSize, worldOffset).clamp(0, 1)
+  const entryTextureUV = vec2(entryWorldUV.x, float(1).sub(entryWorldUV.y))
+  const gridPosition = entryTextureUV.mul(gridSize).clamp(vec2(0), gridSize.sub(float(0.0001)))
+  const cell = floor(gridPosition).toVar()
+  const gridDirection = vec2(rayDirection.x.div(worldSize.x), rayDirection.y.div(worldSize.y).mul(float(-1))).mul(
+    gridSize
+  )
+  const parallelX = gridDirection.x.abs().lessThan(float(1e-8))
+  const parallelY = gridDirection.y.abs().lessThan(float(1e-8))
+  const safeDirection = vec2(
+    parallelX.select(float(1e-8), gridDirection.x),
+    parallelY.select(float(1e-8), gridDirection.y)
+  )
+  const stepDirection = vec2(
+    gridDirection.x.greaterThanEqual(float(0)).select(float(1), float(-1)),
+    gridDirection.y.greaterThanEqual(float(0)).select(float(1), float(-1))
+  )
+  const tDelta = vec2(1).div(safeDirection.abs())
+  const nextBoundary = vec2(
+    stepDirection.x.greaterThan(float(0)).select(cell.x.add(float(1)).sub(gridPosition.x), gridPosition.x.sub(cell.x)),
+    stepDirection.y.greaterThan(float(0)).select(cell.y.add(float(1)).sub(gridPosition.y), gridPosition.y.sub(cell.y))
+  )
+  const tMax = nextBoundary.mul(tDelta).toVar()
+  const traceSpan = traceExit.sub(traceEntry).max(float(0))
+  const transmittance = float(1).toVar()
+  const reachedTraceLimit = intersectsWorld.not().select(float(1), float(0)).toVar()
+
+  Loop(maxSteps, () => {
+    If(intersectsWorld.not(), () => {
+      Break()
+    })
+
+    const inBounds = cell.x
+      .greaterThanEqual(float(0))
+      .and(cell.x.lessThan(gridSize.x))
+      .and(cell.y.greaterThanEqual(float(0)))
+      .and(cell.y.lessThan(gridSize.y))
+    If(inBounds.not(), () => {
+      reachedTraceLimit.assign(float(1))
+      Break()
+    })
+
+    const texel = floor(cell.add(float(0.5)).div(gridSize).mul(occlusionTextureSize)).clamp(
+      vec2(0),
+      occlusionTextureSize.sub(float(1))
+    )
+    const occupied = textureLoad(occlusionTexture, ivec2(int(texel.x), int(texel.y))).a.greaterThan(float(0.5))
+    If(occupied, () => {
+      transmittance.assign(float(0))
+      Break()
+    })
+
+    const nextT = min(tMax.x, tMax.y)
+    If(nextT.greaterThanEqual(traceSpan), () => {
+      reachedTraceLimit.assign(float(1))
+      Break()
+    })
+
+    const stepX = tMax.x.lessThanEqual(tMax.y)
+    If(stepX, () => {
+      cell.x.addAssign(stepDirection.x)
+      tMax.x.addAssign(tDelta.x)
+    })
+    If(stepX.not(), () => {
+      cell.y.addAssign(stepDirection.y)
+      tMax.y.addAssign(tDelta.y)
+    })
+  })
+
+  return vec2(transmittance, reachedTraceLimit)
+}
+
+/**
+ * Integer supercover traversal between quantized lighting-grid cells.
+ *
+ * The comparison `(2 * stepX + 1) * deltaY` versus
+ * `(2 * stepY + 1) * deltaX` is the cross-multiplied form of the next
+ * vertical/horizontal boundary time. It avoids division and keeps the walk in
+ * integer arithmetic after the world-space endpoints have been quantized.
+ * Corner crossings conservatively test both side-adjacent cells before moving
+ * diagonally so a one-cell wall cannot leak light through a shared corner.
+ *
+ * Returns `<transmittance, reachedTraceLimit>`.
+ */
+function traceDdaIntegerOcclusion(
+  occlusionTexture: Texture,
+  occlusionTextureSize: Node<'vec2'>,
+  rayOrigin: Node<'vec2'>,
+  rayDirection: Node<'vec2'>,
+  traceEntry: Node<'float'>,
+  traceExit: Node<'float'>,
+  intersectsWorld: Node<'bool'>,
+  worldSize: Node<'vec2'>,
+  worldOffset: Node<'vec2'>,
+  gridWidth: number,
+  gridHeight: number,
+  maxSteps: number
+): Node<'vec2'> {
+  const gridSize = vec2(float(gridWidth), float(gridHeight))
+  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1))
+  const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
+    const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1)
+    const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y))
+    const cell = floor(textureUV.mul(gridSize)).clamp(vec2(0), gridSize.sub(float(0.0001)))
+    return ivec2(int(cell.x), int(cell.y))
+  }
+  const occupiedAt = (cell: Node<'ivec2'>): Node<'bool'> => {
+    const clampedCell = ivec2(
+      cell.x.lessThan(int(0)).select(int(0), cell.x.greaterThan(gridMax.x).select(gridMax.x, cell.x)),
+      cell.y.lessThan(int(0)).select(int(0), cell.y.greaterThan(gridMax.y).select(gridMax.y, cell.y))
+    )
+    const texelFloat = floor(vec2(clampedCell).add(float(0.5)).div(gridSize).mul(occlusionTextureSize)).clamp(
+      vec2(0),
+      occlusionTextureSize.sub(float(1))
+    )
+    const inBounds = cell.x
+      .greaterThanEqual(int(0))
+      .and(cell.x.lessThanEqual(gridMax.x))
+      .and(cell.y.greaterThanEqual(int(0)))
+      .and(cell.y.lessThanEqual(gridMax.y))
+    return inBounds.and(
+      textureLoad(occlusionTexture, ivec2(int(texelFloat.x), int(texelFloat.y))).a.greaterThan(float(0.5))
+    )
+  }
+
+  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry))
+  const endWorld = rayOrigin.add(rayDirection.mul(traceExit))
+  const cell = worldToCell(startWorld).toVar()
+  const endCell = worldToCell(endWorld)
+  const delta = ivec2(endCell.x.sub(cell.x).abs(), endCell.y.sub(cell.y).abs())
+  const stepDirection = ivec2(
+    endCell.x.greaterThan(cell.x).select(int(1), endCell.x.lessThan(cell.x).select(int(-1), int(0))),
+    endCell.y.greaterThan(cell.y).select(int(1), endCell.y.lessThan(cell.y).select(int(-1), int(0)))
+  )
+  const advancedX = int(0).toVar()
+  const advancedY = int(0).toVar()
+  const transmittance = float(1).toVar()
+  const reachedTraceLimit = intersectsWorld.not().select(float(1), float(0)).toVar()
+
+  Loop(maxSteps, () => {
+    If(intersectsWorld.not(), () => {
+      Break()
+    })
+
+    If(occupiedAt(cell), () => {
+      transmittance.assign(float(0))
+      Break()
+    })
+
+    const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y))
+    If(reachedEnd, () => {
+      reachedTraceLimit.assign(float(1))
+      Break()
+    })
+
+    const onlyY = delta.x.equal(int(0))
+    const onlyX = delta.y.equal(int(0))
+    const crossingX = advancedX.mul(int(2)).add(int(1)).mul(delta.y)
+    const crossingY = advancedY.mul(int(2)).add(int(1)).mul(delta.x)
+    const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY)))
+    const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX)))
+    const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY))
+
+    If(stepCorner, () => {
+      const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y)
+      const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y))
+      If(occupiedAt(neighborX).or(occupiedAt(neighborY)), () => {
+        transmittance.assign(float(0))
+        Break()
+      })
+      cell.x.addAssign(stepDirection.x)
+      cell.y.addAssign(stepDirection.y)
+      advancedX.addAssign(int(1))
+      advancedY.addAssign(int(1))
+    })
+    If(stepX, () => {
+      cell.x.addAssign(stepDirection.x)
+      advancedX.addAssign(int(1))
+    })
+    If(stepY, () => {
+      cell.y.addAssign(stepDirection.y)
+      advancedY.addAssign(int(1))
+    })
+  })
+
+  return vec2(transmittance, reachedTraceLimit)
+}
 
 export type HierarchicalRadianceCascadesQuality = RadianceCascadesQuality
 
 export type HierarchicalRadianceCascadesMode = 'hierarchical' | 'holographic'
+export type HolographicRadianceCascadesTraversal = 'sdf' | 'dda-float' | 'dda-integer' | 'dda-fixed'
 
 export interface HolographicRadianceCascadesLevelInfo {
   /** HRC cascade level `n` from the paper. */
@@ -84,7 +309,7 @@ export interface HolographicRadianceCascadesLevelInfo {
   outputWidth: number
   /** Final irradiance/probe rows represented by this HRC hierarchy. */
   outputHeight: number
-  /** Padded quadrant grid dimension used to pack all four rotated quadrants into one atlas shape. */
+  /** Square display dimension reconstructed from the eight parity/rotation segments. */
   outputMaxDimension: number
   /** Probe columns after decimating only along the quadrant-facing axis. */
   probeWidth: number
@@ -94,91 +319,186 @@ export interface HolographicRadianceCascadesLevelInfo {
   transferDirectionCount: number
   /** Number of radiance cones `i = 0..2^n-1`. */
   radianceDirectionCount: number
-  /** Transfer values for one quadrant at this level. */
+  /** Transfer values for one parity/rotation segment at this level. */
   transferValueCount: number
-  /** Radiance values for one quadrant at this level. */
+  /** Radiance values for one parity/rotation segment at this level. */
   radianceValueCount: number
-  /** Packed transfer atlas width for all `k` directions in one quadrant row. */
+  /** Packed transfer atlas width for all edge directions in one segment row. */
   transferAtlasWidth: number
-  /** Packed transfer atlas height with four quadrants stacked vertically. */
+  /** Packed transfer atlas height with eight parity/rotation segments stacked vertically. */
   transferAtlasHeight: number
-  /** Packed radiance atlas width for all `i` cones in one quadrant row. `0` for terminal `R_N`. */
+  /** Packed radiance atlas width for all cones in one segment row. `0` for terminal `R_N`. */
   radianceAtlasWidth: number
-  /** Packed radiance atlas height with four quadrants stacked vertically. `0` for terminal `R_N`. */
+  /** Packed radiance atlas height with eight parity/rotation segments stacked vertically. */
   radianceAtlasHeight: number
 }
 
 export interface HierarchicalRadianceCascadesConfig extends RadianceCascadesConfig {
+  /** @deprecated Failed stochastic angular experiment; retained until the legacy composer is deleted. */
+  angularJitter: boolean
+  /** @deprecated Failed stochastic angular experiment; retained until the legacy composer is deleted. */
+  blueNoiseStrength: number
+  /** @deprecated HRC uses the reference cardinal cleanup kernel. */
+  filterDiagonals: boolean
+  /** @deprecated Failed stochastic filter experiment. */
+  filterJitterStrength: number
   /** Short base intervals composed into longer transfer instead of raymarching every interval directly. */
   shortIntervalCount: number
   /** Number of interval-composition levels after the base short-interval atlas. */
   compositionLevels: number
   /** HRC composition family: experimental interval composition or Holographic transfer/radiance recursion. */
   compositionMode: HierarchicalRadianceCascadesMode
+  /** Direct visibility backend used by Holographic T0-T2 and final R0 reconstruction. */
+  holographicTraversal: HolographicRadianceCascadesTraversal
+  /** Full-resolution HRC texels grouped into one logical DDA lighting pixel. */
+  ddaPixelSize: number
+  /** Maximum normalized RGB delta allowed to bleed between neighboring DDA lighting pixels. */
+  ddaBleedThreshold: number
+  /** Fixed-point precision used for packed DDA transfer/radiance atlas channels. */
+  ddaQuantizationBits: number
+  /** Maximum linear radiance represented by one packed transfer RGB channel. */
+  ddaTransferRange: number
+  /** Maximum integrated radiance represented by one packed R0 RGB channel. */
+  ddaRadianceRange: number
+  /** Hue-preserving final-light posterization bands. `0` disables palette snapping. */
+  ddaPaletteBands: number
+  /** Linear-light exposure applied before palette snapping and removed afterward. */
+  ddaPaletteExposure: number
   /**
-   * Multiplier for Holographic final/reconstruction resolution relative to the
-   * legacy RC probe-grid final resolution. `1` preserves the current compact
-   * output; `4` makes a 16-ray cascade render at cascade/display resolution.
+   * Multiplier for the complete Holographic hierarchy resolution relative to
+   * the legacy RC probe-grid resolution. This is not a final upscaler: doubling
+   * it rebuilds the segment pyramid at 4x the texels. With 16 base RC rays,
+   * `4` matches the cascade/display resolution used by the HRC reference.
+   * Integer/fixed DDA modes ignore this value and derive their complete square
+   * hierarchy directly from `max(processingWidth, processingHeight) / ddaPixelSize`.
    */
   holographicFinalResolutionScale: number
 }
 
 const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
+  traversal: 'sdf',
   cascadeCount: 4,
   baseRayCount: 16,
   baseInterval: 0,
   cascadeResolution: 0,
-  sceneRadianceDownsampleFactor: 2,
   maxAutoCascadeResolution: 512,
-  angularJitter: true,
-  raymarchSteps: 32,
-  blueNoiseStrength: 0.45,
-  intervalOverlap: 0.1,
-  filterRadius: 1.25,
-  filterStrength: 0.8,
-  filterDiagonals: true,
-  filterJitterStrength: 0.35,
-  mipBlur: 0,
-  mipStrength: 0.25,
+  angularJitter: false,
+  raymarchSteps: 24,
+  sdfHitEpsilon: 0,
+  blueNoiseStrength: 0,
+  intervalOverlap: 0,
+  // Amitabha's reference cleanup is center weight 1 plus four cardinal taps
+  // at 0.25. Our center-4/cardinal-1 kernel with full strength is equivalent.
+  filterRadius: 1,
+  filterStrength: 1,
+  filterDiagonals: false,
+  filterJitterStrength: 0,
+  // A small, SDF-gated wide reconstruction blend suppresses the remaining
+  // half-float/display contour steps without replacing the local HRC result.
+  // Larger blends visibly detach shadows from their occluders.
+  mipBlur: 0.25,
+  mipStrength: 0.15,
   wideDownsampleFactor: 2,
   wideLevels: 1,
+  lightSourceRadius: 0,
+  includeAmbient: true,
   shortIntervalCount: 4,
   compositionLevels: 2,
-  compositionMode: 'hierarchical',
-  holographicFinalResolutionScale: 1,
+  compositionMode: 'holographic',
+  holographicTraversal: 'sdf',
+  ddaPixelSize: 4,
+  ddaBleedThreshold: 0.65,
+  ddaQuantizationBits: 8,
+  ddaTransferRange: 4,
+  ddaRadianceRange: 1,
+  ddaPaletteBands: 32,
+  ddaPaletteExposure: 16,
+  holographicFinalResolutionScale: 4,
 }
 
-export const HIERARCHICAL_RADIANCE_CASCADES_PRESETS: Record<
-  HierarchicalRadianceCascadesQuality,
-  Partial<HierarchicalRadianceCascadesConfig>
-> = {
+export const HIERARCHICAL_RADIANCE_CASCADES_PRESETS = {
   fast: {
     ...RADIANCE_CASCADES_PRESETS.fast,
-    maxAutoCascadeResolution: 256,
+    maxAutoCascadeResolution: 512,
+    angularJitter: false,
+    blueNoiseStrength: 0,
+    intervalOverlap: 0,
+    filterRadius: 1,
+    filterStrength: 1,
+    filterDiagonals: false,
+    filterJitterStrength: 0,
+    mipBlur: 0,
+    mipStrength: 0,
     shortIntervalCount: 4,
     compositionLevels: 2,
-    compositionMode: 'hierarchical',
+    compositionMode: 'holographic',
+    holographicTraversal: 'sdf',
+    ddaPixelSize: 8,
+    ddaBleedThreshold: 0.65,
+    ddaQuantizationBits: 5,
+    ddaTransferRange: 4,
+    ddaRadianceRange: 1,
+    ddaPaletteBands: 0,
+    ddaPaletteExposure: 16,
     holographicFinalResolutionScale: 1,
   },
   balanced: {
     ...RADIANCE_CASCADES_PRESETS.balanced,
     maxAutoCascadeResolution: 512,
-    mipBlur: 0,
-    mipStrength: 0.25,
+    angularJitter: false,
+    raymarchSteps: 24,
+    blueNoiseStrength: 0,
+    intervalOverlap: 0,
+    filterRadius: 1,
+    filterStrength: 1,
+    filterDiagonals: false,
+    filterJitterStrength: 0,
+    mipBlur: 0.25,
+    mipStrength: 0.15,
     shortIntervalCount: 4,
     compositionLevels: 2,
-    compositionMode: 'hierarchical',
-    holographicFinalResolutionScale: 1,
+    compositionMode: 'holographic',
+    holographicTraversal: 'sdf',
+    ddaPixelSize: 4,
+    ddaBleedThreshold: 0.65,
+    ddaQuantizationBits: 8,
+    ddaTransferRange: 4,
+    ddaRadianceRange: 1,
+    ddaPaletteBands: 32,
+    ddaPaletteExposure: 16,
+    holographicFinalResolutionScale: 4,
   },
   quality: {
     ...RADIANCE_CASCADES_PRESETS.quality,
-    maxAutoCascadeResolution: 1024,
+    // A 1024px full HRC pyramid is currently too expensive for a generally
+    // safe preset. Keep the validated 512px ceiling and spend quality on the
+    // reference-resolution hierarchy instead.
+    maxAutoCascadeResolution: 512,
+    angularJitter: false,
+    raymarchSteps: 32,
+    blueNoiseStrength: 0,
+    intervalOverlap: 0,
+    filterRadius: 1,
+    filterStrength: 1,
+    filterDiagonals: false,
+    filterJitterStrength: 0,
+    mipBlur: 0.25,
+    mipStrength: 0.15,
+    wideLevels: 1,
     shortIntervalCount: 8,
     compositionLevels: 3,
-    compositionMode: 'hierarchical',
-    holographicFinalResolutionScale: 1,
+    compositionMode: 'holographic',
+    holographicTraversal: 'sdf',
+    ddaPixelSize: 2,
+    ddaBleedThreshold: 0.65,
+    ddaQuantizationBits: 8,
+    ddaTransferRange: 4,
+    ddaRadianceRange: 1,
+    ddaPaletteBands: 0,
+    ddaPaletteExposure: 16,
+    holographicFinalResolutionScale: 4,
   },
-}
+} satisfies Record<HierarchicalRadianceCascadesQuality, Partial<HierarchicalRadianceCascadesConfig>>
 
 export function createHierarchicalRadianceCascadesConfig(
   quality: HierarchicalRadianceCascadesQuality = 'balanced',
@@ -188,12 +508,12 @@ export function createHierarchicalRadianceCascadesConfig(
 }
 
 /**
- * Configuration boundary for the interval-composition HRC renderer.
+ * Configuration boundary for the Holographic Radiance Cascades renderer.
  *
  * This class is intentionally separate from `RadianceCascades`. It is not a
- * subclass with different defaults: HRC will build a short-interval atlas and
- * compose transfer through levels instead of raymarching each cascade interval
- * directly. The runtime passes land behind this boundary.
+ * subclass with different defaults: paper HRC builds its eight-segment transfer
+ * and radiance pyramids here. The older short-interval composition experiment is
+ * retained as the `hierarchical` compatibility mode.
  */
 export class HierarchicalRadianceCascades {
   readonly algorithm = 'interval-composition'
@@ -203,17 +523,18 @@ export class HierarchicalRadianceCascades {
   private _compositionRTs: [RenderTarget, RenderTarget]
   private _holographicTransferRTs: RenderTarget[] = []
   private _holographicRadianceRTs: RenderTarget[] = []
+  private _renderTargetPool = new Set<RenderTarget>()
+  private _pendingRenderTargetDisposals = new Set<RenderTarget>()
   private _holographicDirectTransferMaterials = new Map<number, NodeMaterial>()
   private _holographicRecursiveTransferMaterials = new Map<number, NodeMaterial>()
   private _holographicRadianceMaterials = new Map<number, NodeMaterial>()
-  private _sceneRadianceRT: RenderTarget | null = null
   private _rawFinalRadianceRT: RenderTarget
   private _wideRadianceRT: RenderTarget
   private _wideBlurRT: RenderTarget
   private _wideRadianceRT2: RenderTarget
   private _wideBlurRT2: RenderTarget
   private _finalRadianceRT: RenderTarget
-  private _sceneRadianceMaterial: NodeMaterial | null = null
+  private _finalRadianceTextureNode: TextureNode
   private _shortIntervalMaterial: NodeMaterial | null = null
   private _compositionMaterials = new Map<number, NodeMaterial>()
   private _finalRadianceMaterial: NodeMaterial | null = null
@@ -227,8 +548,13 @@ export class HierarchicalRadianceCascades {
   private _wideBlurVMaterial2: NodeMaterial | null = null
   private _worldSize = new Vector2(1, 1)
   private _worldOffset = new Vector2(0, 0)
+  /** Physical processing surface used only to size integer DDA lighting grids. */
+  private _processingSize = new Vector2(1, 1)
+  private _hasExplicitProcessingSize = false
   private _worldSizeNode = uniform(new Vector2(1, 1))
   private _worldOffsetNode = uniform(new Vector2(0, 0))
+  private _radianceWorldSizeNode = uniform(new Vector2(1, 1))
+  private _radianceWorldOffsetNode = uniform(new Vector2(0, 0))
   private _shortIntervalLengthNode = uniform(1)
   private _finalTexelSizeNode = uniform(new Vector2(1, 1))
   private _wideTexelSizeNode = uniform(new Vector2(1, 1))
@@ -237,15 +563,25 @@ export class HierarchicalRadianceCascades {
   private _filterRadiusNode = uniform(1.25)
   private _filterStrengthNode = uniform(0.8)
   private _filterJitterStrengthNode = uniform(0.35)
+  private _ddaBleedThresholdNode = uniform(0.65)
+  private _ddaQuantizationLevelsNode = uniform(63)
+  private _ddaTransferRangeNode = uniform(4)
+  private _ddaRadianceRangeNode = uniform(1)
+  private _ddaPaletteBandsNode = uniform(0)
+  private _ddaPaletteExposureNode = uniform(16)
   private _mipBlurNode = uniform(0)
   private _mipStrengthNode = uniform(0)
+  private _sdfHitEpsilonNode = uniform(0.5)
+  private _occlusionTextureSizeNode = uniform(new Vector2(1, 1))
   private _blueNoiseTexture: DataTexture
+  private _generating = false
   private _effectiveBaseInterval = 16
   private _autoBaseInterval: boolean
   private _autoCascadeResolution: boolean
   private _lightsTexture: DataTexture | null = null
   private _lightCountNode: Node<'float'> = uniform(0)
   private _sdfTexture: Texture | null = null
+  private _occlusionTexture: Texture | null = null
   private _lastComposedTexture: Texture | null = null
   private _lastComposedSpan = 1
 
@@ -255,6 +591,22 @@ export class HierarchicalRadianceCascades {
       ...HIERARCHICAL_RADIANCE_CASCADES_PRESETS.balanced,
       ...config,
     }
+    this._config.holographicFinalResolutionScale = normalizeHolographicResolutionScale(
+      this._config.holographicFinalResolutionScale
+    )
+    this._config.holographicTraversal =
+      this._config.holographicTraversal === 'dda-float' ||
+      this._config.holographicTraversal === 'dda-integer' ||
+      this._config.holographicTraversal === 'dda-fixed'
+        ? this._config.holographicTraversal
+        : 'sdf'
+    this._config.ddaPixelSize = Math.max(1, Math.min(32, Math.round(this._config.ddaPixelSize)))
+    this._config.ddaBleedThreshold = Math.max(0, Math.min(2, this._config.ddaBleedThreshold))
+    this._config.ddaQuantizationBits = Math.max(2, Math.min(8, Math.round(this._config.ddaQuantizationBits)))
+    this._config.ddaTransferRange = Math.max(0.25, Math.min(64, this._config.ddaTransferRange))
+    this._config.ddaRadianceRange = Math.max(0.25, Math.min(64, this._config.ddaRadianceRange))
+    this._config.ddaPaletteBands = normalizeDdaPaletteBands(this._config.ddaPaletteBands)
+    this._config.ddaPaletteExposure = Math.max(0.25, Math.min(64, this._config.ddaPaletteExposure))
     this._referenceHierarchy = new RadianceCascades(this._config)
     this._autoBaseInterval = this._config.baseInterval <= 0
     this._autoCascadeResolution = this._config.cascadeResolution <= 0
@@ -265,29 +617,92 @@ export class HierarchicalRadianceCascades {
     const initialCascadeResolution = this._config.cascadeResolution > 0 ? this._config.cascadeResolution : 128
     const initialAtlasResolution = this._shortIntervalAtlasResolution(initialCascadeResolution)
     const initialFinalResolution = this._finalRadianceResolution(initialCascadeResolution)
-    this._shortIntervalAtlasRT = this._createRenderTarget(initialAtlasResolution, initialAtlasResolution)
+    this._shortIntervalAtlasRT = this._createRenderTarget(
+      initialAtlasResolution,
+      initialAtlasResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.short-interval-atlas'
+    )
     this._compositionRTs = [
-      this._createRenderTarget(initialAtlasResolution, initialAtlasResolution),
-      this._createRenderTarget(initialAtlasResolution, initialAtlasResolution),
+      this._createRenderTarget(
+        initialAtlasResolution,
+        initialAtlasResolution,
+        LinearFilter,
+        HalfFloatType,
+        'hrc.composition-a'
+      ),
+      this._createRenderTarget(
+        initialAtlasResolution,
+        initialAtlasResolution,
+        LinearFilter,
+        HalfFloatType,
+        'hrc.composition-b'
+      ),
     ]
     this._rebuildHolographicRenderTargets(initialCascadeResolution)
-    this._rawFinalRadianceRT = this._createRenderTarget(initialFinalResolution, initialFinalResolution)
-    this._wideRadianceRT = this._createRenderTarget(initialFinalResolution, initialFinalResolution)
-    this._wideBlurRT = this._createRenderTarget(initialFinalResolution, initialFinalResolution)
-    this._wideRadianceRT2 = this._createRenderTarget(initialFinalResolution, initialFinalResolution)
-    this._wideBlurRT2 = this._createRenderTarget(initialFinalResolution, initialFinalResolution)
-    this._finalRadianceRT = this._createRenderTarget(initialFinalResolution, initialFinalResolution)
+    this._rawFinalRadianceRT = this._createRenderTarget(
+      initialFinalResolution,
+      initialFinalResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.raw-final'
+    )
+    this._wideRadianceRT = this._createRenderTarget(
+      initialFinalResolution,
+      initialFinalResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.wide-radiance'
+    )
+    this._wideBlurRT = this._createRenderTarget(
+      initialFinalResolution,
+      initialFinalResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.wide-blur'
+    )
+    this._wideRadianceRT2 = this._createRenderTarget(
+      initialFinalResolution,
+      initialFinalResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.wide-radiance-2'
+    )
+    this._wideBlurRT2 = this._createRenderTarget(
+      initialFinalResolution,
+      initialFinalResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.wide-blur-2'
+    )
+    this._finalRadianceRT = this._createRenderTarget(
+      initialFinalResolution,
+      initialFinalResolution,
+      LinearFilter,
+      HalfFloatType,
+      'hrc.final'
+    )
+    this._finalRadianceTextureNode = sampleTexture(this._finalRadianceRT.texture) as TextureNode
+    this._updateFinalRadianceFilters()
     this._blueNoiseTexture = getSharedBlueNoiseTexture()
     this.blueNoiseStrength = this._config.blueNoiseStrength
     this.raymarchSteps = this._config.raymarchSteps
-    this.sceneRadianceDownsampleFactor = this._config.sceneRadianceDownsampleFactor
+    this.sdfHitEpsilon = this._config.sdfHitEpsilon
     this.filterRadius = this._config.filterRadius
     this.filterStrength = this._config.filterStrength
     this.filterJitterStrength = this._config.filterJitterStrength
+    this.ddaBleedThreshold = this._config.ddaBleedThreshold
+    this.ddaQuantizationBits = this._config.ddaQuantizationBits
+    this.ddaTransferRange = this._config.ddaTransferRange
+    this.ddaRadianceRange = this._config.ddaRadianceRange
+    this.ddaPaletteBands = this._config.ddaPaletteBands
+    this.ddaPaletteExposure = this._config.ddaPaletteExposure
     this.mipBlur = this._config.mipBlur
     this.mipStrength = this._config.mipStrength
     this.wideDownsampleFactor = this._config.wideDownsampleFactor
     this.wideLevels = this._config.wideLevels
+    this.lightSourceRadius = this._config.lightSourceRadius
 
     registerDebugTexture('hrc.shortIntervals', this._shortIntervalAtlasRT, 'rgba16f', {
       display: 'colors',
@@ -331,8 +746,47 @@ export class HierarchicalRadianceCascades {
     return this._finalRadianceRT.texture
   }
 
+  /** Sample the live final target through a stable node across target replacement. */
+  sampleFinalRadiance(radianceUV: Node<'vec2'>): Node<'vec4'> {
+    return this._finalRadianceTextureNode.sample(radianceUV) as Node<'vec4'>
+  }
+
+  /** Map a world-space point into the domain represented by the radiance texture. */
+  worldToRadianceUV(worldPosition: Node<'vec2'>): Node<'vec2'> {
+    return vec2(worldPosition).sub(this._radianceWorldOffsetNode).div(this._radianceWorldSizeNode)
+  }
+
+  /** Map a padded-square radiance UV into the rectangular SDF texture domain. */
+  private _radianceUVToSDFUV(radianceUV: Node<'vec2'>): Node<'vec2'> {
+    const worldPosition = uvToWorld(radianceUV, this._radianceWorldSizeNode, this._radianceWorldOffsetNode)
+    const sdfUV = worldToUV(worldPosition, this._worldSizeNode, this._worldOffsetNode)
+    return vec2(sdfUV.x, float(1).sub(sdfUV.y))
+  }
+
   get finalRadianceReadoutMode(): 'interval-atlas' | 'holographic-r0' {
     return this._usesHolographicFinalReadout() ? 'holographic-r0' : 'interval-atlas'
+  }
+
+  /** Whether the active traversal needs a distance field instead of the binary caster mask. */
+  get requiresSdf(): boolean {
+    return this._config.compositionMode !== 'holographic' || this._config.holographicTraversal === 'sdf'
+  }
+
+  private _usesDdaOcclusion(): boolean {
+    return this._config.compositionMode === 'holographic' && this._config.holographicTraversal !== 'sdf'
+  }
+
+  private _hasRequiredOcclusionInput(): boolean {
+    return this._usesDdaOcclusion() ? this._occlusionTexture !== null : this._sdfTexture !== null
+  }
+
+  /** Test an HRC output-space point against the active shadow representation. */
+  private _filterPointIsOpen(radianceUV: Node<'vec2'>): Node<'bool'> {
+    const shadowUV = this._radianceUVToSDFUV(radianceUV)
+    if (this._usesDdaOcclusion()) {
+      return sampleTexture(this._occlusionTexture!, shadowUV).a.lessThan(float(0.5))
+    }
+    return sampleTexture(this._sdfTexture!, shadowUV).r.greaterThan(this._sdfHitEpsilonNode)
   }
 
   get shortIntervalAtlasSize(): number {
@@ -356,11 +810,23 @@ export class HierarchicalRadianceCascades {
   }
 
   get estimatedHolographicTransferValueCount(): number {
-    return this._holographicLevelInfo().reduce((sum, level) => sum + level.transferValueCount, 0) * 4
+    return this._holographicLevelInfo().reduce((sum, level) => sum + level.transferValueCount, 0) * 8
   }
 
   get estimatedHolographicRadianceValueCount(): number {
-    return this._holographicLevelInfo().reduce((sum, level) => sum + level.radianceValueCount, 0) * 4
+    return this._holographicLevelInfo().reduce((sum, level) => sum + level.radianceValueCount, 0) * 8
+  }
+
+  get holographicStorageBytesPerTexel(): 4 | 8 {
+    return this._usesPackedFixedPoint() ? 4 : 8
+  }
+
+  get estimatedHolographicStorageBytes(): number {
+    if (this._config.compositionMode !== 'holographic') return 0
+    return (
+      (this.estimatedHolographicTransferValueCount + this.estimatedHolographicRadianceValueCount) *
+      this.holographicStorageBytesPerTexel
+    )
   }
 
   get holographicTransferAtlasTextures(): Texture[] {
@@ -408,23 +874,122 @@ export class HierarchicalRadianceCascades {
     const mode = value === 'holographic' ? 'holographic' : 'hierarchical'
     if (mode === this._config.compositionMode) return
     this._config.compositionMode = mode
-    if (mode === 'holographic') {
-      const final = this._holographicFinalRadianceDimensions()
-      this._rebuildHolographicRenderTargets()
-      this._rawFinalRadianceRT.setSize(final.width, final.height)
-      this._finalRadianceRT.setSize(final.width, final.height)
-      this._finalTexelSizeNode.value.set(1 / final.width, 1 / final.height)
-      this._resizeWideRadianceTargets()
-    } else {
-      const finalResolution = this._finalRadianceResolution()
-      this._rawFinalRadianceRT.setSize(finalResolution, finalResolution)
-      this._finalRadianceRT.setSize(finalResolution, finalResolution)
-      this._finalTexelSizeNode.value.set(1 / finalResolution, 1 / finalResolution)
-      this._resizeWideRadianceTargets()
+    this._updateRadianceWorldBounds()
+    this._requestHolographicOutputResize()
+  }
+
+  get holographicTraversal(): HolographicRadianceCascadesTraversal {
+    return this._config.holographicTraversal
+  }
+
+  set holographicTraversal(value: HolographicRadianceCascadesTraversal) {
+    const traversal = value === 'dda-float' || value === 'dda-integer' || value === 'dda-fixed' ? value : 'sdf'
+    if (traversal === this._config.holographicTraversal) return
+    const previousOutput = this._holographicFinalRadianceDimensions()
+    const previousPacked = this._usesPackedFixedPoint()
+    this._config.holographicTraversal = traversal
+    const nextOutput = this._holographicFinalRadianceDimensions()
+    const nextPacked = this._usesPackedFixedPoint()
+    if (
+      this._config.compositionMode === 'holographic' &&
+      (previousOutput.width !== nextOutput.width ||
+        previousOutput.height !== nextOutput.height ||
+        previousPacked !== nextPacked)
+    ) {
+      this._requestHolographicOutputResize()
+      return
     }
+    this._updateFinalRadianceFilters()
+    this._disposeHolographicDirectTransferMaterials()
+    this._disposeWideRadianceMaterials()
+    this._filterRadianceMaterial?.dispose()
+    this._filterRadianceMaterial = null
     this._finalRadianceMaterial?.dispose()
     this._finalRadianceMaterial = null
     this._finalRadianceSourceTexture = null
+  }
+
+  get ddaPixelSize(): number {
+    return this._config.ddaPixelSize
+  }
+
+  set ddaPixelSize(value: number) {
+    const pixelSize = Math.max(1, Math.min(32, Math.round(value)))
+    if (pixelSize === this._config.ddaPixelSize) return
+    this._config.ddaPixelSize = pixelSize
+    if (this._config.compositionMode === 'holographic' && this._usesIntegerDdaGrid()) {
+      this._requestHolographicOutputResize()
+      return
+    }
+    this._disposeHolographicDirectTransferMaterials()
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
+    this._finalRadianceSourceTexture = null
+  }
+
+  get ddaBleedThreshold(): number {
+    return this._config.ddaBleedThreshold
+  }
+
+  set ddaBleedThreshold(value: number) {
+    const threshold = Math.max(0, Math.min(2, value))
+    this._config.ddaBleedThreshold = threshold
+    this._ddaBleedThresholdNode.value = threshold
+  }
+
+  get ddaQuantizationBits(): number {
+    return this._config.ddaQuantizationBits
+  }
+
+  set ddaQuantizationBits(value: number) {
+    const bits = Math.max(2, Math.min(8, Math.round(value)))
+    this._config.ddaQuantizationBits = bits
+    this._ddaQuantizationLevelsNode.value = 2 ** bits - 1
+  }
+
+  get ddaTransferRange(): number {
+    return this._config.ddaTransferRange
+  }
+
+  set ddaTransferRange(value: number) {
+    const range = Math.max(0.25, Math.min(64, value))
+    this._config.ddaTransferRange = range
+    this._ddaTransferRangeNode.value = range
+  }
+
+  get ddaRadianceRange(): number {
+    return this._config.ddaRadianceRange
+  }
+
+  set ddaRadianceRange(value: number) {
+    const range = Math.max(0.25, Math.min(64, value))
+    this._config.ddaRadianceRange = range
+    this._ddaRadianceRangeNode.value = range
+  }
+
+  get ddaPaletteBands(): number {
+    return this._config.ddaPaletteBands
+  }
+
+  set ddaPaletteBands(value: number) {
+    const wasEnabled = this._usesDdaPalette()
+    const bands = normalizeDdaPaletteBands(value)
+    this._config.ddaPaletteBands = bands
+    this._ddaPaletteBandsNode.value = bands
+    if (wasEnabled !== this._usesDdaPalette()) {
+      this._filterRadianceMaterial?.dispose()
+      this._filterRadianceMaterial = null
+    }
+  }
+
+  get ddaPaletteExposure(): number {
+    return this._config.ddaPaletteExposure
+  }
+
+  set ddaPaletteExposure(value: number) {
+    const exposure = Math.max(0.25, Math.min(64, value))
+    this._config.ddaPaletteExposure = exposure
+    this._ddaPaletteExposureNode.value = exposure
   }
 
   get holographicFinalResolutionScale(): number {
@@ -432,23 +997,11 @@ export class HierarchicalRadianceCascades {
   }
 
   set holographicFinalResolutionScale(value: number) {
-    const scale = Math.max(1, Math.min(4, Math.round(value)))
+    const scale = normalizeHolographicResolutionScale(value)
     if (scale === this._config.holographicFinalResolutionScale) return
     this._config.holographicFinalResolutionScale = scale
     if (this._config.compositionMode !== 'holographic') return
-
-    const final = this._holographicFinalRadianceDimensions()
-    this._rebuildHolographicRenderTargets()
-    this._rawFinalRadianceRT.setSize(final.width, final.height)
-    this._finalRadianceRT.setSize(final.width, final.height)
-    this._finalTexelSizeNode.value.set(1 / final.width, 1 / final.height)
-    this._resizeWideRadianceTargets()
-    this._disposeWideRadianceMaterials()
-    this._filterRadianceMaterial?.dispose()
-    this._filterRadianceMaterial = null
-    this._finalRadianceMaterial?.dispose()
-    this._finalRadianceMaterial = null
-    this._finalRadianceSourceTexture = null
+    this._requestHolographicOutputResize()
   }
 
   get raymarchSteps(): number {
@@ -465,6 +1018,22 @@ export class HierarchicalRadianceCascades {
     this._disposeHolographicDirectTransferMaterials()
     this._disposeHolographicRecursiveTransferMaterials()
     this._disposeHolographicRadianceMaterials()
+    this._disposeWideRadianceMaterials()
+    this._filterRadianceMaterial?.dispose()
+    this._filterRadianceMaterial = null
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
+    this._finalRadianceSourceTexture = null
+  }
+
+  get sdfHitEpsilon(): number {
+    return this._config.sdfHitEpsilon
+  }
+
+  set sdfHitEpsilon(value: number) {
+    this._config.sdfHitEpsilon = Math.max(0, value)
+    this._referenceHierarchy.sdfHitEpsilon = this._config.sdfHitEpsilon
+    this._updateSdfHitEpsilon()
   }
 
   get blueNoiseStrength(): number {
@@ -474,7 +1043,6 @@ export class HierarchicalRadianceCascades {
   set blueNoiseStrength(value: number) {
     const strength = Math.max(0, Math.min(1, value))
     this._config.blueNoiseStrength = strength
-    this._referenceHierarchy.blueNoiseStrength = strength
     this._blueNoiseStrengthNode.value = strength
   }
 
@@ -488,23 +1056,20 @@ export class HierarchicalRadianceCascades {
     this._referenceHierarchy.intervalOverlap = overlap
   }
 
-  get sceneRadianceDownsampleFactor(): number {
-    return this._config.sceneRadianceDownsampleFactor
+  get lightSourceRadius(): number {
+    return this._config.lightSourceRadius
   }
 
-  set sceneRadianceDownsampleFactor(value: number) {
-    const factor = Math.max(1, Math.min(4, Math.round(value)))
-    if (factor === this._config.sceneRadianceDownsampleFactor) return
-    this._config.sceneRadianceDownsampleFactor = factor
-    this._referenceHierarchy.sceneRadianceDownsampleFactor = factor
-    if (this._sceneRadianceRT) {
-      this._resizeSceneRadianceTarget()
-      this._shortIntervalMaterial?.dispose()
-      this._shortIntervalMaterial = null
-      this._disposeHolographicDirectTransferMaterials()
-      this._disposeHolographicRecursiveTransferMaterials()
-      this._disposeHolographicRadianceMaterials()
-    }
+  set lightSourceRadius(value: number) {
+    const radius = Math.max(0, value)
+    if (radius === this._config.lightSourceRadius) return
+    this._config.lightSourceRadius = radius
+    this._referenceHierarchy.lightSourceRadius = radius
+    this._shortIntervalMaterial?.dispose()
+    this._shortIntervalMaterial = null
+    this._disposeHolographicDirectTransferMaterials()
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
   }
 
   get filterRadius(): number {
@@ -547,7 +1112,6 @@ export class HierarchicalRadianceCascades {
     const enabled = Boolean(value)
     if (enabled === this._config.filterDiagonals) return
     this._config.filterDiagonals = enabled
-    this._referenceHierarchy.filterDiagonals = enabled
     this._filterRadianceMaterial?.dispose()
     this._filterRadianceMaterial = null
   }
@@ -560,7 +1124,6 @@ export class HierarchicalRadianceCascades {
     const wasEnabled = this._config.filterJitterStrength > 0
     const strength = Math.max(0, Math.min(1, value))
     this._config.filterJitterStrength = strength
-    this._referenceHierarchy.filterJitterStrength = strength
     this._filterJitterStrengthNode.value = strength
     if (wasEnabled !== strength > 0) {
       this._filterRadianceMaterial?.dispose()
@@ -651,22 +1214,15 @@ export class HierarchicalRadianceCascades {
   }
 
   get estimatedCompositionPassCount(): number {
-    return Math.max(
-      0,
-      Math.min(this._config.compositionLevels, Math.ceil(Math.log2(this._config.shortIntervalCount)))
-    )
+    return Math.max(0, Math.min(this._config.compositionLevels, Math.ceil(Math.log2(this._config.shortIntervalCount))))
   }
 
   get estimatedHolographicDirectTransferPassCount(): number {
-    return this._config.compositionMode === 'holographic'
-      ? Math.min(3, this._holographicTransferRTs.length)
-      : 0
+    return this._config.compositionMode === 'holographic' ? Math.min(3, this._holographicTransferRTs.length) : 0
   }
 
   get estimatedHolographicRecursiveTransferPassCount(): number {
-    return this._config.compositionMode === 'holographic'
-      ? Math.max(0, this._holographicTransferRTs.length - 3)
-      : 0
+    return this._config.compositionMode === 'holographic' ? Math.max(0, this._holographicTransferRTs.length - 3) : 0
   }
 
   get estimatedHolographicRadiancePassCount(): number {
@@ -675,7 +1231,6 @@ export class HierarchicalRadianceCascades {
 
   get estimatedPassCount(): number {
     let count =
-      1 +
       this.estimatedHolographicDirectTransferPassCount +
       this.estimatedHolographicRecursiveTransferPassCount +
       this.estimatedHolographicRadiancePassCount +
@@ -712,8 +1267,7 @@ export class HierarchicalRadianceCascades {
 
   get estimatedRaymarchSampleCount(): number {
     return (
-      this.estimatedRaymarchTexelCount * this._config.raymarchSteps +
-      this.estimatedHolographicDirectTransferSampleCount
+      this.estimatedRaymarchTexelCount * this._config.raymarchSteps + this.estimatedHolographicDirectTransferSampleCount
     )
   }
 
@@ -721,21 +1275,28 @@ export class HierarchicalRadianceCascades {
     if (this._config.compositionMode !== 'holographic') return 0
     return this._holographicLevelInfo()
       .slice(0, 3)
-      .reduce((sum, level) => sum + level.transferValueCount * 4, 0)
+      .reduce((sum, level) => sum + level.transferValueCount * 8, 0)
   }
 
   get estimatedHolographicDirectTransferSampleCount(): number {
-    return (
-      this.estimatedHolographicDirectTransferTexelCount *
-      this._holographicDirectTransferStepCount()
-    )
+    if (this._usesDdaOcclusion()) {
+      // T0-T2 spans at most 2*stride cells along the segment axis and
+      // 2*stride cells laterally. Both DDA backends visit one supercover cell
+      // per loop iteration and stop as soon as the quantized endpoint is
+      // reached, so charging every texel the SDF raymarch budget dramatically
+      // overstates DDA work.
+      return this._holographicLevelInfo()
+        .slice(0, 3)
+        .reduce((sum, level) => sum + level.transferValueCount * 8 * (4 * 2 ** level.level + 1), 0)
+    }
+    return this.estimatedHolographicDirectTransferTexelCount * this._holographicDirectTransferStepCount()
   }
 
   get estimatedHolographicRecursiveTransferTexelCount(): number {
     if (this._config.compositionMode !== 'holographic') return 0
     return this._holographicLevelInfo()
       .slice(3)
-      .reduce((sum, level) => sum + level.transferValueCount * 4, 0)
+      .reduce((sum, level) => sum + level.transferValueCount * 8, 0)
   }
 
   get estimatedHolographicRadianceTexelCount(): number {
@@ -748,23 +1309,26 @@ export class HierarchicalRadianceCascades {
   }
 
   private _usesFilteredOutput(): boolean {
-    return this._usesLocalFilter() || this._usesMipFilter()
+    return this._usesLocalFilter() || this._usesMipFilter() || this._usesDdaPalette()
+  }
+
+  private _usesDdaPalette(): boolean {
+    return this._usesDdaOcclusion() && this._config.ddaPaletteBands >= 2
   }
 
   private _usesSecondWideLevel(): boolean {
     return this._usesWideBlur() && this._config.wideLevels > 1
   }
 
-  init(
-    worldWidth: number,
-    worldHeight: number,
-    lightsTexture?: DataTexture,
-    lightCountNode?: Node<'float'>
-  ): void {
+  init(worldWidth: number, worldHeight: number, lightsTexture?: DataTexture, lightCountNode?: Node<'float'>): void {
     this._worldSize.set(worldWidth, worldHeight)
     this._worldSizeNode.value.set(worldWidth, worldHeight)
+    this._updateRadianceWorldBounds()
     if (lightsTexture) this._lightsTexture = lightsTexture
     if (lightCountNode) this._lightCountNode = lightCountNode
+    if (!this._hasExplicitProcessingSize) {
+      this._processingSize.set(Math.max(1, Math.ceil(worldWidth)), Math.max(1, Math.ceil(worldHeight)))
+    }
 
     const baseAngular = Math.sqrt(this._config.baseRayCount)
     if (this._autoCascadeResolution) {
@@ -773,19 +1337,12 @@ export class HierarchicalRadianceCascades {
       const targetRes = targetProbes * baseAngular
       const autoRes = Math.pow(2, Math.ceil(Math.log2(targetRes)))
       this._config.cascadeResolution =
-        this._config.maxAutoCascadeResolution > 0
-          ? Math.min(autoRes, this._config.maxAutoCascadeResolution)
-          : autoRes
+        this._config.maxAutoCascadeResolution > 0 ? Math.min(autoRes, this._config.maxAutoCascadeResolution) : autoRes
     }
 
     this._syncReferenceHierarchyConfig()
     if (this._lightsTexture && this._lightCountNode) {
-      this._referenceHierarchy.init(
-        worldWidth,
-        worldHeight,
-        this._lightsTexture,
-        this._lightCountNode
-      )
+      this._referenceHierarchy.init(worldWidth, worldHeight, this._lightsTexture, this._lightCountNode)
     }
 
     this._updateBaseInterval()
@@ -798,30 +1355,50 @@ export class HierarchicalRadianceCascades {
     this._rebuildHolographicRenderTargets()
     const finalWidth = this._config.compositionMode === 'holographic' ? holographicFinal.width : finalResolution
     const finalHeight = this._config.compositionMode === 'holographic' ? holographicFinal.height : finalResolution
-    this._rawFinalRadianceRT.setSize(finalWidth, finalHeight)
-    this._finalRadianceRT.setSize(finalWidth, finalHeight)
+    const finalFilter =
+      this._config.compositionMode === 'holographic' && this._usesIntegerDdaGrid() ? NearestFilter : LinearFilter
+    this._rawFinalRadianceRT = this._replaceRenderTarget(
+      this._rawFinalRadianceRT,
+      finalWidth,
+      finalHeight,
+      finalFilter,
+      'hrc.raw-final'
+    )
+    this._finalRadianceRT = this._replaceRenderTarget(
+      this._finalRadianceRT,
+      finalWidth,
+      finalHeight,
+      finalFilter,
+      'hrc.final'
+    )
+    this._finalRadianceTextureNode.value = this._finalRadianceRT.texture
+    this._updateFinalRadianceFilters()
     this._finalTexelSizeNode.value.set(1 / finalWidth, 1 / finalHeight)
     this._resizeWideRadianceTargets()
-    this._resizeSceneRadianceTarget()
+    this._registerResizableDebugTargets()
     this._disposeMaterials()
   }
 
   resize(worldWidth: number, worldHeight: number): void {
     this._worldSize.set(worldWidth, worldHeight)
     this._worldSizeNode.value.set(worldWidth, worldHeight)
+    this._updateRadianceWorldBounds()
     this._referenceHierarchy.resize(worldWidth, worldHeight)
     this._updateBaseInterval()
-    if (this._config.compositionMode === 'holographic') {
-      const final = this._holographicFinalRadianceDimensions()
-      this._rebuildHolographicRenderTargets()
-      this._rawFinalRadianceRT.setSize(final.width, final.height)
-      this._finalRadianceRT.setSize(final.width, final.height)
-      this._finalTexelSizeNode.value.set(1 / final.width, 1 / final.height)
-      this._resizeWideRadianceTargets()
-      this._finalRadianceMaterial?.dispose()
-      this._finalRadianceMaterial = null
-      this._finalRadianceSourceTexture = null
-    }
+  }
+
+  /** Set the physical effect surface used to derive the integer DDA grid. */
+  setProcessingSize(width: number, height: number): void {
+    const nextWidth = Math.max(1, Math.ceil(width))
+    const nextHeight = Math.max(1, Math.ceil(height))
+    this._hasExplicitProcessingSize = true
+    if (nextWidth === this._processingSize.x && nextHeight === this._processingSize.y) return
+    const previous = this._holographicFinalRadianceDimensions()
+    this._processingSize.set(nextWidth, nextHeight)
+    if (this._config.compositionMode !== 'holographic' || !this._usesIntegerDdaGrid()) return
+    const next = this._holographicFinalRadianceDimensions()
+    if (previous.width === next.width && previous.height === next.height) return
+    this._requestHolographicOutputResize()
   }
 
   setWorldBounds(worldSize: Vector2, worldOffset: Vector2): void {
@@ -829,16 +1406,32 @@ export class HierarchicalRadianceCascades {
     this._worldOffset.copy(worldOffset)
     this._worldSizeNode.value.copy(worldSize)
     this._worldOffsetNode.value.copy(worldOffset)
+    this._updateRadianceWorldBounds()
     this._referenceHierarchy.setWorldBounds(worldSize, worldOffset)
     this._updateBaseInterval()
     if (this._config.compositionMode === 'holographic') {
       const final = this._holographicFinalRadianceDimensions()
       if (this._rawFinalRadianceRT.width !== final.width || this._rawFinalRadianceRT.height !== final.height) {
         this._rebuildHolographicRenderTargets()
-        this._rawFinalRadianceRT.setSize(final.width, final.height)
-        this._finalRadianceRT.setSize(final.width, final.height)
+        const filter = this._usesIntegerDdaGrid() ? NearestFilter : LinearFilter
+        this._rawFinalRadianceRT = this._replaceRenderTarget(
+          this._rawFinalRadianceRT,
+          final.width,
+          final.height,
+          filter,
+          'hrc.raw-final'
+        )
+        this._finalRadianceRT = this._replaceRenderTarget(
+          this._finalRadianceRT,
+          final.width,
+          final.height,
+          filter,
+          'hrc.final'
+        )
+        this._finalRadianceTextureNode.value = this._finalRadianceRT.texture
         this._finalTexelSizeNode.value.set(1 / final.width, 1 / final.height)
         this._resizeWideRadianceTargets()
+        this._registerResizableDebugTargets()
         this._finalRadianceMaterial?.dispose()
         this._finalRadianceMaterial = null
         this._finalRadianceSourceTexture = null
@@ -846,7 +1439,7 @@ export class HierarchicalRadianceCascades {
     }
   }
 
-  setSdfTexture(texture: Texture): void {
+  setSdfTexture(texture: Texture | null): void {
     if (this._sdfTexture === texture) return
     this._sdfTexture = texture
     this._shortIntervalMaterial?.dispose()
@@ -857,13 +1450,37 @@ export class HierarchicalRadianceCascades {
     this._disposeHolographicRadianceMaterials()
   }
 
-  generate(renderer: WebGPURenderer, sdfTexture: Texture): void {
-    this.setSdfTexture(sdfTexture)
-    if (!this._sceneRadianceRT) this._resizeSceneRadianceTarget()
+  setOcclusionTexture(texture: Texture | null): void {
+    if (this._occlusionTexture === texture) return
+    this._occlusionTexture = texture
+    this._disposeHolographicDirectTransferMaterials()
+    this._disposeWideRadianceMaterials()
+    this._filterRadianceMaterial?.dispose()
+    this._filterRadianceMaterial = null
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
+    this._finalRadianceSourceTexture = null
+  }
 
+  generate(
+    renderer: WebGPURenderer,
+    sdfTexture: Texture | null,
+    _scene?: Scene,
+    _camera?: OrthographicCamera,
+    occlusionTexture: Texture | null = null
+  ): void {
+    if (this._generating) return
+    this._generating = true
+    this.setSdfTexture(sdfTexture)
+    this.setOcclusionTexture(occlusionTexture)
+    this._updateSdfHitEpsilon()
+    const occlusionImage = occlusionTexture?.image as { width?: number; height?: number } | undefined
+    this._occlusionTextureSizeNode.value.set(
+      Math.max(1, occlusionImage?.width ?? 1),
+      Math.max(1, occlusionImage?.height ?? 1)
+    )
     _rendererState = RendererUtils.resetRendererState(renderer, _rendererState)
     try {
-      this._renderSceneRadiance(renderer)
       if (this._config.compositionMode === 'holographic') {
         this._renderHolographicDirectTransfers(renderer)
         this._renderHolographicRecursiveTransfers(renderer)
@@ -873,10 +1490,7 @@ export class HierarchicalRadianceCascades {
         this._renderComposition(renderer)
       }
       const usesFilteredOutput = this._usesFilteredOutput()
-      this._renderFinalRadiance(
-        renderer,
-        usesFilteredOutput ? this._rawFinalRadianceRT : this._finalRadianceRT
-      )
+      this._renderFinalRadiance(renderer, usesFilteredOutput ? this._rawFinalRadianceRT : this._finalRadianceRT)
       if (usesFilteredOutput) {
         if (this._usesMipFilter()) {
           this._renderWideRadiance(renderer)
@@ -885,7 +1499,20 @@ export class HierarchicalRadianceCascades {
       }
     } finally {
       RendererUtils.restoreRendererState(renderer, _rendererState)
+      this._flushRetiredRenderTargets(renderer)
+      this._generating = false
     }
+  }
+
+  private _updateSdfHitEpsilon(): void {
+    if (this._config.sdfHitEpsilon > 0) {
+      this._sdfHitEpsilonNode.value = this._config.sdfHitEpsilon
+      return
+    }
+    const image = this._sdfTexture?.image as { width?: number; height?: number } | undefined
+    const width = Math.max(1, image?.width ?? 1)
+    const height = Math.max(1, image?.height ?? 1)
+    this._sdfHitEpsilonNode.value = Math.max(this._worldSize.x / width, this._worldSize.y / height) * 0.5
   }
 
   dispose(): void {
@@ -895,12 +1522,10 @@ export class HierarchicalRadianceCascades {
     unregisterDebugTexture('hrc.rawFinalIrradiance')
     unregisterDebugTexture('hrc.wideIrradiance')
     unregisterDebugTexture('hrc.wideIrradiance2')
-    unregisterDebugTexture('hrc.sceneRadiance')
     this._shortIntervalAtlasRT.dispose()
     this._compositionRTs[0].dispose()
     this._compositionRTs[1].dispose()
-    this._disposeHolographicRenderTargets()
-    this._sceneRadianceRT?.dispose()
+    this._disposeAllHolographicRenderTargets()
     this._rawFinalRadianceRT.dispose()
     this._wideRadianceRT.dispose()
     this._wideBlurRT.dispose()
@@ -917,20 +1542,32 @@ export class HierarchicalRadianceCascades {
     referenceConfig.baseRayCount = this._config.baseRayCount
     referenceConfig.baseInterval = this._config.baseInterval
     referenceConfig.cascadeResolution = this._config.cascadeResolution
-    referenceConfig.sceneRadianceDownsampleFactor = this._config.sceneRadianceDownsampleFactor
     referenceConfig.maxAutoCascadeResolution = this._config.maxAutoCascadeResolution
-    referenceConfig.angularJitter = this._config.angularJitter
     referenceConfig.raymarchSteps = this._config.raymarchSteps
-    referenceConfig.blueNoiseStrength = this._config.blueNoiseStrength
+    referenceConfig.sdfHitEpsilon = this._config.sdfHitEpsilon
     referenceConfig.intervalOverlap = this._config.intervalOverlap
     referenceConfig.filterRadius = this._config.filterRadius
     referenceConfig.filterStrength = this._config.filterStrength
-    referenceConfig.filterDiagonals = this._config.filterDiagonals
-    referenceConfig.filterJitterStrength = this._config.filterJitterStrength
     referenceConfig.mipBlur = this._config.mipBlur
     referenceConfig.mipStrength = this._config.mipStrength
     referenceConfig.wideDownsampleFactor = this._config.wideDownsampleFactor
     referenceConfig.wideLevels = this._config.wideLevels
+    referenceConfig.lightSourceRadius = this._config.lightSourceRadius
+  }
+
+  private _updateRadianceWorldBounds(): void {
+    if (this._config.compositionMode === 'holographic') {
+      const extent = Math.max(this._worldSize.x, this._worldSize.y)
+      this._radianceWorldSizeNode.value.set(extent, extent)
+      this._radianceWorldOffsetNode.value.set(
+        this._worldOffset.x - (extent - this._worldSize.x) * 0.5,
+        this._worldOffset.y - (extent - this._worldSize.y) * 0.5
+      )
+      return
+    }
+
+    this._radianceWorldSizeNode.value.copy(this._worldSize)
+    this._radianceWorldOffsetNode.value.copy(this._worldOffset)
   }
 
   private _shortIntervalAtlasResolution(resolution = this._config.cascadeResolution): number {
@@ -948,18 +1585,153 @@ export class HierarchicalRadianceCascades {
     width: number
     height: number
   } {
-    const scale = Math.max(1, Math.min(4, Math.round(this._config.holographicFinalResolutionScale)))
+    if (this._usesIntegerDdaGrid()) {
+      // HRC's rotation-preserving domain is square. Downsample the physical
+      // viewport once, then run every transfer/radiance level at 1× integer
+      // cells inside that logical grid. No cascade-resolution cap participates.
+      const logicalResolution = Math.max(
+        1,
+        Math.ceil(Math.max(this._processingSize.x, this._processingSize.y) / this._config.ddaPixelSize)
+      )
+      return { width: logicalResolution, height: logicalResolution }
+    }
+    const scale = normalizeHolographicResolutionScale(this._config.holographicFinalResolutionScale)
     const baseResolution = resolution > 0 ? resolution : 128
     const maxResolution = Math.min(baseResolution, this._finalRadianceResolution(resolution) * scale)
     return {
-      width: maxResolution,
-      height: maxResolution,
+      width: Math.max(1, Math.ceil(maxResolution)),
+      height: Math.max(1, Math.ceil(maxResolution)),
     }
+  }
+
+  private _usesIntegerDdaGrid(): boolean {
+    return this._config.holographicTraversal === 'dda-integer' || this._config.holographicTraversal === 'dda-fixed'
+  }
+
+  private _usesPackedFixedPoint(): boolean {
+    return this._config.holographicTraversal === 'dda-fixed'
+  }
+
+  private _encodeFixedPoint(value: Node<'vec4'>, radianceRange: Node<'float'>): Node<'vec4'> {
+    if (!this._usesPackedFixedPoint()) return value
+    const levels = this._ddaQuantizationLevelsNode
+    const encodedRgb = floor(value.rgb.div(radianceRange).clamp(0, 1).mul(levels).add(float(0.5))).div(levels)
+    const encodedTransmittance = floor(value.a.clamp(0, 1).mul(levels).add(float(0.5))).div(levels)
+    return vec4(encodedRgb, encodedTransmittance)
+  }
+
+  private _decodeFixedPoint(value: Node<'vec4'>, radianceRange: Node<'float'>): Node<'vec4'> {
+    if (!this._usesPackedFixedPoint()) return value
+    // RGBA8 UNORM has 255 storage intervals, while 5/6-bit code ranges do not
+    // divide 255 exactly. Reconstruct the selected integer code on every read
+    // so recursive transfer/radiance accumulation cannot drift back into
+    // arbitrary floating-point values between quantized stages.
+    const levels = this._ddaQuantizationLevelsNode
+    const fixedCode = floor(value.mul(levels).add(float(0.5))).clamp(0, levels)
+    return vec4(fixedCode.rgb.div(levels).mul(radianceRange), fixedCode.a.div(levels))
+  }
+
+  private _encodeHolographicTransfer(value: Node<'vec4'>): Node<'vec4'> {
+    return this._encodeFixedPoint(value, this._ddaTransferRangeNode)
+  }
+
+  private _decodeHolographicTransfer(value: Node<'vec4'>): Node<'vec4'> {
+    return this._decodeFixedPoint(value, this._ddaTransferRangeNode)
+  }
+
+  private _holographicRadianceRange(level: number): Node<'float'> {
+    return this._ddaRadianceRangeNode.div(float(2 ** level))
+  }
+
+  private _encodeHolographicRadiance(value: Node<'vec4'>, level: number): Node<'vec4'> {
+    return this._encodeFixedPoint(value, this._holographicRadianceRange(level))
+  }
+
+  private _decodeHolographicRadiance(value: Node<'vec4'>, level: number): Node<'vec4'> {
+    return this._decodeFixedPoint(value, this._holographicRadianceRange(level))
+  }
+
+  private _updateFinalRadianceFilters(): void {
+    const filter =
+      this._config.compositionMode === 'holographic' && this._usesIntegerDdaGrid() ? NearestFilter : LinearFilter
+    for (const target of [this._rawFinalRadianceRT, this._finalRadianceRT]) {
+      if (target.texture.minFilter !== filter || target.texture.magFilter !== filter) {
+        target.texture.minFilter = filter
+        target.texture.magFilter = filter
+        target.texture.needsUpdate = true
+      }
+    }
+  }
+
+  private _resizeHolographicOutputTargets(): void {
+    const filter =
+      this._config.compositionMode === 'holographic' && this._usesIntegerDdaGrid() ? NearestFilter : LinearFilter
+    if (this._config.compositionMode !== 'holographic') {
+      const finalResolution = this._finalRadianceResolution()
+      this._rawFinalRadianceRT = this._replaceRenderTarget(
+        this._rawFinalRadianceRT,
+        finalResolution,
+        finalResolution,
+        filter,
+        'hrc.raw-final'
+      )
+      this._finalRadianceRT = this._replaceRenderTarget(
+        this._finalRadianceRT,
+        finalResolution,
+        finalResolution,
+        filter,
+        'hrc.final'
+      )
+      this._finalRadianceTextureNode.value = this._finalRadianceRT.texture
+      this._updateFinalRadianceFilters()
+      this._finalTexelSizeNode.value.set(1 / finalResolution, 1 / finalResolution)
+      this._resizeWideRadianceTargets()
+      this._registerResizableDebugTargets()
+      this._disposeWideRadianceMaterials()
+      this._filterRadianceMaterial?.dispose()
+      this._filterRadianceMaterial = null
+      this._finalRadianceMaterial?.dispose()
+      this._finalRadianceMaterial = null
+      this._finalRadianceSourceTexture = null
+      return
+    }
+    const final = this._holographicFinalRadianceDimensions()
+    this._rebuildHolographicRenderTargets()
+    this._rawFinalRadianceRT = this._replaceRenderTarget(
+      this._rawFinalRadianceRT,
+      final.width,
+      final.height,
+      filter,
+      'hrc.raw-final'
+    )
+    this._finalRadianceRT = this._replaceRenderTarget(
+      this._finalRadianceRT,
+      final.width,
+      final.height,
+      filter,
+      'hrc.final'
+    )
+    this._finalRadianceTextureNode.value = this._finalRadianceRT.texture
+    this._updateFinalRadianceFilters()
+    this._finalTexelSizeNode.value.set(1 / final.width, 1 / final.height)
+    this._resizeWideRadianceTargets()
+    this._registerResizableDebugTargets()
+    this._disposeWideRadianceMaterials()
+    this._filterRadianceMaterial?.dispose()
+    this._filterRadianceMaterial = null
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
+    this._finalRadianceSourceTexture = null
+  }
+
+  private _requestHolographicOutputResize(): void {
+    this._resizeHolographicOutputTargets()
   }
 
   private _holographicLevelCount(): number {
     const output = this._holographicFinalRadianceDimensions()
-    return Math.max(1, Math.ceil(Math.log2(Math.max(1, output.width, output.height))))
+    const internalSize = Math.max(1, Math.floor(Math.max(output.width, output.height) / 2))
+    return Math.max(1, Math.ceil(Math.log2(internalSize)))
   }
 
   private _holographicLevelInfo(): HolographicRadianceCascadesLevelInfo[] {
@@ -970,42 +1742,94 @@ export class HierarchicalRadianceCascades {
     this._disposeHolographicDirectTransferMaterials()
     this._disposeHolographicRecursiveTransferMaterials()
     this._disposeHolographicRadianceMaterials()
-    this._disposeHolographicRenderTargets()
+    this._retireHolographicRenderTargets()
     const levels = this._holographicLevelInfoForResolution(resolution)
+    const storageType = this._usesPackedFixedPoint() ? UnsignedByteType : HalfFloatType
     this._holographicTransferRTs = levels.map((level) =>
-      this._createRenderTarget(level.transferAtlasWidth, level.transferAtlasHeight)
+      this._acquireRenderTarget(
+        level.transferAtlasWidth,
+        level.transferAtlasHeight,
+        NearestFilter,
+        storageType,
+        `hrc.transfer-${level.level}`
+      )
     )
     this._holographicRadianceRTs = levels
       .filter((level) => level.radianceValueCount > 0)
-      .map((level) => this._createRenderTarget(level.radianceAtlasWidth, level.radianceAtlasHeight))
+      .map((level) =>
+        this._acquireRenderTarget(
+          level.radianceAtlasWidth,
+          level.radianceAtlasHeight,
+          NearestFilter,
+          storageType,
+          `hrc.radiance-${level.level}`
+        )
+      )
   }
 
-  private _disposeHolographicRenderTargets(): void {
-    for (const target of this._holographicTransferRTs) target.dispose()
-    for (const target of this._holographicRadianceRTs) target.dispose()
+  private _retireHolographicRenderTargets(): void {
+    const targets = [...this._holographicTransferRTs, ...this._holographicRadianceRTs]
+    this._retireRenderTargets(targets)
     this._holographicTransferRTs = []
     this._holographicRadianceRTs = []
   }
 
-  private _holographicLevelInfoForResolution(
-    resolution: number
-  ): HolographicRadianceCascadesLevelInfo[] {
-    const baseResolution = resolution > 0 ? resolution : 128
-    const baseAngular = Math.sqrt(this._config.baseRayCount)
+  private _retireRenderTargets(targets: RenderTarget[]): void {
+    for (const target of targets) this._renderTargetPool.add(target)
+  }
+
+  private _flushRetiredRenderTargets(renderer: WebGPURenderer): void {
+    if (this._renderTargetPool.size === 0) return
+
+    const retired = [...this._renderTargetPool]
+    this._renderTargetPool.clear()
+    for (const target of retired) this._pendingRenderTargetDisposals.add(target)
+
+    const disposeRetired = (): void => {
+      for (const target of retired) {
+        if (!this._pendingRenderTargetDisposals.delete(target)) continue
+        target.dispose()
+      }
+    }
+    const queue = (
+      renderer.backend as {
+        device?: { queue?: { onSubmittedWorkDone?: () => Promise<void> } }
+      }
+    ).device?.queue
+    if (queue?.onSubmittedWorkDone) {
+      void queue.onSubmittedWorkDone().then(disposeRetired, disposeRetired)
+      return
+    }
+    disposeRetired()
+  }
+
+  private _disposeAllHolographicRenderTargets(): void {
+    for (const target of this._holographicTransferRTs) target.dispose()
+    for (const target of this._holographicRadianceRTs) target.dispose()
+    for (const target of this._renderTargetPool) target.dispose()
+    for (const target of this._pendingRenderTargetDisposals) target.dispose()
+    this._holographicTransferRTs = []
+    this._holographicRadianceRTs = []
+    this._renderTargetPool.clear()
+    this._pendingRenderTargetDisposals.clear()
+  }
+
+  private _holographicLevelInfoForResolution(resolution: number): HolographicRadianceCascadesLevelInfo[] {
     const output = this._holographicFinalRadianceDimensions(resolution)
     const outputMaxDimension = Math.max(output.width, output.height)
-    const terminalLevel = Math.max(1, Math.ceil(Math.log2(Math.max(1, outputMaxDimension))))
+    const internalSize = Math.max(1, Math.floor(outputMaxDimension / 2))
+    const terminalLevel = Math.max(1, Math.ceil(Math.log2(internalSize)))
     const levels: HolographicRadianceCascadesLevelInfo[] = []
     for (let level = 0; level <= terminalLevel; level++) {
       const stride = 2 ** level
-      const probeWidth = Math.ceil(outputMaxDimension / stride)
-      const probeHeight = outputMaxDimension
-      const transferDirectionCount = stride + 1
-      const radianceDirectionCount = level < terminalLevel ? stride : 0
+      const probeWidth = Math.ceil(internalSize / stride)
+      const probeHeight = internalSize
+      const transferDirectionCount = 2 * stride + 1
+      const radianceDirectionCount = level < terminalLevel ? 2 * stride : 0
       const transferAtlasWidth = probeWidth * transferDirectionCount
-      const transferAtlasHeight = probeHeight * 4
+      const transferAtlasHeight = probeHeight * 8
       const radianceAtlasWidth = probeWidth * radianceDirectionCount
-      const radianceAtlasHeight = radianceDirectionCount > 0 ? probeHeight * 4 : 0
+      const radianceAtlasHeight = radianceDirectionCount > 0 ? probeHeight * 8 : 0
       levels.push({
         level,
         outputWidth: output.width,
@@ -1027,42 +1851,89 @@ export class HierarchicalRadianceCascades {
   }
 
   private _holographicDirectTransferStepCount(): number {
-    return Math.max(4, Math.min(16, Math.ceil(this._config.raymarchSteps / 4)))
+    return Math.max(8, Math.min(64, this._config.raymarchSteps))
   }
 
-  private _sceneRadianceResolution(): number {
-    return Math.max(
-      1,
-      Math.ceil(this._config.cascadeResolution / this._config.sceneRadianceDownsampleFactor)
-    )
-  }
-
-  private _createRenderTarget(width: number, height: number): RenderTarget {
-    return new RenderTarget(width, height, {
-      type: HalfFloatType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
+  private _createRenderTarget(
+    width: number,
+    height: number,
+    filter: typeof LinearFilter | typeof NearestFilter = LinearFilter,
+    type: typeof HalfFloatType | typeof UnsignedByteType = HalfFloatType,
+    label = 'hrc.render-target'
+  ): RenderTarget {
+    const target = new RenderTarget(width, height, {
+      type,
+      minFilter: filter,
+      magFilter: filter,
       wrapS: ClampToEdgeWrapping,
       wrapT: ClampToEdgeWrapping,
       depthBuffer: false,
       stencilBuffer: false,
     })
+    target.texture.name = label
+    return target
   }
 
-  private _resizeSceneRadianceTarget(): void {
-    if (!this._sceneRadianceRT) {
-      this._sceneRadianceRT = this._createRenderTarget(
-        this._sceneRadianceResolution(),
-        this._sceneRadianceResolution()
-      )
-      registerDebugTexture('hrc.sceneRadiance', this._sceneRadianceRT, 'rgba16f', {
-        display: 'colors',
-        label: 'HRC scene radiance',
-      })
-      return
+  private _acquireRenderTarget(
+    width: number,
+    height: number,
+    filter: typeof LinearFilter | typeof NearestFilter = LinearFilter,
+    type: typeof HalfFloatType | typeof UnsignedByteType = HalfFloatType,
+    label = 'hrc.render-target'
+  ): RenderTarget {
+    for (const target of this._renderTargetPool) {
+      if (
+        target.width === width &&
+        target.height === height &&
+        target.texture.type === type &&
+        target.texture.minFilter === filter &&
+        target.texture.magFilter === filter
+      ) {
+        this._renderTargetPool.delete(target)
+        target.texture.name = label
+        return target
+      }
     }
-    const res = this._sceneRadianceResolution()
-    this._sceneRadianceRT.setSize(res, res)
+    return this._createRenderTarget(width, height, filter, type, label)
+  }
+
+  private _replaceRenderTarget(
+    target: RenderTarget,
+    width: number,
+    height: number,
+    filter: typeof LinearFilter | typeof NearestFilter,
+    label: string
+  ): RenderTarget {
+    if (target.width === width && target.height === height) {
+      if (target.texture.minFilter !== filter || target.texture.magFilter !== filter) {
+        target.texture.minFilter = filter
+        target.texture.magFilter = filter
+        target.texture.needsUpdate = true
+      }
+      return target
+    }
+    const replacement = this._acquireRenderTarget(width, height, filter, HalfFloatType, label)
+    this._retireRenderTargets([target])
+    return replacement
+  }
+
+  private _registerResizableDebugTargets(): void {
+    registerDebugTexture('hrc.finalIrradiance', this._finalRadianceRT, 'rgba16f', {
+      display: 'colors',
+      label: 'HRC final irradiance',
+    })
+    registerDebugTexture('hrc.rawFinalIrradiance', this._rawFinalRadianceRT, 'rgba16f', {
+      display: 'colors',
+      label: 'HRC raw final irradiance',
+    })
+    registerDebugTexture('hrc.wideIrradiance', this._wideRadianceRT, 'rgba16f', {
+      display: 'colors',
+      label: 'HRC wide filtered irradiance 1/2',
+    })
+    registerDebugTexture('hrc.wideIrradiance2', this._wideRadianceRT2, 'rgba16f', {
+      display: 'colors',
+      label: 'HRC wide filtered irradiance 1/4',
+    })
   }
 
   private _resizeWideRadianceTargets(): void {
@@ -1071,10 +1942,28 @@ export class HierarchicalRadianceCascades {
     const wideHeight = Math.max(1, Math.ceil(this._rawFinalRadianceRT.height / factor))
     const wideWidth2 = Math.max(1, Math.ceil(wideWidth / factor))
     const wideHeight2 = Math.max(1, Math.ceil(wideHeight / factor))
-    this._wideRadianceRT.setSize(wideWidth, wideHeight)
-    this._wideBlurRT.setSize(wideWidth, wideHeight)
-    this._wideRadianceRT2.setSize(wideWidth2, wideHeight2)
-    this._wideBlurRT2.setSize(wideWidth2, wideHeight2)
+    this._wideRadianceRT = this._replaceRenderTarget(
+      this._wideRadianceRT,
+      wideWidth,
+      wideHeight,
+      LinearFilter,
+      'hrc.wide-radiance'
+    )
+    this._wideBlurRT = this._replaceRenderTarget(this._wideBlurRT, wideWidth, wideHeight, LinearFilter, 'hrc.wide-blur')
+    this._wideRadianceRT2 = this._replaceRenderTarget(
+      this._wideRadianceRT2,
+      wideWidth2,
+      wideHeight2,
+      LinearFilter,
+      'hrc.wide-radiance-2'
+    )
+    this._wideBlurRT2 = this._replaceRenderTarget(
+      this._wideBlurRT2,
+      wideWidth2,
+      wideHeight2,
+      LinearFilter,
+      'hrc.wide-blur-2'
+    )
     this._wideTexelSizeNode.value.set(1 / wideWidth, 1 / wideHeight)
     this._wideTexelSizeNode2.value.set(1 / wideWidth2, 1 / wideHeight2)
   }
@@ -1104,92 +1993,8 @@ export class HierarchicalRadianceCascades {
     this._shortIntervalLengthNode.value = this._effectiveBaseInterval
   }
 
-  private _renderSceneRadiance(renderer: WebGPURenderer): void {
-    if (!this._sceneRadianceRT || !this._lightsTexture || !this._lightCountNode) return
-    this._ensureSceneRadianceMaterial()
-    if (!this._sceneRadianceMaterial) return
-
-    beginDebugPass('hrc.scene', renderer)
-    _quadMesh.material = this._sceneRadianceMaterial
-    renderer.setRenderTarget(this._sceneRadianceRT)
-    _quadMesh.render(renderer)
-    endDebugPass(renderer)
-  }
-
-  private _ensureSceneRadianceMaterial(): void {
-    if (this._sceneRadianceMaterial) return
-    if (!this._lightsTexture || !this._lightCountNode) return
-
-    const lightsTexture = this._lightsTexture
-    const lightCount = this._lightCountNode
-    const worldSize = this._worldSizeNode
-    const worldOffset = this._worldOffsetNode
-
-    this._sceneRadianceMaterial = new NodeMaterial()
-    this._sceneRadianceMaterial.fragmentNode = Fn(() => {
-      const fragUV = uv()
-      const worldPos = uvToWorld(fragUV, worldSize, worldOffset)
-      const totalRadiance = vec3(0, 0, 0).toVar()
-
-      Loop(
-        { start: 0, end: lightCount, type: 'float', condition: '<' },
-        ({ i }: { i: Node<'float'> }) => {
-          const row0 = textureLoad(lightsTexture, ivec2(int(i), int(0)))
-          const row1 = textureLoad(lightsTexture, ivec2(int(i), int(1)))
-          const row2 = textureLoad(lightsTexture, ivec2(int(i), int(2)))
-          const row3 = textureLoad(lightsTexture, ivec2(int(i), int(3)))
-
-          const lightPos = vec2(row0.r, row0.g)
-          const lightColor = vec3(row0.b, row0.a, row1.r)
-          const lightIntensity = row1.g
-          const lightDistance = row1.b
-          const lightDecay = row1.a
-          const lightDir = vec2(row2.r, row2.g)
-          const lightAngle = row2.b
-          const lightPenumbra = row2.a
-          const lightType = row3.r
-          const lightEnabled = row3.g
-
-          If(lightEnabled.greaterThan(float(0.5)), () => {
-            const isAmbient = lightType.greaterThan(float(2.5))
-            If(isAmbient, () => {
-              totalRadiance.addAssign(lightColor.mul(lightIntensity))
-            })
-
-            const isPositional = lightType.lessThan(float(1.5))
-            If(isPositional, () => {
-              const toLight = lightPos.sub(worldPos)
-              const dist = toLight.length()
-              const lightRadius = lightDistance.max(float(1))
-
-              If(dist.lessThan(lightRadius), () => {
-                const normDist = dist.div(lightRadius).clamp(0, 1)
-                const falloff = float(1).sub(normDist.pow(lightDecay)).clamp(0, 1)
-                const attenuation = falloff.toVar()
-                const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
-
-                If(isSpot, () => {
-                  const toSurfaceNorm = worldPos.sub(lightPos).normalize()
-                  const spotCos = toSurfaceNorm.dot(lightDir)
-                  const innerCos = lightAngle.cos()
-                  const outerCos = lightAngle.add(lightPenumbra).cos()
-                  const cone = spotCos.sub(outerCos).div(innerCos.sub(outerCos)).clamp(0, 1)
-                  attenuation.mulAssign(cone)
-                })
-
-                totalRadiance.addAssign(lightColor.mul(lightIntensity).mul(attenuation))
-              })
-            })
-          })
-        }
-      )
-
-      return vec4(totalRadiance, float(1))
-    })() as Node<'vec4'>
-  }
-
   private _renderHolographicDirectTransfers(renderer: WebGPURenderer): void {
-    if (!this._sdfTexture || !this._sceneRadianceRT) return
+    if (!this._hasRequiredOcclusionInput()) return
 
     const maxDirectLevel = Math.min(2, this._holographicTransferRTs.length - 1)
     for (let level = 0; level <= maxDirectLevel; level++) {
@@ -1207,15 +2012,18 @@ export class HierarchicalRadianceCascades {
   private _ensureHolographicDirectTransferMaterial(level: number): NodeMaterial | null {
     const existing = this._holographicDirectTransferMaterials.get(level)
     if (existing) return existing
-    if (!this._sdfTexture || !this._sceneRadianceRT) return null
+    if (!this._hasRequiredOcclusionInput()) return null
 
     const levelInfo = this._holographicLevelInfo()[level]
     if (!levelInfo) return null
 
     const sdfTexture = this._sdfTexture
-    const sceneRadianceTexture = this._sceneRadianceRT.texture
-    const worldSize = this._worldSizeNode
-    const worldOffset = this._worldOffsetNode
+    const lightsTexture = this._lightsTexture!
+    const lightCount = this._lightCountNode
+    const worldSize = this._radianceWorldSizeNode
+    const worldOffset = this._radianceWorldOffsetNode
+    const sdfWorldSize = this._worldSizeNode
+    const sdfWorldOffset = this._worldOffsetNode
     const output = this._holographicFinalRadianceDimensions()
     const outputWidth = output.width
     const outputHeight = output.height
@@ -1225,42 +2033,57 @@ export class HierarchicalRadianceCascades {
     const transferAtlasWidth = levelInfo.transferAtlasWidth
     const transferAtlasHeight = levelInfo.transferAtlasHeight
     const raymarchSteps = this._holographicDirectTransferStepCount()
+    const occlusionTexture = this._occlusionTexture
+    const useDdaFloat = this._config.holographicTraversal === 'dda-float' && occlusionTexture !== null
+    const useDdaInteger = this._usesIntegerDdaGrid() && occlusionTexture !== null
+    const ddaGridSize = vec2(float(outputWidth), float(outputHeight))
+    // A direct T_n segment advances 2*stride cells along its facing axis and
+    // at most 2*stride cells laterally. The supercover therefore visits no
+    // more than 4*stride+1 cells; using the whole target perimeter here left
+    // mobile compilers with a needlessly huge loop bound.
+    const ddaMaxSteps = 4 * stride + 1
+    const autoSourceRadius = min(sdfWorldSize.x, sdfWorldSize.y)
+      .mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
+      .max(
+        min(worldSize.x.div(float(outputWidth)), worldSize.y.div(float(outputHeight))).mul(
+          float(AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS)
+        )
+      )
+    const sourceRadius = this._config.lightSourceRadius > 0 ? float(this._config.lightSourceRadius) : autoSourceRadius
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
-      const atlasCoord = uv().mul(vec2(float(transferAtlasWidth), float(transferAtlasHeight)))
-      const quadrant = floor(atlasCoord.y.div(float(probeHeight)))
+      const atlasCoord = floor(uv().mul(vec2(float(transferAtlasWidth), float(transferAtlasHeight))))
+      const segmentIndex = floor(atlasCoord.y.div(float(probeHeight)))
       const localY = mod(atlasCoord.y, float(probeHeight))
       const directionIndex = floor(atlasCoord.x.div(float(probeWidth)))
       const probeX = mod(atlasCoord.x, float(probeWidth))
-      const parallel = probeX.mul(float(stride))
-      const perpendicular = localY
-      const lateralOffset = directionIndex.mul(float(2)).sub(float(stride))
-      const validGrid = parallel
-        .lessThan(float(outputWidth))
-        .and(perpendicular.lessThan(float(outputHeight)))
-        .toVar()
-
-      const startGrid = vec2(parallel, perpendicular).toVar()
-      const offsetGrid = vec2(float(stride), lateralOffset).toVar()
-
-      If(quadrant.greaterThan(float(0.5)).and(quadrant.lessThan(float(1.5))), () => {
-        validGrid.assign(parallel.lessThan(float(outputHeight)).and(perpendicular.lessThan(float(outputWidth))))
-        startGrid.assign(vec2(float(outputWidth).sub(perpendicular), parallel))
-        offsetGrid.assign(vec2(lateralOffset.mul(float(-1)), float(stride)))
+      const rotationIndex = floor(segmentIndex.div(float(2)))
+      const parityOffset = mod(segmentIndex, float(2))
+      const xDirection = vec2(1, 0).toVar()
+      If(rotationIndex.greaterThan(float(0.5)).and(rotationIndex.lessThan(float(1.5))), () => {
+        xDirection.assign(vec2(0, 1))
       })
-
-      If(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))), () => {
-        validGrid.assign(parallel.lessThan(float(outputWidth)).and(perpendicular.lessThan(float(outputHeight))))
-        startGrid.assign(vec2(float(outputWidth).sub(parallel), perpendicular))
-        offsetGrid.assign(vec2(float(-stride), lateralOffset.mul(float(-1))))
+      If(rotationIndex.greaterThan(float(1.5)).and(rotationIndex.lessThan(float(2.5))), () => {
+        xDirection.assign(vec2(-1, 0))
       })
-
-      If(quadrant.greaterThan(float(2.5)), () => {
-        validGrid.assign(parallel.lessThan(float(outputHeight)).and(perpendicular.lessThan(float(outputWidth))))
-        startGrid.assign(vec2(perpendicular, float(outputHeight).sub(parallel)))
-        offsetGrid.assign(vec2(lateralOffset, float(-stride)))
+      If(rotationIndex.greaterThan(float(2.5)), () => {
+        xDirection.assign(vec2(0, -1))
       })
+      const yDirection = vec2(xDirection.y.mul(float(-1)), xDirection.x)
+      const diagonal = xDirection.add(yDirection)
+      const halfSize = float(outputWidth / 2)
+      const origin = vec2(halfSize, halfSize)
+        .sub(diagonal.mul(halfSize))
+        .add(yDirection.mul(parityOffset.add(float(0.499))))
+        .add(xDirection.mul(float(0.501)))
+      const gridStride = float(2 * stride)
+      const lateralOffset = directionIndex.sub(float(stride))
+      const startGrid = origin.add(xDirection.mul(probeX.mul(gridStride))).add(yDirection.mul(localY.mul(float(2))))
+      const offsetGrid = xDirection.mul(gridStride).add(yDirection.mul(lateralOffset.mul(float(2))))
+      const endLocalY = localY.add(lateralOffset)
+      const validGrid = probeX.lessThan(float(probeWidth)).and(localY.lessThan(float(probeHeight)))
+      const validEnd = endLocalY.greaterThanEqual(float(0)).and(endLocalY.lessThan(float(probeHeight)))
 
       const outputSize = vec2(float(outputWidth), float(outputHeight))
       const startUV = startGrid.div(outputSize)
@@ -1270,43 +2093,99 @@ export class HierarchicalRadianceCascades {
       const segment = endWorld.sub(startWorld)
       const segmentLength = segment.length().max(float(0.001))
       const rayDir = segment.div(segmentLength)
-      const minStep = segmentLength.div(float(raymarchSteps)).max(float(0.001))
+      const source = traceAnalyticLightSources(
+        lightsTexture,
+        lightCount,
+        startWorld,
+        rayDir,
+        segmentLength,
+        sourceRadius
+      )
+      const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, segmentLength)
+      const boundsInterval = rayBoundsInterval(startWorld, rayDir, sdfWorldSize, sdfWorldOffset)
+      const traceEntry = boundsInterval.x.max(float(0))
+      const traceExit = boundsInterval.y.min(traceLimit)
+      const intersectsWorld = traceExit.greaterThanEqual(traceEntry)
       const radiance = vec3(0).toVar()
       const transmittance = float(1).toVar()
-      const t = float(0).toVar()
+      const t = float(traceEntry).toVar()
+      const reachedTraceLimit = float(0).toVar()
 
-      Loop(raymarchSteps, () => {
-        const sampleWorld = startWorld.add(rayDir.mul(t))
-        const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
-        const outOfBounds = sampleUV.x
-          .lessThan(0)
-          .or(sampleUV.x.greaterThan(1))
-          .or(sampleUV.y.lessThan(0))
-          .or(sampleUV.y.greaterThan(1))
+      if (useDdaFloat) {
+        const visibility = traceDdaFloatOcclusion(
+          occlusionTexture,
+          this._occlusionTextureSizeNode,
+          startWorld,
+          rayDir,
+          traceEntry,
+          traceExit,
+          intersectsWorld,
+          sdfWorldSize,
+          sdfWorldOffset,
+          ddaGridSize,
+          ddaMaxSteps
+        )
+        transmittance.assign(visibility.x)
+        reachedTraceLimit.assign(visibility.y)
+      } else if (useDdaInteger) {
+        const visibility = traceDdaIntegerOcclusion(
+          occlusionTexture,
+          this._occlusionTextureSizeNode,
+          startWorld,
+          rayDir,
+          traceEntry,
+          traceExit,
+          intersectsWorld,
+          sdfWorldSize,
+          sdfWorldOffset,
+          outputWidth,
+          outputHeight,
+          ddaMaxSteps
+        )
+        transmittance.assign(visibility.x)
+        reachedTraceLimit.assign(visibility.y)
+      } else {
+        Loop(raymarchSteps, () => {
+          If(intersectsWorld.not(), () => {
+            reachedTraceLimit.assign(float(1))
+            Break()
+          })
 
-        If(outOfBounds, () => {
+          const sampleWorld = startWorld.add(rayDir.mul(t))
+          const sampleUV = worldToUV(sampleWorld, sdfWorldSize, sdfWorldOffset).clamp(0, 1)
+
+          const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
+          const sdfDist = sampleTexture(sdfTexture!, sdfUV).r
+          If(sdfDist.lessThan(this._sdfHitEpsilonNode), () => {
+            transmittance.assign(float(0))
+            Break()
+          })
+
+          const stepLen = min(sdfDist.max(float(0.001)), traceExit.sub(t).max(float(0)))
+          t.addAssign(stepLen)
+
+          If(t.greaterThanEqual(traceExit), () => {
+            reachedTraceLimit.assign(float(1))
+            Break()
+          })
+        })
+      }
+
+      If(
+        transmittance
+          .greaterThan(float(0.5))
+          .and(reachedTraceLimit.greaterThan(float(0.5)))
+          .and(source.hit.greaterThan(float(0.5))),
+        () => {
+          radiance.assign(source.radiance)
           transmittance.assign(float(0))
-          Break()
-        })
+        }
+      )
 
-        const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
-        const sdfDist = sampleTexture(sdfTexture, sdfUV).r
-        If(sdfDist.lessThan(float(EPS)), () => {
-          transmittance.assign(float(0))
-          Break()
-        })
-
-        const stepLen = min(sdfDist.max(minStep), segmentLength.sub(t))
-        const sceneRad = sampleTexture(sceneRadianceTexture, sampleUV)
-        radiance.addAssign(sceneRad.rgb.mul(transmittance).mul(stepLen))
-        t.addAssign(stepLen)
-
-        If(t.greaterThanEqual(segmentLength), () => {
-          Break()
-        })
-      })
-
-      return vec4(radiance, transmittance).mul(validGrid.select(float(1), float(0)))
+      const boundedTransmittance = validEnd.select(transmittance, float(0))
+      return this._encodeHolographicTransfer(
+        vec4(radiance, boundedTransmittance).mul(validGrid.select(float(1), float(0)))
+      )
     })() as Node<'vec4'>
 
     this._holographicDirectTransferMaterials.set(level, material)
@@ -1336,8 +2215,6 @@ export class HierarchicalRadianceCascades {
     if (!levelInfo || !previousInfo || !previousTarget) return null
 
     const sourceTexture = previousTarget.texture
-    const stride = 2 ** level
-    const previousStride = 2 ** (level - 1)
     const probeWidth = levelInfo.probeWidth
     const probeHeight = levelInfo.probeHeight
     const transferAtlasWidth = levelInfo.transferAtlasWidth
@@ -1349,81 +2226,70 @@ export class HierarchicalRadianceCascades {
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
-      const atlasCoord = uv().mul(vec2(float(transferAtlasWidth), float(transferAtlasHeight)))
-      const quadrant = floor(atlasCoord.y.div(float(probeHeight)))
+      const atlasCoord = floor(uv().mul(vec2(float(transferAtlasWidth), float(transferAtlasHeight))))
+      const segmentIndex = floor(atlasCoord.y.div(float(probeHeight)))
       const localY = mod(atlasCoord.y, float(probeHeight))
       const directionIndex = floor(atlasCoord.x.div(float(probeWidth)))
       const probeX = mod(atlasCoord.x, float(probeWidth))
-      const parallel = probeX.mul(float(stride))
 
-      const samplePrevious = (sampleParallel: Node<'float'>, sampleY: Node<'float'>, sampleDirection: Node<'float'>) => {
-        const sourceProbeX = floor(sampleParallel.div(float(previousStride)))
-        const usesHorizontalPrimary = quadrant
-          .lessThan(float(0.5))
-          .or(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))))
-        const primaryLimit = usesHorizontalPrimary.select(
-          float(previousInfo.outputWidth),
-          float(previousInfo.outputHeight)
-        )
-        const perpendicularLimit = usesHorizontalPrimary.select(
-          float(previousInfo.outputHeight),
-          float(previousInfo.outputWidth)
-        )
-        const valid = sourceProbeX
+      const samplePrevious = (sampleX: Node<'float'>, sampleY: Node<'float'>, sampleDirection: Node<'float'>) => {
+        const valid = sampleX
           .greaterThanEqual(float(0))
-          .and(sourceProbeX.lessThan(float(previousProbeWidth)))
-          .and(sampleParallel.greaterThanEqual(float(0)))
-          .and(sampleParallel.lessThan(primaryLimit))
+          .and(sampleX.lessThan(float(previousProbeWidth)))
           .and(sampleY.greaterThanEqual(float(0)))
           .and(sampleY.lessThan(float(previousProbeHeight)))
-          .and(sampleY.lessThan(perpendicularLimit))
           .and(sampleDirection.greaterThanEqual(float(0)))
           .and(sampleDirection.lessThan(float(previousInfo.transferDirectionCount)))
         const coord = vec2(
-          sampleDirection.mul(float(previousProbeWidth)).add(sourceProbeX).add(float(0.5)),
-          quadrant.mul(float(previousProbeHeight)).add(sampleY).add(float(0.5))
+          sampleDirection.mul(float(previousProbeWidth)).add(sampleX).add(float(0.5)),
+          segmentIndex.mul(float(previousProbeHeight)).add(sampleY).add(float(0.5))
         )
-        const sampled = sampleTexture(sourceTexture, coord.div(vec2(float(previousAtlasWidth), float(previousAtlasHeight))))
-        return sampled.mul(valid.select(float(1), float(0)))
+        const sampled = this._decodeHolographicTransfer(
+          sampleTexture(sourceTexture, coord.div(vec2(float(previousAtlasWidth), float(previousAtlasHeight))))
+        )
+        // Amitabha's `load_opt` returns an empty fluence for an out-of-grid
+        // midpoint: black radiance with full transmittance. Zeroing the whole
+        // value made the missing midpoint opaque and stamped the eight segment
+        // axes into the result as +/X-shaped phantom occluders.
+        return valid.select(sampled, vec4(0, 0, 0, 1))
       }
 
       const mergeTransfer = (nearTransfer: Node<'vec4'>, farTransfer: Node<'vec4'>) => {
-        return vec4(
-          nearTransfer.rgb.add(nearTransfer.a.mul(farTransfer.rgb)),
-          nearTransfer.a.mul(farTransfer.a)
-        )
+        return vec4(nearTransfer.rgb.add(nearTransfer.a.mul(farTransfer.rgb)), nearTransfer.a.mul(farTransfer.a))
       }
 
       const output = vec4(0, 0, 0, 0).toVar()
       const evenDirection = mod(directionIndex, float(2)).lessThan(float(0.5))
+      const previousX = probeX.mul(float(2))
+      // The terminal level uses radianceDirectionCount=0 as an allocation
+      // sentinel, but its geometric grid still has transferDirectionCount-1
+      // directions. Derive the offset from the grid, not radiance storage.
+      const rayOffset = directionIndex.sub(float((levelInfo.transferDirectionCount - 1) / 2))
 
       If(evenDirection, () => {
         const sourceDirection = directionIndex.div(float(2))
-        const lateral = sourceDirection.mul(float(2)).sub(float(previousStride))
-        const nearTransfer = samplePrevious(parallel, localY, sourceDirection)
+        const nearTransfer = samplePrevious(previousX, localY, sourceDirection)
         const farTransfer = samplePrevious(
-          parallel.add(float(previousStride)),
-          localY.add(lateral),
+          previousX.add(float(1)),
+          localY.add(rayOffset.div(float(2))),
           sourceDirection
         )
         output.assign(mergeTransfer(nearTransfer, farTransfer))
       })
 
       If(evenDirection.not(), () => {
-        const lowDirection = directionIndex.sub(float(1)).div(float(2))
-        const highDirection = directionIndex.add(float(1)).div(float(2))
-        const lowLateral = lowDirection.mul(float(2)).sub(float(previousStride))
-        const highLateral = highDirection.mul(float(2)).sub(float(previousStride))
-        const lowNear = samplePrevious(parallel, localY, lowDirection)
+        const lowDirection = floor(directionIndex.div(float(2)))
+        const highDirection = lowDirection.add(float(1))
+        const lowNear = samplePrevious(previousX, localY, lowDirection)
         const lowFar = samplePrevious(
-          parallel.add(float(previousStride)),
-          localY.add(lowLateral),
+          previousX.add(float(1)),
+          localY.add(floor(rayOffset.div(float(2)))),
           highDirection
         )
-        const highNear = samplePrevious(parallel, localY, highDirection)
+        const highNear = samplePrevious(previousX, localY, highDirection)
         const highFar = samplePrevious(
-          parallel.add(float(previousStride)),
-          localY.add(highLateral),
+          previousX.add(float(1)),
+          localY.add(floor(rayOffset.add(float(1)).div(float(2)))),
           lowDirection
         )
         const lowMerge = mergeTransfer(lowNear, lowFar)
@@ -1431,7 +2297,7 @@ export class HierarchicalRadianceCascades {
         output.assign(lowMerge.add(highMerge).mul(float(0.5)))
       })
 
-      return output
+      return this._encodeHolographicTransfer(output)
     })() as Node<'vec4'>
 
     this._holographicRecursiveTransferMaterials.set(level, material)
@@ -1465,156 +2331,133 @@ export class HierarchicalRadianceCascades {
     const transferTexture = transferTarget.texture
     const nextTransferTexture = nextTransferTarget.texture
     const nextRadianceTexture = nextRadianceTarget?.texture ?? null
-    const stride = 2 ** level
-    const nextStride = 2 ** (level + 1)
     const probeWidth = levelInfo.probeWidth
     const probeHeight = levelInfo.probeHeight
     const radianceAtlasWidth = levelInfo.radianceAtlasWidth
     const radianceAtlasHeight = levelInfo.radianceAtlasHeight
-    const transferAtlasWidth = levelInfo.transferAtlasWidth
-    const transferAtlasHeight = levelInfo.transferAtlasHeight
-    const nextTransferAtlasWidth = nextInfo.transferAtlasWidth
-    const nextTransferAtlasHeight = nextInfo.transferAtlasHeight
     const nextRadianceAtlasWidth = nextInfo.radianceAtlasWidth
     const nextRadianceAtlasHeight = nextInfo.radianceAtlasHeight
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
-      const atlasCoord = uv().mul(vec2(float(radianceAtlasWidth), float(radianceAtlasHeight)))
-      const quadrant = floor(atlasCoord.y.div(float(probeHeight)))
+      const atlasCoord = floor(uv().mul(vec2(float(radianceAtlasWidth), float(radianceAtlasHeight))))
+      const segmentIndex = floor(atlasCoord.y.div(float(probeHeight)))
       const localY = mod(atlasCoord.y, float(probeHeight))
       const directionIndex = floor(atlasCoord.x.div(float(probeWidth)))
       const probeX = mod(atlasCoord.x, float(probeWidth))
-      const parallel = probeX.mul(float(stride))
-      const probeParityOdd = mod(probeX, float(2)).greaterThan(float(0.5))
+      const probeParityEven = mod(probeX, float(2)).lessThan(float(0.5))
 
       const coneArc = (childDirection: Node<'float'>) => {
-        const angle0 = atan(childDirection.mul(float(2)).sub(float(nextStride)), float(nextStride))
-        const angle1 = atan(childDirection.add(float(1)).mul(float(2)).sub(float(nextStride)), float(nextStride))
-        return angle1.sub(angle0).max(float(0))
+        // radianceDirectionCount is zero at the terminal boundary because no
+        // R_N texture is allocated. The cone geometry still uses the next
+        // grid's full direction count (T_N stores directions+1 edges).
+        const halfDirections = float((nextInfo.transferDirectionCount - 1) / 2)
+        const angle0 = atan(childDirection.sub(float(0.5)).sub(halfDirections).add(float(0.5)), halfDirections)
+        const angle1 = atan(childDirection.add(float(0.5)).sub(halfDirections).add(float(0.5)), halfDirections)
+        return angle1.sub(angle0).max(float(0)).div(float(TAU))
       }
 
       const sampleTransfer = (
         texture: Texture,
         info: HolographicRadianceCascadesLevelInfo,
-        sampleParallel: Node<'float'>,
+        sampleX: Node<'float'>,
         sampleY: Node<'float'>,
         sampleDirection: Node<'float'>
       ) => {
-        const sampleStride = 2 ** info.level
-        const sourceProbeX = floor(sampleParallel.div(float(sampleStride)))
-        const usesHorizontalPrimary = quadrant
-          .lessThan(float(0.5))
-          .or(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))))
-        const primaryLimit = usesHorizontalPrimary.select(float(info.outputWidth), float(info.outputHeight))
-        const perpendicularLimit = usesHorizontalPrimary.select(float(info.outputHeight), float(info.outputWidth))
-        const valid = sourceProbeX
+        const valid = sampleX
           .greaterThanEqual(float(0))
-          .and(sourceProbeX.lessThan(float(info.probeWidth)))
-          .and(sampleParallel.greaterThanEqual(float(0)))
-          .and(sampleParallel.lessThan(primaryLimit))
+          .and(sampleX.lessThan(float(info.probeWidth)))
           .and(sampleY.greaterThanEqual(float(0)))
           .and(sampleY.lessThan(float(info.probeHeight)))
-          .and(sampleY.lessThan(perpendicularLimit))
           .and(sampleDirection.greaterThanEqual(float(0)))
           .and(sampleDirection.lessThan(float(info.transferDirectionCount)))
         const coord = vec2(
-          sampleDirection.mul(float(info.probeWidth)).add(sourceProbeX).add(float(0.5)),
-          quadrant.mul(float(info.probeHeight)).add(sampleY).add(float(0.5))
+          sampleDirection.mul(float(info.probeWidth)).add(sampleX).add(float(0.5)),
+          segmentIndex.mul(float(info.probeHeight)).add(sampleY).add(float(0.5))
         )
-        const sampled = sampleTexture(texture, coord.div(vec2(float(info.transferAtlasWidth), float(info.transferAtlasHeight))))
-        return sampled.mul(valid.select(float(1), float(0)))
+        const sampled = this._decodeHolographicTransfer(
+          sampleTexture(texture, coord.div(vec2(float(info.transferAtlasWidth), float(info.transferAtlasHeight))))
+        )
+        return valid.select(sampled, vec4(0, 0, 0, 1))
       }
 
-      const sampleNextRadiance = (
-        sampleParallel: Node<'float'>,
-        sampleY: Node<'float'>,
-        sampleDirection: Node<'float'>
-      ) => {
+      const sampleNextRadiance = (sampleX: Node<'float'>, sampleY: Node<'float'>, sampleDirection: Node<'float'>) => {
         if (!nextRadianceTexture || nextInfo.radianceDirectionCount <= 0) {
           return vec4(0, 0, 0, 1)
         }
 
-        const sourceProbeX = floor(sampleParallel.div(float(nextStride)))
-        const usesHorizontalPrimary = quadrant
-          .lessThan(float(0.5))
-          .or(quadrant.greaterThan(float(1.5)).and(quadrant.lessThan(float(2.5))))
-        const primaryLimit = usesHorizontalPrimary.select(float(nextInfo.outputWidth), float(nextInfo.outputHeight))
-        const perpendicularLimit = usesHorizontalPrimary.select(float(nextInfo.outputHeight), float(nextInfo.outputWidth))
-        const valid = sourceProbeX
+        const valid = sampleX
           .greaterThanEqual(float(0))
-          .and(sourceProbeX.lessThan(float(nextInfo.probeWidth)))
-          .and(sampleParallel.greaterThanEqual(float(0)))
-          .and(sampleParallel.lessThan(primaryLimit))
+          .and(sampleX.lessThan(float(nextInfo.probeWidth)))
           .and(sampleY.greaterThanEqual(float(0)))
           .and(sampleY.lessThan(float(nextInfo.probeHeight)))
-          .and(sampleY.lessThan(perpendicularLimit))
           .and(sampleDirection.greaterThanEqual(float(0)))
           .and(sampleDirection.lessThan(float(nextInfo.radianceDirectionCount)))
         const coord = vec2(
-          sampleDirection.mul(float(nextInfo.probeWidth)).add(sourceProbeX).add(float(0.5)),
-          quadrant.mul(float(nextInfo.probeHeight)).add(sampleY).add(float(0.5))
+          sampleDirection.mul(float(nextInfo.probeWidth)).add(sampleX).add(float(0.5)),
+          segmentIndex.mul(float(nextInfo.probeHeight)).add(sampleY).add(float(0.5))
         )
-        const sampled = sampleTexture(nextRadianceTexture, coord.div(vec2(float(nextRadianceAtlasWidth), float(nextRadianceAtlasHeight))))
+        const sampled = this._decodeHolographicRadiance(
+          sampleTexture(
+            nextRadianceTexture,
+            coord.div(vec2(float(nextRadianceAtlasWidth), float(nextRadianceAtlasHeight)))
+          ),
+          level + 1
+        )
         return sampled.mul(valid.select(float(1), float(0)))
       }
 
-      const mergeFluence = (arc: Node<'float'>, transfer: Node<'vec4'>, farFluence: Node<'vec4'>) => {
-        return vec4(
-          transfer.rgb.mul(arc).add(transfer.a.mul(farFluence.rgb)),
-          float(1)
-        )
-      }
-
-      const contributionOdd = (edgeDirection: Node<'float'>, childDirection: Node<'float'>) => {
-        const lateral = edgeDirection.mul(float(2)).sub(float(stride))
-        const transfer = sampleTransfer(transferTexture, levelInfo, parallel, localY, edgeDirection)
-        const farRadiance = sampleNextRadiance(
-          parallel.add(float(stride)),
-          localY.add(lateral),
-          childDirection
-        )
-        return mergeFluence(coneArc(childDirection), transfer, farRadiance)
-      }
-
-      const contributionEven = (edgeDirection: Node<'float'>, childDirection: Node<'float'>) => {
-        const directChild = sampleNextRadiance(parallel, localY, childDirection)
-        const lateral = edgeDirection.mul(float(2)).sub(float(stride))
-        const transfer = sampleTransfer(
-          nextTransferTexture,
-          nextInfo,
-          parallel,
-          localY,
-          edgeDirection.mul(float(2))
-        )
-        const tracedChild = sampleNextRadiance(
-          parallel.add(float(stride * 2)),
-          localY.add(lateral.mul(float(2))),
-          childDirection
-        )
-        const traced = mergeFluence(coneArc(childDirection), transfer, tracedChild)
-        return directChild.add(traced).mul(float(0.5))
+      const overRadiance = (arc: Node<'float'>, transfer: Node<'vec4'>, farRadiance: Node<'vec4'>) => {
+        return vec4(transfer.rgb.mul(arc).add(transfer.a.mul(farRadiance.rgb)), float(1))
       }
 
       const lowEdge = directionIndex
       const highEdge = directionIndex.add(float(1))
       const lowChild = directionIndex.mul(float(2))
       const highChild = lowChild.add(float(1))
-      const output = vec4(0, 0, 0, 1).toVar()
+      const lowerOffset = directionIndex.sub(float(levelInfo.radianceDirectionCount / 2))
+      const upperOffset = lowerOffset.add(float(1))
+      const factor = probeParityEven.select(float(2), float(1))
+      const nextCellX = floor(probeX.div(float(2)))
+      const lowerTransfer = vec4(0).toVar()
+      const upperTransfer = vec4(0).toVar()
 
-      If(probeParityOdd, () => {
-        const low = contributionOdd(lowEdge, lowChild)
-        const high = contributionOdd(highEdge, highChild)
-        output.assign(vec4(low.rgb.add(high.rgb), float(1)))
+      If(probeParityEven, () => {
+        lowerTransfer.assign(sampleTransfer(nextTransferTexture, nextInfo, nextCellX, localY, lowEdge.mul(float(2))))
+        upperTransfer.assign(sampleTransfer(nextTransferTexture, nextInfo, nextCellX, localY, highEdge.mul(float(2))))
+      })
+      If(probeParityEven.not(), () => {
+        lowerTransfer.assign(sampleTransfer(transferTexture, levelInfo, probeX, localY, lowEdge))
+        upperTransfer.assign(sampleTransfer(transferTexture, levelInfo, probeX, localY, highEdge))
       })
 
-      If(probeParityOdd.not(), () => {
-        const low = contributionEven(lowEdge, lowChild)
-        const high = contributionEven(highEdge, highChild)
-        output.assign(vec4(low.rgb.add(high.rgb), float(1)))
+      const nextLower = overRadiance(
+        coneArc(lowChild),
+        lowerTransfer,
+        sampleNextRadiance(floor(probeX.add(factor).div(float(2))), localY.add(lowerOffset.mul(factor)), lowChild)
+      )
+      const nextUpper = overRadiance(
+        coneArc(highChild),
+        upperTransfer,
+        sampleNextRadiance(floor(probeX.add(factor).div(float(2))), localY.add(upperOffset.mul(factor)), highChild)
+      )
+      const output = vec4(nextLower.rgb.add(nextUpper.rgb), float(1)).toVar()
+
+      If(probeParityEven, () => {
+        const directLower = sampleNextRadiance(nextCellX, localY, lowChild)
+        const directUpper = sampleNextRadiance(nextCellX, localY, highChild)
+        output.assign(
+          vec4(
+            directLower.rgb
+              .add(nextLower.rgb)
+              .mul(float(0.5))
+              .add(directUpper.rgb.add(nextUpper.rgb).mul(float(0.5))),
+            float(1)
+          )
+        )
       })
 
-      return output
+      return this._encodeHolographicRadiance(output, level)
     })() as Node<'vec4'>
 
     this._holographicRadianceMaterials.set(level, material)
@@ -1634,11 +2477,12 @@ export class HierarchicalRadianceCascades {
 
   private _ensureShortIntervalMaterial(): void {
     if (this._shortIntervalMaterial) return
-    if (!this._sdfTexture || !this._sceneRadianceRT) return
+    if (!this._sdfTexture) return
 
     const config = this._config
     const sdfTexture = this._sdfTexture
-    const sceneRadianceTexture = this._sceneRadianceRT.texture
+    const lightsTexture = this._lightsTexture!
+    const lightCount = this._lightCountNode
     const blueNoiseTexture = this._blueNoiseTexture
     const worldSize = this._worldSizeNode
     const worldOffset = this._worldOffsetNode
@@ -1651,6 +2495,10 @@ export class HierarchicalRadianceCascades {
     const atlasRes = this._shortIntervalAtlasResolution()
     const gridSize = this.shortIntervalGridSize
     const raymarchSteps = config.raymarchSteps
+    const sourceRadius =
+      config.lightSourceRadius > 0
+        ? float(config.lightSourceRadius)
+        : min(worldSize.x, worldSize.y).mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
 
     this._shortIntervalMaterial = new NodeMaterial()
     this._shortIntervalMaterial.fragmentNode = Fn(() => {
@@ -1664,11 +2512,13 @@ export class HierarchicalRadianceCascades {
         const rayXY = floor(tileLocal.div(float(probeGroupSize)))
         const probeXY = mod(tileLocal, float(probeGroupSize))
         const rayIndex = rayXY.x.add(rayXY.y.mul(float(baseAngular)))
-        const probeUV = probeXY.add(float(0.5)).div(float(probeGroupSize))
+        // `tileLocal` is evaluated at fragment centres, so `probeXY` already
+        // contains the half-texel probe-centre offset.
+        const probeUV = probeXY.div(float(probeGroupSize))
         const probeWorldPos = uvToWorld(probeUV, worldSize, worldOffset)
 
         const jitter = config.angularJitter
-          ? sampleTexture(blueNoiseTexture, atlasCoord.div(float(32)))
+          ? sampleTexture(blueNoiseTexture, probeXY.div(float(32)))
               .r.sub(float(0.5))
               .mul(float(2))
               .mul(blueNoiseStrength)
@@ -1677,14 +2527,23 @@ export class HierarchicalRadianceCascades {
         const rayDir = vec2(cos(theta), sin(theta))
 
         const start = intervalIndex.mul(intervalLength)
-        const end = start.add(intervalLength)
-        const minStep = intervalLength.div(float(raymarchSteps)).max(float(0.001))
+        const segmentStart = probeWorldPos.add(rayDir.mul(start))
+        const source = traceAnalyticLightSources(
+          lightsTexture,
+          lightCount,
+          segmentStart,
+          rayDir,
+          intervalLength,
+          sourceRadius
+        )
+        const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, intervalLength)
         const radiance = vec3(0).toVar()
         const transmittance = float(1).toVar()
-        const t = start.toVar()
+        const t = float(0).toVar()
+        const reachedTraceLimit = float(0).toVar()
 
         Loop(raymarchSteps, () => {
-          const sampleWorld = probeWorldPos.add(rayDir.mul(t))
+          const sampleWorld = segmentStart.add(rayDir.mul(t))
           const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
           const outOfBounds = sampleUV.x
             .lessThan(0)
@@ -1693,26 +2552,36 @@ export class HierarchicalRadianceCascades {
             .or(sampleUV.y.greaterThan(1))
 
           If(outOfBounds, () => {
-            transmittance.assign(float(0))
+            reachedTraceLimit.assign(float(1))
             Break()
           })
 
           const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
           const sdfDist = sampleTexture(sdfTexture, sdfUV).r
-          If(sdfDist.lessThan(float(EPS)), () => {
+          If(sdfDist.lessThan(this._sdfHitEpsilonNode), () => {
             transmittance.assign(float(0))
             Break()
           })
 
-          const stepLen = min(sdfDist.max(minStep), end.sub(t))
-          const sceneRad = sampleTexture(sceneRadianceTexture, sampleUV)
-          radiance.addAssign(sceneRad.rgb.mul(transmittance).mul(stepLen))
+          const stepLen = min(sdfDist.max(float(0.001)), traceLimit.sub(t).max(float(0)))
           t.addAssign(stepLen)
 
-          If(t.greaterThanEqual(end), () => {
+          If(t.greaterThanEqual(traceLimit), () => {
+            reachedTraceLimit.assign(float(1))
             Break()
           })
         })
+
+        If(
+          transmittance
+            .greaterThan(float(0.5))
+            .and(reachedTraceLimit.greaterThan(float(0.5)))
+            .and(source.hit.greaterThan(float(0.5))),
+          () => {
+            radiance.assign(source.radiance)
+            transmittance.assign(float(0))
+          }
+        )
 
         output.assign(vec4(radiance, transmittance))
       })
@@ -1779,10 +2648,7 @@ export class HierarchicalRadianceCascades {
           const probeXY = mod(tileLocal, float(probeGroupSize))
           // Short-interval tiles store absolute ranges from the same probe.
           // Compose tile i with tile i + span at identical probe/ray coords.
-          const nextTileXY = vec2(
-            mod(nextInterval, float(gridSize)),
-            floor(nextInterval.div(float(gridSize)))
-          )
+          const nextTileXY = vec2(mod(nextInterval, float(gridSize)), floor(nextInterval.div(float(gridSize))))
           const nextCoord = nextTileXY
             .mul(float(res))
             .add(rayXY.mul(float(probeGroupSize)))
@@ -1803,7 +2669,7 @@ export class HierarchicalRadianceCascades {
   private _renderFinalRadiance(renderer: WebGPURenderer, target: RenderTarget): void {
     const sourceTexture = this._usesHolographicFinalReadout()
       ? this._holographicRadianceRTs[0]!.texture
-      : this._lastComposedTexture ?? this._shortIntervalAtlasRT.texture
+      : (this._lastComposedTexture ?? this._shortIntervalAtlasRT.texture)
     if (this._finalRadianceSourceTexture !== sourceTexture) {
       this._finalRadianceSourceTexture = sourceTexture
       this._finalRadianceMaterial?.dispose()
@@ -1866,84 +2732,240 @@ export class HierarchicalRadianceCascades {
     const outputHeight = output.height
     const r0Info = this._holographicLevelInfo()[0]
     if (!r0Info) return
-    if (!this._sdfTexture) return
+    if (!this._hasRequiredOcclusionInput() || !this._lightsTexture || !this._lightCountNode) {
+      return
+    }
 
     const sdfTexture = this._sdfTexture
+    const lightsTexture = this._lightsTexture
+    const lightCount = this._lightCountNode
+    const worldSize = this._radianceWorldSizeNode
+    const worldOffset = this._radianceWorldOffsetNode
+    const sdfWorldSize = this._worldSizeNode
+    const sdfWorldOffset = this._worldOffsetNode
     const radianceAtlasWidth = r0Info.radianceAtlasWidth
     const radianceAtlasHeight = r0Info.radianceAtlasHeight
-    const probeHeight = r0Info.probeHeight
+    const internalSize = r0Info.probeHeight
+    const raymarchSteps = this._holographicDirectTransferStepCount()
+    const occlusionTexture = this._occlusionTexture
+    const useDdaFloat = this._config.holographicTraversal === 'dda-float' && occlusionTexture !== null
+    const useDdaInteger = this._usesIntegerDdaGrid() && occlusionTexture !== null
+    const ddaGridSize = vec2(float(outputWidth), float(outputHeight))
+    // Final R0 reconstruction only traces between adjacent parity wedges.
+    // Their maximum internal displacement is 1.5 cells horizontally and one
+    // vertically. Convert that local bound to output-grid cells instead of
+    // charging every fragment for the full target perimeter.
+    const ddaMaxSteps = Math.min(
+      1024,
+      Math.ceil((outputWidth / internalSize) * 1.5) + Math.ceil(outputHeight / internalSize) + 2
+    )
+    const autoSourceRadius = min(sdfWorldSize.x, sdfWorldSize.y)
+      .mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
+      .max(
+        min(worldSize.x.div(float(outputWidth)), worldSize.y.div(float(outputHeight))).mul(
+          float(AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS)
+        )
+      )
+    const sourceRadius = this._config.lightSourceRadius > 0 ? float(this._config.lightSourceRadius) : autoSourceRadius
 
     this._finalRadianceMaterial = new NodeMaterial()
     this._finalRadianceMaterial.fragmentNode = Fn(() => {
       const outputSize = vec2(float(outputWidth), float(outputHeight))
-      const probeCoord = floor(uv().mul(outputSize))
-      const centerUV = probeCoord.add(float(0.5)).div(outputSize)
-      const centerSDFUV = vec2(centerUV.x, float(1).sub(centerUV.y))
-      const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
+      const outputCoord = floor(uv().mul(outputSize))
 
-      const sampleQuadrant = (
-        quadrant: number,
-        parallel: Node<'float'>,
-        perpendicular: Node<'float'>
-      ) => {
-        const valid = parallel
+      const sampleR0 = (cellX: Node<'float'>, globalY: Node<'float'>, direction: Node<'float'>) => {
+        const valid = cellX
           .greaterThanEqual(float(0))
-          .and(parallel.lessThan(float(r0Info.outputMaxDimension)))
-          .and(perpendicular.greaterThanEqual(float(0)))
-          .and(perpendicular.lessThan(float(r0Info.outputMaxDimension)))
-        const coord = vec2(
-          parallel.add(float(0.5)),
-          float(quadrant * probeHeight).add(perpendicular).add(float(0.5))
-        )
-        const sample = sampleTexture(
-          sourceTexture,
-          coord.div(vec2(float(radianceAtlasWidth), float(radianceAtlasHeight)))
+          .and(cellX.lessThan(float(internalSize)))
+          .and(globalY.greaterThanEqual(float(0)))
+          .and(globalY.lessThan(float(internalSize * 8)))
+          .and(direction.greaterThanEqual(float(0)))
+          .and(direction.lessThan(float(2)))
+        const coord = vec2(direction.mul(float(internalSize)).add(cellX).add(float(0.5)), globalY.add(float(0.5)))
+        const sample = this._decodeHolographicRadiance(
+          sampleTexture(sourceTexture, coord.div(vec2(float(radianceAtlasWidth), float(radianceAtlasHeight)))),
+          0
         )
         return sample.rgb.mul(valid.select(float(1), float(0)))
       }
 
-      const sampleReadout = (coord: Node<'vec2'>) => {
-        const x = coord.x
-        const y = coord.y
-        const fluence = sampleQuadrant(0, x, y)
-          .add(sampleQuadrant(1, y, float(outputWidth - 1).sub(x)))
-          .add(sampleQuadrant(2, float(outputWidth - 1).sub(x), y))
-          .add(sampleQuadrant(3, float(outputHeight - 1).sub(y), x))
-        return fluence.div(float(Math.PI))
+      const traceWedge = (
+        startCell: Node<'vec2'>,
+        endCell: Node<'vec2'>,
+        segmentIndex: Node<'float'>,
+        xDirection: Node<'vec2'>,
+        yDirection: Node<'vec2'>
+      ) => {
+        const parityOffset = mod(segmentIndex, float(2))
+        const diagonal = xDirection.add(yDirection)
+        const halfSize = float(outputWidth / 2)
+        const origin = vec2(halfSize, halfSize)
+          .sub(diagonal.mul(halfSize))
+          .add(yDirection.mul(parityOffset.add(float(0.499))))
+          .add(xDirection.mul(float(0.501)))
+        const segmentYOffset = segmentIndex.mul(float(internalSize))
+        const toDisplay = (cell: Node<'vec2'>) => {
+          const localCell = vec2(cell.x, cell.y.sub(segmentYOffset))
+          return origin
+            .add(xDirection.mul(localCell.x.div(float(internalSize)).mul(float(outputWidth))))
+            .add(yDirection.mul(localCell.y.div(float(internalSize)).mul(float(outputHeight))))
+        }
+        const startGrid = toDisplay(startCell)
+        const endGrid = toDisplay(endCell)
+        const startWorld = uvToWorld(startGrid.div(outputSize), worldSize, worldOffset)
+        const endWorld = uvToWorld(endGrid.div(outputSize), worldSize, worldOffset)
+        const segment = endWorld.sub(startWorld)
+        const segmentLength = segment.length().max(float(0.001))
+        const rayDirection = segment.div(segmentLength)
+        const source = traceAnalyticLightSources(
+          lightsTexture,
+          lightCount,
+          startWorld,
+          rayDirection,
+          segmentLength,
+          sourceRadius
+        )
+        const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, segmentLength)
+        const boundsInterval = rayBoundsInterval(startWorld, rayDirection, sdfWorldSize, sdfWorldOffset)
+        const traceEntry = boundsInterval.x.max(float(0))
+        const traceExit = boundsInterval.y.min(traceLimit)
+        const intersectsWorld = traceExit.greaterThanEqual(traceEntry)
+        const radiance = vec3(0).toVar()
+        const transmittance = float(1).toVar()
+        const t = float(traceEntry).toVar()
+        const reachedTraceLimit = float(0).toVar()
+
+        if (useDdaFloat) {
+          const visibility = traceDdaFloatOcclusion(
+            occlusionTexture,
+            this._occlusionTextureSizeNode,
+            startWorld,
+            rayDirection,
+            traceEntry,
+            traceExit,
+            intersectsWorld,
+            sdfWorldSize,
+            sdfWorldOffset,
+            ddaGridSize,
+            ddaMaxSteps
+          )
+          transmittance.assign(visibility.x)
+          reachedTraceLimit.assign(visibility.y)
+        } else if (useDdaInteger) {
+          const visibility = traceDdaIntegerOcclusion(
+            occlusionTexture,
+            this._occlusionTextureSizeNode,
+            startWorld,
+            rayDirection,
+            traceEntry,
+            traceExit,
+            intersectsWorld,
+            sdfWorldSize,
+            sdfWorldOffset,
+            outputWidth,
+            outputHeight,
+            ddaMaxSteps
+          )
+          transmittance.assign(visibility.x)
+          reachedTraceLimit.assign(visibility.y)
+        } else {
+          Loop(raymarchSteps, () => {
+            If(intersectsWorld.not(), () => {
+              reachedTraceLimit.assign(float(1))
+              Break()
+            })
+
+            const sampleWorld = startWorld.add(rayDirection.mul(t))
+            const sampleUV = worldToUV(sampleWorld, sdfWorldSize, sdfWorldOffset).clamp(0, 1)
+
+            const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
+            const sdfDistance = sampleTexture(sdfTexture!, sdfUV).r
+            If(sdfDistance.lessThan(this._sdfHitEpsilonNode), () => {
+              transmittance.assign(float(0))
+              Break()
+            })
+
+            t.addAssign(min(sdfDistance.max(float(0.001)), traceExit.sub(t).max(float(0))))
+            If(t.greaterThanEqual(traceExit), () => {
+              reachedTraceLimit.assign(float(1))
+              Break()
+            })
+          })
+        }
+        If(
+          transmittance
+            .greaterThan(float(0.5))
+            .and(reachedTraceLimit.greaterThan(float(0.5)))
+            .and(source.hit.greaterThan(float(0.5))),
+          () => {
+            radiance.assign(source.radiance.mul(float(1 / 8)))
+            transmittance.assign(float(0))
+          }
+        )
+
+        const segmentMinY = segmentYOffset
+        const segmentMaxY = segmentYOffset.add(float(internalSize))
+        const validEnd = endCell.y.greaterThanEqual(segmentMinY).and(endCell.y.lessThan(segmentMaxY))
+        return vec4(radiance, validEnd.select(transmittance, float(0)))
       }
 
-      const total = sampleReadout(probeCoord).mul(float(4)).toVar()
-      const totalWeight = float(4).toVar()
+      const total = vec3(0).toVar()
+      Loop({ start: 0, end: 4, type: 'float', condition: '<' }, ({ i: rotation }: { i: Node<'float'> }) => {
+        const initialCell = vec2(outputCoord).toVar()
+        const xDirection = vec2(1, 0).toVar()
+        If(rotation.greaterThan(float(0.5)).and(rotation.lessThan(float(1.5))), () => {
+          initialCell.assign(vec2(outputCoord.y, float(outputWidth - 1).sub(outputCoord.x)))
+          xDirection.assign(vec2(0, 1))
+        })
+        If(rotation.greaterThan(float(1.5)).and(rotation.lessThan(float(2.5))), () => {
+          initialCell.assign(
+            vec2(float(outputWidth - 1).sub(outputCoord.x), float(outputHeight - 1).sub(outputCoord.y))
+          )
+          xDirection.assign(vec2(-1, 0))
+        })
+        If(rotation.greaterThan(float(2.5)), () => {
+          initialCell.assign(vec2(float(outputHeight - 1).sub(outputCoord.y), outputCoord.x))
+          xDirection.assign(vec2(0, -1))
+        })
+        const yDirection = vec2(xDirection.y.mul(float(-1)), xDirection.x)
+        const cell = vec2(initialCell.x.add(float(1)), initialCell.y)
+        const validCell = cell.x.lessThan(float(outputWidth))
+        const xEven = mod(cell.x, float(2)).lessThan(float(0.5))
+        const yEven = mod(cell.y, float(2)).lessThan(float(0.5))
+        const parityMatches = xEven.and(yEven).or(xEven.not().and(yEven.not()))
+        const paritySegment = parityMatches.not().select(float(1), float(0))
+        const segmentIndex = rotation.mul(float(2)).add(paritySegment)
+        const rowOffset = parityMatches.select(float(0), yEven.select(float(internalSize - 1), float(internalSize)))
+        const baseX = floor(cell.x.div(float(2)))
+        const baseY = floor(cell.y.div(float(2)))
+          .add(rowOffset)
+          .add(rotation.mul(float(2 * internalSize)))
+        const parity = xEven
+        const cellF = vec2(baseX, baseY).add(parity.select(vec2(0), vec2(0.5, 0.5)))
+        const startCell = cellF.sub(vec2(0.49, 0))
+        const factor = parity.select(float(2), float(1))
+        const lowerEnd = floor(cellF.add(vec2(0.5, -0.5).mul(factor)))
+        const upperEnd = floor(cellF.add(vec2(0.5, 0.5).mul(factor)))
+        const lower = traceWedge(startCell, lowerEnd, segmentIndex, xDirection, yDirection)
+        const upper = traceWedge(startCell, upperEnd, segmentIndex, xDirection, yDirection)
+        const nextLower = lower.rgb.add(
+          lower.a.mul(sampleR0(baseX.add(float(1)), baseY.add(parity.select(float(-1), float(0))), float(0)))
+        )
+        const nextUpper = upper.rgb.add(upper.a.mul(sampleR0(baseX.add(float(1)), baseY.add(float(1)), float(1))))
+        const contribution = nextLower.add(nextUpper).toVar()
+        If(parity, () => {
+          contribution.assign(
+            sampleR0(baseX, baseY, float(0))
+              .add(nextLower)
+              .mul(float(0.5))
+              .add(sampleR0(baseX, baseY, float(1)).add(nextUpper).mul(float(0.5)))
+          )
+        })
+        total.addAssign(contribution.mul(validCell.select(float(1), float(0))))
+      })
 
-      const sampleNeighbor = (dx: number, dy: number): void => {
-        const offset = vec2(dx, dy)
-        const neighborCoord = probeCoord.add(offset)
-        const validCoord = neighborCoord.x
-          .greaterThanEqual(float(0))
-          .and(neighborCoord.x.lessThan(float(outputWidth)))
-          .and(neighborCoord.y.greaterThanEqual(float(0)))
-          .and(neighborCoord.y.lessThan(float(outputHeight)))
-        const neighborUV = neighborCoord.add(float(0.5)).div(outputSize)
-        const midpointUV = probeCoord.add(offset.mul(float(0.5))).add(float(0.5)).div(outputSize)
-        const neighborSDFUV = vec2(neighborUV.x, float(1).sub(neighborUV.y))
-        const midpointSDFUV = vec2(midpointUV.x, float(1).sub(midpointUV.y))
-        const neighborSDF = sampleTexture(sdfTexture, neighborSDFUV).r
-        const midpointSDF = sampleTexture(sdfTexture, midpointSDFUV).r
-        const visible = validCoord
-          .and(centerSDF.greaterThan(float(EPS)))
-          .and(neighborSDF.greaterThan(float(EPS)))
-          .and(midpointSDF.greaterThan(float(EPS)))
-        const weight = visible.select(float(1), float(0))
-        total.addAssign(sampleReadout(neighborCoord).mul(weight))
-        totalWeight.addAssign(weight)
-      }
-
-      sampleNeighbor(1, 0)
-      sampleNeighbor(-1, 0)
-      sampleNeighbor(0, 1)
-      sampleNeighbor(0, -1)
-
-      return vec4(total.div(totalWeight.max(float(1))), float(1))
+      total.addAssign(collectAmbientRadiance(lightsTexture, lightCount))
+      return vec4(total, float(1))
     })() as Node<'vec4'>
   }
 
@@ -2001,17 +3023,15 @@ export class HierarchicalRadianceCascades {
   private _ensureWideRadianceMaterials(): void {
     const needsWideBlur = this._usesWideBlur()
     const hasFirstLevel =
-      this._wideDownsampleMaterial &&
-      (!needsWideBlur || (this._wideBlurHMaterial && this._wideBlurVMaterial))
-    const hasSecondLevel =
-      this._wideDownsampleMaterial2 && this._wideBlurHMaterial2 && this._wideBlurVMaterial2
+      this._wideDownsampleMaterial && (!needsWideBlur || (this._wideBlurHMaterial && this._wideBlurVMaterial))
+    const hasSecondLevel = this._wideDownsampleMaterial2 && this._wideBlurHMaterial2 && this._wideBlurVMaterial2
     if (hasFirstLevel && (!this._usesSecondWideLevel() || hasSecondLevel)) {
       return
     }
-    if (!this._sdfTexture) return
+    if (!this._hasRequiredOcclusionInput()) return
 
     if (!hasFirstLevel) {
-      this._wideDownsampleMaterial = this._createSdfAwareDownsampleMaterial(
+      this._wideDownsampleMaterial = this._createShadowAwareDownsampleMaterial(
         this._rawFinalRadianceRT.texture,
         this._finalTexelSizeNode
       )
@@ -2030,7 +3050,7 @@ export class HierarchicalRadianceCascades {
     }
 
     if (this._usesSecondWideLevel() && !hasSecondLevel) {
-      this._wideDownsampleMaterial2 = this._createSdfAwareDownsampleMaterial(
+      this._wideDownsampleMaterial2 = this._createShadowAwareDownsampleMaterial(
         this._wideRadianceRT.texture,
         this._wideTexelSizeNode
       )
@@ -2047,11 +3067,10 @@ export class HierarchicalRadianceCascades {
     }
   }
 
-  private _createSdfAwareDownsampleMaterial(
+  private _createShadowAwareDownsampleMaterial(
     sourceTexture: Texture,
     sourceTexelSize: UniformNode<'vec2', Vector2>
   ): NodeMaterial {
-    const sdfTexture = this._sdfTexture!
     const texelSize = sourceTexelSize
     const radius = this._filterRadiusNode
 
@@ -2059,8 +3078,7 @@ export class HierarchicalRadianceCascades {
     material.fragmentNode = Fn(() => {
       const centerUV = uv()
       const center = sampleTexture(sourceTexture, centerUV)
-      const centerSDFUV = vec2(centerUV.x, float(1).sub(centerUV.y))
-      const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
+      const centerOpen = this._filterPointIsOpen(centerUV)
       const total = vec3(center.rgb).mul(float(4)).toVar()
       const totalWeight = float(4).toVar()
 
@@ -2068,14 +3086,7 @@ export class HierarchicalRadianceCascades {
         const offset = vec2(dx, dy).mul(texelSize).mul(radius)
         const neighborUV = centerUV.add(offset).clamp(0, 1)
         const midpointUV = centerUV.add(offset.mul(float(0.5))).clamp(0, 1)
-        const neighborSDFUV = vec2(neighborUV.x, float(1).sub(neighborUV.y))
-        const midpointSDFUV = vec2(midpointUV.x, float(1).sub(midpointUV.y))
-        const neighborSDF = sampleTexture(sdfTexture, neighborSDFUV).r
-        const midpointSDF = sampleTexture(sdfTexture, midpointSDFUV).r
-        const visible = centerSDF
-          .greaterThan(float(EPS))
-          .and(neighborSDF.greaterThan(float(EPS)))
-          .and(midpointSDF.greaterThan(float(EPS)))
+        const visible = centerOpen.and(this._filterPointIsOpen(neighborUV)).and(this._filterPointIsOpen(midpointUV))
         const weight = visible.select(float(baseWeight), float(0))
         const sample = sampleTexture(sourceTexture, neighborUV)
         total.addAssign(sample.rgb.mul(weight))
@@ -2143,10 +3154,9 @@ export class HierarchicalRadianceCascades {
 
   private _ensureFilterRadianceMaterial(): void {
     if (this._filterRadianceMaterial) return
-    if (!this._sdfTexture) return
+    if (!this._hasRequiredOcclusionInput()) return
 
     const rawFinalTexture = this._rawFinalRadianceRT.texture
-    const sdfTexture = this._sdfTexture
     const blueNoiseTexture = this._blueNoiseTexture
     const texelSize = this._finalTexelSizeNode
     const radius = this._filterRadiusNode
@@ -2155,8 +3165,13 @@ export class HierarchicalRadianceCascades {
     const useWideFilter = this._usesMipFilter()
     const useSecondWideLevel = this._usesSecondWideLevel()
     const useFilterDiagonals = this._config.filterDiagonals
-    const useFilterJitter = this._config.filterJitterStrength > 0
+    const useFilterJitter = this._config.filterJitterStrength > 0 && !this._usesDdaOcclusion()
+    const usesDdaShadowMask = this._usesDdaOcclusion()
+    const useDdaColorThreshold = this._usesIntegerDdaGrid()
     const filterJitterStrength = this._filterJitterStrengthNode
+    const ddaBleedThreshold = this._ddaBleedThresholdNode
+    const ddaPaletteBands = this._ddaPaletteBandsNode
+    const ddaPaletteExposure = this._ddaPaletteExposureNode
     const mipStrength = this._mipStrengthNode
     const blueNoiseScale = Math.max(1, Math.ceil(this._rawFinalRadianceRT.width / BLUE_NOISE_SIZE))
 
@@ -2164,39 +3179,72 @@ export class HierarchicalRadianceCascades {
     this._filterRadianceMaterial.fragmentNode = Fn(() => {
       const centerUV = uv()
       const center = sampleTexture(rawFinalTexture, centerUV)
-      const centerSDFUV = vec2(centerUV.x, float(1).sub(centerUV.y))
-      const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
+      const centerOpen = this._filterPointIsOpen(centerUV)
+      const centerSdfDistance = usesDdaShadowMask
+        ? float(0)
+        : sampleTexture(this._sdfTexture!, this._radianceUVToSDFUV(centerUV)).r
       const total = vec3(center.rgb).mul(float(4)).toVar()
       const totalWeight = float(4).toVar()
-      const centerLuma = center.r.mul(float(0.2126)).add(center.g.mul(float(0.7152))).add(center.b.mul(float(0.0722)))
+      const centerLuma = center.r
+        .mul(float(0.2126))
+        .add(center.g.mul(float(0.7152)))
+        .add(center.b.mul(float(0.0722)))
       const minVisibleLuma = float(centerLuma).toVar()
       const filterRadiusScale = useFilterJitter
         ? float(1).add(
             sampleTexture(blueNoiseTexture, centerUV.mul(float(blueNoiseScale)))
               .r.sub(float(0.5))
               .mul(filterJitterStrength)
-              .mul(smoothstep(float(EPS * 4), float(EPS * 24), centerSDF))
+              .mul(
+                smoothstep(
+                  this._sdfHitEpsilonNode.mul(float(4)),
+                  this._sdfHitEpsilonNode.mul(float(24)),
+                  centerSdfDistance
+                )
+              )
           )
         : float(1)
+
+      const paletteQuantize = (color: Node<'vec3'>): Node<'vec3'> => {
+        if (!this._usesDdaPalette()) return color
+        const luma = color.r
+          .mul(float(0.2126))
+          .add(color.g.mul(float(0.7152)))
+          .add(color.b.mul(float(0.0722)))
+        // Quantize in a Reinhard-compressed linear-light domain. The exposure
+        // control places useful scene energy across the selected bands while
+        // preserving exact black and never touching transfer alpha/occlusion.
+        const exposedLuma = luma.mul(ddaPaletteExposure)
+        const compressed = exposedLuma.div(float(1).add(exposedLuma))
+        const snappedCompressed = floor(compressed.mul(ddaPaletteBands))
+          .min(ddaPaletteBands.sub(float(1)))
+          .div(ddaPaletteBands)
+        const snappedLuma = snappedCompressed
+          .div(float(1).sub(snappedCompressed).max(float(0.0001)))
+          .div(ddaPaletteExposure)
+        const scale = luma.greaterThan(float(0.0001)).select(snappedLuma.div(luma), float(0))
+        return color.mul(scale)
+      }
 
       const sampleNeighbor = (dx: number, dy: number, baseWeight: number): void => {
         const offset = vec2(dx, dy).mul(texelSize).mul(radius).mul(filterRadiusScale)
         const neighborUV = centerUV.add(offset).clamp(0, 1)
         const midpointUV = centerUV.add(offset.mul(float(0.5))).clamp(0, 1)
-        const neighborSDFUV = vec2(neighborUV.x, float(1).sub(neighborUV.y))
-        const midpointSDFUV = vec2(midpointUV.x, float(1).sub(midpointUV.y))
-        const neighborSDF = sampleTexture(sdfTexture, neighborSDFUV).r
-        const midpointSDF = sampleTexture(sdfTexture, midpointSDFUV).r
-        const visible = centerSDF
-          .greaterThan(float(EPS))
-          .and(neighborSDF.greaterThan(float(EPS)))
-          .and(midpointSDF.greaterThan(float(EPS)))
-        const weight = visible.select(float(baseWeight), float(0))
+        const visible = centerOpen.and(this._filterPointIsOpen(neighborUV)).and(this._filterPointIsOpen(midpointUV))
         const sample = sampleTexture(rawFinalTexture, neighborUV)
+        const colorDelta = sample.rgb.sub(center.rgb).length()
+        const colorMagnitude = sample.rgb.length().max(center.rgb.length()).max(float(0.05))
+        const normalizedColorDelta = colorDelta.div(colorMagnitude)
+        const colorAccepted = useDdaColorThreshold ? normalizedColorDelta.lessThan(ddaBleedThreshold) : visible
+        const accepted = visible.and(colorAccepted)
+        const weight = accepted.select(float(baseWeight), float(0))
         total.addAssign(sample.rgb.mul(weight))
         totalWeight.addAssign(weight)
-        const sampleLuma = sample.r.mul(float(0.2126)).add(sample.g.mul(float(0.7152))).add(sample.b.mul(float(0.0722)))
-        minVisibleLuma.assign(min(minVisibleLuma, visible.select(sampleLuma, minVisibleLuma)))
+        const sampleLuma = sample.r
+          .mul(float(0.2126))
+          .add(sample.g.mul(float(0.7152)))
+          .add(sample.b.mul(float(0.0722)))
+        minVisibleLuma.assign(min(minVisibleLuma, accepted.select(sampleLuma, minVisibleLuma)))
       }
 
       if (useLocalFilter) {
@@ -2222,8 +3270,16 @@ export class HierarchicalRadianceCascades {
         .add(crossFiltered.g.mul(float(0.7152)))
         .add(crossFiltered.b.mul(float(0.0722)))
       const lumaScale = minVisibleLuma.div(crossLuma.max(float(0.001))).clamp(float(0.65), float(1))
-      const edgeArea = float(1).sub(smoothstep(float(EPS * 4), float(EPS * 28), centerSDF))
-      const shadowContrast = smoothstep(float(0.06), float(0.32), crossLuma.sub(minVisibleLuma).div(crossLuma.max(float(0.001))))
+      const edgeArea = usesDdaShadowMask
+        ? float(0)
+        : float(1).sub(
+            smoothstep(this._sdfHitEpsilonNode.mul(float(4)), this._sdfHitEpsilonNode.mul(float(28)), centerSdfDistance)
+          )
+      const shadowContrast = smoothstep(
+        float(0.06),
+        float(0.32),
+        crossLuma.sub(minVisibleLuma).div(crossLuma.max(float(0.001)))
+      )
       const edgePreserved = crossFiltered.mul(mix(float(1), lumaScale, edgeArea.mul(shadowContrast).mul(float(0.45))))
 
       if (useWideFilter) {
@@ -2231,17 +3287,31 @@ export class HierarchicalRadianceCascades {
         const mipFiltered = vec3(wide1.rgb).toVar()
         if (useSecondWideLevel) {
           const wide2 = sampleTexture(this._wideRadianceRT2.texture, centerUV)
-          const veryOpenArea = smoothstep(float(EPS * 8), float(EPS * 48), centerSDF)
+          const veryOpenArea = usesDdaShadowMask
+            ? centerOpen.select(float(1), float(0))
+            : smoothstep(
+                this._sdfHitEpsilonNode.mul(float(8)),
+                this._sdfHitEpsilonNode.mul(float(48)),
+                centerSdfDistance
+              )
           mipFiltered.assign(mix(wide1.rgb, wide2.rgb, veryOpenArea.mul(this._mipBlurNode)))
         }
-        const openArea = smoothstep(float(EPS * 2), float(EPS * 16), centerSDF)
+        const wideColorDelta = mipFiltered.sub(center.rgb).length()
+        const wideColorMagnitude = mipFiltered.length().max(center.rgb.length()).max(float(0.05))
+        const wideColorAccepted = useDdaColorThreshold
+          ? wideColorDelta.div(wideColorMagnitude).lessThan(ddaBleedThreshold).select(float(1), float(0))
+          : float(1)
+        const openArea = usesDdaShadowMask
+          ? centerOpen.select(float(1), float(0))
+          : smoothstep(this._sdfHitEpsilonNode.mul(float(2)), this._sdfHitEpsilonNode.mul(float(16)), centerSdfDistance)
         const edgeAwareMipStrength = mipStrength
           .mul(openArea)
+          .mul(wideColorAccepted)
           .mul(float(1).sub(edgeArea.mul(shadowContrast).mul(float(0.55))))
-        return vec4(mix(edgePreserved, mipFiltered, edgeAwareMipStrength), center.a)
+        return vec4(paletteQuantize(mix(edgePreserved, mipFiltered, edgeAwareMipStrength)), center.a)
       }
 
-      return vec4(edgePreserved, center.a)
+      return vec4(paletteQuantize(edgePreserved), center.a)
     })() as Node<'vec4'>
   }
 
@@ -2279,8 +3349,6 @@ export class HierarchicalRadianceCascades {
   }
 
   private _disposeMaterials(): void {
-    this._sceneRadianceMaterial?.dispose()
-    this._sceneRadianceMaterial = null
     this._shortIntervalMaterial?.dispose()
     this._shortIntervalMaterial = null
     this._disposeCompositionMaterials()

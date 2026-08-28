@@ -12,6 +12,7 @@ export type {
   LightEffectBuildContext,
   LightEffectRuntimeContext,
   LightEffectClass,
+  ShadowPipelineMode,
   EffectSchema,
   EffectSchemaValue,
   EffectField,
@@ -26,8 +27,14 @@ export type {
 export { OcclusionPass } from './OcclusionPass'
 export type { OcclusionPassOptions } from './OcclusionPass'
 export { SDFGenerator } from './SDFGenerator'
-export { RadianceCascades, RADIANCE_CASCADES_PRESETS, createRadianceCascadesConfig } from './RadianceCascades'
-export type { RadianceCascadesConfig, RadianceCascadesQuality } from './RadianceCascades'
+export {
+  RadianceCascades,
+  RADIANCE_CASCADES_PRESETS,
+  DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+  collectAmbientRadiance,
+  createRadianceCascadesConfig,
+} from './RadianceCascades'
+export type { RadianceCascadesConfig, RadianceCascadesQuality, RadianceCascadesTraversal } from './RadianceCascades'
 export {
   HierarchicalRadianceCascades,
   HIERARCHICAL_RADIANCE_CASCADES_PRESETS,

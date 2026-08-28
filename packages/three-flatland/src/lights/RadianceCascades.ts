@@ -9,15 +9,13 @@ import {
   RGBAFormat,
   UnsignedByteType,
   Vector2,
+  Color,
+  type OrthographicCamera,
+  type Scene,
   type Texture,
 } from 'three'
 import { NodeMaterial, QuadMesh, RendererUtils, type WebGPURenderer } from 'three/webgpu'
-import {
-  beginDebugPass,
-  endDebugPass,
-  registerDebugTexture,
-  unregisterDebugTexture,
-} from '../debug/debug-sink'
+import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import {
   uniform,
   uv,
@@ -42,6 +40,8 @@ import {
   smoothstep,
 } from 'three/tsl'
 import { worldToUV, uvToWorld } from './coordUtils'
+import { rayBoundsInterval, traceDdaIntegerRadiance } from './ddaGrid'
+import { EmissivePass } from './EmissivePass'
 import type Node from 'three/src/nodes/core/Node.js'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 
@@ -52,16 +52,29 @@ import type UniformNode from 'three/src/nodes/core/UniformNode.js'
  * - The cascade layout, interval scaling, and child-ray merge model follow
  *   Alexander Sannikov's Radiance Cascades technique for 2D global
  *   illumination, as described in the public RC paper/tutorial material.
- * - Filtering, broad irradiance reuse, and blue-noise jitter are local TSL
- *   implementation details for this renderer. No upstream shader code or
- *   external blue-noise texture asset is copied here.
+ * - Filtering and broad irradiance reuse are local TSL implementation details
+ *   for this renderer. No upstream shader code is copied here.
  */
 
 const TAU = Math.PI * 2
-const EPS = 0.5
 const BLUE_NOISE_SIZE = 32
+// RC transports finite emissive regions, not mathematical delta lights. A
+// source that is too small for P0/Q0/t0 violates the penumbra hypothesis and
+// appears as axis-aligned spokes. HRC additionally enforces a logical-pixel
+// footprint after DDA downsampling; this fraction remains the conventional RC
+// fallback when no coarser transport grid is involved.
+const AUTO_LIGHT_SOURCE_VIEW_FRACTION = 0.02
+const AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS = 4
+
+export type RadianceCascadesTraversal = 'sdf' | 'dda-fixed'
+
+function normalizeDdaPaletteBands(value: number): number {
+  if (!Number.isFinite(value) || value < 2) return 0
+  return Math.max(2, Math.min(64, Math.round(value)))
+}
 
 const _quadMesh = new QuadMesh()
+const _emissiveClearColor = new Color()
 let _rendererState: ReturnType<typeof RendererUtils.resetRendererState>
 let _sharedBlueNoiseTexture: DataTexture | null = null
 
@@ -223,33 +236,134 @@ export function getSharedBlueNoiseTexture(): DataTexture {
   return _sharedBlueNoiseTexture
 }
 
+type AnalyticLightTrace = {
+  radiance: Node<'vec3'>
+  distance: Node<'float'>
+  hit: Node<'float'>
+}
+
+/**
+ * Trace a finite segment against the localized point/spot emitters in the
+ * light store. Emitters are opaque radiance sources: once a ray reaches one,
+ * farther transport is blocked. This is the same fluence contract used by the
+ * RC/HRC reference implementations and deliberately does not integrate a
+ * light's already-attenuated influence field through empty space.
+ */
+export function traceAnalyticLightSources(
+  lightsTexture: Texture,
+  lightCount: Node<'float'>,
+  rayStart: Node<'vec2'>,
+  rayDirection: Node<'vec2'>,
+  maxDistance: Node<'float'>,
+  sourceRadius: Node<'float'>
+): AnalyticLightTrace {
+  const nearestDistance = maxDistance.add(float(1)).toVar()
+  const nearestRadiance = vec3(0).toVar()
+  const sourceHit = float(0).toVar()
+
+  Loop({ start: 0, end: lightCount, type: 'float', condition: '<' }, ({ i }: { i: Node<'float'> }) => {
+    const row0 = textureLoad(lightsTexture, ivec2(int(i), int(0)))
+    const row1 = textureLoad(lightsTexture, ivec2(int(i), int(1)))
+    const row2 = textureLoad(lightsTexture, ivec2(int(i), int(2)))
+    const row3 = textureLoad(lightsTexture, ivec2(int(i), int(3)))
+
+    const lightType = row3.r
+    const enabled = row3.g.greaterThan(float(0.5))
+    const positional = lightType.lessThan(float(1.5))
+    const lightPosition = vec2(row0.r, row0.g)
+    const toCenter = lightPosition.sub(rayStart)
+    const projected = toCenter.dot(rayDirection)
+    const closestDistanceSq = toCenter.dot(toCenter).sub(projected.mul(projected))
+    const radiusSq = sourceRadius.mul(sourceRadius)
+    const intersects = closestDistanceSq.lessThanEqual(radiusSq)
+    const halfChord = radiusSq.sub(closestDistanceSq).max(float(0)).sqrt()
+    // A ray grazing an emissive disk represents less of its projected area
+    // than one through the centre. Treating every intersection as full energy
+    // exposes RC/HRC's sparse base directions as fat spokes around small
+    // sources. Amitabha similarly attenuates analytic-circle hits by their
+    // penetration; the normalized half-chord is resolution-independent and
+    // is the exact line-integral coverage of a uniform disk up to a constant.
+    const sourceCoverage = halfChord.div(sourceRadius.max(float(1e-6))).clamp(0, 1)
+    const entryDistance = projected.sub(halfChord).max(float(0))
+    const exitsAhead = projected.add(halfChord).greaterThanEqual(float(0))
+    const insideSegment = entryDistance.lessThanEqual(maxDistance)
+
+    If(
+      enabled
+        .and(positional)
+        .and(intersects)
+        .and(exitsAhead)
+        .and(insideSegment)
+        .and(entryDistance.lessThan(nearestDistance)),
+      () => {
+        const lightColor = vec3(row0.b, row0.a, row1.r)
+        const lightIntensity = row1.g
+        const emission = lightColor.mul(lightIntensity).toVar()
+        const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
+
+        If(isSpot, () => {
+          const lightDirection = vec2(row2.r, row2.g)
+          const outgoingDirection = rayDirection.mul(float(-1))
+          const spotCos = outgoingDirection.dot(lightDirection)
+          const innerCos = row2.b.cos()
+          const outerCos = row2.b.add(row2.a).cos()
+          const cone = spotCos
+            .sub(outerCos)
+            .div(innerCos.sub(outerCos).max(float(0.0001)))
+            .clamp(0, 1)
+          emission.mulAssign(cone)
+        })
+
+        nearestDistance.assign(entryDistance)
+        nearestRadiance.assign(emission.mul(sourceCoverage))
+        sourceHit.assign(float(1))
+      }
+    )
+  })
+
+  return {
+    radiance: nearestRadiance,
+    distance: nearestDistance,
+    hit: sourceHit,
+  }
+}
+
+export function collectAmbientRadiance(lightsTexture: Texture, lightCount: Node<'float'>): Node<'vec3'> {
+  const ambient = vec3(0).toVar()
+  Loop({ start: 0, end: lightCount, type: 'float', condition: '<' }, ({ i }: { i: Node<'float'> }) => {
+    const row0 = textureLoad(lightsTexture, ivec2(int(i), int(0)))
+    const row1 = textureLoad(lightsTexture, ivec2(int(i), int(1)))
+    const row3 = textureLoad(lightsTexture, ivec2(int(i), int(3)))
+    const enabled = row3.g.greaterThan(float(0.5))
+    const isAmbient = row3.r.greaterThan(float(2.5))
+    If(enabled.and(isAmbient), () => {
+      ambient.addAssign(vec3(row0.b, row0.a, row1.r).mul(row1.g))
+    })
+  })
+  return ambient
+}
+
 export interface RadianceCascadesConfig {
+  /** Occlusion backend and storage representation used by each cascade. */
+  traversal: RadianceCascadesTraversal
   cascadeCount: number
   baseRayCount: number
   /** Base interval in world units. 0 = auto-calculate from world size. */
   baseInterval: number
   /** Cascade texture resolution. 0 = auto-calculate from world size. */
   cascadeResolution: number
-  /** Scene-radiance texture downsample factor relative to cascade resolution. */
-  sceneRadianceDownsampleFactor: number
   /** Maximum cascade texture resolution used by auto sizing. 0 = unlimited. */
   maxAutoCascadeResolution: number
-  /** Stable per-probe angular jitter. Breaks up hard direction sectors. */
-  angularJitter: boolean
   /** Maximum bounded SDF raymarch steps per cascade ray. */
   raymarchSteps: number
-  /** Blue-noise angular jitter strength. 0 disables the blue-noise contribution. */
-  blueNoiseStrength: number
+  /** World-space SDF hit threshold. `0` derives half of the largest SDF texel footprint. */
+  sdfHitEpsilon: number
   /** Fraction of each cascade interval overlapped with the previous interval to hide seams. */
   intervalOverlap: number
   /** SDF-aware final filter radius in final-irradiance texels. 0 disables filtering. */
   filterRadius: number
   /** Blend from raw final irradiance to filtered irradiance. */
   filterStrength: number
-  /** Include diagonal taps in the SDF-aware final filter for a full 3x3 kernel. */
-  filterDiagonals: boolean
-  /** Stable blue-noise modulation for the final filter radius. 0 disables it. */
-  filterJitterStrength: number
   /** Broad approximate GI radius. Preserves the original mipBlur tuning name. */
   mipBlur: number
   /** Blend from accurate RC irradiance toward SDF-gated broad approximate GI. */
@@ -258,48 +372,86 @@ export interface RadianceCascadesConfig {
   wideDownsampleFactor: number
   /** Number of low-res broad approximate GI levels to generate when enabled. */
   wideLevels: number
+  /**
+   * Radius of the opaque emissive disk used to represent point and spot lights,
+   * in world units. `0` derives 2% of the smaller world/view dimension. RC/HRC
+   * require a finite emitter; sources below the angular budget can form spokes.
+   */
+  lightSourceRadius: number
+  /** Full-resolution scene texels represented by one logical DDA lighting pixel. */
+  ddaPixelSize: number
+  /** Fixed-point precision stored in each RGBA8 cascade channel. */
+  ddaQuantizationBits: number
+  /** Maximum linear radiance represented by a packed cascade RGB channel. */
+  ddaRadianceRange: number
+  /** Maximum normalized RGB delta allowed through the DDA GI filter. */
+  ddaBleedThreshold: number
+  /** Hue-preserving final-light posterization bands. `0` disables snapping. */
+  ddaPaletteBands: number
+  /** Linear-light exposure applied before palette snapping and removed afterward. */
+  ddaPaletteExposure: number
+  /** Include unshadowed ambient Light2D energy in the resolved transport texture. */
+  includeAmbient: boolean
 }
 
 const DEFAULT_CONFIG: RadianceCascadesConfig = {
+  traversal: 'sdf',
   cascadeCount: 4,
-  baseRayCount: 4,
+  baseRayCount: 16,
   baseInterval: 0,
   cascadeResolution: 0,
-  sceneRadianceDownsampleFactor: 1,
-  maxAutoCascadeResolution: 1024,
-  angularJitter: true,
-  raymarchSteps: 32,
-  blueNoiseStrength: 0.45,
+  maxAutoCascadeResolution: 512,
+  raymarchSteps: 24,
+  sdfHitEpsilon: 0,
   intervalOverlap: 0.1,
-  filterRadius: 1.25,
-  filterStrength: 0.8,
-  filterDiagonals: true,
-  filterJitterStrength: 0.35,
+  filterRadius: 1,
+  filterStrength: 1,
   mipBlur: 0,
   mipStrength: 0,
   wideDownsampleFactor: 2,
   wideLevels: 1,
+  lightSourceRadius: 0,
+  ddaPixelSize: 4,
+  ddaQuantizationBits: 8,
+  ddaRadianceRange: 1,
+  ddaBleedThreshold: 0.65,
+  ddaPaletteBands: 0,
+  ddaPaletteExposure: 16,
+  includeAmbient: true,
+}
+
+/** Canonical mobile/stylized settings for integer-grid, packed RC. */
+export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascadesConfig>> = {
+  traversal: 'dda-fixed',
+  cascadeCount: 4,
+  baseRayCount: 16,
+  maxAutoCascadeResolution: 512,
+  filterRadius: 1,
+  filterStrength: 1,
+  mipBlur: 0.25,
+  mipStrength: 0.15,
+  wideDownsampleFactor: 2,
+  wideLevels: 1,
+  ddaPixelSize: 4,
+  ddaQuantizationBits: 8,
+  ddaRadianceRange: 1,
+  ddaBleedThreshold: 0.65,
+  ddaPaletteBands: 0,
+  ddaPaletteExposure: 16,
+  includeAmbient: false,
 }
 
 export type RadianceCascadesQuality = 'fast' | 'balanced' | 'quality'
 
-export const RADIANCE_CASCADES_PRESETS: Record<
-  RadianceCascadesQuality,
-  Partial<RadianceCascadesConfig>
-> = {
+export const RADIANCE_CASCADES_PRESETS: Record<RadianceCascadesQuality, Partial<RadianceCascadesConfig>> = {
   fast: {
     cascadeCount: 3,
     baseRayCount: 4,
-    sceneRadianceDownsampleFactor: 4,
     maxAutoCascadeResolution: 512,
-    angularJitter: true,
     raymarchSteps: 24,
-    blueNoiseStrength: 0.35,
     intervalOverlap: 0.05,
     filterRadius: 1.15,
     filterStrength: 0.7,
-    filterDiagonals: false,
-    filterJitterStrength: 0,
     mipBlur: 0,
     mipStrength: 0,
     wideDownsampleFactor: 4,
@@ -308,34 +460,24 @@ export const RADIANCE_CASCADES_PRESETS: Record<
   balanced: {
     cascadeCount: 4,
     baseRayCount: 16,
-    sceneRadianceDownsampleFactor: 2,
-    maxAutoCascadeResolution: 1024,
-    angularJitter: true,
-    raymarchSteps: 32,
-    blueNoiseStrength: 0.45,
+    maxAutoCascadeResolution: 512,
+    raymarchSteps: 24,
     intervalOverlap: 0.1,
-    filterRadius: 1.25,
-    filterStrength: 0.8,
-    filterDiagonals: true,
-    filterJitterStrength: 0.35,
-    mipBlur: 0.5,
-    mipStrength: 0.25,
+    filterRadius: 1,
+    filterStrength: 1,
+    mipBlur: 0,
+    mipStrength: 0,
     wideDownsampleFactor: 2,
     wideLevels: 1,
   },
   quality: {
     cascadeCount: 4,
     baseRayCount: 16,
-    sceneRadianceDownsampleFactor: 1,
     maxAutoCascadeResolution: 2048,
-    angularJitter: true,
     raymarchSteps: 48,
-    blueNoiseStrength: 0.45,
     intervalOverlap: 0.12,
     filterRadius: 1.4,
     filterStrength: 0.85,
-    filterDiagonals: true,
-    filterJitterStrength: 0.25,
     mipBlur: 0.6,
     mipStrength: 0.25,
     wideDownsampleFactor: 2,
@@ -359,23 +501,22 @@ export function createRadianceCascadesConfig(
  * - Hierarchical cascade merging (high cascades fill gaps in low cascades)
  *
  * Pipeline per frame:
- * 1. Render scene radiance (lights as soft circles)
- * 2. For cascade = N-1 down to 0: raymarch + merge with cascade N+1
- * 3. Average all directions from cascade 0 into final irradiance texture
+ * 1. For cascade = N-1 down to 0: raymarch + merge with cascade N+1
+ * 2. Average all directions from cascade 0 into final irradiance texture
  */
 export class RadianceCascades {
   private _config: RadianceCascadesConfig
   private _cascadeRTs: RenderTarget[] = []
-  private _sceneRadianceRT: RenderTarget | null = null
   private _rawFinalRadianceRT: RenderTarget
   private _wideRadianceRT: RenderTarget
   private _wideBlurRT: RenderTarget
   private _wideRadianceRT2: RenderTarget
   private _wideBlurRT2: RenderTarget
   private _finalRadianceRT: RenderTarget
+  private _emissiveRadianceRT: RenderTarget
+  private _emissivePass = new EmissivePass()
 
   private _cascadeMaterials: NodeMaterial[] = []
-  private _sceneRadianceMaterial: NodeMaterial | null = null
   private _finalRadianceMaterial: NodeMaterial | null = null
   private _wideDownsampleMaterial: NodeMaterial | null = null
   private _wideDownsampleMaterial2: NodeMaterial | null = null
@@ -384,26 +525,34 @@ export class RadianceCascades {
   private _wideBlurHMaterial2: NodeMaterial | null = null
   private _wideBlurVMaterial2: NodeMaterial | null = null
   private _filterRadianceMaterial: NodeMaterial | null = null
-  private _blueNoiseTexture: DataTexture
+  private _generating = false
 
   private _worldSize = new Vector2(1, 1)
   private _worldOffset = new Vector2(0, 0)
+  /** Physical processing surface. DDA derives its logical grid from this, never from world units. */
+  private _processingSize = new Vector2(1, 1)
+  private _hasExplicitProcessingSize = false
   private _worldSizeNode = uniform(new Vector2(1, 1))
   private _worldOffsetNode = uniform(new Vector2(0, 0))
   private _intervalOffsetNodes: UniformNode<'float', number>[] = []
   private _intervalRangeNodes: UniformNode<'float', number>[] = []
-  private _minStepNodes: UniformNode<'float', number>[] = []
   private _finalTexelSizeNode = uniform(new Vector2(1, 1))
   private _wideTexelSizeNode = uniform(new Vector2(1, 1))
   private _wideTexelSizeNode2 = uniform(new Vector2(1, 1))
-  private _blueNoiseStrengthNode = uniform(0.45)
   private _filterRadiusNode = uniform(1.25)
   private _filterStrengthNode = uniform(0.8)
-  private _filterJitterStrengthNode = uniform(0.35)
   private _mipBlurNode = uniform(0)
   private _mipStrengthNode = uniform(0)
+  private _sdfHitEpsilonNode = uniform(0.5)
+  private _occlusionTextureSizeNode = uniform(new Vector2(1, 1))
+  private _ddaQuantizationLevelsNode = uniform(255)
+  private _ddaRadianceRangeNode = uniform(1)
+  private _ddaBleedThresholdNode = uniform(0.65)
+  private _ddaPaletteBandsNode = uniform(32)
+  private _ddaPaletteExposureNode = uniform(16)
 
   private _sdfTexture: Texture | null = null
+  private _occlusionTexture: Texture | null = null
   private _lightsTexture: DataTexture | null = null
   private _lightCountNode: Node<'float'> = uniform(0)
 
@@ -428,8 +577,8 @@ export class RadianceCascades {
 
     const finalOptions = {
       type: HalfFloatType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
+      minFilter: this._config.traversal === 'dda-fixed' ? NearestFilter : LinearFilter,
+      magFilter: this._config.traversal === 'dda-fixed' ? NearestFilter : LinearFilter,
       wrapS: ClampToEdgeWrapping,
       wrapT: ClampToEdgeWrapping,
       depthBuffer: false,
@@ -442,21 +591,33 @@ export class RadianceCascades {
     this._wideRadianceRT2 = new RenderTarget(probeCount, probeCount, finalOptions)
     this._wideBlurRT2 = new RenderTarget(probeCount, probeCount, finalOptions)
     this._finalRadianceRT = new RenderTarget(probeCount, probeCount, finalOptions)
-    this._blueNoiseTexture = getSharedBlueNoiseTexture()
-    this.sceneRadianceDownsampleFactor = this._config.sceneRadianceDownsampleFactor
+    this._emissiveRadianceRT = new RenderTarget(probeCount, probeCount, {
+      ...finalOptions,
+      minFilter: NearestFilter,
+      magFilter: NearestFilter,
+    })
     this.raymarchSteps = this._config.raymarchSteps
     this.filterRadius = this._config.filterRadius
     this.filterStrength = this._config.filterStrength
-    this.filterJitterStrength = this._config.filterJitterStrength
-    this.blueNoiseStrength = this._config.blueNoiseStrength
     this.mipBlur = this._config.mipBlur
     this.mipStrength = this._config.mipStrength
     this.wideDownsampleFactor = this._config.wideDownsampleFactor
     this.wideLevels = this._config.wideLevels
+    this.lightSourceRadius = this._config.lightSourceRadius
+    this.ddaPixelSize = this._config.ddaPixelSize
+    this.ddaQuantizationBits = this._config.ddaQuantizationBits
+    this.ddaRadianceRange = this._config.ddaRadianceRange
+    this.ddaBleedThreshold = this._config.ddaBleedThreshold
+    this.ddaPaletteBands = this._config.ddaPaletteBands
+    this.ddaPaletteExposure = this._config.ddaPaletteExposure
 
     registerDebugTexture('radiance.finalIrradiance', this._finalRadianceRT, 'rgba16f', {
       display: 'colors',
       label: 'GI final irradiance',
+    })
+    registerDebugTexture('radiance.emissiveSource', this._emissiveRadianceRT, 'rgba16f', {
+      display: 'colors',
+      label: 'Emissive sprite source pixels',
     })
     registerDebugTexture('radiance.rawFinalIrradiance', this._rawFinalRadianceRT, 'rgba16f', {
       display: 'colors',
@@ -491,10 +652,6 @@ export class RadianceCascades {
     return this._finalRadianceRT?.texture ?? null
   }
 
-  get sceneRadianceTexture(): Texture | null {
-    return this._sceneRadianceRT?.texture ?? null
-  }
-
   get cascadeTextures(): (Texture | null)[] {
     return this._cascadeRTs.map((rt) => rt?.texture ?? null)
   }
@@ -503,18 +660,94 @@ export class RadianceCascades {
     return this._finalRadianceRT.texture
   }
 
-  get blueNoiseStrength(): number {
-    return this._config.blueNoiseStrength
-  }
-
-  set blueNoiseStrength(value: number) {
-    const strength = Math.max(0, Math.min(1, value))
-    this._config.blueNoiseStrength = strength
-    this._blueNoiseStrengthNode.value = strength
-  }
-
   get raymarchSteps(): number {
     return this._config.raymarchSteps
+  }
+
+  get traversal(): RadianceCascadesTraversal {
+    return this._config.traversal
+  }
+
+  get requiresSdf(): boolean {
+    return this._config.traversal === 'sdf'
+  }
+
+  get ddaPixelSize(): number {
+    return this._config.ddaPixelSize
+  }
+
+  set ddaPixelSize(value: number) {
+    const pixelSize = Math.max(1, Math.min(32, Math.round(value)))
+    if (pixelSize === this._config.ddaPixelSize) return
+    this._config.ddaPixelSize = pixelSize
+    if (this._cascadeRTs.length > 0) {
+      this._resizeFinalRadianceTargets()
+      this._rebuildCascadeRTs()
+    }
+  }
+
+  get ddaQuantizationBits(): number {
+    return this._config.ddaQuantizationBits
+  }
+
+  set ddaQuantizationBits(value: number) {
+    const bits = Math.max(2, Math.min(8, Math.round(value)))
+    this._config.ddaQuantizationBits = bits
+    this._ddaQuantizationLevelsNode.value = 2 ** bits - 1
+  }
+
+  get ddaRadianceRange(): number {
+    return this._config.ddaRadianceRange
+  }
+
+  set ddaRadianceRange(value: number) {
+    const range = Math.max(0.25, Math.min(16, value))
+    this._config.ddaRadianceRange = range
+    this._ddaRadianceRangeNode.value = range
+  }
+
+  get ddaBleedThreshold(): number {
+    return this._config.ddaBleedThreshold
+  }
+
+  set ddaBleedThreshold(value: number) {
+    const threshold = Math.max(0, Math.min(2, value))
+    this._config.ddaBleedThreshold = threshold
+    this._ddaBleedThresholdNode.value = threshold
+  }
+
+  get ddaPaletteBands(): number {
+    return this._config.ddaPaletteBands
+  }
+
+  set ddaPaletteBands(value: number) {
+    const wasEnabled = this._usesPaletteFilter()
+    const bands = normalizeDdaPaletteBands(value)
+    this._config.ddaPaletteBands = bands
+    this._ddaPaletteBandsNode.value = bands
+    if (wasEnabled !== this._usesPaletteFilter()) {
+      this._filterRadianceMaterial?.dispose()
+      this._filterRadianceMaterial = null
+    }
+  }
+
+  get ddaPaletteExposure(): number {
+    return this._config.ddaPaletteExposure
+  }
+
+  set ddaPaletteExposure(value: number) {
+    const exposure = Math.max(0.25, Math.min(64, value))
+    this._config.ddaPaletteExposure = exposure
+    this._ddaPaletteExposureNode.value = exposure
+  }
+
+  get sdfHitEpsilon(): number {
+    return this._config.sdfHitEpsilon
+  }
+
+  set sdfHitEpsilon(value: number) {
+    this._config.sdfHitEpsilon = Math.max(0, value)
+    this._updateSdfHitEpsilon()
   }
 
   set raymarchSteps(value: number) {
@@ -566,33 +799,6 @@ export class RadianceCascades {
     this._config.filterStrength = strength
     this._filterStrengthNode.value = strength
     if (wasLocalEnabled !== this._usesLocalFilter()) {
-      this._filterRadianceMaterial?.dispose()
-      this._filterRadianceMaterial = null
-    }
-  }
-
-  get filterDiagonals(): boolean {
-    return this._config.filterDiagonals
-  }
-
-  set filterDiagonals(value: boolean) {
-    const enabled = Boolean(value)
-    if (enabled === this._config.filterDiagonals) return
-    this._config.filterDiagonals = enabled
-    this._filterRadianceMaterial?.dispose()
-    this._filterRadianceMaterial = null
-  }
-
-  get filterJitterStrength(): number {
-    return this._config.filterJitterStrength
-  }
-
-  set filterJitterStrength(value: number) {
-    const wasEnabled = this._config.filterJitterStrength > 0
-    const strength = Math.max(0, Math.min(1, value))
-    this._config.filterJitterStrength = strength
-    this._filterJitterStrengthNode.value = strength
-    if (wasEnabled !== (strength > 0)) {
       this._filterRadianceMaterial?.dispose()
       this._filterRadianceMaterial = null
     }
@@ -661,22 +867,81 @@ export class RadianceCascades {
     this._filterRadianceMaterial = null
   }
 
-  get sceneRadianceDownsampleFactor(): number {
-    return this._config.sceneRadianceDownsampleFactor
+  get lightSourceRadius(): number {
+    return this._config.lightSourceRadius
   }
 
-  set sceneRadianceDownsampleFactor(value: number) {
-    const factor = Math.max(1, Math.min(4, Math.round(value)))
-    if (factor === this._config.sceneRadianceDownsampleFactor) return
-    this._config.sceneRadianceDownsampleFactor = factor
-    if (this._sceneRadianceRT) {
-      this._resizeSceneRadianceTarget()
-      this._createCascadeMaterials()
-    }
+  set lightSourceRadius(value: number) {
+    const radius = Math.max(0, value)
+    if (radius === this._config.lightSourceRadius) return
+    this._config.lightSourceRadius = radius
+    if (this._cascadeRTs.length > 0) this._createCascadeMaterials()
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
   }
 
   private _usesMipFilter(): boolean {
     return this._config.mipStrength > 0
+  }
+
+  private _usesDdaFixed(): boolean {
+    return this._config.traversal === 'dda-fixed'
+  }
+
+  private _usesPaletteFilter(): boolean {
+    return this._usesDdaFixed() && this._config.ddaPaletteBands >= 2
+  }
+
+  /**
+   * Physical direction-atlas dimensions plus the visible logical lighting grid.
+   *
+   * DDA always traverses one cell at a time on `outputWidth × outputHeight`.
+   * The probe grid is padded only so every cascade direction block has an
+   * integral extent; the final resolve crops that padding instead of stretching
+   * it over the viewport.
+   */
+  private _transportDimensions(): {
+    width: number
+    height: number
+    probeWidth: number
+    probeHeight: number
+    outputWidth: number
+    outputHeight: number
+  } {
+    const baseResolution = this._config.cascadeResolution > 0 ? this._config.cascadeResolution : 128
+    const baseAngular = Math.sqrt(this._config.baseRayCount)
+    if (!this._usesDdaFixed()) {
+      const probeSize = baseResolution / baseAngular
+      return {
+        width: baseResolution,
+        height: baseResolution,
+        probeWidth: probeSize,
+        probeHeight: probeSize,
+        outputWidth: probeSize,
+        outputHeight: probeSize,
+      }
+    }
+    const coarsestStride = 2 ** (this._config.cascadeCount - 1)
+    const outputWidth = Math.max(1, Math.ceil(this._processingSize.x / this._config.ddaPixelSize))
+    const outputHeight = Math.max(1, Math.ceil(this._processingSize.y / this._config.ddaPixelSize))
+    const probeWidth = Math.ceil(outputWidth / coarsestStride) * coarsestStride
+    const probeHeight = Math.ceil(outputHeight / coarsestStride) * coarsestStride
+    return {
+      width: probeWidth * baseAngular,
+      height: probeHeight * baseAngular,
+      probeWidth,
+      probeHeight,
+      outputWidth,
+      outputHeight,
+    }
+  }
+
+  private _ddaMaxSteps(cascadeIndex: number): number {
+    const { outputWidth: gridWidth, outputHeight: gridHeight } = this._transportDimensions()
+    const minCellWorldSize = Math.max(1e-6, Math.min(this._worldSize.x / gridWidth, this._worldSize.y / gridHeight))
+    const intervalRange =
+      this._intervalRangeNodes[cascadeIndex]?.value ?? this._effectiveBaseInterval * Math.pow(4, cascadeIndex)
+    return Math.min(gridWidth + gridHeight + 1, Math.ceil((intervalRange / minCellWorldSize) * Math.SQRT2) + 3)
   }
 
   get wideFilterEnabled(): boolean {
@@ -705,13 +970,26 @@ export class RadianceCascades {
   }
 
   get estimatedRaymarchTexelCount(): number {
-    const resolution = this._config.cascadeResolution
-    if (resolution <= 0) return 0
-    return resolution * resolution * this._config.cascadeCount
+    const dimensions = this._transportDimensions()
+    return dimensions.width * dimensions.height * this._config.cascadeCount
   }
 
   get estimatedRaymarchSampleCount(): number {
-    return this.estimatedRaymarchTexelCount * this._config.raymarchSteps
+    if (!this._usesDdaFixed()) return this.estimatedRaymarchTexelCount * this._config.raymarchSteps
+    const dimensions = this._transportDimensions()
+    let samples = 0
+    for (let cascade = 0; cascade < this._config.cascadeCount; cascade++) {
+      samples += dimensions.width * dimensions.height * this._ddaMaxSteps(cascade)
+    }
+    return samples
+  }
+
+  get cascadeStorageBytesPerTexel(): number {
+    return this._usesDdaFixed() ? 4 : 8
+  }
+
+  get estimatedCascadeStorageBytes(): number {
+    return this.estimatedRaymarchTexelCount * this.cascadeStorageBytesPerTexel
   }
 
   private _usesLocalFilter(): boolean {
@@ -719,7 +997,7 @@ export class RadianceCascades {
   }
 
   private _usesFilteredOutput(): boolean {
-    return this._usesLocalFilter() || this._usesMipFilter()
+    return this._usesLocalFilter() || this._usesMipFilter() || this._usesPaletteFilter()
   }
 
   private _usesSecondWideLevel(): boolean {
@@ -728,19 +1006,30 @@ export class RadianceCascades {
 
   private _syncRawFinalMipState(): void {
     this._rawFinalRadianceRT.texture.generateMipmaps = false
-    this._rawFinalRadianceRT.texture.minFilter = LinearFilter
+    this._rawFinalRadianceRT.texture.minFilter = this._usesDdaFixed() ? NearestFilter : LinearFilter
   }
 
-  init(
-    worldWidth: number,
-    worldHeight: number,
-    lightsTexture: DataTexture,
-    lightCountNode: Node<'float'>
-  ): void {
+  private _resizeFinalRadianceTargets(): void {
+    const { outputWidth, outputHeight } = this._transportDimensions()
+    this._rawFinalRadianceRT.setSize(outputWidth, outputHeight)
+    this._finalRadianceRT.setSize(outputWidth, outputHeight)
+    this._emissiveRadianceRT.setSize(outputWidth, outputHeight)
+    this._finalTexelSizeNode.value.set(1 / outputWidth, 1 / outputHeight)
+    this._resizeWideRadianceTargets()
+  }
+
+  init(worldWidth: number, worldHeight: number, lightsTexture: DataTexture, lightCountNode: Node<'float'>): void {
     this._worldSize.set(worldWidth, worldHeight)
     this._worldSizeNode.value.set(worldWidth, worldHeight)
     this._lightsTexture = lightsTexture
     this._lightCountNode = lightCountNode
+
+    // Standalone users do not have a LightEffect resize lifecycle. Preserve a
+    // useful 1 world-unit = 1 physical-pixel fallback until an explicit
+    // processing surface is supplied.
+    if (!this._hasExplicitProcessingSize) {
+      this._processingSize.set(Math.max(1, Math.ceil(worldWidth)), Math.max(1, Math.ceil(worldHeight)))
+    }
 
     // Auto-calculate cascadeResolution from world size if not explicitly set.
     // Target ~1 probe per 1.5 world units, rounded up to next power of 2.
@@ -751,57 +1040,14 @@ export class RadianceCascades {
       const targetRes = targetProbes * baseAngular
       const autoRes = Math.pow(2, Math.ceil(Math.log2(targetRes)))
       this._config.cascadeResolution =
-        this._config.maxAutoCascadeResolution > 0
-          ? Math.min(autoRes, this._config.maxAutoCascadeResolution)
-          : autoRes
+        this._config.maxAutoCascadeResolution > 0 ? Math.min(autoRes, this._config.maxAutoCascadeResolution) : autoRes
     }
 
     this._updateIntervalUniforms()
 
-    const res = this._config.cascadeResolution
-    const probeCount = res / baseAngular
-
-    const sceneRadianceRes = this._sceneRadianceResolution()
-    this._sceneRadianceRT = new RenderTarget(sceneRadianceRes, sceneRadianceRes, {
-      type: HalfFloatType,
-      minFilter: LinearFilter,
-      magFilter: LinearFilter,
-      wrapS: ClampToEdgeWrapping,
-      wrapT: ClampToEdgeWrapping,
-      depthBuffer: false,
-      stencilBuffer: false,
-    })
-
-    registerDebugTexture('radiance.sceneRadiance', this._sceneRadianceRT, 'rgba16f', {
-      display: 'colors',
-      label: 'GI scene radiance (light circles)',
-    })
-
-    // Resize the eagerly-allocated final RT to match computed probe dimensions.
-    // The .texture reference stays stable — TSL nodes that captured it remain valid.
-    this._rawFinalRadianceRT.setSize(probeCount, probeCount)
-    this._finalRadianceRT.setSize(probeCount, probeCount)
-    this._resizeWideRadianceTargets()
-    this._finalTexelSizeNode.value.set(1 / probeCount, 1 / probeCount)
+    this._resizeFinalRadianceTargets()
 
     this._rebuildCascadeRTs()
-  }
-
-  private _sceneRadianceResolution(): number {
-    return Math.max(
-      1,
-      Math.ceil(this._config.cascadeResolution / this._config.sceneRadianceDownsampleFactor)
-    )
-  }
-
-  private _resizeSceneRadianceTarget(): void {
-    if (!this._sceneRadianceRT) return
-    const sceneRadianceRes = this._sceneRadianceResolution()
-    this._sceneRadianceRT.setSize(sceneRadianceRes, sceneRadianceRes)
-    for (const mat of this._cascadeMaterials) {
-      mat.dispose()
-    }
-    this._cascadeMaterials = []
   }
 
   private _resizeWideRadianceTargets(): void {
@@ -864,19 +1110,20 @@ export class RadianceCascades {
     this._ensureIntervalUniforms()
     this._updateIntervalUniforms()
 
-    const res = this._config.cascadeResolution
+    const dimensions = this._transportDimensions()
+    const packed = this._usesDdaFixed()
     for (let i = 0; i < this._config.cascadeCount; i++) {
-      const rt = new RenderTarget(res, res, {
-        type: HalfFloatType,
-        minFilter: LinearFilter,
-        magFilter: LinearFilter,
+      const rt = new RenderTarget(dimensions.width, dimensions.height, {
+        type: packed ? UnsignedByteType : HalfFloatType,
+        minFilter: packed ? NearestFilter : LinearFilter,
+        magFilter: packed ? NearestFilter : LinearFilter,
         wrapS: ClampToEdgeWrapping,
         wrapT: ClampToEdgeWrapping,
         depthBuffer: false,
         stencilBuffer: false,
       })
       this._cascadeRTs.push(rt)
-      registerDebugTexture(`radiance.cascade${i}`, rt, 'rgba16f', {
+      registerDebugTexture(`radiance.cascade${i}`, rt, packed ? 'rgba8' : 'rgba16f', {
         display: 'colors',
         label: `GI cascade ${i}`,
       })
@@ -889,11 +1136,9 @@ export class RadianceCascades {
     while (this._intervalOffsetNodes.length < this._config.cascadeCount) {
       this._intervalOffsetNodes.push(uniform(0) as UniformNode<'float', number>)
       this._intervalRangeNodes.push(uniform(1) as UniformNode<'float', number>)
-      this._minStepNodes.push(uniform(0.001) as UniformNode<'float', number>)
     }
     this._intervalOffsetNodes.length = this._config.cascadeCount
     this._intervalRangeNodes.length = this._config.cascadeCount
-    this._minStepNodes.length = this._config.cascadeCount
   }
 
   private _updateIntervalUniforms(): void {
@@ -913,7 +1158,6 @@ export class RadianceCascades {
       const overlap = i === 0 ? 0 : range * this._config.intervalOverlap
       this._intervalOffsetNodes[i]!.value = Math.max(0, offset - overlap)
       this._intervalRangeNodes[i]!.value = range + overlap
-      this._minStepNodes[i]!.value = Math.max(range / this._config.raymarchSteps, 0.001)
       offset += range
     }
   }
@@ -932,6 +1176,28 @@ export class RadianceCascades {
     this._updateIntervalUniforms()
   }
 
+  /** Set the physical effect surface used to derive the DDA lighting grid. */
+  setProcessingSize(width: number, height: number): void {
+    const nextWidth = Math.max(1, Math.ceil(width))
+    const nextHeight = Math.max(1, Math.ceil(height))
+    this._hasExplicitProcessingSize = true
+    if (nextWidth === this._processingSize.x && nextHeight === this._processingSize.y) return
+    const previousDimensions = this._usesDdaFixed() ? this._transportDimensions() : null
+    this._processingSize.set(nextWidth, nextHeight)
+    if (!previousDimensions || this._cascadeRTs.length === 0) return
+    const nextDimensions = this._transportDimensions()
+    if (
+      nextDimensions.width === previousDimensions.width &&
+      nextDimensions.height === previousDimensions.height &&
+      nextDimensions.outputWidth === previousDimensions.outputWidth &&
+      nextDimensions.outputHeight === previousDimensions.outputHeight
+    ) {
+      return
+    }
+    this._resizeFinalRadianceTargets()
+    this._rebuildCascadeRTs()
+  }
+
   setSdfTexture(texture: Texture): void {
     if (this._sdfTexture !== texture) {
       this._sdfTexture = texture
@@ -942,35 +1208,64 @@ export class RadianceCascades {
     }
   }
 
-  generate(renderer: WebGPURenderer, sdfTexture: Texture): void {
-    if (this._sdfTexture !== sdfTexture) {
+  setOcclusionTexture(texture: Texture | null): void {
+    const image = texture?.image as { width?: number; height?: number } | undefined
+    this._occlusionTextureSizeNode.value.set(Math.max(1, image?.width ?? 1), Math.max(1, image?.height ?? 1))
+    // RenderTarget textures retain their identity across setSize(). Refresh
+    // the physical texel dimensions even when the texture object is unchanged;
+    // otherwise DDA can keep the constructor-time 1x1 size and sample a single
+    // corner occlusion texel for the entire viewport.
+    if (this._occlusionTexture === texture) return
+    this._occlusionTexture = texture
+    this._disposeWideRadianceMaterials()
+    this._filterRadianceMaterial?.dispose()
+    this._filterRadianceMaterial = null
+    this._createCascadeMaterials()
+  }
+
+  generate(
+    renderer: WebGPURenderer,
+    sdfTexture: Texture | null,
+    occlusionTexture: Texture | null = null,
+    scene?: Scene,
+    camera?: OrthographicCamera
+  ): void {
+    if (this._generating) return
+    this._generating = true
+    if (sdfTexture && this._sdfTexture !== sdfTexture) {
       this._sdfTexture = sdfTexture
       this._disposeWideRadianceMaterials()
       this._filterRadianceMaterial?.dispose()
       this._filterRadianceMaterial = null
       this._createCascadeMaterials()
     }
+    this.setOcclusionTexture(occlusionTexture)
+    if (this._usesDdaFixed() && !this._occlusionTexture) {
+      this._generating = false
+      return
+    }
+    if (!this._usesDdaFixed() && !this._sdfTexture) {
+      this._generating = false
+      return
+    }
+    if (!this._usesDdaFixed()) this._updateSdfHitEpsilon()
 
     _rendererState = RendererUtils.resetRendererState(renderer, _rendererState)
 
     try {
-      // Step 1: Render scene radiance (lights as soft emission density).
-      this._renderSceneRadiance(renderer)
+      this._captureEmissiveRadiance(renderer, scene, camera)
 
-      // Step 2: Process cascades from highest to lowest. Each cascade stores
+      // Process cascades from highest to lowest. Each cascade stores
       // <radiance.rgb, transmittance.a>; lower cascades merge their near
       // interval with four higher-cascade sub-rays via Eq. 7 from the paper.
       for (let i = this._config.cascadeCount - 1; i >= 0; i--) {
         this._renderCascade(renderer, i)
       }
 
-      // Step 3: Average all directions from cascade 0. When filtering is off,
+      // Average all directions from cascade 0. When filtering is off,
       // write directly into the stable public texture and skip the copy/filter pass.
       const usesFilteredOutput = this._usesFilteredOutput()
-      this._renderFinalRadiance(
-        renderer,
-        usesFilteredOutput ? this._rawFinalRadianceRT : this._finalRadianceRT
-      )
+      this._renderFinalRadiance(renderer, usesFilteredOutput ? this._rawFinalRadianceRT : this._finalRadianceRT)
       if (usesFilteredOutput) {
         if (this._usesMipFilter()) {
           this._renderWideRadiance(renderer)
@@ -979,104 +1274,31 @@ export class RadianceCascades {
       }
     } finally {
       RendererUtils.restoreRendererState(renderer, _rendererState)
+      this._generating = false
     }
   }
 
-  // ============================================
-  // SCENE RADIANCE (lights as soft circles)
-  // ============================================
-
-  private _renderSceneRadiance(renderer: WebGPURenderer): void {
-    if (!this._sceneRadianceRT || !this._lightsTexture || !this._lightCountNode) return
-
-    this._ensureSceneRadianceMaterial()
-    if (!this._sceneRadianceMaterial) return
-
-    beginDebugPass('radiance.scene', renderer)
-    _quadMesh.material = this._sceneRadianceMaterial
-    renderer.setRenderTarget(this._sceneRadianceRT)
-    _quadMesh.render(renderer)
-    endDebugPass(renderer)
+  private _captureEmissiveRadiance(renderer: WebGPURenderer, scene?: Scene, camera?: OrthographicCamera): void {
+    const previousColor = renderer.getClearColor(_emissiveClearColor).clone()
+    const previousAlpha = renderer.getClearAlpha()
+    renderer.setRenderTarget(this._emissiveRadianceRT)
+    renderer.setClearColor(0x000000, 0)
+    renderer.clear()
+    renderer.setClearColor(previousColor, previousAlpha)
+    if (scene && camera) {
+      this._emissivePass.render(renderer, scene, camera, this._emissiveRadianceRT, this._worldSize)
+    }
   }
 
-  /**
-   * Create the scene radiance material.
-   * Renders each light as a soft circle of radiance.
-   *
-   * Bug 7 fix: Uses uvToWorld() consistently — no manual Y-flip.
-   */
-  private _ensureSceneRadianceMaterial(): void {
-    if (this._sceneRadianceMaterial) return
-    if (!this._lightsTexture || !this._lightCountNode) return
-
-    const lightsTexture = this._lightsTexture
-    const lightCount = this._lightCountNode
-    const worldSize = this._worldSizeNode
-    const worldOffset = this._worldOffsetNode
-
-    this._sceneRadianceMaterial = new NodeMaterial()
-    this._sceneRadianceMaterial.fragmentNode = Fn(() => {
-      const fragUV = uv()
-      const worldPos = uvToWorld(fragUV, worldSize, worldOffset)
-
-      const totalRadiance = vec3(0, 0, 0).toVar()
-
-      Loop(
-        { start: 0, end: lightCount, type: 'float', condition: '<' },
-        ({ i }: { i: Node<'float'> }) => {
-          const row0 = textureLoad(lightsTexture, ivec2(int(i), int(0)))
-          const row1 = textureLoad(lightsTexture, ivec2(int(i), int(1)))
-          const row2 = textureLoad(lightsTexture, ivec2(int(i), int(2)))
-          const row3 = textureLoad(lightsTexture, ivec2(int(i), int(3)))
-
-          const lightPos = vec2(row0.r, row0.g)
-          const lightColor = vec3(row0.b, row0.a, row1.r)
-          const lightIntensity = row1.g
-          const lightDistance = row1.b
-          const lightDecay = row1.a
-          const lightDir = vec2(row2.r, row2.g)
-          const lightAngle = row2.b
-          const lightPenumbra = row2.a
-          const lightType = row3.r
-          const lightEnabled = row3.g
-
-          If(lightEnabled.greaterThan(float(0.5)), () => {
-            const isAmbient = lightType.greaterThan(float(2.5))
-            If(isAmbient, () => {
-              totalRadiance.addAssign(lightColor.mul(lightIntensity))
-            })
-
-            const isPositional = lightType.lessThan(float(1.5))
-            If(isPositional, () => {
-              const toLight = lightPos.sub(worldPos)
-              const dist = toLight.length()
-              const lightRadius = lightDistance.max(float(1))
-
-              If(dist.lessThan(lightRadius), () => {
-                const normDist = dist.div(lightRadius).clamp(0, 1)
-                const falloff = float(1).sub(normDist.pow(lightDecay)).clamp(0, 1)
-                const attenuation = falloff.toVar()
-                const isSpot = lightType.greaterThan(float(0.5)).and(lightType.lessThan(float(1.5)))
-
-                If(isSpot, () => {
-                  const toSurfaceNorm = worldPos.sub(lightPos).normalize()
-                  const spotCos = toSurfaceNorm.dot(lightDir)
-                  const innerCos = lightAngle.cos()
-                  const outerCos = lightAngle.add(lightPenumbra).cos()
-                  const cone = spotCos.sub(outerCos).div(innerCos.sub(outerCos)).clamp(0, 1)
-                  attenuation.mulAssign(cone)
-                })
-
-                totalRadiance.addAssign(lightColor.mul(lightIntensity).mul(attenuation))
-              })
-            })
-          })
-        }
-      )
-
-      // Store in linear space — no gamma conversion
-      return vec4(totalRadiance, float(1))
-    })() as Node<'vec4'>
+  private _updateSdfHitEpsilon(): void {
+    if (this._config.sdfHitEpsilon > 0) {
+      this._sdfHitEpsilonNode.value = this._config.sdfHitEpsilon
+      return
+    }
+    const image = this._sdfTexture?.image as { width?: number; height?: number } | undefined
+    const width = Math.max(1, image?.width ?? 1)
+    const height = Math.max(1, image?.height ?? 1)
+    this._sdfHitEpsilonNode.value = Math.max(this._worldSize.x / width, this._worldSize.y / height) * 0.5
   }
 
   // ============================================
@@ -1100,14 +1322,31 @@ export class RadianceCascades {
     }
     this._cascadeMaterials = []
 
-    if (!this._sdfTexture || !this._sceneRadianceRT) return
+    if ((!this._usesDdaFixed() && !this._sdfTexture) || (this._usesDdaFixed() && !this._occlusionTexture)) return
+    if (!this._lightsTexture) return
     for (let i = 0; i < this._config.cascadeCount; i++) {
-      const prevCascadeTex =
-        i < this._config.cascadeCount - 1 ? (this._cascadeRTs[i + 1]?.texture ?? null) : null
+      const prevCascadeTex = i < this._config.cascadeCount - 1 ? (this._cascadeRTs[i + 1]?.texture ?? null) : null
 
       const material = this._createCascadeMaterial(i, prevCascadeTex)
       this._cascadeMaterials.push(material)
     }
+  }
+
+  private _encodeDdaFixed(value: Node<'vec4'>): Node<'vec4'> {
+    if (!this._usesDdaFixed()) return value
+    const levels = this._ddaQuantizationLevelsNode
+    const encodedRgb = floor(value.rgb.div(this._ddaRadianceRangeNode).clamp(0, 1).mul(levels).add(float(0.5))).div(
+      levels
+    )
+    const encodedTransmittance = floor(value.a.clamp(0, 1).mul(levels).add(float(0.5))).div(levels)
+    return vec4(encodedRgb, encodedTransmittance)
+  }
+
+  private _decodeDdaFixed(value: Node<'vec4'>): Node<'vec4'> {
+    if (!this._usesDdaFixed()) return value
+    const levels = this._ddaQuantizationLevelsNode
+    const fixedCode = floor(value.mul(levels).add(float(0.5))).clamp(0, levels)
+    return vec4(fixedCode.rgb.div(levels).mul(this._ddaRadianceRangeNode), fixedCode.a.div(levels))
   }
 
   /**
@@ -1119,20 +1358,15 @@ export class RadianceCascades {
    *
    * Fixes applied:
    * - Interval scaling uses pow(4, c) geometric series (branching factor 4)
-   * - Highest cascade samples scene radiance at ray endpoint on miss (boundary condition)
-   * - SDF scale uses average(worldW, worldH) for isotropic distance conversion
    * - Cascade merge averages 4 sub-rays from cascade N+1
    * - Uses worldToUV/uvToWorld consistently
    */
-  private _createCascadeMaterial(
-    cascadeIndex: number,
-    prevCascadeTexture: Texture | null
-  ): NodeMaterial {
+  private _createCascadeMaterial(cascadeIndex: number, prevCascadeTexture: Texture | null): NodeMaterial {
     const config = this._config
-    const sdfTexture = this._sdfTexture!
-    const sceneRadianceTexture = this._sceneRadianceRT!.texture
-    const blueNoiseTexture = this._blueNoiseTexture
-    const blueNoiseStrength = this._blueNoiseStrengthNode
+    const sdfTexture = this._sdfTexture
+    const occlusionTexture = this._occlusionTexture
+    const lightsTexture = this._lightsTexture!
+    const lightCount = this._lightCountNode!
     const worldSize = this._worldSizeNode
     const worldOffset = this._worldOffsetNode
 
@@ -1140,80 +1374,177 @@ export class RadianceCascades {
     const angular = baseAngular * Math.pow(2, cascadeIndex)
     const angularSq = angular * angular
 
-    const res = config.cascadeResolution
-    const probeGroupSize = res / angular
+    const dimensions = this._transportDimensions()
+    const atlasWidth = dimensions.width
+    const atlasHeight = dimensions.height
+    const probeGroupWidth = atlasWidth / angular
+    const probeGroupHeight = atlasHeight / angular
+    const cascadeStride = 2 ** cascadeIndex
+    const activeProbeWidth = Math.ceil(dimensions.outputWidth / cascadeStride)
+    const activeProbeHeight = Math.ceil(dimensions.outputHeight / cascadeStride)
+    const ddaGridWidth = dimensions.outputWidth
+    const ddaGridHeight = dimensions.outputHeight
+    const ddaMaxSteps = this._ddaMaxSteps(cascadeIndex)
+    const sourceRadius =
+      config.lightSourceRadius > 0
+        ? float(config.lightSourceRadius)
+        : this._usesDdaFixed()
+          ? min(worldSize.x, worldSize.y)
+              .mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
+              .max(
+                min(worldSize.x.div(float(ddaGridWidth)), worldSize.y.div(float(ddaGridHeight))).mul(
+                  float(AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS)
+                )
+              )
+          : min(worldSize.x, worldSize.y).mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
 
     const intervalOffset = this._intervalOffsetNodes[cascadeIndex]!
     const intervalRange = this._intervalRangeNodes[cascadeIndex]!
-    const minStep = this._minStepNodes[cascadeIndex]!
     const raymarchSteps = config.raymarchSteps
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
-      const fragCoord = uv().mul(float(res))
+      const fragCoord = uv().mul(vec2(float(atlasWidth), float(atlasHeight)))
 
       // Direction-first layout decomposition
-      const rayXY = floor(fragCoord.div(float(probeGroupSize)))
-      const probeXY = mod(fragCoord, float(probeGroupSize))
+      const probeGroupSize = vec2(float(probeGroupWidth), float(probeGroupHeight))
+      const rayXY = floor(fragCoord.div(probeGroupSize))
+      const probeXY = mod(fragCoord, probeGroupSize)
       const rayIndex = rayXY.x.add(rayXY.y.mul(float(angular)))
 
-      const probeUV = probeXY.add(float(0.5)).div(float(probeGroupSize))
-      const probeWorldPos = uvToWorld(probeUV, worldSize, worldOffset)
+      // `fragCoord` and therefore `probeXY` are already pixel-centred
+      // (`probeXY = probeIndex + 0.5`). Adding another half texel shifts the
+      // traced interval away from the probe represented by this atlas texel.
+      // The far-cascade lookup below is phased from the unshifted centre, so
+      // that mismatch presents as parallax error and light leaking at walls.
+      // Each higher cascade halves spatial probe density while doubling its
+      // angular resolution. Its direction block therefore spans the complete
+      // world at `cascadeStride` base-grid cells per probe. Previously every
+      // level divided by the base output dimensions without this stride,
+      // compressing C1/C2/C3 into 1/2, 1/4 and 1/8 of the viewport. The merge
+      // then produced repeated quadrants, Y-displaced sources and X-shaped
+      // energy. Padding only duplicates the final active probe.
+      const activeProbeXY = probeXY.clamp(
+        vec2(0.5),
+        vec2(float(activeProbeWidth - 0.5), float(activeProbeHeight - 0.5))
+      )
+      const probeUV = activeProbeXY
+        .mul(float(cascadeStride))
+        .div(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
+        .clamp(0, 1)
+      const probeLocalPos = probeUV.mul(worldSize)
+      const probeWorldPos = probeLocalPos.add(worldOffset)
 
-      // Ray direction from angular index. Stable per-probe jitter breaks
-      // up hard angular sectors into filterable noise without temporal shimmer.
-      const jitter = config.angularJitter
-        ? sampleTexture(
-            blueNoiseTexture,
-            fragCoord.add(float(cascadeIndex * 17)).div(float(BLUE_NOISE_SIZE))
-          )
-            .r.sub(float(0.5))
-            .mul(float(2))
-            .mul(blueNoiseStrength)
-        : float(0)
-      const theta = rayIndex.add(float(0.5).add(jitter)).mul(float(TAU / angularSq))
+      const theta = rayIndex.add(float(0.5)).mul(float(TAU / angularSq))
       const rayDir = vec2(cos(theta), sin(theta))
 
+      const segmentStart = probeWorldPos.add(rayDir.mul(intervalOffset))
+      const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset))
+      const source = traceAnalyticLightSources(
+        lightsTexture,
+        lightCount,
+        segmentStart,
+        rayDir,
+        intervalRange,
+        sourceRadius
+      )
+      const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, intervalRange)
       const intervalRadiance = vec3(0).toVar()
       const intervalTransmittance = float(1).toVar()
-      const intervalEnd = intervalOffset.add(intervalRange)
-      const t = intervalOffset.toVar()
+      const t = float(0).toVar()
+      const reachedTraceLimit = float(0).toVar()
 
-      Loop(raymarchSteps, () => {
-        const sampleWorld = probeWorldPos.add(rayDir.mul(t))
-        const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
+      if (this._usesDdaFixed() && occlusionTexture) {
+        // The binary occlusion and emissive targets are camera-local grids.
+        // Traverse them in that local space instead of repeatedly subtracting
+        // a potentially large/negative map-space camera origin inside the DDA
+        // walk. Analytic lights above remain world-space; distances and ray
+        // directions are translation invariant, so both paths share the same
+        // trace limit without mixing coordinate spaces.
+        const localOrigin = vec2(0)
+        const boundsInterval = rayBoundsInterval(segmentStartLocal, rayDir, worldSize, localOrigin)
+        const traceEntry = boundsInterval.x.max(float(0))
+        const traceExit = boundsInterval.y.min(traceLimit)
+        const intersectsWorld = traceExit.greaterThanEqual(traceEntry)
+        const visibility = traceDdaIntegerRadiance(
+          occlusionTexture,
+          this._occlusionTextureSizeNode,
+          this._emissiveRadianceRT.texture,
+          segmentStartLocal,
+          rayDir,
+          traceEntry,
+          traceExit,
+          intersectsWorld,
+          worldSize,
+          localOrigin,
+          ddaGridWidth,
+          ddaGridHeight,
+          ddaMaxSteps
+        )
+        intervalRadiance.assign(visibility.rgb)
+        intervalTransmittance.assign(
+          visibility.a
+            .lessThan(float(-0.5))
+            .or(visibility.a.greaterThan(float(1.5)))
+            .select(float(0), float(1))
+        )
+        reachedTraceLimit.assign(
+          visibility.a
+            .greaterThan(float(0.5))
+            .and(visibility.a.lessThan(float(1.5)))
+            .select(float(1), float(0))
+        )
+      } else if (sdfTexture) {
+        Loop(raymarchSteps, () => {
+          const sampleWorld = segmentStart.add(rayDir.mul(t))
+          const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
 
-        // Bounds check
-        const outOfBounds = sampleUV.x
-          .lessThan(0)
-          .or(sampleUV.x.greaterThan(1))
-          .or(sampleUV.y.lessThan(0))
-          .or(sampleUV.y.greaterThan(1))
+          // Bounds check
+          const outOfBounds = sampleUV.x
+            .lessThan(0)
+            .or(sampleUV.x.greaterThan(1))
+            .or(sampleUV.y.lessThan(0))
+            .or(sampleUV.y.greaterThan(1))
 
-        If(outOfBounds, () => {
+          If(outOfBounds, () => {
+            // Leaving the scene texture is empty space, not an occluder. The
+            // interval is complete and remains transmissive.
+            reachedTraceLimit.assign(float(1))
+            Break()
+          })
+
+          const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
+          const sdfSample = sampleTexture(sdfTexture, sdfUV)
+          const sdfDist = sdfSample.r
+
+          If(sdfDist.lessThan(this._sdfHitEpsilonNode), () => {
+            intervalTransmittance.assign(float(0))
+            Break()
+          })
+
+          const stepLen = min(sdfDist.max(float(0.001)), traceLimit.sub(t).max(float(0)))
+          t.addAssign(stepLen)
+
+          If(t.greaterThanEqual(traceLimit), () => {
+            reachedTraceLimit.assign(float(1))
+            Break()
+          })
+        })
+      }
+
+      // Exhausting a fixed sphere-trace budget is not evidence of an
+      // occluder. Preserve transmittance for the parent cascade, but only add
+      // an analytic source after the marcher actually reached its distance.
+      If(
+        intervalTransmittance
+          .greaterThan(float(0.5))
+          .and(reachedTraceLimit.greaterThan(float(0.5)))
+          .and(source.hit.greaterThan(float(0.5))),
+        () => {
+          intervalRadiance.assign(source.radiance)
           intervalTransmittance.assign(float(0))
-          Break()
-        })
-
-        const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
-        const sdfSample = sampleTexture(sdfTexture, sdfUV)
-        const sdfDist = sdfSample.r
-
-        If(sdfDist.lessThan(float(EPS)), () => {
-          intervalTransmittance.assign(float(0))
-          Break()
-        })
-
-        const stepLen = min(sdfDist.max(minStep), intervalEnd.sub(t))
-        const sceneRad = sampleTexture(sceneRadianceTexture, sampleUV)
-        intervalRadiance.addAssign(sceneRad.rgb.mul(intervalTransmittance).mul(stepLen))
-
-        t.addAssign(stepLen)
-
-        If(t.greaterThanEqual(intervalEnd), () => {
-          Break()
-        })
-      })
+        }
+      )
 
       const mergedRadiance = vec3(intervalRadiance).toVar()
       const mergedTransmittance = float(intervalTransmittance).toVar()
@@ -1221,28 +1552,35 @@ export class RadianceCascades {
       if (prevCascadeTexture && cascadeIndex < config.cascadeCount - 1) {
         If(intervalTransmittance.greaterThan(float(0)), () => {
           const angularN1 = angular * 2
-          const probeGroupSizeN1 = res / angularN1
+          const probeGroupWidthN1 = atlasWidth / angularN1
+          const probeGroupHeightN1 = atlasHeight / angularN1
+          const parentStride = cascadeStride * 2
+          const activeProbeWidthN1 = Math.ceil(dimensions.outputWidth / parentStride)
+          const activeProbeHeightN1 = Math.ceil(dimensions.outputHeight / parentStride)
 
           // Map probe position from this cascade to next cascade's probe space.
           // N+1 has half the probes per direction block (double angular resolution).
-          const probeN1 = probeXY.mul(float(0.5)).clamp(float(0.5), float(probeGroupSizeN1 - 0.5))
+          // Preserve the current probe's screen-space centre in the coarser
+          // grid. Clamp inside this direction block: the render target only
+          // clamps at its outer edge, so an unclamped hardware-filtered sample
+          // could otherwise blend with an adjacent direction block.
+          const probeN1 = probeXY
+            .mul(float(0.5))
+            .clamp(vec2(0.5), vec2(float(activeProbeWidthN1 - 0.5), float(activeProbeHeightN1 - 0.5)))
 
           const farRadiance = vec3(0).toVar()
           const farTransmittance = float(0).toVar()
 
           for (let subRay = 0; subRay < 4; subRay++) {
             const subRayIndex = rayIndex.mul(float(4)).add(float(subRay))
-            const rayN1XY = vec2(
-              mod(subRayIndex, float(angularN1)),
-              floor(subRayIndex.div(float(angularN1)))
-            )
+            const rayN1XY = vec2(mod(subRayIndex, float(angularN1)), floor(subRayIndex.div(float(angularN1))))
 
             // Compute full texel position, then convert to UV for bilinear sampling.
             // textureLoad and sampleTexture share the same coordinate origin for
             // render targets in WebGPU — no Y-flip needed.
-            const texelPos = rayN1XY.mul(float(probeGroupSizeN1)).add(probeN1)
-            const mergeUV = texelPos.div(float(res))
-            const mergedSample = sampleTexture(prevCascadeTexture, mergeUV)
+            const texelPos = rayN1XY.mul(vec2(float(probeGroupWidthN1), float(probeGroupHeightN1))).add(probeN1)
+            const mergeUV = texelPos.div(vec2(float(atlasWidth), float(atlasHeight)))
+            const mergedSample = this._decodeDdaFixed(sampleTexture(prevCascadeTexture, mergeUV))
             farRadiance.addAssign(mergedSample.rgb)
             farTransmittance.addAssign(mergedSample.a)
           }
@@ -1254,7 +1592,7 @@ export class RadianceCascades {
         })
       }
 
-      return vec4(mergedRadiance, mergedTransmittance)
+      return this._encodeDdaFixed(vec4(mergedRadiance, mergedTransmittance))
     })() as Node<'vec4'>
 
     return material
@@ -1290,19 +1628,25 @@ export class RadianceCascades {
   private _ensureFinalRadianceMaterial(): void {
     if (this._finalRadianceMaterial) return
     if (!this._cascadeRTs[0]) return
+    if (!this._lightsTexture || !this._lightCountNode) return
 
     const cascade0Texture = this._cascadeRTs[0].texture
+    const lightsTexture = this._lightsTexture
+    const lightCount = this._lightCountNode
     const config = this._config
     const baseAngular = Math.sqrt(config.baseRayCount)
     const angular = baseAngular // Cascade 0 angular
     const angularSq = angular * angular
-    const res = config.cascadeResolution
-    const probeGroupSize = res / angular
+    const dimensions = this._transportDimensions()
+    const atlasWidth = dimensions.width
+    const atlasHeight = dimensions.height
+    const probeGroupWidth = atlasWidth / angular
+    const probeGroupHeight = atlasHeight / angular
 
     this._finalRadianceMaterial = new NodeMaterial()
     this._finalRadianceMaterial.fragmentNode = Fn(() => {
       // Map final RT UV → probe position in cascade 0
-      const probeXY = uv().mul(float(probeGroupSize))
+      const probeXY = uv().mul(vec2(float(probeGroupWidth), float(probeGroupHeight)))
 
       const irradiance = vec3(0).toVar()
 
@@ -1310,16 +1654,17 @@ export class RadianceCascades {
       for (let dirY = 0; dirY < angular; dirY++) {
         for (let dirX = 0; dirX < angular; dirX++) {
           const lookupCoord = vec2(
-            float(dirX * probeGroupSize).add(probeXY.x),
-            float(dirY * probeGroupSize).add(probeXY.y)
+            float(dirX * probeGroupWidth).add(probeXY.x),
+            float(dirY * probeGroupHeight).add(probeXY.y)
           )
-          const lookupUV = lookupCoord.div(float(res))
-          const sample = sampleTexture(cascade0Texture, lookupUV)
+          const lookupUV = lookupCoord.div(vec2(float(atlasWidth), float(atlasHeight)))
+          const sample = this._decodeDdaFixed(sampleTexture(cascade0Texture, lookupUV))
           irradiance.addAssign(sample.rgb)
         }
       }
 
       irradiance.divAssign(float(angularSq))
+      if (config.includeAmbient) irradiance.addAssign(collectAmbientRadiance(lightsTexture, lightCount))
 
       return vec4(irradiance, float(1))
     })() as Node<'vec4'>
@@ -1394,14 +1739,12 @@ export class RadianceCascades {
   private _ensureWideRadianceMaterials(): void {
     const needsWideBlur = this._usesWideBlur()
     const hasFirstLevel =
-      this._wideDownsampleMaterial &&
-      (!needsWideBlur || (this._wideBlurHMaterial && this._wideBlurVMaterial))
-    const hasSecondLevel =
-      this._wideDownsampleMaterial2 && this._wideBlurHMaterial2 && this._wideBlurVMaterial2
+      this._wideDownsampleMaterial && (!needsWideBlur || (this._wideBlurHMaterial && this._wideBlurVMaterial))
+    const hasSecondLevel = this._wideDownsampleMaterial2 && this._wideBlurHMaterial2 && this._wideBlurVMaterial2
     if (hasFirstLevel && (!this._usesSecondWideLevel() || hasSecondLevel)) {
       return
     }
-    if (!this._sdfTexture) return
+    if ((!this._usesDdaFixed() && !this._sdfTexture) || (this._usesDdaFixed() && !this._occlusionTexture)) return
 
     if (!hasFirstLevel) {
       this._wideDownsampleMaterial = this._createSdfAwareDownsampleMaterial(
@@ -1444,7 +1787,9 @@ export class RadianceCascades {
     sourceTexture: Texture,
     sourceTexelSize: UniformNode<'vec2', Vector2>
   ): NodeMaterial {
-    const sdfTexture = this._sdfTexture!
+    const sdfTexture = this._sdfTexture
+    const occlusionTexture = this._occlusionTexture
+    const usesDda = this._usesDdaFixed()
     const texelSize = sourceTexelSize
     const radius = this._filterRadiusNode
 
@@ -1452,8 +1797,11 @@ export class RadianceCascades {
     material.fragmentNode = Fn(() => {
       const centerUV = uv()
       const center = sampleTexture(sourceTexture, centerUV)
-      const centerSDFUV = vec2(centerUV.x, float(1).sub(centerUV.y))
-      const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
+      const pointIsOpen = (pointUV: Node<'vec2'>): Node<'bool'> =>
+        usesDda
+          ? sampleTexture(occlusionTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).a.lessThan(float(0.5))
+          : sampleTexture(sdfTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).r.greaterThan(this._sdfHitEpsilonNode)
+      const centerOpen = pointIsOpen(centerUV)
 
       const total = vec3(center.rgb).mul(float(4)).toVar()
       const totalWeight = float(4).toVar()
@@ -1462,14 +1810,7 @@ export class RadianceCascades {
         const offset = vec2(dx, dy).mul(texelSize).mul(radius)
         const neighborUV = centerUV.add(offset).clamp(0, 1)
         const midpointUV = centerUV.add(offset.mul(float(0.5))).clamp(0, 1)
-        const neighborSDFUV = vec2(neighborUV.x, float(1).sub(neighborUV.y))
-        const midpointSDFUV = vec2(midpointUV.x, float(1).sub(midpointUV.y))
-        const neighborSDF = sampleTexture(sdfTexture, neighborSDFUV).r
-        const midpointSDF = sampleTexture(sdfTexture, midpointSDFUV).r
-        const visible = centerSDF
-          .greaterThan(float(EPS))
-          .and(neighborSDF.greaterThan(float(EPS)))
-          .and(midpointSDF.greaterThan(float(EPS)))
+        const visible = centerOpen.and(pointIsOpen(neighborUV)).and(pointIsOpen(midpointUV))
         const weight = visible.select(float(baseWeight), float(0))
         const sample = sampleTexture(sourceTexture, neighborUV)
         total.addAssign(sample.rgb.mul(weight))
@@ -1527,58 +1868,66 @@ export class RadianceCascades {
 
   private _ensureFilterRadianceMaterial(): void {
     if (this._filterRadianceMaterial) return
-    if (!this._sdfTexture) return
+    if ((!this._usesDdaFixed() && !this._sdfTexture) || (this._usesDdaFixed() && !this._occlusionTexture)) return
 
     const rawFinalTexture = this._rawFinalRadianceRT.texture
     const sdfTexture = this._sdfTexture
-    const blueNoiseTexture = this._blueNoiseTexture
+    const occlusionTexture = this._occlusionTexture
+    const usesDda = this._usesDdaFixed()
     const texelSize = this._finalTexelSizeNode
     const radius = this._filterRadiusNode
     const strength = this._filterStrengthNode
     const useLocalFilter = this._usesLocalFilter()
     const useWideFilter = this._usesMipFilter()
     const useSecondWideLevel = this._usesSecondWideLevel()
-    const useFilterDiagonals = this._config.filterDiagonals
-    const useFilterJitter = this._config.filterJitterStrength > 0
-    const filterJitterStrength = this._filterJitterStrengthNode
     const mipStrength = this._mipStrengthNode
-    const blueNoiseScale = Math.max(1, Math.ceil(this._rawFinalRadianceRT.width / BLUE_NOISE_SIZE))
+    const ddaBleedThreshold = this._ddaBleedThresholdNode
+    const ddaPaletteBands = this._ddaPaletteBandsNode
+    const ddaPaletteExposure = this._ddaPaletteExposureNode
 
     this._filterRadianceMaterial = new NodeMaterial()
     this._filterRadianceMaterial.fragmentNode = Fn(() => {
       const centerUV = uv()
       const center = sampleTexture(rawFinalTexture, centerUV)
-      const centerSDFUV = vec2(centerUV.x, float(1).sub(centerUV.y))
-      const centerSDF = sampleTexture(sdfTexture, centerSDFUV).r
+      const pointIsOpen = (pointUV: Node<'vec2'>): Node<'bool'> =>
+        usesDda
+          ? sampleTexture(occlusionTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).a.lessThan(float(0.5))
+          : sampleTexture(sdfTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).r.greaterThan(this._sdfHitEpsilonNode)
+      const centerOpen = pointIsOpen(centerUV)
+      const centerSDF = usesDda ? float(0) : sampleTexture(sdfTexture!, vec2(centerUV.x, float(1).sub(centerUV.y))).r
+
+      const paletteQuantize = (color: Node<'vec3'>): Node<'vec3'> => {
+        if (!this._usesPaletteFilter()) return color
+        const luma = color.r
+          .mul(float(0.2126))
+          .add(color.g.mul(float(0.7152)))
+          .add(color.b.mul(float(0.0722)))
+        const exposedLuma = luma.mul(ddaPaletteExposure)
+        const compressed = exposedLuma.div(float(1).add(exposedLuma))
+        const snappedCompressed = floor(compressed.mul(ddaPaletteBands))
+          .min(ddaPaletteBands.sub(float(1)))
+          .div(ddaPaletteBands)
+        const snappedLuma = snappedCompressed
+          .div(float(1).sub(snappedCompressed).max(float(0.0001)))
+          .div(ddaPaletteExposure)
+        const scale = luma.greaterThan(float(0.0001)).select(snappedLuma.div(luma), float(0))
+        return color.mul(scale)
+      }
 
       const total = vec3(center.rgb).mul(float(4)).toVar()
       const totalWeight = float(4).toVar()
-      const filterRadiusScale = useFilterJitter
-        ? float(1).add(
-            sampleTexture(blueNoiseTexture, centerUV.mul(float(blueNoiseScale)))
-              .r.sub(float(0.5))
-              .mul(filterJitterStrength)
-              .mul(smoothstep(float(EPS * 4), float(EPS * 24), centerSDF))
-          )
-        : float(1)
-
       const sampleNeighbor = (dx: number, dy: number, baseWeight: number): void => {
-        const offset = vec2(dx, dy).mul(texelSize).mul(radius).mul(filterRadiusScale)
+        const offset = vec2(dx, dy).mul(texelSize).mul(radius)
         const neighborUV = centerUV.add(offset).clamp(0, 1)
         const midpointUV = centerUV.add(offset.mul(float(0.5))).clamp(0, 1)
-        const neighborSDFUV = vec2(neighborUV.x, float(1).sub(neighborUV.y))
-        const midpointSDFUV = vec2(midpointUV.x, float(1).sub(midpointUV.y))
-        const neighborSDF = sampleTexture(sdfTexture, neighborSDFUV).r
-        const midpointSDF = sampleTexture(sdfTexture, midpointSDFUV).r
-
-        // Keep the filter from bleeding across occluder silhouettes. The
-        // midpoint test catches thin walls between two positive-SDF cells.
-        const visible = centerSDF
-          .greaterThan(float(EPS))
-          .and(neighborSDF.greaterThan(float(EPS)))
-          .and(midpointSDF.greaterThan(float(EPS)))
-        const weight = visible.select(float(baseWeight), float(0))
         const sample = sampleTexture(rawFinalTexture, neighborUV)
+        // Keep the filter from crossing silhouettes; DDA also rejects large
+        // normalized color deltas so black grid shadows remain attached.
+        const visible = centerOpen.and(pointIsOpen(neighborUV)).and(pointIsOpen(midpointUV))
+        const colorDelta = sample.rgb.sub(center.rgb).length()
+        const colorMagnitude = sample.rgb.length().max(center.rgb.length()).max(float(0.05))
+        const colorAccepted = usesDda ? colorDelta.div(colorMagnitude).lessThan(ddaBleedThreshold) : visible
+        const weight = visible.and(colorAccepted).select(float(baseWeight), float(0))
         total.addAssign(sample.rgb.mul(weight))
         totalWeight.addAssign(weight)
       }
@@ -1588,12 +1937,10 @@ export class RadianceCascades {
         sampleNeighbor(-1, 0, 2)
         sampleNeighbor(0, 1, 2)
         sampleNeighbor(0, -1, 2)
-        if (useFilterDiagonals) {
-          sampleNeighbor(1, 1, 1)
-          sampleNeighbor(-1, 1, 1)
-          sampleNeighbor(1, -1, 1)
-          sampleNeighbor(-1, -1, 1)
-        }
+        sampleNeighbor(1, 1, 1)
+        sampleNeighbor(-1, 1, 1)
+        sampleNeighbor(1, -1, 1)
+        sampleNeighbor(-1, -1, 1)
       }
 
       const filtered = total.div(totalWeight.max(float(0.001)))
@@ -1610,16 +1957,25 @@ export class RadianceCascades {
         const mipFiltered = vec3(wide1.rgb).toVar()
         if (useSecondWideLevel) {
           const wide2 = sampleTexture(this._wideRadianceRT2.texture, centerUV)
-          const veryOpenArea = smoothstep(float(EPS * 8), float(EPS * 48), centerSDF)
+          const veryOpenArea = usesDda
+            ? centerOpen.select(float(1), float(0))
+            : smoothstep(this._sdfHitEpsilonNode.mul(float(8)), this._sdfHitEpsilonNode.mul(float(48)), centerSDF)
           mipFiltered.assign(mix(wide1.rgb, wide2.rgb, veryOpenArea.mul(this._mipBlurNode)))
         }
-        const openArea = smoothstep(float(EPS * 2), float(EPS * 16), centerSDF)
-        const mipMix = mipStrength.mul(openArea)
+        const openArea = usesDda
+          ? centerOpen.select(float(1), float(0))
+          : smoothstep(this._sdfHitEpsilonNode.mul(float(2)), this._sdfHitEpsilonNode.mul(float(16)), centerSDF)
+        const wideColorDelta = mipFiltered.sub(center.rgb).length()
+        const wideColorMagnitude = mipFiltered.length().max(center.rgb.length()).max(float(0.05))
+        const wideAccepted = usesDda
+          ? wideColorDelta.div(wideColorMagnitude).lessThan(ddaBleedThreshold).select(float(1), float(0))
+          : float(1)
+        const mipMix = mipStrength.mul(openArea).mul(wideAccepted)
         const mixed = mix(crossFiltered, mipFiltered, mipMix)
-        return vec4(mixed, center.a)
+        return vec4(paletteQuantize(mixed), center.a)
       }
 
-      return vec4(crossFiltered, center.a)
+      return vec4(paletteQuantize(crossFiltered), center.a)
     })() as Node<'vec4'>
   }
 
@@ -1633,10 +1989,6 @@ export class RadianceCascades {
       this._cascadeRTs[i]!.dispose()
     }
     this._cascadeRTs = []
-
-    unregisterDebugTexture('radiance.sceneRadiance')
-    this._sceneRadianceRT?.dispose()
-    this._sceneRadianceRT = null
 
     unregisterDebugTexture('radiance.rawFinalIrradiance')
     this._rawFinalRadianceRT.dispose()
@@ -1652,13 +2004,14 @@ export class RadianceCascades {
     unregisterDebugTexture('radiance.finalIrradiance')
     this._finalRadianceRT.dispose()
 
+    unregisterDebugTexture('radiance.emissiveSource')
+    this._emissiveRadianceRT.dispose()
+    this._emissivePass.dispose()
+
     for (const mat of this._cascadeMaterials) {
       mat.dispose()
     }
     this._cascadeMaterials = []
-
-    this._sceneRadianceMaterial?.dispose()
-    this._sceneRadianceMaterial = null
 
     this._finalRadianceMaterial?.dispose()
     this._finalRadianceMaterial = null

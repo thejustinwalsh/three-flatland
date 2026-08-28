@@ -1,7 +1,7 @@
 import { trait, type NumericSchema, type NumericStore, type World } from '../ecs/runtime'
 import { uniform } from 'three/tsl'
 import { Vector2, Vector3, Vector4 } from 'three'
-import type { OrthographicCamera, Texture } from 'three'
+import type { OrthographicCamera, Scene, Texture } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import type { ColorTransformContext } from '../materials/Sprite2DMaterial'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
@@ -34,6 +34,9 @@ import {
 
 // Re-export schema types for LightEffect consumers
 export type { EffectSchema, EffectSchemaValue, EffectField, EffectValues, EffectConstants, UniformKeys }
+
+/** GPU representation required from the shared shadow pipeline. */
+export type ShadowPipelineMode = 'none' | 'occlusion' | 'sdf'
 // Re-export channel types for LightEffect consumers
 export type { ChannelName, WithRequiredChannels }
 
@@ -60,16 +63,15 @@ export interface LightEffectBuildContext<S extends EffectSchema = EffectSchema> 
   lightStore: LightStore
   /**
    * Stable reference to the scene's SDF texture. Non-null only when the
-   * effect's class declared `needsShadows = true` — in that case Flatland
-   * eagerly allocates the SDFGenerator before calling buildLightFn so the
-   * reference is bindable in TSL `texture()` calls. The texture's RTs are
-   * 1×1 placeholders at build time; the shadow pipeline system resizes
-   * them on first frame and refreshes contents each subsequent frame,
-   * without ever changing the reference.
+   * active effect's `shadowPipelineMode` resolves to `sdf` — in that case
+   * Flatland eagerly allocates the SDFGenerator before calling buildLightFn
+   * so the reference is bindable in TSL `texture()` calls. The texture's RTs
+   * are 1×1 placeholders at build time; the shadow pipeline system resizes
+   * them on first frame and refreshes contents each subsequent frame without
+   * ever changing the reference.
    *
-   * Null when the active effect doesn't declare `needsShadows` — shaders
-   * should compile out the shadow path in that case (JS-level `if`, not
-   * a GPU branch).
+   * Null for `none` and `occlusion` modes. Shaders should compile out the SDF
+   * path in those cases (JS-level `if`, not a GPU branch).
    */
   sdfTexture: Texture | null
   /**
@@ -89,8 +91,12 @@ export interface LightEffectBuildContext<S extends EffectSchema = EffectSchema> 
 export interface LightEffectRuntimeContext {
   renderer: WebGPURenderer
   camera: OrthographicCamera
+  /** Scene containing the sprite batches available to auxiliary light passes. */
+  scene: Scene
   lightStore: LightStore
   sdfGenerator: SDFGenerator | null
+  /** Binary caster silhouette before SDF generation; stable across resizes. */
+  occlusionTexture: Texture | null
   lights: readonly Light2D[]
   worldSize: Vector2
   worldOffset: Vector2
@@ -165,7 +171,7 @@ export abstract class LightEffect {
   static readonly lightName: string
   /** Per-effect data schema with default values. Must be overridden by subclass. */
   static readonly lightSchema: EffectSchema
-  /** Whether this effect needs the shadow/SDF pipeline. */
+  /** Legacy default for effects that require the SDF shadow pipeline. */
   static readonly needsShadows: boolean = false
   /** Per-fragment channels this effect requires (e.g., ['normal']). */
   static readonly requires: readonly ChannelName[] = []
@@ -412,6 +418,18 @@ export abstract class LightEffect {
     if (this._flatland) {
       this._flatland._markLightingDirty()
     }
+  }
+
+  /**
+   * Finest shadow representation required by this effect right now.
+   *
+   * Existing effects that declare `needsShadows` retain the SDF pipeline.
+   * Grid traversal effects may override this dynamically with `occlusion` so
+   * the binary caster pass stays available without paying for JFA distance
+   * field generation.
+   */
+  get shadowPipelineMode(): ShadowPipelineMode {
+    return lightEffectClassOf(this).needsShadows ? 'sdf' : 'none'
   }
 
   /**
@@ -693,6 +711,12 @@ interface LightEffectConfig<S extends EffectSchema, C extends readonly ChannelNa
   schema: S
   /** Whether this effect needs the shadow/SDF pipeline. */
   needsShadows?: boolean
+  /**
+   * Runtime shadow representation. Defaults to `sdf` when `needsShadows` is
+   * true and `none` otherwise. Use a callback when an effect can switch
+   * between binary-grid and distance-field traversal without replacement.
+   */
+  shadowPipelineMode?: ShadowPipelineMode | ((this: LightEffectInstance<S>) => ShadowPipelineMode)
   /** Per-fragment channels this effect requires (e.g., ['normal'] as const). */
   requires?: C
   /**
@@ -762,6 +786,7 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
     name,
     schema,
     needsShadows: shadows = false,
+    shadowPipelineMode,
     requires: requiredChannels = [] as unknown as C,
     light: lightFn,
     init: initHook,
@@ -780,6 +805,13 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
     static override buildLightFn(context: LightEffectBuildContext): ColorTransformFn {
       // Cast is safe: pipeline guarantees channels are resolved before calling
       return lightFn(context as LightEffectBuildContext<S>) as unknown as ColorTransformFn
+    }
+
+    override get shadowPipelineMode(): ShadowPipelineMode {
+      if (typeof shadowPipelineMode === 'function') {
+        return shadowPipelineMode.call(this as unknown as LightEffectInstance<S>)
+      }
+      return shadowPipelineMode ?? (shadows ? 'sdf' : 'none')
     }
 
     override init(ctx: LightEffectRuntimeContext): void {

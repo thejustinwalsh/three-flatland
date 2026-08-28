@@ -11,14 +11,19 @@ import {
   NearestFilter,
   LinearFilter,
 } from 'three'
-import { MeshBasicNodeMaterial } from 'three/webgpu'
-import type { WebGPURenderer } from 'three/webgpu'
+import type { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
 import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import { Fn, vec2, vec4, float, select, attribute, uv, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { readCastShadowFlag, readFlip, readRotatedFrameFlag } from '../materials/instanceAttributes'
+import {
+  readCastShadowFlag,
+  readEffectEnabledFlag,
+  readFlip,
+  readRotatedFrameFlag,
+} from '../materials/instanceAttributes'
 import { synthQuadNodes } from '../materials/synthQuadNodes'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { EMISSIVE_EFFECT_NAME } from '../materials/EmissiveEffect'
 
 /**
  * Optional construction knobs for {@link OcclusionPass}.
@@ -58,18 +63,10 @@ export interface OcclusionPassOptions {
  *
  * Owns:
  * - A {@link RenderTarget} sized to `resolutionScale * viewport`.
- * - No material — renders the host scene with the scene's own sprite
- *   materials. The SDF JFA consumes the RT's alpha channel only, so sprite
- *   color output is discarded downstream. This keeps per-sprite opt-out
- *   (eventually via `castShadow`) bindable through the existing material
- *   path without requiring a scene-wide override material that loses
- *   per-object texture bindings in TSL.
- *
- * **Limitation (deliberate):** every rendered mesh currently contributes
- * its alpha to the SDF seed. A follow-up commit propagates the Object3D
- * `castShadow` flag through the batched sprite attribute buffers so
- * non-casters write alpha = 0 from inside the sprite material. Tracked in
- * `planning/experiments/SDF-Shadow-Plumbing.md` as the T2 follow-up.
+ * - A per-texture Sprite2DMaterial variant that preserves the production
+ *   batch vertex path while outputting a binary caster silhouette. The SDF
+ *   JFA consumes its alpha channel; RGB mirrors alpha so debug viewers show
+ *   the mask without relying on channel-display metadata.
  *
  * @internal
  */
@@ -286,21 +283,26 @@ export class OcclusionPass {
     const texture = current.getTexture()
     if (!texture) return
 
-    const occlusion = this._getOrCreateOcclusionMaterial(texture, current._tightMesh)
+    const emissiveBitIndex = current._effectBitIndex.get(EMISSIVE_EFFECT_NAME)
+    const occlusion = this._getOrCreateOcclusionMaterial(texture, current._tightMesh, emissiveBitIndex)
     this._swappedMeshes.push(mesh)
     this._swappedOriginals.push(current)
     mesh.material = occlusion
   }
 
-  private _getOrCreateOcclusionMaterial(texture: Texture, tightMesh: boolean): MeshBasicNodeMaterial {
+  private _getOrCreateOcclusionMaterial(
+    texture: Texture,
+    tightMesh: boolean,
+    emissiveBitIndex?: number
+  ): MeshBasicNodeMaterial {
     this._assertUsable('getOcclusionMaterial')
     // Keyed by (texture, geometry strategy): the occlusion shader must
     // mirror the source material's vertex path — vertexIndex synthesis
     // for synth-quad batches, geometry position/uv for tight-mesh ones.
-    const key = `${texture.id}:${tightMesh ? 'tight' : 'synth'}`
+    const key = `${texture.id}:${tightMesh ? 'tight' : 'synth'}:${emissiveBitIndex ?? -1}`
     const cached = this._occlusionMaterials.get(key)
     if (cached) return cached
-    const material = buildOcclusionMaterial(texture, tightMesh)
+    const material = buildOcclusionMaterial(texture, tightMesh, emissiveBitIndex)
     this._occlusionMaterials.set(key, material)
     return material
   }
@@ -344,10 +346,11 @@ export class OcclusionPass {
  *   2. Sample the alpha channel of the atlas at the remapped UV.
  *   3. Read `castsShadow` (bit 2 of `instanceSystem.z`) per instance; multiply
  *      sampled alpha by 1 when set, 0 when clear.
- *   4. Output `vec4(0, 0, 0, alpha * castMask)`.
+ *   4. Output occupancy in alpha and an emitter-caster marker in red.
  *
- * Output RGB is deliberately zero — the SDF JFA seed pass only consumes
- * alpha, so no color bandwidth is spent on the occlusion silhouette.
+ * The red marker lets integer DDA cross an emitter's non-emissive outline to
+ * reach its source pixels while keeping that silhouette opaque to unrelated
+ * light.
  *
  * **Maintenance note:** the UV remap mirrors the logic in
  * `Sprite2DMaterial._buildBaseColor`. If the instance attribute shape
@@ -355,14 +358,19 @@ export class OcclusionPass {
  * in lockstep — there is no shared helper yet. Revisit if we grow a
  * second consumer of the same UV math.
  */
-function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicNodeMaterial {
-  const material = new MeshBasicNodeMaterial({ transparent: true })
+function buildOcclusionMaterial(texture: Texture, tightMesh = false, emissiveBitIndex?: number): MeshBasicNodeMaterial {
+  // Keep Sprite2DMaterial's custom setupPosition ordering. The synth-quad
+  // path assigns position from vertexIndex, and Three's stock NodeMaterial
+  // applies the instance matrix *before* a custom positionNode, which then
+  // overwrites the transform and collapses every batch instance onto the
+  // shared unit quad. Sprite2DMaterial deliberately reverses that order.
+  const material = new Sprite2DMaterial({ map: texture, transparent: true, lit: false, effectTier: 0 })
   // The occlusion pass re-renders SpriteBatch/TileLayer meshes. Its
   // vertex path must mirror the source material's geometry strategy:
   // synth-quad meshes are index-only (synthesize from vertexIndex);
   // tight-mesh envelopes carry real position/uv attributes.
   const synth = tightMesh ? null : synthQuadNodes()
-  if (synth) material.positionNode = synth.position
+  material.positionNode = synth?.position ?? null
   material.colorNode = Fn(() => {
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const flip = readFlip()
@@ -394,7 +402,10 @@ function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicN
     // contribute nothing to the destination, giving us the same
     // "no overwrite" semantics as Discard without the stall.
     const casterAlpha = select(effectiveAlpha.greaterThan(float(0.01)), float(1), float(0))
-    return vec4(float(0), float(0), float(0), casterAlpha)
+    const emitterEnabled =
+      emissiveBitIndex === undefined ? float(0) : select(readEffectEnabledFlag(emissiveBitIndex), float(1), float(0))
+    const emitterCaster = casterAlpha.mul(emitterEnabled)
+    return vec4(emitterCaster, casterAlpha, casterAlpha, casterAlpha)
   })() as Node<'vec4'>
 
   return material

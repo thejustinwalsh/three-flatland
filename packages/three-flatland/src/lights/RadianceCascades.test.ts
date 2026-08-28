@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DataTexture, FloatType, NearestFilter, RepeatWrapping, RGBAFormat, Vector2 } from 'three'
+import { DataTexture, FloatType, NearestFilter, RGBAFormat, UnsignedByteType, Vector2 } from 'three'
 import { uniform } from 'three/tsl'
 import {
+  DDA_FIXED_RADIANCE_CASCADES_CONFIG,
   RadianceCascades,
   RADIANCE_CASCADES_PRESETS,
   createRadianceCascadesConfig,
@@ -17,35 +18,114 @@ describe('RadianceCascades', () => {
   it('provides tuned quality presets with override support', () => {
     expect(RADIANCE_CASCADES_PRESETS.fast.baseRayCount).toBe(4)
     expect(RADIANCE_CASCADES_PRESETS.balanced.baseRayCount).toBe(16)
-    expect(RADIANCE_CASCADES_PRESETS.fast.sceneRadianceDownsampleFactor).toBe(4)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.sceneRadianceDownsampleFactor).toBe(2)
-    expect(RADIANCE_CASCADES_PRESETS.quality.sceneRadianceDownsampleFactor).toBe(1)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.maxAutoCascadeResolution).toBe(1024)
+    expect(RADIANCE_CASCADES_PRESETS.balanced.maxAutoCascadeResolution).toBe(512)
     expect(RADIANCE_CASCADES_PRESETS.fast.raymarchSteps).toBe(24)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.raymarchSteps).toBe(32)
+    expect(RADIANCE_CASCADES_PRESETS.balanced.raymarchSteps).toBe(24)
     expect(RADIANCE_CASCADES_PRESETS.quality.raymarchSteps).toBe(48)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.blueNoiseStrength).toBe(0.45)
     expect(RADIANCE_CASCADES_PRESETS.balanced.intervalOverlap).toBe(0.1)
-    expect(RADIANCE_CASCADES_PRESETS.fast.filterDiagonals).toBe(false)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.filterDiagonals).toBe(true)
-    expect(RADIANCE_CASCADES_PRESETS.fast.filterJitterStrength).toBe(0)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.filterJitterStrength).toBe(0.35)
-    expect(RADIANCE_CASCADES_PRESETS.quality.filterJitterStrength).toBe(0.25)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.mipBlur).toBe(0.5)
-    expect(RADIANCE_CASCADES_PRESETS.balanced.mipStrength).toBe(0.25)
+    expect(RADIANCE_CASCADES_PRESETS.balanced.mipBlur).toBe(0)
+    expect(RADIANCE_CASCADES_PRESETS.balanced.mipStrength).toBe(0)
     expect(RADIANCE_CASCADES_PRESETS.balanced.wideDownsampleFactor).toBe(2)
     expect(RADIANCE_CASCADES_PRESETS.quality.wideDownsampleFactor).toBe(2)
     expect(RADIANCE_CASCADES_PRESETS.quality.wideLevels).toBe(2)
 
     expect(createRadianceCascadesConfig('balanced', { mipStrength: 0.1 })).toMatchObject({
       baseRayCount: 16,
-      sceneRadianceDownsampleFactor: 2,
-      raymarchSteps: 32,
-      filterJitterStrength: 0.35,
-      mipBlur: 0.5,
+      raymarchSteps: 24,
+      mipBlur: 0,
       mipStrength: 0.1,
       wideDownsampleFactor: 2,
     })
+  })
+
+  it('uses a four-pixel logical grid and RGBA8 nearest cascade storage for DDA Fixed RC', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 512,
+    })
+
+    radiance.init(360, 240, createLightsTexture(), uniform(0))
+
+    const internals = radiance as unknown as {
+      _cascadeRTs: Array<{
+        width: number
+        height: number
+        texture: { type: number; minFilter: number; magFilter: number }
+      }>
+      _finalRadianceRT: { width: number; height: number; texture: { minFilter: number; magFilter: number } }
+    }
+    expect(radiance.requiresSdf).toBe(false)
+    expect(internals._cascadeRTs).toHaveLength(4)
+    // 360×240 / 4 = a 90×60 visible integer grid. Cascade atlases pad that
+    // grid to 96×64 so all four hierarchy levels retain integral blocks.
+    expect(internals._cascadeRTs.every((target) => target.width === 384 && target.height === 256)).toBe(true)
+    expect(internals._cascadeRTs.every((target) => target.texture.type === UnsignedByteType)).toBe(true)
+    expect(internals._cascadeRTs.every((target) => target.texture.minFilter === NearestFilter)).toBe(true)
+    expect(internals._finalRadianceRT.width).toBe(90)
+    expect(internals._finalRadianceRT.height).toBe(60)
+    expect(internals._finalRadianceRT.texture.magFilter).toBe(NearestFilter)
+    expect(radiance.cascadeStorageBytesPerTexel).toBe(4)
+    expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 384 * 256 * 4)
+    expect(radiance.estimatedRaymarchSampleCount).toBeGreaterThan(radiance.estimatedRaymarchTexelCount)
+
+    radiance.dispose()
+  })
+
+  it('changes DDA RC transport resolution without changing the angular budget', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 512,
+    })
+    radiance.init(360, 240, createLightsTexture(), uniform(0))
+
+    radiance.ddaPixelSize = 8
+    const internals = radiance as unknown as {
+      _cascadeRTs: Array<{ width: number; height: number }>
+      _finalRadianceRT: { width: number; height: number }
+    }
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 192, height: 128 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 45, height: 30 })
+
+    radiance.dispose()
+  })
+
+  it('keeps the DDA grid tied to processing pixels when world bounds change', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 512,
+    })
+    radiance.init(360, 240, createLightsTexture(), uniform(0))
+    const texture = radiance.finalRadianceTexture
+
+    radiance.setWorldBounds(new Vector2(180, 360), new Vector2(-90, -180))
+
+    const internals = radiance as unknown as {
+      _cascadeRTs: Array<{ width: number; height: number }>
+      _finalRadianceRT: { width: number; height: number }
+    }
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 384, height: 256 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 90, height: 60 })
+    expect(radiance.finalRadianceTexture).toBe(texture)
+
+    radiance.dispose()
+  })
+
+  it('derives DDA RC work from the processing surface without a transport cap', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 64,
+      maxAutoCascadeResolution: 64,
+    })
+    radiance.init(360, 240, createLightsTexture(), uniform(0))
+    radiance.setProcessingSize(1280, 720)
+
+    const internals = radiance as unknown as {
+      _cascadeRTs: Array<{ width: number; height: number }>
+      _finalRadianceRT: { width: number; height: number }
+    }
+    expect(internals._finalRadianceRT).toMatchObject({ width: 320, height: 180 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 1280, height: 736 })
+    radiance.dispose()
   })
 
   it('exposes a stable final radiance texture before and after init', () => {
@@ -71,9 +151,7 @@ describe('RadianceCascades', () => {
 
     radiance.init(128, 64, createLightsTexture(), uniform(0))
 
-    const cascadeRTs = (
-      radiance as unknown as { _cascadeRTs: Array<{ width: number; height: number }> }
-    )._cascadeRTs
+    const cascadeRTs = (radiance as unknown as { _cascadeRTs: Array<{ width: number; height: number }> })._cascadeRTs
     expect(cascadeRTs).toHaveLength(3)
     expect(cascadeRTs.map((rt) => [rt.width, rt.height])).toEqual([
       [64, 64],
@@ -91,8 +169,7 @@ describe('RadianceCascades', () => {
 
     radiance.init(128, 64, createLightsTexture(), uniform(0))
 
-    const finalRT = (radiance as unknown as { _finalRadianceRT: { width: number; height: number } })
-      ._finalRadianceRT
+    const finalRT = (radiance as unknown as { _finalRadianceRT: { width: number; height: number } })._finalRadianceRT
     expect(finalRT.width).toBe(32)
     expect(finalRT.height).toBe(32)
     radiance.dispose()
@@ -107,33 +184,9 @@ describe('RadianceCascades', () => {
     radiance.init(1_000, 1_000, createLightsTexture(), uniform(0))
 
     expect(radiance.config.cascadeResolution).toBe(512)
-    const finalRT = (radiance as unknown as { _finalRadianceRT: { width: number; height: number } })
-      ._finalRadianceRT
+    const finalRT = (radiance as unknown as { _finalRadianceRT: { width: number; height: number } })._finalRadianceRT
     expect(finalRT.width).toBe(128)
     expect(finalRT.height).toBe(128)
-    radiance.dispose()
-  })
-
-  it('sizes scene radiance from the configured downsample factor', () => {
-    const radiance = new RadianceCascades({
-      cascadeResolution: 128,
-      sceneRadianceDownsampleFactor: 2,
-    })
-
-    radiance.init(128, 64, createLightsTexture(), uniform(0))
-
-    const sceneRT = (
-      radiance as unknown as {
-        _sceneRadianceRT: { width: number; height: number } | null
-      }
-    )._sceneRadianceRT
-    expect(sceneRT?.width).toBe(64)
-    expect(sceneRT?.height).toBe(64)
-
-    radiance.sceneRadianceDownsampleFactor = 4
-    expect(radiance.sceneRadianceDownsampleFactor).toBe(4)
-    expect(sceneRT?.width).toBe(32)
-    expect(sceneRT?.height).toBe(32)
     radiance.dispose()
   })
 
@@ -214,36 +267,26 @@ describe('RadianceCascades', () => {
     const internals = radiance as unknown as {
       _filterRadiusNode: { value: number }
       _filterStrengthNode: { value: number }
-      _filterJitterStrengthNode: { value: number }
-      _blueNoiseStrengthNode: { value: number }
       _mipBlurNode: { value: number }
       _mipStrengthNode: { value: number }
     }
 
-    radiance.blueNoiseStrength = 99
     radiance.raymarchSteps = 999
     radiance.intervalOverlap = 99
-    radiance.sceneRadianceDownsampleFactor = 99
     radiance.filterRadius = -1
     radiance.filterStrength = 99
-    radiance.filterJitterStrength = 99
     radiance.mipBlur = 99
     radiance.mipStrength = -1
     radiance.wideDownsampleFactor = 99
-    expect(radiance.blueNoiseStrength).toBe(1)
     expect(radiance.raymarchSteps).toBe(96)
     expect(radiance.intervalOverlap).toBe(0.45)
-    expect(radiance.sceneRadianceDownsampleFactor).toBe(4)
     expect(radiance.filterRadius).toBe(0)
     expect(radiance.filterStrength).toBe(1)
-    expect(radiance.filterJitterStrength).toBe(1)
     expect(radiance.mipBlur).toBe(1)
     expect(radiance.mipStrength).toBe(0)
     expect(radiance.wideDownsampleFactor).toBe(4)
-    expect(internals._blueNoiseStrengthNode.value).toBe(1)
     expect(internals._filterRadiusNode.value).toBe(0)
     expect(internals._filterStrengthNode.value).toBe(1)
-    expect(internals._filterJitterStrengthNode.value).toBe(1)
     expect(internals._mipBlurNode.value).toBe(1)
     expect(internals._mipStrengthNode.value).toBe(0)
 
@@ -354,49 +397,6 @@ describe('RadianceCascades', () => {
     radiance.dispose()
   })
 
-  it('creates a repeat-wrapped nearest-filtered blue-noise jitter texture', () => {
-    const radiance = new RadianceCascades()
-    const texture = (radiance as unknown as { _blueNoiseTexture: DataTexture })._blueNoiseTexture
-
-    expect(texture.image.width).toBe(32)
-    expect(texture.image.height).toBe(32)
-    expect(texture.minFilter).toBe(NearestFilter)
-    expect(texture.magFilter).toBe(NearestFilter)
-    expect(texture.wrapS).toBe(RepeatWrapping)
-    expect(texture.wrapT).toBe(RepeatWrapping)
-
-    const data = texture.image.data as Uint8Array
-    let min = 255
-    let max = 0
-    const seen = new Set<number>()
-    for (let i = 0; i < data.length; i += 4) {
-      min = Math.min(min, data[i]!)
-      max = Math.max(max, data[i]!)
-      seen.add(data[i]!)
-      expect(data[i + 1]).toBe(data[i])
-      expect(data[i + 2]).toBe(data[i])
-      expect(data[i + 3]).toBe(255)
-    }
-
-    expect(min).toBe(0)
-    expect(max).toBe(255)
-    expect(seen.size).toBeGreaterThan(200)
-    radiance.dispose()
-  })
-
-  it('reuses the generated blue-noise texture across radiance cascade instances', () => {
-    const first = new RadianceCascades()
-    const second = new RadianceCascades()
-
-    const firstTexture = (first as unknown as { _blueNoiseTexture: DataTexture })._blueNoiseTexture
-    const secondTexture = (second as unknown as { _blueNoiseTexture: DataTexture })._blueNoiseTexture
-
-    expect(secondTexture).toBe(firstTexture)
-
-    first.dispose()
-    second.dispose()
-  })
-
   it('clamps wide approximation levels', () => {
     const radiance = new RadianceCascades()
 
@@ -495,25 +495,6 @@ describe('RadianceCascades', () => {
     radiance.dispose()
   })
 
-  it('rebuilds only the final filter material when diagonal filtering changes', () => {
-    const radiance = new RadianceCascades({ filterDiagonals: true })
-    const dispose = vi.fn()
-    const internals = radiance as unknown as {
-      _filterRadianceMaterial: { dispose: () => void } | null
-    }
-    internals._filterRadianceMaterial = { dispose }
-
-    radiance.filterDiagonals = true
-    expect(dispose).not.toHaveBeenCalled()
-    expect(internals._filterRadianceMaterial).not.toBeNull()
-
-    radiance.filterDiagonals = false
-    expect(radiance.filterDiagonals).toBe(false)
-    expect(dispose).toHaveBeenCalledOnce()
-    expect(internals._filterRadianceMaterial).toBeNull()
-    radiance.dispose()
-  })
-
   it('clamps cascadeCount and rebuilds cascade targets', () => {
     const radiance = new RadianceCascades({
       cascadeCount: 3,
@@ -544,7 +525,6 @@ describe('RadianceCascades', () => {
     const internals = radiance as unknown as {
       _intervalOffsetNodes: Array<{ value: number }>
       _intervalRangeNodes: Array<{ value: number }>
-      _minStepNodes: Array<{ value: number }>
     }
     const initialRange = internals._intervalRangeNodes[0]!.value
 
@@ -556,20 +536,10 @@ describe('RadianceCascades', () => {
       internals._intervalRangeNodes[0]!.value + internals._intervalRangeNodes[1]!.value,
     ])
     expect(internals._intervalRangeNodes[0]!.value).toBeCloseTo(initialRange * 2)
-    expect(internals._intervalRangeNodes[1]!.value).toBeCloseTo(
-      internals._intervalRangeNodes[0]!.value * 4
-    )
-    expect(internals._intervalRangeNodes[2]!.value).toBeCloseTo(
-      internals._intervalRangeNodes[1]!.value * 4
-    )
-    expect(internals._minStepNodes[0]!.value).toBeCloseTo(
-      internals._intervalRangeNodes[0]!.value / radiance.raymarchSteps
-    )
-
+    expect(internals._intervalRangeNodes[1]!.value).toBeCloseTo(internals._intervalRangeNodes[0]!.value * 4)
+    expect(internals._intervalRangeNodes[2]!.value).toBeCloseTo(internals._intervalRangeNodes[1]!.value * 4)
     radiance.raymarchSteps = 64
-    expect(internals._minStepNodes[0]!.value).toBeCloseTo(
-      internals._intervalRangeNodes[0]!.value / 64
-    )
+    expect(radiance.raymarchSteps).toBe(64)
     radiance.dispose()
   })
 

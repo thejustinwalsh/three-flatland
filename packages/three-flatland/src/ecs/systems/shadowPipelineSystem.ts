@@ -3,7 +3,6 @@ import { select, type World } from '../runtime'
 import { BatchRegistry, LightingContext, ShadowPipeline } from '../traits'
 import { SDFGenerator } from '../../lights/SDFGenerator'
 import { OcclusionPass } from '../../lights/OcclusionPass'
-import type { LightEffect } from '../../lights/LightEffect'
 
 const LightingContexts = select(LightingContext)
 const ShadowPipelines = select(ShadowPipeline)
@@ -12,8 +11,8 @@ const BatchRegistries = select(BatchRegistry)
 /**
  * Owns the shared shadow pipeline end-to-end.
  *
- * Reads the active effect from `LightingContext`; if its class declares
- * `needsShadows`, allocates the JFA SDF generator + occluder pre-pass,
+ * Reads the active effect from `LightingContext`; if it requests shadow data,
+ * allocates the occluder pre-pass and optionally the JFA SDF generator,
  * sizes them to Flatland's canonical render surface, runs the pre-pass each frame, and writes
  * the resulting SDFGenerator handle back to `LightingContext.sdfGenerator`
  * so consumer systems (future shadow-sampling shaders, GI effects, etc.)
@@ -59,11 +58,15 @@ export function shadowPipelineSystem(world: World): void {
   const effect = ctx.effect
   const renderer = ctx.renderer
 
-  // Determine whether the active effect wants the shadow pipeline alive.
+  // Determine the finest shadow representation the active effect wants alive.
+  // DDA traversal consumes the binary occlusion target directly and must not
+  // pay the JFA generation cost required by distance-field consumers.
   let needsShadows = false
+  let needsSdf = false
   if (effect && effect.enabled) {
-    const ctor = effect.constructor as typeof LightEffect
-    needsShadows = ctor.needsShadows === true
+    const shadowMode = effect.shadowPipelineMode
+    needsShadows = shadowMode !== 'none'
+    needsSdf = shadowMode === 'sdf'
   }
 
   // Teardown path: active effect doesn't need shadows but we hold state.
@@ -109,13 +112,19 @@ export function shadowPipelineSystem(world: World): void {
   // occluder/camera dirty signals (the SDF RT contents are stale/unsized).
   let mustRegen = false
 
-  // Lazy allocate on first entry. Construction here is cheap (no GPU
-  // resources until init() below). Consumers (lightEffectSystem builds
-  // the effect runtime context) pull the handle straight from this trait
-  // each frame — no mirrored state on LightingContext.
-  if (!pipeline.sdfGenerator) {
+  // Runtime DDA/SDF switching retains the binary occlusion pass while adding
+  // or retiring the distance field independently.
+  let sdfCreated = false
+  if (needsSdf && !pipeline.sdfGenerator) {
     pipeline.sdfGenerator = new SDFGenerator()
+    sdfCreated = true
     pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
+  }
+  if (!needsSdf && pipeline.sdfGenerator) {
+    const retiredSdf = pipeline.sdfGenerator
+    pipeline.sdfGenerator = null
+    pipeline.onResourcesChanged?.(null, pipeline.occlusionPass)
+    retiredSdf.dispose()
   }
   if (!pipeline.occlusionPass) {
     pipeline.occlusionPass = new OcclusionPass()
@@ -137,17 +146,20 @@ export function shadowPipelineSystem(world: World): void {
   // to the same sdfW/sdfH (for example 512 → 513 at 0.5), neither shadow
   // resource changes size and a resize/regeneration would be redundant.
   if (!pipeline.initialized) {
-    pipeline.sdfGenerator.init(sdfW, sdfH)
+    pipeline.sdfGenerator?.init(sdfW, sdfH)
     pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)
     pipeline.width = sdfW
     pipeline.height = sdfH
     pipeline.initialized = true
     mustRegen = true
   } else if (sdfW !== pipeline.width || sdfH !== pipeline.height) {
-    pipeline.sdfGenerator.resize(sdfW, sdfH)
+    pipeline.sdfGenerator?.resize(sdfW, sdfH)
     pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)
     pipeline.width = sdfW
     pipeline.height = sdfH
+    mustRegen = true
+  } else if (sdfCreated) {
+    pipeline.sdfGenerator?.init(sdfW, sdfH)
     mustRegen = true
   }
 
@@ -160,7 +172,7 @@ export function shadowPipelineSystem(world: World): void {
   const snap = (c?.shadowPixelSnapEnabled as boolean) ?? false
   const desired =
     mode === 'nearest' ? NearestFilter : mode === 'linear' ? LinearFilter : snap ? NearestFilter : LinearFilter
-  pipeline.sdfGenerator.setFilter(desired)
+  pipeline.sdfGenerator?.setFilter(desired)
 
   const scene = ctx.scene
   if (!scene) return
@@ -188,7 +200,7 @@ export function shadowPipelineSystem(world: World): void {
     top = ortho.top
     bottom = ortho.bottom
     _worldSizeScratch.set(right - left, top - bottom)
-    pipeline.sdfGenerator.setWorldBounds(_worldSizeScratch)
+    pipeline.sdfGenerator?.setWorldBounds(_worldSizeScratch)
   }
 
   // Occluder-dirty gate. Skip the occluder render + SDF regen when no
@@ -222,7 +234,7 @@ export function shadowPipelineSystem(world: World): void {
   if (!dirty) return
 
   pipeline.occlusionPass.render(renderer, scene, camera)
-  pipeline.sdfGenerator.generate(renderer, pipeline.occlusionPass.renderTarget)
+  pipeline.sdfGenerator?.generate(renderer, pipeline.occlusionPass.renderTarget)
 
   // Record the frustum/position this generation was rendered against so the
   // next frame can detect a camera change.

@@ -1,5 +1,5 @@
 import { worldFor } from '../testUtils.type-test'
-import { OrthographicCamera, Vector2 } from 'three'
+import { OrthographicCamera, Scene, Vector2 } from 'three'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createWorld, type World } from '../runtime'
 import { LightingContext } from '../traits'
@@ -13,6 +13,7 @@ import { lightEffectSystem, releaseLightEffectRuntimeContext } from './lightEffe
 interface RuntimeFixture {
   camera: OrthographicCamera
   renderer: WebGPURenderer
+  scene: Scene
   lightStore: LightStore
   lights: Light2D[]
   worldSize: Vector2
@@ -38,6 +39,7 @@ function makeWorld(effect: LightEffect, camera: OrthographicCamera, label: strin
   const world = createWorld()
   worlds.push(world)
   const renderer = { label } as unknown as WebGPURenderer
+  const scene = new Scene()
   const lightStore = { label } as unknown as LightStore
   const lights = [{ label }] as unknown as Light2D[]
   const worldSize = new Vector2()
@@ -49,17 +51,19 @@ function makeWorld(effect: LightEffect, camera: OrthographicCamera, label: strin
       lights,
       renderer,
       camera,
+      scene,
       surfaceSize: new Vector2(320, 180),
       worldSize,
       worldOffset,
     })
   )
-  return [world, { camera, renderer, lightStore, lights, worldSize, worldOffset }]
+  return [world, { camera, renderer, scene, lightStore, lights, worldSize, worldOffset }]
 }
 
 function expectRuntimeContext(context: LightEffectRuntimeContext, fixture: RuntimeFixture): void {
   expect(context.renderer).toBe(fixture.renderer)
   expect(context.camera).toBe(fixture.camera)
+  expect(context.scene).toBe(fixture.scene)
   expect(context.lightStore).toBe(fixture.lightStore)
   expect(context.lights).toBe(fixture.lights)
   expect(context.worldSize).toBe(fixture.worldSize)
@@ -74,6 +78,18 @@ afterEach(() => {
 })
 
 describe('lightEffectSystem runtime context', () => {
+  it('includes a translated camera position in lighting world bounds', () => {
+    const camera = new OrthographicCamera(-20, 20, 30, -10)
+    camera.position.set(120, -45, 100)
+    const effect = makeEffect({})
+    const [world, fixture] = makeWorld(effect, camera, 'translated-camera')
+
+    lightEffectSystem(world)
+
+    expect(fixture.worldSize.toArray()).toEqual([40, 40])
+    expect(fixture.worldOffset.toArray()).toEqual([100, -55])
+  })
+
   it('preserves each world context across nested init and update renders without per-frame allocation', () => {
     const contextsA: LightEffectRuntimeContext[] = []
     const contextsB: LightEffectRuntimeContext[] = []
@@ -121,6 +137,7 @@ describe('lightEffectSystem runtime context', () => {
     const contexts: LightEffectRuntimeContext[] = []
     const effect = makeEffect({ update: (context) => contexts.push(context) })
     const renderer = { label: 'retained-world' } as unknown as WebGPURenderer
+    const scene = new Scene()
     world.spawn(
       LightingContext({
         effect,
@@ -128,6 +145,7 @@ describe('lightEffectSystem runtime context', () => {
         lights: [],
         renderer,
         camera,
+        scene,
         surfaceSize: new Vector2(320, 180),
         worldSize: new Vector2(),
         worldOffset: new Vector2(),

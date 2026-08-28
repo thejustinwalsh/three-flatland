@@ -1,4 +1,4 @@
-import { vec2, vec3, vec4, Fn, texture as sampleTexture } from 'three/tsl'
+import { vec2, vec3, vec4, Fn } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
   createLightEffect,
@@ -19,33 +19,25 @@ export const HierarchicalRadianceLightEffect = createLightEffect({
   name: 'hierarchicalRadianceLight',
   schema: {
     radianceIntensity: 1.0,
-    radiance: () =>
-      new HierarchicalRadianceCascades(
-        createHierarchicalRadianceCascadesConfig('balanced', {
-          sceneRadianceDownsampleFactor: 1,
-          raymarchSteps: 32,
-          blueNoiseStrength: 0.45,
-          filterRadius: 1.25,
-          filterStrength: 0.8,
-          filterDiagonals: true,
-          filterJitterStrength: 0.35,
-          mipBlur: 0,
-          mipStrength: 0.25,
-          wideDownsampleFactor: 2,
-          wideLevels: 1,
-        })
-      ),
+    // The preset is the single source of truth. Do not shadow these values in
+    // examples or here: dev panels read this live instance after construction.
+    radiance: () => new HierarchicalRadianceCascades(createHierarchicalRadianceCascadesConfig('balanced')),
   } as const,
   needsShadows: true,
-  light: ({ uniforms, constants, worldSizeNode, worldOffsetNode }) => {
+  shadowPipelineMode() {
+    return this.radiance.requiresSdf ? 'sdf' : 'occlusion'
+  },
+  light: ({ uniforms, constants }) => {
     const radianceIntensity = uniforms.radianceIntensity
-    const radianceTexture = constants.radiance.finalRadianceTexture
 
     return (ctx) => {
       const lit = Fn(() => {
         const totalLight = vec3(0, 0, 0).toVar('totalLight')
-        const surfaceUV = vec2(ctx.worldPosition).sub(worldOffsetNode).div(worldSizeNode)
-        const indirect = sampleTexture(radianceTexture, surfaceUV)
+        // Holographic RC is reconstructed on a square, rotation-preserving
+        // domain. The renderer supplies the matching padded world-to-texture
+        // mapping (and switches back to the regular bounds for legacy mode).
+        const surfaceUV = constants.radiance.worldToRadianceUV(vec2(ctx.worldPosition))
+        const indirect = constants.radiance.sampleFinalRadiance(surfaceUV)
         totalLight.addAssign(indirect.rgb.mul(radianceIntensity))
         return vec3(totalLight)
       })() as Node<'vec3'>
@@ -63,10 +55,20 @@ export const HierarchicalRadianceLightEffect = createLightEffect({
     this.radiance.init(cameraWidth, cameraHeight, ctx.lightStore.lightsTexture, ctx.lightStore.countNode)
   },
   update(ctx) {
-    if (!ctx.sdfGenerator) return
+    if (this.radiance.requiresSdf && !ctx.sdfGenerator) return
+    if (!this.radiance.requiresSdf && !ctx.occlusionTexture) return
 
     this.radiance.setWorldBounds(ctx.worldSize, ctx.worldOffset)
-    this.radiance.generate(ctx.renderer, ctx.sdfGenerator.sdfTexture)
+    this.radiance.generate(
+      ctx.renderer,
+      ctx.sdfGenerator?.sdfTexture ?? null,
+      ctx.scene,
+      ctx.camera,
+      ctx.occlusionTexture
+    )
+  },
+  resize(width, height) {
+    this.radiance.setProcessingSize(width, height)
   },
   dispose() {
     this.radiance.dispose()

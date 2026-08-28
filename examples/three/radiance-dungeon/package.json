@@ -1,0 +1,42 @@
+{
+  "name": "example-three-radiance-dungeon",
+  "version": "0.0.1-alpha.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --port ${TURBO_MFE_PORT:-5184}",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@three-flatland/presets": "^0.1.0-alpha.10",
+    "@three-flatland/devtools": "^1.0.0-alpha.7",
+    "@tweakpane/plugin-essentials": "^0.2.1",
+    "three-flatland": "^0.1.0-alpha.10",
+    "three": "^0.185.1",
+    "tweakpane": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.4",
+    "typescript": "^5.7.3",
+    "vite": "^7.3.6"
+  },
+  "nx": {
+    "implicitDependencies": [
+      "examples"
+    ],
+    "tags": [
+      "type:example"
+    ],
+    "targets": {
+      "lint": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "oxlint --type-aware .",
+          "cwd": "{projectRoot}"
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import type { ThreeElement } from '@react-three/fiber'
 import type { Sprite2D } from '../sprites/Sprite2D'
 import type { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import type { EmissiveEffect } from '../materials/EmissiveEffect'
 import type { AnimatedSprite2D } from '../sprites/AnimatedSprite2D'
 import type { SpriteGroup } from '../pipeline/SpriteGroup'
 import type { SortLayerGroup } from '../pipeline/SortLayerGroup'
@@ -67,6 +68,7 @@ declare module '@react-three/fiber' {
   interface ThreeElements {
     sprite2D: ThreeElement<typeof Sprite2D>
     sprite2DMaterial: ThreeElement<typeof Sprite2DMaterial>
+    emissiveEffect: EffectElement<typeof EmissiveEffect>
     animatedSprite2D: ThreeElement<typeof AnimatedSprite2D>
     spriteGroup: ThreeElement<typeof SpriteGroup>
     sortLayerGroup: ThreeElement<typeof SortLayerGroup>

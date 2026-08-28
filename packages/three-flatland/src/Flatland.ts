@@ -1723,11 +1723,14 @@ export class Flatland extends Group {
       }
 
       let sdfTexture: Texture | null = null
-      if (ctor.needsShadows) {
+      const shadowPipelineMode = lightEffect.shadowPipelineMode
+      if (shadowPipelineMode !== 'none') {
         const existingPipeline = shadowEntity ? world.read(shadowEntity, ShadowPipeline) : undefined
-        if (!existingPipeline?.sdfGenerator) preparedSdfGenerator = new SDFGenerator()
+        if (shadowPipelineMode === 'sdf' && !existingPipeline?.sdfGenerator) {
+          preparedSdfGenerator = new SDFGenerator()
+        }
         if (!existingPipeline?.occlusionPass) preparedOcclusionPass = new OcclusionPass()
-        sdfTexture = existingPipeline?.sdfGenerator?.sdfTexture ?? preparedSdfGenerator!.sdfTexture
+        sdfTexture = existingPipeline?.sdfGenerator?.sdfTexture ?? preparedSdfGenerator?.sdfTexture ?? null
       }
 
       fn = lightEffect._buildLightFn(preparedLightStore, this._worldSizeUniform, this._worldOffsetUniform, sdfTexture)
@@ -1930,8 +1933,7 @@ export class Flatland extends Group {
     if (!lctx) return
 
     let sdfTexture: Texture | null = null
-    const ctor = lightEffect.constructor as typeof LightEffect
-    if (ctor.needsShadows && this._shadowPipelineEntity) {
+    if (lightEffect.shadowPipelineMode === 'sdf' && this._shadowPipelineEntity) {
       const pipeline = this._runtimeWorld.read(this._shadowPipelineEntity, ShadowPipeline)
       if (pipeline?.sdfGenerator) sdfTexture = pipeline.sdfGenerator.sdfTexture
     }
@@ -2214,7 +2216,7 @@ export class Flatland extends Group {
       // captured by effect shaders at setLighting time.
       const cam = this._camera
       this._worldSizeUniform.value.set(cam.right - cam.left, cam.top - cam.bottom)
-      this._worldOffsetUniform.value.set(cam.left, cam.bottom)
+      this._worldOffsetUniform.value.set(cam.position.x + cam.left, cam.position.y + cam.bottom)
 
       // ONE canonical trigger for the ECS schedule + matrix update per
       // frame. `scene.updateMatrixWorld(true)` walks into
