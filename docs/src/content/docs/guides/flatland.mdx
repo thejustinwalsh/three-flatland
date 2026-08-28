@@ -54,6 +54,9 @@ viewport inside the surface. When that viewport does not fill the surface, bars 
 edges, and `resolvedAspect` then reports the ratio of the viewport rather than of the whole
 surface.
 
+Supplying your own camera moves that boundary. Flatland preserves an authored frustum rather than
+reframing it, and `resolvedAspect` reports that camera's actual frustum ratio.
+
 ## Object routing
 
 `add()` dispatches on type, so the caller does not choose a destination. `Sprite2D` instances go
