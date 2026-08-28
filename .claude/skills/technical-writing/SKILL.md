@@ -138,6 +138,48 @@ first use or link a definition.
 
 The full list is in `banned.md` and in Google's [word list](https://developers.google.com/style/word-list).
 
+## Drafting
+
+**Write the prose yourself.** Delegated drafting produced text that passed every check in
+`checklist.md` and still read as flat. The checks below gate violations; they do not certify that
+prose is good.
+
+**Assemble the source facts first**, as a list: every claim the prose may contain, and nothing else.
+Write only from that list. In testing, a drafter working without this constraint merged two facts
+into a connection neither stated, and a drafter working with it still invented a timing detail. The
+list makes invention visible; it does not prevent it. Check the finished prose against the list.
+
+**Variants are a fallback, not the default.** Reach for them when a section resists rewriting, or
+when you have written the same paragraph three ways and cannot tell which is better. Then:
+
+1. Fetch one random word per variant:
+
+   ```bash
+   curl -s https://random-word-api.herokuapp.com/word
+   ```
+
+   If the service is unavailable, take distinct words from `/usr/share/dict/words`.
+2. Dispatch **three or more Sonnet agents in parallel**, one per variant. Give each:
+   - the paths to `SKILL.md`, `banned.md`, and `checklist.md`, with instructions to read them first
+   - the declared Diátaxis type for the page
+   - the source-fact list
+   - **one inspiration word, different for every agent**
+3. Compare the variants, then pick one or synthesize from the strongest parts.
+4. Run `checklist.md` against the result, then read it yourself. Variants converge on identical
+   check scores, so the checklist cannot pick between them. A human read is the last gate and the
+   only one that measures quality.
+
+**The inspiration word never appears in the output.** It is a decorrelation device. Without it,
+parallel agents converge on the same first-choice phrasing and the variants differ only cosmetically.
+Say this explicitly in every dispatch prompt, or an agent will work the word into the prose.
+
+Use this prompt line verbatim:
+
+> Your inspiration word is `WORD`. It must not appear in your output, and the text must not allude to
+> it. It exists only to vary your phrasing away from your default.
+
+**Model:** Sonnet, for the variant fallback only. The primary path is you writing the prose.
+
 ## Before prose ships
 
 Run `checklist.md`. Two checks catch the most:
