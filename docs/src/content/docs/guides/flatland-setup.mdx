@@ -1,6 +1,6 @@
 ---
 title: Set up a Flatland scene
-description: Create a Flatland instance, add objects, drive its render loop, and dispose it.
+description: Create a Flatland instance, add objects, run its render loop, and dispose it.
 ---
 
 import { Tabs, TabItem } from 'starlight-theme/components'
@@ -81,7 +81,7 @@ constructor option, method, and uniform.
 </Tabs>
 
 :::caution[R3F render phase]
-In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). This tells R3F to skip its default render and lets Flatland control rendering. Game logic and ECS updates should run in the default update phase.
+In React Three Fiber, register `flatland.render()` in the **render phase** (`{ phase: 'render' }`). R3F then skips its default render, and Flatland controls rendering. Game logic and ECS updates should run in the default update phase.
 :::
 
 ## Add objects
