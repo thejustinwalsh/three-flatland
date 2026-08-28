@@ -43,7 +43,8 @@ export class EmissivePass {
     scene: Scene,
     camera: OrthographicCamera,
     target: RenderTarget,
-    radianceWorldSize: Vector2
+    radianceWorldSize: Vector2,
+    radianceWorldOffset: Vector2
   ): void {
     this._assertUsable('render')
     if (this._rendering) return
@@ -58,7 +59,7 @@ export class EmissivePass {
     this._hiddenObjects.length = 0
     scene.traverse(this._collectAndSwap)
 
-    this._syncCamera(camera, radianceWorldSize)
+    this._syncCamera(camera, radianceWorldSize, radianceWorldOffset)
 
     try {
       scene.background = null
@@ -84,20 +85,16 @@ export class EmissivePass {
     }
   }
 
-  private _syncCamera(source: OrthographicCamera, worldSize: Vector2): void {
+  private _syncCamera(source: OrthographicCamera, worldSize: Vector2, worldOffset: Vector2): void {
     this._captureCamera.copy(source, false)
-    const sourceWidth = source.right - source.left
-    const sourceHeight = source.top - source.bottom
-    const padX = Math.max(0, worldSize.x - sourceWidth) * 0.5
-    const padY = Math.max(0, worldSize.y - sourceHeight) * 0.5
-    this._captureCamera.left = source.left - padX
-    this._captureCamera.right = source.right + padX
+    this._captureCamera.left = worldOffset.x - source.position.x
+    this._captureCamera.right = worldOffset.x + worldSize.x - source.position.x
     // Keep the capture in camera/world orientation. DDA's worldToCell()
     // performs the one required world-Y -> render-target-Y conversion when
     // it addresses this texture. Flipping the projection here as well mirrors
     // every emissive sprite a second time, so rays trace toward the wrong Y.
-    this._captureCamera.bottom = source.bottom - padY
-    this._captureCamera.top = source.top + padY
+    this._captureCamera.bottom = worldOffset.y - source.position.y
+    this._captureCamera.top = worldOffset.y + worldSize.y - source.position.y
     this._captureCamera.updateProjectionMatrix()
     this._captureCamera.updateMatrixWorld(true)
   }

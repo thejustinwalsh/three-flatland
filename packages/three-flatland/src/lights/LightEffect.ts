@@ -433,6 +433,17 @@ export abstract class LightEffect {
   }
 
   /**
+   * World-space guard band captured around the visible camera for auxiliary
+   * shadow/emissive passes. Zero keeps the legacy viewport-sized capture.
+   * Effects with bounded transport can return that bound so sources just
+   * outside the viewport continue to contribute without enlarging the main
+   * lighting output surface.
+   */
+  get shadowCaptureMargin(): number {
+    return 0
+  }
+
+  /**
    * Processing-resolution multiplier for resources owned by this effect.
    * The default `1` receives the full physical drawing-buffer size; `0.5`
    * receives half-width/half-height dimensions while camera framing and the
@@ -717,6 +728,8 @@ interface LightEffectConfig<S extends EffectSchema, C extends readonly ChannelNa
    * between binary-grid and distance-field traversal without replacement.
    */
   shadowPipelineMode?: ShadowPipelineMode | ((this: LightEffectInstance<S>) => ShadowPipelineMode)
+  /** World-space guard band for shadow/emissive capture around the camera. */
+  shadowCaptureMargin?: number | ((this: LightEffectInstance<S>) => number)
   /** Per-fragment channels this effect requires (e.g., ['normal'] as const). */
   requires?: C
   /**
@@ -787,6 +800,7 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
     schema,
     needsShadows: shadows = false,
     shadowPipelineMode,
+    shadowCaptureMargin,
     requires: requiredChannels = [] as unknown as C,
     light: lightFn,
     init: initHook,
@@ -812,6 +826,14 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
         return shadowPipelineMode.call(this as unknown as LightEffectInstance<S>)
       }
       return shadowPipelineMode ?? (shadows ? 'sdf' : 'none')
+    }
+
+    override get shadowCaptureMargin(): number {
+      const margin =
+        typeof shadowCaptureMargin === 'function'
+          ? shadowCaptureMargin.call(this as unknown as LightEffectInstance<S>)
+          : (shadowCaptureMargin ?? 0)
+      return Number.isFinite(margin) ? Math.max(0, margin) : 0
     }
 
     override init(ctx: LightEffectRuntimeContext): void {

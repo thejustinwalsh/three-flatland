@@ -270,32 +270,30 @@ export function traceAnalyticLightSources(
     const lightType = row3.r
     const enabled = row3.g.greaterThan(float(0.5))
     const positional = lightType.lessThan(float(1.5))
-    const lightPosition = vec2(row0.r, row0.g)
-    const toCenter = lightPosition.sub(rayStart)
-    const projected = toCenter.dot(rayDirection)
-    const closestDistanceSq = toCenter.dot(toCenter).sub(projected.mul(projected))
-    const radiusSq = sourceRadius.mul(sourceRadius)
-    const intersects = closestDistanceSq.lessThanEqual(radiusSq)
-    const halfChord = radiusSq.sub(closestDistanceSq).max(float(0)).sqrt()
-    // A ray grazing an emissive disk represents less of its projected area
-    // than one through the centre. Treating every intersection as full energy
-    // exposes RC/HRC's sparse base directions as fat spokes around small
-    // sources. Amitabha similarly attenuates analytic-circle hits by their
-    // penetration; the normalized half-chord is resolution-independent and
-    // is the exact line-integral coverage of a uniform disk up to a constant.
-    const sourceCoverage = halfChord.div(sourceRadius.max(float(1e-6))).clamp(0, 1)
-    const entryDistance = projected.sub(halfChord).max(float(0))
-    const exitsAhead = projected.add(halfChord).greaterThanEqual(float(0))
-    const insideSegment = entryDistance.lessThanEqual(maxDistance)
+    // Keep all analytic-circle math behind the type/enabled branch. TSL
+    // otherwise emits the texture fetches, dot products and sqrt before the
+    // `If`, making every ambient/directional LightStore entry pay the full
+    // positional-source cost in every cascade fragment.
+    If(enabled.and(positional), () => {
+      const lightPosition = vec2(row0.r, row0.g)
+      const toCenter = lightPosition.sub(rayStart)
+      const projected = toCenter.dot(rayDirection)
+      const closestDistanceSq = toCenter.dot(toCenter).sub(projected.mul(projected))
+      const radiusSq = sourceRadius.mul(sourceRadius)
+      const intersects = closestDistanceSq.lessThanEqual(radiusSq)
+      const halfChord = radiusSq.sub(closestDistanceSq).max(float(0)).sqrt()
+      // A ray grazing an emissive disk represents less of its projected area
+      // than one through the centre. Treating every intersection as full energy
+      // exposes RC/HRC's sparse base directions as fat spokes around small
+      // sources. Amitabha similarly attenuates analytic-circle hits by their
+      // penetration; the normalized half-chord is resolution-independent and
+      // is the exact line-integral coverage of a uniform disk up to a constant.
+      const sourceCoverage = halfChord.div(sourceRadius.max(float(1e-6))).clamp(0, 1)
+      const entryDistance = projected.sub(halfChord).max(float(0))
+      const exitsAhead = projected.add(halfChord).greaterThanEqual(float(0))
+      const insideSegment = entryDistance.lessThanEqual(maxDistance)
 
-    If(
-      enabled
-        .and(positional)
-        .and(intersects)
-        .and(exitsAhead)
-        .and(insideSegment)
-        .and(entryDistance.lessThan(nearestDistance)),
-      () => {
+      If(intersects.and(exitsAhead).and(insideSegment).and(entryDistance.lessThan(nearestDistance)), () => {
         const lightColor = vec3(row0.b, row0.a, row1.r)
         const lightIntensity = row1.g
         const emission = lightColor.mul(lightIntensity).toVar()
@@ -317,8 +315,8 @@ export function traceAnalyticLightSources(
         nearestDistance.assign(entryDistance)
         nearestRadiance.assign(emission.mul(sourceCoverage))
         sourceHit.assign(float(1))
-      }
-    )
+      })
+    })
   })
 
   return {
@@ -350,6 +348,15 @@ export interface RadianceCascadesConfig {
   baseRayCount: number
   /** Base interval in world units. 0 = auto-calculate from world size. */
   baseInterval: number
+  /**
+   * Maximum world-space distance covered by all cascade intervals when
+   * `baseInterval` is automatic. `0` preserves the legacy behavior of using
+   * the active transport window diagonal.
+   *
+   * DDA callers should normally set this explicitly: it is both the useful
+   * light-influence radius and the dominant bound on the far-cascade loop.
+   */
+  maxTransportDistance: number
   /** Cascade texture resolution. 0 = auto-calculate from world size. */
   cascadeResolution: number
   /** Maximum cascade texture resolution used by auto sizing. 0 = unlimited. */
@@ -399,6 +406,7 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
   cascadeCount: 4,
   baseRayCount: 16,
   baseInterval: 0,
+  maxTransportDistance: 0,
   cascadeResolution: 0,
   maxAutoCascadeResolution: 512,
   raymarchSteps: 24,
@@ -529,11 +537,16 @@ export class RadianceCascades {
 
   private _worldSize = new Vector2(1, 1)
   private _worldOffset = new Vector2(0, 0)
+  private _transportWorldSize = new Vector2(1, 1)
+  private _transportWorldOffset = new Vector2(0, 0)
+  private _hasExplicitTransportBounds = false
   /** Physical processing surface. DDA derives its logical grid from this, never from world units. */
   private _processingSize = new Vector2(1, 1)
   private _hasExplicitProcessingSize = false
   private _worldSizeNode = uniform(new Vector2(1, 1))
   private _worldOffsetNode = uniform(new Vector2(0, 0))
+  private _transportWorldSizeNode = uniform(new Vector2(1, 1))
+  private _transportWorldOffsetNode = uniform(new Vector2(0, 0))
   private _intervalOffsetNodes: UniformNode<'float', number>[] = []
   private _intervalRangeNodes: UniformNode<'float', number>[] = []
   private _finalTexelSizeNode = uniform(new Vector2(1, 1))
@@ -662,6 +675,24 @@ export class RadianceCascades {
 
   get raymarchSteps(): number {
     return this._config.raymarchSteps
+  }
+
+  get maxTransportDistance(): number {
+    return this._config.maxTransportDistance
+  }
+
+  set maxTransportDistance(value: number) {
+    const distance = Math.max(0, value)
+    if (distance === this._config.maxTransportDistance) return
+    this._config.maxTransportDistance = distance
+    this._updateIntervalUniforms()
+
+    // DDA loop bounds are compile-time constants derived from the interval
+    // ranges. Changing the transport radius therefore requires new cascade
+    // materials even though the interval endpoints themselves are uniforms.
+    if (this._usesDdaFixed() && this._cascadeRTs.length > 0) {
+      this._createCascadeMaterials()
+    }
   }
 
   get traversal(): RadianceCascadesTraversal {
@@ -936,9 +967,24 @@ export class RadianceCascades {
     }
   }
 
+  /** Physical integer grid used only for DDA source and occlusion lookup. */
+  private _ddaCaptureDimensions(): { width: number; height: number } {
+    const visible = this._transportDimensions()
+    if (!this._usesDdaFixed()) return { width: visible.outputWidth, height: visible.outputHeight }
+    const widthRatio = this._transportWorldSize.x / Math.max(1e-6, this._worldSize.x)
+    const heightRatio = this._transportWorldSize.y / Math.max(1e-6, this._worldSize.y)
+    return {
+      width: Math.max(1, Math.ceil(visible.outputWidth * widthRatio)),
+      height: Math.max(1, Math.ceil(visible.outputHeight * heightRatio)),
+    }
+  }
+
   private _ddaMaxSteps(cascadeIndex: number): number {
-    const { outputWidth: gridWidth, outputHeight: gridHeight } = this._transportDimensions()
-    const minCellWorldSize = Math.max(1e-6, Math.min(this._worldSize.x / gridWidth, this._worldSize.y / gridHeight))
+    const { width: gridWidth, height: gridHeight } = this._ddaCaptureDimensions()
+    const minCellWorldSize = Math.max(
+      1e-6,
+      Math.min(this._transportWorldSize.x / gridWidth, this._transportWorldSize.y / gridHeight)
+    )
     const intervalRange =
       this._intervalRangeNodes[cascadeIndex]?.value ?? this._effectiveBaseInterval * Math.pow(4, cascadeIndex)
     return Math.min(gridWidth + gridHeight + 1, Math.ceil((intervalRange / minCellWorldSize) * Math.SQRT2) + 3)
@@ -1013,14 +1059,23 @@ export class RadianceCascades {
     const { outputWidth, outputHeight } = this._transportDimensions()
     this._rawFinalRadianceRT.setSize(outputWidth, outputHeight)
     this._finalRadianceRT.setSize(outputWidth, outputHeight)
-    this._emissiveRadianceRT.setSize(outputWidth, outputHeight)
+    this._resizeEmissiveTarget()
     this._finalTexelSizeNode.value.set(1 / outputWidth, 1 / outputHeight)
     this._resizeWideRadianceTargets()
+  }
+
+  private _resizeEmissiveTarget(): void {
+    const capture = this._ddaCaptureDimensions()
+    this._emissiveRadianceRT.setSize(capture.width, capture.height)
   }
 
   init(worldWidth: number, worldHeight: number, lightsTexture: DataTexture, lightCountNode: Node<'float'>): void {
     this._worldSize.set(worldWidth, worldHeight)
     this._worldSizeNode.value.set(worldWidth, worldHeight)
+    if (!this._hasExplicitTransportBounds) {
+      this._transportWorldSize.set(worldWidth, worldHeight)
+      this._transportWorldSizeNode.value.set(worldWidth, worldHeight)
+    }
     this._lightsTexture = lightsTexture
     this._lightCountNode = lightCountNode
 
@@ -1146,8 +1201,9 @@ export class RadianceCascades {
 
     if (this._autoBaseInterval) {
       const diagonal = Math.hypot(this._worldSize.x, this._worldSize.y)
+      const transportDistance = this._config.maxTransportDistance > 0 ? this._config.maxTransportDistance : diagonal
       const geometricSum = (Math.pow(4, this._config.cascadeCount) - 1) / 3
-      this._effectiveBaseInterval = diagonal / geometricSum
+      this._effectiveBaseInterval = transportDistance / geometricSum
     } else {
       this._effectiveBaseInterval = this._config.baseInterval
     }
@@ -1173,7 +1229,31 @@ export class RadianceCascades {
     this._worldOffset.copy(worldOffset)
     this._worldSizeNode.value.copy(worldSize)
     this._worldOffsetNode.value.copy(worldOffset)
+    if (!this._hasExplicitTransportBounds) {
+      this._transportWorldSize.copy(worldSize)
+      this._transportWorldOffset.copy(worldOffset)
+      this._transportWorldSizeNode.value.copy(worldSize)
+      this._transportWorldOffsetNode.value.copy(worldOffset)
+    }
     this._updateIntervalUniforms()
+  }
+
+  /**
+   * Set the larger source/occlusion window traversed by DDA rays. The visible
+   * cascade probe grid remains unchanged; only capture textures and integer
+   * cell addressing use these bounds.
+   */
+  setTransportBounds(worldSize: Vector2, worldOffset: Vector2): void {
+    const previous = this._ddaCaptureDimensions()
+    this._hasExplicitTransportBounds = true
+    this._transportWorldSize.copy(worldSize)
+    this._transportWorldOffset.copy(worldOffset)
+    this._transportWorldSizeNode.value.copy(worldSize)
+    this._transportWorldOffsetNode.value.copy(worldOffset)
+    const next = this._ddaCaptureDimensions()
+    if (previous.width === next.width && previous.height === next.height) return
+    this._resizeEmissiveTarget()
+    if (this._usesDdaFixed() && this._cascadeRTs.length > 0) this._createCascadeMaterials()
   }
 
   /** Set the physical effect surface used to derive the DDA lighting grid. */
@@ -1286,7 +1366,14 @@ export class RadianceCascades {
     renderer.clear()
     renderer.setClearColor(previousColor, previousAlpha)
     if (scene && camera) {
-      this._emissivePass.render(renderer, scene, camera, this._emissiveRadianceRT, this._worldSize)
+      this._emissivePass.render(
+        renderer,
+        scene,
+        camera,
+        this._emissiveRadianceRT,
+        this._transportWorldSize,
+        this._transportWorldOffset
+      )
     }
   }
 
@@ -1369,6 +1456,8 @@ export class RadianceCascades {
     const lightCount = this._lightCountNode!
     const worldSize = this._worldSizeNode
     const worldOffset = this._worldOffsetNode
+    const transportWorldSize = this._transportWorldSizeNode
+    const transportWorldOffset = this._transportWorldOffsetNode
 
     const baseAngular = Math.sqrt(config.baseRayCount)
     const angular = baseAngular * Math.pow(2, cascadeIndex)
@@ -1382,8 +1471,9 @@ export class RadianceCascades {
     const cascadeStride = 2 ** cascadeIndex
     const activeProbeWidth = Math.ceil(dimensions.outputWidth / cascadeStride)
     const activeProbeHeight = Math.ceil(dimensions.outputHeight / cascadeStride)
-    const ddaGridWidth = dimensions.outputWidth
-    const ddaGridHeight = dimensions.outputHeight
+    const captureDimensions = this._ddaCaptureDimensions()
+    const ddaGridWidth = captureDimensions.width
+    const ddaGridHeight = captureDimensions.height
     const ddaMaxSteps = this._ddaMaxSteps(cascadeIndex)
     const sourceRadius =
       config.lightSourceRadius > 0
@@ -1392,7 +1482,10 @@ export class RadianceCascades {
           ? min(worldSize.x, worldSize.y)
               .mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
               .max(
-                min(worldSize.x.div(float(ddaGridWidth)), worldSize.y.div(float(ddaGridHeight))).mul(
+                min(
+                  transportWorldSize.x.div(float(ddaGridWidth)),
+                  transportWorldSize.y.div(float(ddaGridHeight))
+                ).mul(
                   float(AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS)
                 )
               )
@@ -1432,14 +1525,17 @@ export class RadianceCascades {
         .mul(float(cascadeStride))
         .div(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
         .clamp(0, 1)
-      const probeLocalPos = probeUV.mul(worldSize)
-      const probeWorldPos = probeLocalPos.add(worldOffset)
+      // Both analytic emitters and DDA consume the same probe ray. Materialize
+      // these shared expressions once: leaving them as immutable expression
+      // nodes makes TSL expand the complete probe/ray graph independently
+      // inside the analytic-light branch and the DDA traversal.
+      const probeLocalPos = probeUV.mul(worldSize).toVar()
 
       const theta = rayIndex.add(float(0.5)).mul(float(TAU / angularSq))
-      const rayDir = vec2(cos(theta), sin(theta))
+      const rayDir = vec2(cos(theta), sin(theta)).toVar()
 
-      const segmentStart = probeWorldPos.add(rayDir.mul(intervalOffset))
-      const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset))
+      const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toVar()
+      const segmentStart = segmentStartLocal.add(worldOffset).toVar()
       const source = traceAnalyticLightSources(
         lightsTexture,
         lightCount,
@@ -1455,14 +1551,10 @@ export class RadianceCascades {
       const reachedTraceLimit = float(0).toVar()
 
       if (this._usesDdaFixed() && occlusionTexture) {
-        // The binary occlusion and emissive targets are camera-local grids.
-        // Traverse them in that local space instead of repeatedly subtracting
-        // a potentially large/negative map-space camera origin inside the DDA
-        // walk. Analytic lights above remain world-space; distances and ray
-        // directions are translation invariant, so both paths share the same
-        // trace limit without mixing coordinate spaces.
-        const localOrigin = vec2(0)
-        const boundsInterval = rayBoundsInterval(segmentStartLocal, rayDir, worldSize, localOrigin)
+        // Probes cover only the visible camera, while DDA traverses the larger
+        // source/occluder capture window. Keeping these bounds separate avoids
+        // paying cascade-fragment cost for the offscreen guard band.
+        const boundsInterval = rayBoundsInterval(segmentStart, rayDir, transportWorldSize, transportWorldOffset)
         const traceEntry = boundsInterval.x.max(float(0))
         const traceExit = boundsInterval.y.min(traceLimit)
         const intersectsWorld = traceExit.greaterThanEqual(traceEntry)
@@ -1470,13 +1562,13 @@ export class RadianceCascades {
           occlusionTexture,
           this._occlusionTextureSizeNode,
           this._emissiveRadianceRT.texture,
-          segmentStartLocal,
+          segmentStart,
           rayDir,
           traceEntry,
           traceExit,
           intersectsWorld,
-          worldSize,
-          localOrigin,
+          transportWorldSize,
+          transportWorldOffset,
           ddaGridWidth,
           ddaGridHeight,
           ddaMaxSteps

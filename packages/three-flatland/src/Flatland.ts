@@ -37,7 +37,7 @@ const BatchRegistries = select(BatchRegistry)
 import { SDFGenerator } from './lights/SDFGenerator'
 import { OcclusionPass } from './lights/OcclusionPass'
 import { lightSyncSystem } from './ecs/systems/lightSyncSystem'
-import { lightEffectSystem } from './ecs/systems/lightEffectSystem'
+import { lightEffectRenderSystem, lightEffectSystem } from './ecs/systems/lightEffectSystem'
 import { lightMaterialAssignSystem } from './ecs/systems/lightMaterialAssignSystem'
 import { shadowPipelineSystem } from './ecs/systems/shadowPipelineSystem'
 import type { PassEffect } from './pipeline/PassEffect'
@@ -1998,6 +1998,7 @@ export class Flatland extends Group {
     if (!scheduled) {
       schedule.remove(lightSyncSystem)
       schedule.remove(lightEffectSystem)
+      schedule.remove(lightEffectRenderSystem)
       schedule.remove(lightMaterialAssignSystem)
       schedule.remove(shadowPipelineSystem)
       return
@@ -2007,6 +2008,7 @@ export class Flatland extends Group {
     // appended so it sees current-frame matrices and flushed dirty ranges.
     schedule
       .add(shadowPipelineSystem, { track: PERF_TRACK.Lighting, name: 'shadowPipeline' })
+      .add(lightEffectRenderSystem, { track: PERF_TRACK.Lighting, name: 'lightEffectRender' })
       .prepend(lightMaterialAssignSystem, {
         track: PERF_TRACK.Lighting,
         name: 'lightMaterialAssign',

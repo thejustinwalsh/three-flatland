@@ -97,6 +97,31 @@ export function lightEffectSystem(world: World): void {
     ctx.resizePending = false
   }
 
-  // Per-frame update (tiling, SDF shadows, radiance cascades, etc.)
+}
+
+/**
+ * Run effect-owned GPU work after the shadow pipeline captured current-frame
+ * sprite matrices. Keeping preparation and rendering in separate systems
+ * prevents radiance from sampling a one-frame-old occlusion window while the
+ * camera is scrolling.
+ */
+export function lightEffectRenderSystem(world: World): void {
+  const ctxEntities = world.view(LightingContexts)
+  if (ctxEntities.length === 0) return
+  const ctx = world.read(ctxEntities[0]!, LightingContext)
+  if (!ctx?.effect?.enabled || !ctx.lightStore || !ctx.renderer || !ctx.camera || !ctx.scene || !ctx.initialized) return
+
+  const pipelineEntities = world.view(ShadowPipelines)
+  const pipeline = pipelineEntities.length > 0 ? world.read(pipelineEntities[0]!, ShadowPipeline) : null
+  const runtimeCtx = runtimeContextFor(world)
+  runtimeCtx.renderer = ctx.renderer
+  runtimeCtx.camera = ctx.camera
+  runtimeCtx.scene = ctx.scene
+  runtimeCtx.lightStore = ctx.lightStore
+  runtimeCtx.sdfGenerator = pipeline?.sdfGenerator ?? null
+  runtimeCtx.occlusionTexture = pipeline?.occlusionPass?.renderTarget.texture ?? null
+  runtimeCtx.lights = ctx.lights
+  runtimeCtx.worldSize = ctx.worldSize
+  runtimeCtx.worldOffset = ctx.worldOffset
   ctx.effect.update(runtimeCtx)
 }

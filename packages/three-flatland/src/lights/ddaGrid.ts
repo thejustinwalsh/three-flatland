@@ -212,11 +212,11 @@ export function traceDdaIntegerRadiance(
   // normal occlusion. Without this, every shadow caster kills all of its own
   // rays at step zero and renders with a dark moat. Once the ray reaches open
   // space, every later occupied cell blocks normally.
-  const receiverPending = occlusionAt(cell)
-    .y.greaterThan(float(0.5))
-    .and(intersectsWorld)
-    .select(float(1), float(0))
-    .toVar()
+  // Start in receiver-bias mode unconditionally. An open first cell clears it
+  // during iteration zero; an occupied first cell keeps it until the ray exits
+  // that initial silhouette. This avoids loading the same starting occlusion
+  // texel both here and again at the top of the loop.
+  const receiverPending = intersectsWorld.select(float(1), float(0)).toVar()
   const emitterPending = float(0).toVar()
 
   const acceptEmission = (sample: Node<'vec4'>): void => {

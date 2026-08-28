@@ -52,6 +52,7 @@ const DUNGEON_LIGHTING_DEFAULTS = {
   torchEmission: 8,
   slimeEmission: 0.5,
   radianceRange: 8,
+  maxTransportDistance: 128,
 } as const
 const WALL_TORCH_TILE_ID = 91
 const FLOOR_TORCH_TILE_ID = 93
@@ -307,6 +308,7 @@ async function main() {
   lightEffect.radiance.filterRadius = 1.25
   lightEffect.radiance.filterStrength = 0.85
   lightEffect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
+  lightEffect.radiance.maxTransportDistance = DUNGEON_LIGHTING_DEFAULTS.maxTransportDistance
   if (benchmarkBaseRayCount === 4 || benchmarkBaseRayCount === 16) {
     lightEffect.radiance.config.baseRayCount = benchmarkBaseRayCount
   }
@@ -578,6 +580,12 @@ async function main() {
     max: 64,
     step: 1,
     label: 'bands',
+  })
+  lightFolder.addBinding(lightEffect.radiance, 'maxTransportDistance', {
+    min: 32,
+    max: 384,
+    step: 16,
+    label: 'transport radius',
   })
 
   const torchFolder = pane.addFolder({ title: 'Torches', expanded: false })

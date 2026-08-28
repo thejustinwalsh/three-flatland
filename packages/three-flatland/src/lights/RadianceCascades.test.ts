@@ -110,6 +110,33 @@ describe('RadianceCascades', () => {
     radiance.dispose()
   })
 
+  it('bounds automatic cascade intervals with an explicit transport distance', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 512,
+      maxTransportDistance: 96,
+    })
+    radiance.init(640, 360, createLightsTexture(), uniform(0))
+
+    const internals = radiance as unknown as {
+      _intervalOffsetNodes: Array<{ value: number }>
+      _intervalRangeNodes: Array<{ value: number }>
+      _ddaMaxSteps: (cascadeIndex: number) => number
+    }
+    const last = radiance.cascadeCount - 1
+    const transportEnd = internals._intervalOffsetNodes[last]!.value + internals._intervalRangeNodes[last]!.value
+    expect(transportEnd).toBeCloseTo(96)
+
+    const boundedSteps = internals._ddaMaxSteps(last)
+    radiance.maxTransportDistance = 192
+    expect(radiance.maxTransportDistance).toBe(192)
+    expect(internals._ddaMaxSteps(last)).toBeGreaterThan(boundedSteps)
+
+    radiance.maxTransportDistance = -1
+    expect(radiance.maxTransportDistance).toBe(0)
+    radiance.dispose()
+  })
+
   it('derives DDA RC work from the processing surface without a transport cap', () => {
     const radiance = new RadianceCascades({
       ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,

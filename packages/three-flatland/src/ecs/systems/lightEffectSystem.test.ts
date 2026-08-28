@@ -8,7 +8,7 @@ import type { LightEffect, LightEffectRuntimeContext } from '../../lights/LightE
 import type { LightStore } from '../../lights/LightStore'
 import type { WebGPURenderer } from 'three/webgpu'
 import { SpriteGroup } from '../../pipeline/SpriteGroup'
-import { lightEffectSystem, releaseLightEffectRuntimeContext } from './lightEffectSystem'
+import { lightEffectRenderSystem, lightEffectSystem, releaseLightEffectRuntimeContext } from './lightEffectSystem'
 
 interface RuntimeFixture {
   camera: OrthographicCamera
@@ -152,6 +152,7 @@ describe('lightEffectSystem runtime context', () => {
       })
     )
     lightEffectSystem(world)
+    lightEffectRenderSystem(world)
     expect(contexts[0]!.renderer).toBe(renderer)
 
     group.dispose()

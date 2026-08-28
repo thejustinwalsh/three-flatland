@@ -27,6 +27,7 @@ import type { BuffersSubscription } from './debug/SubscriberRegistry'
 import { DebugTextureRegistry } from './debug/DebugTextureRegistry'
 import { Flatland } from './Flatland'
 import { HierarchicalRadianceCascades } from './lights/HierarchicalRadianceCascades'
+import { RadianceCascades } from './lights/RadianceCascades'
 import { SDFGenerator } from './lights/SDFGenerator'
 import { OcclusionPass } from './lights/OcclusionPass'
 import { EffectMaterial } from './materials/EffectMaterial'
@@ -222,6 +223,35 @@ const ensureFixedPalette = reflected<() => void>(fixedHrc, '_ensureFilterRadianc
 ensureFixedPalette.call(fixedHrc)
 const fixedHrcPaletteMaterial = reflected<NodeMaterial>(fixedHrc, '_filterRadianceMaterial')
 
+const fixedRc = new RadianceCascades({
+  traversal: 'dda-fixed',
+  cascadeCount: 4,
+  baseRayCount: 16,
+  cascadeResolution: 0,
+  maxAutoCascadeResolution: 512,
+  maxTransportDistance: 256,
+  filterRadius: 1.25,
+  filterStrength: 0.85,
+  mipBlur: 0,
+  mipStrength: 0,
+  ddaPixelSize: 2,
+  ddaQuantizationBits: 8,
+  ddaRadianceRange: 8,
+  ddaBleedThreshold: 0.65,
+  ddaPaletteBands: 0,
+  includeAmbient: false,
+})
+fixedRc.init(320, 180, shaderTexture() as DataTexture, uniform(1))
+fixedRc.setProcessingSize(640, 360)
+fixedRc.setOcclusionTexture(shaderTexture())
+const fixedRcCascadeMaterials = reflected<NodeMaterial[]>(fixedRc, '_cascadeMaterials')
+const ensureFixedRcFinal = reflected<() => void>(fixedRc, '_ensureFinalRadianceMaterial')
+ensureFixedRcFinal.call(fixedRc)
+const fixedRcFinalMaterial = reflected<NodeMaterial>(fixedRc, '_finalRadianceMaterial')
+const ensureFixedRcFilter = reflected<() => void>(fixedRc, '_ensureFilterRadianceMaterial')
+ensureFixedRcFilter.call(fixedRc)
+const fixedRcFilterMaterial = reflected<NodeMaterial>(fixedRc, '_filterRadianceMaterial')
+
 const CompilerPass = createPassEffect({
   name: 'compiler-pass',
   schema: { amount: 0.5 },
@@ -248,6 +278,7 @@ afterAll(async () => {
   } finally {
     sdfGenerator.dispose()
     occlusionPass.dispose()
+    fixedRc.dispose()
     fixedHrc.dispose()
     for (const material of disposableMaterials) material.dispose()
     for (const texture of disposableTextures) texture.dispose()
@@ -515,6 +546,15 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
     expect(finalProgram.fragmentShader, 'DDA final reconstruction must use its local seven-cell wedge bound').toMatch(
       /<\s*7(?:\.0)?\s*;/
     )
+  })
+
+  it('compiles the production packed fixed-point DDA RC pass set', () => {
+    expect(fixedRcCascadeMaterials).toHaveLength(4)
+    for (let cascade = 0; cascade < fixedRcCascadeMaterials.length; cascade++) {
+      capture(`rc-dda-fixed-cascade-${cascade}`, backend, fixedRcCascadeMaterials[cascade]!)
+    }
+    capture('rc-dda-fixed-final', backend, fixedRcFinalMaterial)
+    capture('rc-dda-fixed-filter', backend, fixedRcFilterMaterial)
   })
 
   it('compiles DDA palette snapping for both shader backends', () => {

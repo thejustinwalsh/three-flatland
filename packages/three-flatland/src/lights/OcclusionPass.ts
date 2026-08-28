@@ -2,6 +2,7 @@ import {
   RenderTarget,
   type Scene,
   type Camera,
+  OrthographicCamera,
   type Material,
   type Mesh,
   type Object3D,
@@ -10,6 +11,7 @@ import {
   Color,
   NearestFilter,
   LinearFilter,
+  type Vector2,
 } from 'three'
 import type { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
 import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
@@ -113,6 +115,7 @@ export class OcclusionPass {
    * outer call's material-restore data.
    */
   private _rendering = false
+  private _captureCamera = new OrthographicCamera()
 
   constructor(options: OcclusionPassOptions = {}) {
     // Default half-res. Quarters fill cost across every RT-sized pass
@@ -197,7 +200,13 @@ export class OcclusionPass {
    * Saves and restores renderer render target and scene.background so the
    * caller's subsequent main-scene render sees no side effects.
    */
-  render(renderer: WebGPURenderer, scene: Scene, camera: Camera): void {
+  render(
+    renderer: WebGPURenderer,
+    scene: Scene,
+    camera: Camera,
+    captureWorldSize?: Vector2,
+    captureWorldOffset?: Vector2
+  ): void {
     this._assertUsable('render')
     if (this._rendering) return
     this._rendering = true
@@ -223,7 +232,7 @@ export class OcclusionPass {
       renderer.setClearColor(this._clearColor.getHex(), this._clearAlpha)
       renderer.clear(true, false, false)
       beginDebugPass('occluder', renderer)
-      renderer.render(scene, camera)
+      renderer.render(scene, this._captureCameraFor(camera, captureWorldSize, captureWorldOffset))
       endDebugPass(renderer)
     } finally {
       // Restore original materials in reverse order so the arrays can clear
@@ -243,6 +252,19 @@ export class OcclusionPass {
       renderer.setRenderTarget(prevRT)
       this._rendering = false
     }
+  }
+
+  private _captureCameraFor(camera: Camera, worldSize?: Vector2, worldOffset?: Vector2): Camera {
+    if (!(camera instanceof OrthographicCamera) || !worldSize || !worldOffset) return camera
+
+    this._captureCamera.copy(camera, false)
+    this._captureCamera.left = worldOffset.x - camera.position.x
+    this._captureCamera.right = worldOffset.x + worldSize.x - camera.position.x
+    this._captureCamera.bottom = worldOffset.y - camera.position.y
+    this._captureCamera.top = worldOffset.y + worldSize.y - camera.position.y
+    this._captureCamera.updateProjectionMatrix()
+    this._captureCamera.updateMatrixWorld(true)
+    return this._captureCamera
   }
 
   /**

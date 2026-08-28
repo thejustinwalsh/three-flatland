@@ -43,7 +43,7 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
       ddaPixelSize: 4,
       ddaQuantizationBits: 8,
       ddaBleedThreshold: 0.65,
-      ddaPaletteBands: 32,
+      ddaPaletteBands: 0,
     })
 
     effect.dispose()

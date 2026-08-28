@@ -37,6 +37,8 @@ const BatchRegistries = select(BatchRegistry)
  *   in JS beyond that.
  */
 const _worldSizeScratch = new Vector2()
+const _captureWorldSizeScratch = new Vector2()
+const _captureWorldOffsetScratch = new Vector2()
 
 export function shadowPipelineSystem(world: World): void {
   const ctxEntities = world.view(LightingContexts)
@@ -137,9 +139,27 @@ export function shadowPipelineSystem(world: World): void {
   const surfaceWidth = ctx.surfaceSize.x
   const surfaceHeight = ctx.surfaceSize.y
   if (surfaceWidth <= 0 || surfaceHeight <= 0) return
+  const captureMargin = effect?.shadowCaptureMargin ?? 0
+  const viewWorldWidth = camera.right - camera.left
+  const viewWorldHeight = camera.top - camera.bottom
+  _captureWorldSizeScratch.set(viewWorldWidth + captureMargin * 2, viewWorldHeight + captureMargin * 2)
+  _captureWorldOffsetScratch.set(
+    camera.position.x + camera.left - captureMargin,
+    camera.position.y + camera.bottom - captureMargin
+  )
+  // Preserve the visible capture density. Only the source/occlusion target
+  // grows; the effect-owned cascade probe/output grid remains viewport-sized.
+  const captureSurfaceWidth = Math.max(
+    1,
+    Math.ceil(surfaceWidth * (_captureWorldSizeScratch.x / Math.max(1e-6, viewWorldWidth)))
+  )
+  const captureSurfaceHeight = Math.max(
+    1,
+    Math.ceil(surfaceHeight * (_captureWorldSizeScratch.y / Math.max(1e-6, viewWorldHeight)))
+  )
   const scale = pipeline.occlusionPass.resolutionScale
-  const sdfW = Math.max(1, Math.floor(surfaceWidth * scale))
-  const sdfH = Math.max(1, Math.floor(surfaceHeight * scale))
+  const sdfW = Math.max(1, Math.floor(captureSurfaceWidth * scale))
+  const sdfH = Math.max(1, Math.floor(captureSurfaceHeight * scale))
 
   // OcclusionPass applies this same scale internally and stores only the
   // resulting physical RT dimensions. If an unscaled surface change rounds
@@ -147,14 +167,14 @@ export function shadowPipelineSystem(world: World): void {
   // resource changes size and a resize/regeneration would be redundant.
   if (!pipeline.initialized) {
     pipeline.sdfGenerator?.init(sdfW, sdfH)
-    pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)
+    pipeline.occlusionPass.resize(captureSurfaceWidth, captureSurfaceHeight)
     pipeline.width = sdfW
     pipeline.height = sdfH
     pipeline.initialized = true
     mustRegen = true
   } else if (sdfW !== pipeline.width || sdfH !== pipeline.height) {
     pipeline.sdfGenerator?.resize(sdfW, sdfH)
-    pipeline.occlusionPass.resize(surfaceWidth, surfaceHeight)
+    pipeline.occlusionPass.resize(captureSurfaceWidth, captureSurfaceHeight)
     pipeline.width = sdfW
     pipeline.height = sdfH
     mustRegen = true
@@ -199,7 +219,7 @@ export function shadowPipelineSystem(world: World): void {
     right = ortho.right
     top = ortho.top
     bottom = ortho.bottom
-    _worldSizeScratch.set(right - left, top - bottom)
+    _worldSizeScratch.copy(_captureWorldSizeScratch)
     pipeline.sdfGenerator?.setWorldBounds(_worldSizeScratch)
   }
 
@@ -233,7 +253,7 @@ export function shadowPipelineSystem(world: World): void {
   const dirty = mustRegen || occludersDirty || cameraChanged
   if (!dirty) return
 
-  pipeline.occlusionPass.render(renderer, scene, camera)
+  pipeline.occlusionPass.render(renderer, scene, camera, _captureWorldSizeScratch, _captureWorldOffsetScratch)
   pipeline.sdfGenerator?.generate(renderer, pipeline.occlusionPass.renderTarget)
 
   // Record the frustum/position this generation was rendered against so the

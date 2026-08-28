@@ -380,6 +380,7 @@ const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
   cascadeCount: 4,
   baseRayCount: 16,
   baseInterval: 0,
+  maxTransportDistance: 0,
   cascadeResolution: 0,
   maxAutoCascadeResolution: 512,
   angularJitter: false,
@@ -1986,7 +1987,8 @@ export class HierarchicalRadianceCascades {
   private _updateBaseInterval(): void {
     if (this._autoBaseInterval) {
       const diagonal = Math.hypot(this._worldSize.x, this._worldSize.y)
-      this._effectiveBaseInterval = diagonal / Math.max(1, this._config.shortIntervalCount)
+      const transportDistance = this._config.maxTransportDistance > 0 ? this._config.maxTransportDistance : diagonal
+      this._effectiveBaseInterval = transportDistance / Math.max(1, this._config.shortIntervalCount)
     } else {
       this._effectiveBaseInterval = this._config.baseInterval
     }

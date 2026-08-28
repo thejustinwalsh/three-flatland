@@ -1,4 +1,5 @@
 import { Fn, float, screenUV, smoothstep, vec3, vec4, texture as sampleTexture } from 'three/tsl'
+import { Vector2 } from 'three'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
   collectAmbientRadiance,
@@ -6,6 +7,9 @@ import {
   DDA_FIXED_RADIANCE_CASCADES_CONFIG,
   RadianceCascades,
 } from 'three-flatland'
+
+const _transportWorldSize = new Vector2()
+const _transportWorldOffset = new Vector2()
 
 /**
  * Direction-first Radiance Cascades with integer supercover occlusion and
@@ -22,6 +26,9 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   requires: ['normal', 'elevation'] as const,
   needsShadows: true,
   shadowPipelineMode: 'occlusion',
+  shadowCaptureMargin() {
+    return this.radiance.maxTransportDistance
+  },
   light: ({ uniforms, constants, lightStore }) => {
     const radianceIntensity = uniforms.radianceIntensity
     const lightHeight = uniforms.lightHeight
@@ -61,6 +68,10 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   update(ctx) {
     if (!ctx.occlusionTexture) return
     this.radiance.setWorldBounds(ctx.worldSize, ctx.worldOffset)
+    const margin = this.radiance.maxTransportDistance
+    _transportWorldSize.set(ctx.worldSize.x + margin * 2, ctx.worldSize.y + margin * 2)
+    _transportWorldOffset.set(ctx.worldOffset.x - margin, ctx.worldOffset.y - margin)
+    this.radiance.setTransportBounds(_transportWorldSize, _transportWorldOffset)
     this.radiance.generate(ctx.renderer, null, ctx.occlusionTexture, ctx.scene, ctx.camera)
   },
   resize(width, height) {
