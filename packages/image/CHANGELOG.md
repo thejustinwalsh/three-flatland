@@ -1,5 +1,12 @@
 # @three-flatland/image
 
+## 0.1.0-alpha.4
+
+### Patch Changes
+
+- Updated dependencies [0fe56e5]
+  - @three-flatland/bake@0.1.0-alpha.3
+
 ## 0.1.0-alpha.3
 
 ### Minor Changes

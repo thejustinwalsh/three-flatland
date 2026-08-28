@@ -1,5 +1,12 @@
 # @three-flatland/normals
 
+## 0.1.0-alpha.5
+
+### Patch Changes
+
+- Updated dependencies [0fe56e5]
+  - @three-flatland/bake@0.1.0-alpha.3
+
 ## 0.1.0-alpha.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @three-flatland/bake
 
+## 0.1.0-alpha.3
+
+### Patch Changes
+
+- 0fe56e5: Build the ESM package without unnecessary runtime shims so its published output follows the package-wide dependency checks.
+
 ## 0.1.0-alpha.2
 
 ### Minor Changes

@@ -55,12 +55,14 @@
     "flatland-template-three": "0.0.0",
     "example-react-hierarchy-clipping": "0.0.1-alpha.0",
     "example-three-hierarchy-clipping": "0.0.1-alpha.0",
-    "@three-flatland/tsl-test": "0.0.0"
+    "@three-flatland/tsl-test": "0.0.0",
+    "@three-flatland/ecs-bench": "0.0.0"
   },
   "changesets": [
     "alphamap-readme",
     "atlas-readme",
     "auto-alpha-release-3s2qcns",
+    "auto-three-flatland-3rtfw32",
     "auto-three-flatland-3rvfleo",
     "auto-three-flatland-3rvrwel",
     "auto-three-flatland-3rvxmcp",
@@ -117,6 +119,7 @@
     "auto-three-flatland-slug-3s0njw7",
     "auto-three-flatland-tweakpane-3ryq5zt",
     "auto-three-flatland-tweakpane-3s0acmh",
+    "bake-esm-output",
     "batch-broadphase-picking",
     "batched-raycast-fix",
     "batched-sprite-world-transform",
@@ -126,7 +129,13 @@
     "image-initial-release",
     "image-readme",
     "image-repository",
+    "koota-free-starters",
+    "labs-renderer-benchmarks",
     "normals-force-runtime-rename",
+    "pixel-perfect-camera",
+    "private-ecs-batching-kernel",
+    "private-ecs-publication-and-capacity",
+    "private-ecs-runtime-migration",
     "r3f-alpha3-three-r185",
     "rename-tweakpane-to-devtools",
     "slug-baker-registration",
@@ -138,6 +147,7 @@
     "vscode-codelens-render-and-search",
     "vscode-onboarding-walkthrough",
     "vscode-sharp-security",
-    "vscode-tools-initial-release"
+    "vscode-tools-initial-release",
+    "webgpu-runtime-entrypoints"
   ]
 }

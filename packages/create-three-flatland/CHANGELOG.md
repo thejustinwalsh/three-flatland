@@ -1,5 +1,21 @@
 # create-three-flatland
 
+## 0.1.0-alpha.3
+
+### Patch Changes
+
+- 0fe56e5: Remove Koota from generated Three.js and React project manifests, and reject it if it is accidentally reintroduced as a starter dependency.
+
+  This removes a former renderer peer from generated starters; it does not replace Koota for
+  application-owned ECS state. The private renderer design grew from
+  [Koota](https://github.com/pmndrs/koota), whose typed traits, structure-of-arrays storage, queries, and
+  systems made the specialization possible. Koota remains the recommended general-purpose ECS for
+  application and gameplay state.
+
+- feaf721: Keep React runtime consumers on React Three Fiber's WebGPU entrypoint so Devtools, Skia, and the VS Code encoder webview do not retain the legacy R3F/WebGL module graph. A TypeScript-syntax-aware repository guard now catches multiline imports, re-exports, dynamic imports, and CommonJS requires while allowing type-only references.
+
+  Simplify generated React and Three.js starter renderer failures to use the native R3F `Canvas` fallback or a DOM error scoped specifically to terminal renderer initialization failure, removing custom backend-probing machinery and keeping the starter output aligned with Three's built-in WebGPU-to-WebGL 2 node-backend fallback.
+
 ## 0.1.0-alpha.2
 
 ### Patch Changes

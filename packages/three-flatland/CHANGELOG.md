@@ -1,5 +1,66 @@
 # three-flatland
 
+## 0.1.0-alpha.11
+
+### Minor Changes
+
+- feaf721: **BREAKING CHANGES**
+  - Make the hierarchical `pixel-art` rendering preset the default for `Flatland`, `Sprite2D`, `AnimatedSprite2D`, and `TileMap2D`. Applications that require fractional presentation can set `FlatlandConfig.options = 'smooth'`, override `RenderingConfig`, or set `pixelPerfect: false` on an instance.
+  - Default unconfigured Flatland render targets to sRGB output. Explicit target color spaces, including linear and HDR targets, remain untouched.
+  - Treat `Flatland.resize()` dimensions as logical CSS pixels when called without a render target, applying renderer DPR to the camera, effects, and any target attached later. Calls made with a render target attached remain physical texels across target swaps. A later `resize()` call begins a new sizing session using the destination active at that time.
+
+  Add `PixelPerfectCamera`, a no-argument-safe orthographic camera that maps world units to integer physical-pixel scales, fills the output by revealing additional world space when only `viewSize` is supplied, supports exact letterbox or pillarbox framing through `viewWidth`, preserves Three.js camera zoom through integer quantization, and exposes DPR-safe viewport and pointer helpers.
+
+  Flatland now owns this camera automatically when pixel-perfect rendering is enabled. Its direct canvas, render-target, and post-processed paths preserve the centered viewport in the destination's coordinate space, including when an explicit logical `resize()` differs from the renderer's physical drawing buffer. Manual render pipelines size their supplied scene pass to the active destination viewport so the intermediate texture is copied 1:1 instead of being fractionally resampled, and transitions from automatic pipelines cannot leak a stale crop into user-authored output. Ordinary cameras inherit an existing renderer viewport for projection, effects, and post-processing. The React `usePixelPerfectCamera` integration synchronizes R3F camera state, viewport metrics, `getCurrentViewport`, renderer viewports, and letterbox-aware pointer events while restoring the previous root state on unmount. `usePixelPerfectCameraBinding` applies that same integration to an existing Flatland-owned camera without creating another camera or renderer, and portal events map correctly between pixel-perfect and conventional cameras.
+
+  Projected sprite snapping now works across standalone sprites, batched sprites, hierarchy transforms, animation, and tilemaps without mutating simulation transforms or duplicating moving matrix translations into the interleaved instance buffer. Batched view projection is assembled after the custom instance transform so synthesized quads keep their authored position and scale. The TSL compiler gate covers both synthesized-quad and tight-mesh paths in WGSL and GLSL, including the transform-before-projection ordering contract.
+
+  Introduce `FlatlandConfig` and `RenderingConfig` above the existing texture configuration so one hierarchical `pixel-art`, `smooth`, or `none` choice cascades through rendering and loading defaults while preserving class, subsystem, and instance overrides, including directly constructed `TileLayer` instances.
+
+- 1a48e67: Replace Koota-backed renderer coordination with the private typed runtime while preserving batch assignment, hierarchy, picking, material, lighting, pass, and disposal behavior.
+
+  This specialization grew from [Koota](https://github.com/pmndrs/koota): its typed traits,
+  structure-of-arrays storage, queries, and systems made the renderer design possible. Koota remains
+  the recommended general-purpose ECS for application and gameplay state.
+
+  **BREAKING CHANGES**
+  - Renderer world, entity, and trait properties now expose opaque compatibility handles instead of Koota types. Direct ECS access through these implementation details is unsupported.
+  - `SpriteBatch` slot allocation and release methods are private, and numeric sort layers must be finite signed 32-bit integers.
+
+- 0fe56e5: Remove the Koota peer dependency, add constructor-only `expectedSprites` planning hints, and make sprite, material, effect, tilemap, and Flatland ownership transitions transactional and terminal-safe.
+
+  This removes a former renderer dependency, not Koota's place in the ecosystem. The private design
+  grew from [Koota](https://github.com/pmndrs/koota), whose typed traits, structure-of-arrays storage,
+  queries, and systems made the specialization possible. Koota remains the recommended general-purpose
+  ECS for application and gameplay state.
+
+- 939cd64: Seal the remaining renderer implementation boundary, make effect-vector reads immutable, and harden scene, effect, lighting, sprite, and tile ownership across reassignment, cloning, and disposal.
+
+  The private renderer ECS grew from [Koota](https://github.com/pmndrs/koota). Its typed traits,
+  structure-of-arrays storage, queries, and systems made this specialized design possible, and Koota
+  remains the recommended general-purpose ECS for application and gameplay state.
+
+  **BREAKING CHANGES**
+  - Remove the opaque compatibility world and entity handles, effect trait/entity seams, the world-bound batch-query constructor, the private batch-query builder, and direct React Three Fiber `<tileLayer>` construction. Applications must keep gameplay identity in application-owned state and update rendering through public objects.
+  - Effect vector getters now return read-only snapshots. Assign the complete tuple to publish an update.
+  - Material, light, and pass effects have one owner at a time. Disposed tile and lighting resources are terminal, and projection rebuilds may replace generated layers or materials as documented in the migration guide.
+
+### Patch Changes
+
+- 9dcf4f7: Improve renderer-owned data paths with shared animation timeline cohorts, dense playback membership,
+  compact animated-tile tracking, bounded light-slot clearing, consolidated post-pass ownership, and
+  cached shared hierarchy paths. These changes preserve the existing public object API while reducing
+  repeated per-frame work in animation, tilemap, lighting, pass, and transform updates.
+
+  This private specialization continues the design lineage of
+  [Koota](https://github.com/pmndrs/koota): its typed traits, structure-of-arrays storage, queries, and
+  systems made this renderer-focused work possible. Koota remains the recommended general-purpose ECS
+  for application and gameplay state.
+
+- Updated dependencies [0fe56e5]
+  - @three-flatland/bake@0.1.0-alpha.3
+  - @three-flatland/normals@0.1.0-alpha.5
+
 ## 0.1.0-alpha.10
 
 ### Minor Changes
