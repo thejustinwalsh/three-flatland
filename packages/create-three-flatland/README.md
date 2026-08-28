@@ -22,7 +22,19 @@ pnpm create three-flatland
 
 # yarn
 yarn create three-flatland
+
+# bun
+bun create three-flatland
 ```
+
+Each `create` command is shorthand for running the binary directly. Both forms do the same thing:
+
+| Shorthand | Direct |
+| --- | --- |
+| `npm create three-flatland@latest` | `npx create-three-flatland@latest` |
+| `pnpm create three-flatland` | `pnpm dlx create-three-flatland` |
+| `yarn create three-flatland` | `yarn dlx create-three-flatland` |
+| `bun create three-flatland` | `bunx create-three-flatland` |
 
 You'll be prompted for a project directory and a template. Then:
 
