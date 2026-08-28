@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { OcclusionPass } from './OcclusionPass'
-import { NearestFilter, LinearFilter } from 'three'
+import { LinearFilter, LinearMipmapLinearFilter, NearestFilter, NearestMipmapNearestFilter } from 'three'
 
 describe('OcclusionPass', () => {
   it('starts at a 1×1 placeholder RT before first resize', () => {
@@ -77,6 +77,32 @@ describe('OcclusionPass', () => {
 
   it('switches to LinearFilter when opted in', () => {
     const pass = new OcclusionPass({ linearFilter: true })
+    expect(pass.renderTarget.texture.minFilter).toBe(LinearFilter)
+    expect(pass.renderTarget.texture.magFilter).toBe(LinearFilter)
+    pass.dispose()
+  })
+
+  it('switches the existing texture between base-level and mipmapped sampling', () => {
+    const pass = new OcclusionPass()
+
+    pass.setMipmapsEnabled(true)
+    expect(pass.renderTarget.texture.generateMipmaps).toBe(true)
+    expect(pass.renderTarget.texture.minFilter).toBe(NearestMipmapNearestFilter)
+    expect(pass.renderTarget.texture.magFilter).toBe(NearestFilter)
+
+    pass.setMipmapsEnabled(false)
+    expect(pass.renderTarget.texture.generateMipmaps).toBe(false)
+    expect(pass.renderTarget.texture.minFilter).toBe(NearestFilter)
+    pass.dispose()
+  })
+
+  it('preserves linear filtering while toggling its averaged mip chain', () => {
+    const pass = new OcclusionPass({ linearFilter: true, generateMipmaps: true })
+    expect(pass.renderTarget.texture.generateMipmaps).toBe(true)
+    expect(pass.renderTarget.texture.minFilter).toBe(LinearMipmapLinearFilter)
+    expect(pass.renderTarget.texture.magFilter).toBe(LinearFilter)
+
+    pass.setMipmapsEnabled(false)
     expect(pass.renderTarget.texture.minFilter).toBe(LinearFilter)
     expect(pass.renderTarget.texture.magFilter).toBe(LinearFilter)
     pass.dispose()

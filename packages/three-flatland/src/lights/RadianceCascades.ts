@@ -3,6 +3,7 @@ import {
   HalfFloatType,
   LinearFilter,
   NearestFilter,
+  NearestMipmapNearestFilter,
   ClampToEdgeWrapping,
   RepeatWrapping,
   DataTexture,
@@ -606,9 +607,10 @@ export class RadianceCascades {
     this._finalRadianceRT = new RenderTarget(probeCount, probeCount, finalOptions)
     this._emissiveRadianceRT = new RenderTarget(probeCount, probeCount, {
       ...finalOptions,
-      minFilter: NearestFilter,
+      minFilter: this._config.traversal === 'dda-fixed' ? NearestMipmapNearestFilter : NearestFilter,
       magFilter: NearestFilter,
     })
+    this._emissiveRadianceRT.texture.generateMipmaps = this._config.traversal === 'dda-fixed'
     this.raymarchSteps = this._config.raymarchSteps
     this.filterRadius = this._config.filterRadius
     this.filterStrength = this._config.filterStrength
@@ -980,7 +982,10 @@ export class RadianceCascades {
   }
 
   private _ddaMaxSteps(cascadeIndex: number): number {
-    const { width: gridWidth, height: gridHeight } = this._ddaCaptureDimensions()
+    const capture = this._ddaCaptureDimensions()
+    const mipScale = 2 ** cascadeIndex
+    const gridWidth = Math.max(1, Math.floor(capture.width / mipScale))
+    const gridHeight = Math.max(1, Math.floor(capture.height / mipScale))
     const minCellWorldSize = Math.max(
       1e-6,
       Math.min(this._transportWorldSize.x / gridWidth, this._transportWorldSize.y / gridHeight)
@@ -1472,8 +1477,10 @@ export class RadianceCascades {
     const activeProbeWidth = Math.ceil(dimensions.outputWidth / cascadeStride)
     const activeProbeHeight = Math.ceil(dimensions.outputHeight / cascadeStride)
     const captureDimensions = this._ddaCaptureDimensions()
-    const ddaGridWidth = captureDimensions.width
-    const ddaGridHeight = captureDimensions.height
+    const ddaMipLevel = cascadeIndex
+    const ddaMipScale = 2 ** ddaMipLevel
+    const ddaGridWidth = Math.max(1, Math.floor(captureDimensions.width / ddaMipScale))
+    const ddaGridHeight = Math.max(1, Math.floor(captureDimensions.height / ddaMipScale))
     const ddaMaxSteps = this._ddaMaxSteps(cascadeIndex)
     const sourceRadius =
       config.lightSourceRadius > 0
@@ -1497,13 +1504,13 @@ export class RadianceCascades {
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
-      const fragCoord = uv().mul(vec2(float(atlasWidth), float(atlasHeight)))
+      const fragCoord = uv().mul(vec2(float(atlasWidth), float(atlasHeight))).toConst('rcFragCoord')
 
       // Direction-first layout decomposition
-      const probeGroupSize = vec2(float(probeGroupWidth), float(probeGroupHeight))
-      const rayXY = floor(fragCoord.div(probeGroupSize))
-      const probeXY = mod(fragCoord, probeGroupSize)
-      const rayIndex = rayXY.x.add(rayXY.y.mul(float(angular)))
+      const probeGroupSize = vec2(float(probeGroupWidth), float(probeGroupHeight)).toConst('rcProbeGroupSize')
+      const rayXY = floor(fragCoord.div(probeGroupSize)).toConst('rcRayXY')
+      const probeXY = mod(fragCoord, probeGroupSize).toConst('rcProbeXY')
+      const rayIndex = rayXY.x.add(rayXY.y.mul(float(angular))).toConst('rcRayIndex')
 
       // `fragCoord` and therefore `probeXY` are already pixel-centred
       // (`probeXY = probeIndex + 0.5`). Adding another half texel shifts the
@@ -1517,25 +1524,25 @@ export class RadianceCascades {
       // compressing C1/C2/C3 into 1/2, 1/4 and 1/8 of the viewport. The merge
       // then produced repeated quadrants, Y-displaced sources and X-shaped
       // energy. Padding only duplicates the final active probe.
-      const activeProbeXY = probeXY.clamp(
-        vec2(0.5),
-        vec2(float(activeProbeWidth - 0.5), float(activeProbeHeight - 0.5))
-      )
+      const activeProbeXY = probeXY
+        .clamp(vec2(0.5), vec2(float(activeProbeWidth - 0.5), float(activeProbeHeight - 0.5)))
+        .toConst('rcActiveProbeXY')
       const probeUV = activeProbeXY
         .mul(float(cascadeStride))
         .div(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
         .clamp(0, 1)
+        .toConst('rcProbeUV')
       // Both analytic emitters and DDA consume the same probe ray. Materialize
       // these shared expressions once: leaving them as immutable expression
       // nodes makes TSL expand the complete probe/ray graph independently
       // inside the analytic-light branch and the DDA traversal.
-      const probeLocalPos = probeUV.mul(worldSize).toVar()
+      const probeLocalPos = probeUV.mul(worldSize).toConst('rcProbeLocalPos')
 
-      const theta = rayIndex.add(float(0.5)).mul(float(TAU / angularSq))
-      const rayDir = vec2(cos(theta), sin(theta)).toVar()
+      const theta = rayIndex.add(float(0.5)).mul(float(TAU / angularSq)).toConst('rcTheta')
+      const rayDir = vec2(cos(theta), sin(theta)).toConst('rcRayDirection')
 
-      const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toVar()
-      const segmentStart = segmentStartLocal.add(worldOffset).toVar()
+      const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toConst('rcSegmentStartLocal')
+      const segmentStart = segmentStartLocal.add(worldOffset).toConst('rcSegmentStart')
       const source = traceAnalyticLightSources(
         lightsTexture,
         lightCount,
@@ -1544,7 +1551,10 @@ export class RadianceCascades {
         intervalRange,
         sourceRadius
       )
-      const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, intervalRange)
+      const traceLimit = source.hit
+        .greaterThan(float(0.5))
+        .select(source.distance, intervalRange)
+        .toConst('rcTraceLimit')
       const intervalRadiance = vec3(0).toVar()
       const intervalTransmittance = float(1).toVar()
       const t = float(0).toVar()
@@ -1554,10 +1564,12 @@ export class RadianceCascades {
         // Probes cover only the visible camera, while DDA traverses the larger
         // source/occluder capture window. Keeping these bounds separate avoids
         // paying cascade-fragment cost for the offscreen guard band.
-        const boundsInterval = rayBoundsInterval(segmentStart, rayDir, transportWorldSize, transportWorldOffset)
-        const traceEntry = boundsInterval.x.max(float(0))
-        const traceExit = boundsInterval.y.min(traceLimit)
-        const intersectsWorld = traceExit.greaterThanEqual(traceEntry)
+        const boundsInterval = rayBoundsInterval(segmentStart, rayDir, transportWorldSize, transportWorldOffset).toConst(
+          'rcBoundsInterval'
+        )
+        const traceEntry = boundsInterval.x.max(float(0)).toConst('rcTraceEntry')
+        const traceExit = boundsInterval.y.min(traceLimit).toConst('rcTraceExit')
+        const intersectsWorld = traceExit.greaterThanEqual(traceEntry).toConst('rcIntersectsWorld')
         const visibility = traceDdaIntegerRadiance(
           occlusionTexture,
           this._occlusionTextureSizeNode,
@@ -1571,7 +1583,8 @@ export class RadianceCascades {
           transportWorldOffset,
           ddaGridWidth,
           ddaGridHeight,
-          ddaMaxSteps
+          ddaMaxSteps,
+          ddaMipLevel
         )
         intervalRadiance.assign(visibility.rgb)
         intervalTransmittance.assign(

@@ -1,5 +1,5 @@
 import type { Texture } from 'three'
-import { Break, If, Loop, float, floor, int, ivec2, textureLoad, vec2, vec3, vec4 } from 'three/tsl'
+import { Break, If, Loop, float, floor, int, ivec2, textureLoad, uniform, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { worldToUV } from './coordUtils'
 
@@ -48,8 +48,8 @@ export function traceDdaIntegerOcclusion(
   gridHeight: number,
   maxSteps: number
 ): Node<'vec2'> {
-  const gridSize = vec2(float(gridWidth), float(gridHeight))
-  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1))
+  const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst('ddaGridSize')
+  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1)).toConst('ddaGridMax')
   const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
     const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1)
     const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y))
@@ -158,10 +158,21 @@ export function traceDdaIntegerRadiance(
   worldOffset: Node<'vec2'>,
   gridWidth: number,
   gridHeight: number,
-  maxSteps: number
+  maxSteps: number,
+  mipLevel = 0
 ): Node<'vec4'> {
-  const gridSize = vec2(float(gridWidth), float(gridHeight))
-  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1))
+  const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst('ddaGridSize')
+  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1)).toConst('ddaGridMax')
+  const mipScale = 2 ** mipLevel
+  // TextureNode formats explicit mip levels as floats before each backend adds
+  // its required integer cast. A typed uniform avoids invalid WGSL such as
+  // `u32( 1.0 )` while remaining valid for GLSL's `int(...)` texelFetch level.
+  const mipLevelNode = uniform(mipLevel)
+  const mipTexelArea = mipScale * mipScale
+  const mipSignalThreshold = float(0.5 / mipTexelArea).toConst('ddaMipSignalThreshold')
+  const occlusionMipSize = floor(occlusionTextureSize.div(float(mipScale)))
+    .max(vec2(1))
+    .toConst('ddaOcclusionMipSize')
   const inBounds = (cell: Node<'ivec2'>): Node<'bool'> =>
     cell.x
       .greaterThanEqual(int(0))
@@ -174,34 +185,41 @@ export function traceDdaIntegerRadiance(
       cell.y.lessThan(int(0)).select(int(0), cell.y.greaterThan(gridMax.y).select(gridMax.y, cell.y))
     )
   const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
-    const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1)
-    const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y))
-    const cell = floor(textureUV.mul(gridSize)).clamp(vec2(0), gridSize.sub(float(0.0001)))
+    const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1).toConst()
+    const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y)).toConst()
+    const cell = floor(textureUV.mul(gridSize)).clamp(vec2(0), gridSize.sub(float(0.0001))).toConst()
     return ivec2(int(cell.x), int(cell.y))
   }
   const occlusionAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
-    const clampedCell = clampCell(cell)
-    const texelFloat = floor(vec2(clampedCell).add(float(0.5)).div(gridSize).mul(occlusionTextureSize)).clamp(
-      vec2(0),
-      occlusionTextureSize.sub(float(1))
-    )
-    const sample = textureLoad(occlusionTexture, ivec2(int(texelFloat.x), int(texelFloat.y)))
+    const clampedCell = clampCell(cell).toConst()
+    const texelFloat = floor(vec2(clampedCell).add(float(0.5)).div(gridSize).mul(occlusionMipSize))
+      .clamp(vec2(0), occlusionMipSize.sub(float(1)))
+      .toConst()
+    const sample = textureLoad(
+      occlusionTexture,
+      ivec2(int(texelFloat.x), int(texelFloat.y)),
+      mipLevelNode
+    ).toConst()
     return inBounds(cell).select(vec2(sample.r, sample.a), vec2(0))
   }
   const emissionAt = (cell: Node<'ivec2'>): Node<'vec4'> => {
-    const sample = textureLoad(emissiveTexture, clampCell(cell))
+    const clampedCell = clampCell(cell).toConst()
+    const sample = textureLoad(emissiveTexture, clampedCell, mipLevelNode).toConst()
+    // Mips contain the spatial average of source radiance. Keep that coverage
+    // weighting: multiplying by texel area would make a single luminous pixel
+    // fill the entire coarse cell at full energy, producing oversized halos.
     return inBounds(cell).select(sample, vec4(0))
   }
 
-  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry))
-  const endWorld = rayOrigin.add(rayDirection.mul(traceExit))
+  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst('ddaStartWorld')
+  const endWorld = rayOrigin.add(rayDirection.mul(traceExit)).toConst('ddaEndWorld')
   const cell = worldToCell(startWorld).toVar()
-  const endCell = worldToCell(endWorld)
-  const delta = ivec2(endCell.x.sub(cell.x).abs(), endCell.y.sub(cell.y).abs())
+  const endCell = worldToCell(endWorld).toConst('ddaEndCell')
+  const delta = ivec2(endCell.x.sub(cell.x).abs(), endCell.y.sub(cell.y).abs()).toConst('ddaDelta')
   const stepDirection = ivec2(
     endCell.x.greaterThan(cell.x).select(int(1), endCell.x.lessThan(cell.x).select(int(-1), int(0))),
     endCell.y.greaterThan(cell.y).select(int(1), endCell.y.lessThan(cell.y).select(int(-1), int(0)))
-  )
+  ).toConst('ddaStepDirection')
   const advancedX = int(0).toVar()
   const advancedY = int(0).toVar()
   const radiance = vec3(0).toVar()
@@ -233,13 +251,13 @@ export function traceDdaIntegerRadiance(
     })
 
     acceptEmission(emissionAt(cell))
-    const currentOcclusion = occlusionAt(cell)
-    const currentOccupied = currentOcclusion.y.greaterThan(float(0.5))
-    const currentEmitter = currentOcclusion.x.greaterThan(float(0.5))
+    const currentOcclusion = occlusionAt(cell).toConst()
+    const currentOccupied = currentOcclusion.y.greaterThan(mipSignalThreshold).toConst()
+    const currentEmitter = currentOcclusion.x.greaterThan(mipSignalThreshold).toConst()
     If(receiverPending.greaterThan(float(0.5)).and(currentOccupied.not()), () => {
       receiverPending.assign(float(0))
     })
-    const testsOcclusion = receiverPending.lessThan(float(0.5))
+    const testsOcclusion = receiverPending.lessThan(float(0.5)).toConst()
     If(testsOcclusion.and(emitterPending.greaterThan(float(0.5))).and(currentEmitter.not()), () => {
       result.assign(float(-1))
       Break()
@@ -251,33 +269,33 @@ export function traceDdaIntegerRadiance(
     If(testsOcclusion.and(currentEmitter), () => {
       emitterPending.assign(float(1))
     })
-    const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y))
+    const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y)).toConst()
     If(reachedEnd, () => {
       result.assign(emitterPending.greaterThan(float(0.5)).select(float(-1), float(1)))
       Break()
     })
 
-    const onlyY = delta.x.equal(int(0))
-    const onlyX = delta.y.equal(int(0))
-    const crossingX = advancedX.mul(int(2)).add(int(1)).mul(delta.y)
-    const crossingY = advancedY.mul(int(2)).add(int(1)).mul(delta.x)
-    const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY)))
-    const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX)))
-    const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY))
+    const onlyY = delta.x.equal(int(0)).toConst()
+    const onlyX = delta.y.equal(int(0)).toConst()
+    const crossingX = advancedX.mul(int(2)).add(int(1)).mul(delta.y).toConst()
+    const crossingY = advancedY.mul(int(2)).add(int(1)).mul(delta.x).toConst()
+    const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY))).toConst()
+    const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX))).toConst()
+    const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY)).toConst()
 
     If(stepCorner, () => {
-      const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y)
-      const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y))
-      const emissionX = emissionAt(neighborX)
-      const emissionY = emissionAt(neighborY)
+      const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y).toConst()
+      const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y)).toConst()
+      const emissionX = emissionAt(neighborX).toConst()
+      const emissionY = emissionAt(neighborY).toConst()
       acceptEmission(emissionX.rgb.length().greaterThan(emissionY.rgb.length()).select(emissionX, emissionY))
-      const occlusionX = occlusionAt(neighborX)
-      const occlusionY = occlusionAt(neighborY)
-      const emitterX = occlusionX.x.greaterThan(float(0.5))
-      const emitterY = occlusionY.x.greaterThan(float(0.5))
-      const wallX = occlusionX.y.greaterThan(float(0.5)).and(emitterX.not())
-      const wallY = occlusionY.y.greaterThan(float(0.5)).and(emitterY.not())
-      const testsCornerOcclusion = receiverPending.lessThan(float(0.5))
+      const occlusionX = occlusionAt(neighborX).toConst()
+      const occlusionY = occlusionAt(neighborY).toConst()
+      const emitterX = occlusionX.x.greaterThan(mipSignalThreshold).toConst()
+      const emitterY = occlusionY.x.greaterThan(mipSignalThreshold).toConst()
+      const wallX = occlusionX.y.greaterThan(mipSignalThreshold).and(emitterX.not()).toConst()
+      const wallY = occlusionY.y.greaterThan(mipSignalThreshold).and(emitterY.not()).toConst()
+      const testsCornerOcclusion = receiverPending.lessThan(float(0.5)).toConst()
       If(testsCornerOcclusion.and(wallX.or(wallY)), () => {
         result.assign(float(-1))
         Break()

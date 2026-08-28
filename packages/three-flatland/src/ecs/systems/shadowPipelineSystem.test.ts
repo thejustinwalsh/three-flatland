@@ -43,6 +43,7 @@ function makeOcclusionPass() {
     renderTarget: {},
     render: vi.fn(),
     resize: vi.fn(),
+    setMipmapsEnabled: vi.fn(),
     dispose: vi.fn(),
   }
 }

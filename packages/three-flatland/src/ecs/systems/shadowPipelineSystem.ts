@@ -132,6 +132,7 @@ export function shadowPipelineSystem(world: World): void {
     pipeline.occlusionPass = new OcclusionPass()
     pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
+  pipeline.occlusionPass.setMipmapsEnabled(effect?.shadowCaptureMipmaps ?? false)
 
   // Size from the active LightEffect processing surface (the physical render
   // surface multiplied by effect.resolutionScale). Using the trait keeps shadow

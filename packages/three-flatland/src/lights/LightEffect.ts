@@ -443,6 +443,11 @@ export abstract class LightEffect {
     return 0
   }
 
+  /** Whether the binary shadow capture must retain a generated mip chain. */
+  get shadowCaptureMipmaps(): boolean {
+    return false
+  }
+
   /**
    * Processing-resolution multiplier for resources owned by this effect.
    * The default `1` receives the full physical drawing-buffer size; `0.5`
@@ -730,6 +735,8 @@ interface LightEffectConfig<S extends EffectSchema, C extends readonly ChannelNa
   shadowPipelineMode?: ShadowPipelineMode | ((this: LightEffectInstance<S>) => ShadowPipelineMode)
   /** World-space guard band for shadow/emissive capture around the camera. */
   shadowCaptureMargin?: number | ((this: LightEffectInstance<S>) => number)
+  /** Generate shadow-capture mips for multilevel occupancy traversal. */
+  shadowCaptureMipmaps?: boolean | ((this: LightEffectInstance<S>) => boolean)
   /** Per-fragment channels this effect requires (e.g., ['normal'] as const). */
   requires?: C
   /**
@@ -801,6 +808,7 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
     needsShadows: shadows = false,
     shadowPipelineMode,
     shadowCaptureMargin,
+    shadowCaptureMipmaps,
     requires: requiredChannels = [] as unknown as C,
     light: lightFn,
     init: initHook,
@@ -834,6 +842,12 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
           ? shadowCaptureMargin.call(this as unknown as LightEffectInstance<S>)
           : (shadowCaptureMargin ?? 0)
       return Number.isFinite(margin) ? Math.max(0, margin) : 0
+    }
+
+    override get shadowCaptureMipmaps(): boolean {
+      return typeof shadowCaptureMipmaps === 'function'
+        ? shadowCaptureMipmaps.call(this as unknown as LightEffectInstance<S>)
+        : (shadowCaptureMipmaps ?? false)
     }
 
     override init(ctx: LightEffectRuntimeContext): void {

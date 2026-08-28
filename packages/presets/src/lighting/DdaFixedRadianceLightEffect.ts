@@ -26,6 +26,7 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   requires: ['normal', 'elevation'] as const,
   needsShadows: true,
   shadowPipelineMode: 'occlusion',
+  shadowCaptureMipmaps: true,
   shadowCaptureMargin() {
     return this.radiance.maxTransportDistance
   },
