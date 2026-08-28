@@ -102,11 +102,7 @@ Flatland's managed camera follows the library-wide `pixel-art` preset by default
 
 ## Adding Objects
 
-`flatland.add()` routes objects automatically:
-
-- **Sprite2D** instances go to the internal `SpriteGroup` for batched rendering
-- **Light2D** instances are tracked for the lighting system
-- **Other Object3D** instances are added directly to the internal scene
+`flatland.add()` dispatches on type — see [Object Routing](../flatland/#object-routing) for what goes where.
 
 ```typescript
 // Sprite2D → batched via SpriteGroup
@@ -151,13 +147,17 @@ const indicator = new Sprite2D({ texture, lit: false }) // always full brightnes
 
 `resolutionScale` belongs to the effect that owns the surface-dependent resources. A value of `0.5` receives half-width and half-height dimensions in `LightEffect.resize()`, reducing area to one quarter while leaving camera framing, canvas resolution, renderer DPR, and logical viewport uniforms unchanged. Change Three.js `renderer.setPixelRatio()` or R3F `<Canvas dpr={...}>` instead when the entire frame should render at a lower resolution.
 
-Flatland owns an attached effect's lifecycle. Replacing the active effect or calling `setLighting(null)` disposes its GPU resources before detaching it. The effect instance can be attached again and will receive a fresh `init → resize → update` sequence, but effect-owned GPU resource handles must not be used while it is detached.
+Flatland owns an attached effect's lifecycle, so `setLighting(null)` or a replacement disposes the old effect's GPU resources before detaching it. See [Effect Ownership](../flatland/#effect-ownership) for the full contract.
 
 See the [2D Lighting guide](../lighting/) for preset comparisons, Light2D types, and custom effects.
 
 ## Sizing and Aspect
 
-Calling `resize(width, height)` starts a manual sizing session, and the active destination at that moment fixes the unit for the session. With no render target attached, pass logical CSS pixels; the renderer's current DPR is applied on every render. A target attached later is therefore sized to `width × DPR` by `height × DPR`. With a render target attached, pass physical texels, matching `RenderTarget.setSize()`; those dimensions remain physical across later target swaps or a return to the canvas. Automatic sizing only observes user-owned render targets and never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` ends the manual sizing session and resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. Read `flatland.resolvedAspect` when you need the current numeric ratio.
+Flatland sizes its camera from the render surface on its own. Call `resize(width, height)` only when you need to override that.
+
+`resize()` starts a manual sizing session. Whichever destination is active when you call it decides the unit. With no render target attached, pass logical CSS pixels; the renderer's current DPR is applied on every render. A target attached later is therefore sized to `width × DPR` by `height × DPR`. With a render target attached, pass physical texels, matching `RenderTarget.setSize()`; those dimensions stay physical even after you swap targets or go back to rendering on the canvas. Automatic sizing only observes user-owned render targets and never resizes them. Assigning either a numeric `aspect` or `'auto'` after `resize()` ends the manual sizing session and resumes automatic effect sizing; `'auto'` also resumes automatic camera framing. Read `flatland.resolvedAspect` when you need the current numeric ratio.
+
+With `pixelPerfect: false`, pass `aspect` or assign `flatland.aspect` to pin the regular internal camera.
 
 When you supply a camera through `camera`, Flatland preserves its authored frustum. The aspect controls above apply to the internal camera; `resolvedAspect` reports the supplied camera's actual frustum ratio.
 
@@ -251,7 +251,7 @@ post.bands = 10
 The render pipeline auto-initializes on the first `addPass()` call. Passes chain in insertion order — each receives the previous pass's output.
 
 :::tip[Performance note]
-Adding the first pass switches Flatland onto the render-pipeline path: the scene renders to an offscreen target, then each pass runs as a full-screen draw. One or two passes are cheap; a long chain costs a full-screen sample per pass per frame, so fuse effects into a single pass where you can.
+Fuse effects into a single pass where the math allows it. [The Post-Processing Trade](../flatland/#the-post-processing-trade) explains what the first pass changes and why a long chain costs more.
 :::
 
 | Method                  | Description                       |

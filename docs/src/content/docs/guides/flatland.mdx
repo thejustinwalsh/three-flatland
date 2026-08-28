@@ -28,11 +28,13 @@ Reach for `SpriteGroup` when an existing scene is authoritative. Reach for `Flat
 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
-`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches, then draws. Each of those is derived state: nothing in the pipeline requires per-frame bookkeeping from the application.
+`render()` syncs the camera, global uniforms, lighting buffers, and sprite batches, then draws. Each of those is derived state, so nothing in the pipeline needs per-frame bookkeeping from the application.
 
-Surface-dependent GPU resources are measured in physical drawing-buffer pixels, so canvas DPR and render-target texels share one coordinate space. `globals.viewportSize` stays the renderer's logical size and is paired with `globals.pixelRatio`. The two live in different units on purpose: effects allocate against physical pixels, while layout math in a shader wants the logical size the reader authored against.
+Sizing is derived too. `Flatland` reads the size of the renderer's drawing buffer, or of the active render target, and updates its camera when that size changes. You do not need a resize listener that pushes dimensions into the camera.
 
-The default `PixelPerfectCamera` selects and centers an integer-sized viewport inside the physical surface. When that integer scale does not divide the surface evenly, the result is letterboxed, and `resolvedAspect` reports the viewport ratio rather than the full surface ratio.
+Two units are in play, and they stay separate on purpose. Effects allocate GPU resources in physical pixels, so `Flatland` measures them against the drawing buffer. Shader layout code wants the logical size you authored against, so `globals.viewportSize` reports that instead, paired with `globals.pixelRatio` to convert between the two. [Pixel-Perfect Rendering](../pixel-perfect-rendering/) covers device pixel ratio and the sizing rules in full.
+
+The default `PixelPerfectCamera` picks a whole-number scale and centres the viewport inside the surface. A whole-number scale rarely fills the surface exactly, so bars are left along two edges and `resolvedAspect` reports the ratio of the viewport rather than of the whole surface.
 
 ## Object Routing
 
@@ -42,19 +44,19 @@ Global uniforms are wired to a sprite's material at `add()` time, which is why a
 
 ## Effect Ownership
 
-An attached `LightEffect` belongs to the `Flatland` that holds it. Replacing the active effect, or clearing it, disposes its GPU resources before detaching. The instance can be attached again and receives a fresh `init → resize → update` sequence, but resource handles it produced while attached are invalid once it is detached.
+An attached `LightEffect` belongs to the `Flatland` that holds it. Replacing the active effect, or clearing it, disposes the effect's GPU resources before detaching it. The instance can be attached again and receives a fresh `init → resize → update` sequence. Handles it produced while attached become invalid once it is detached.
 
-This is the same contract `dispose()` honours for the whole object: the ECS world, the sprite batches, the render pipeline, and every pass effect entity are destroyed together. Ownership is not shared, so there is no case where two objects both believe they hold a buffer.
+`dispose()` honours the same contract for the whole object. The ECS world, the sprite batches, the render pipeline, and every pass effect entity are destroyed together. Ownership is never shared, so two objects can never hold conflicting claims on one buffer.
 
 ## The Post-Processing Trade
 
 Adding the first pass changes how a frame is drawn. Without passes, the scene draws straight to the destination. With one or more, the scene renders to an offscreen target and each pass runs as a full-screen draw over it.
 
 :::tip[Performance note]
-One or two passes are cheap. A long chain costs a full-screen sample per pass per frame, so fuse effects into a single pass where the maths allows it.
+One or two passes are cheap. A long chain costs a full-screen sample per pass per frame, so fuse effects into a single pass where the math allows it.
 :::
 
-That switch is invisible from the API and worth knowing about anyway, because it explains why the first `addPass()` call has a cost the second one does not.
+The switch is invisible from the API. It is also why the first `addPass()` call costs more than the second.
 
 ## Next Steps
 
