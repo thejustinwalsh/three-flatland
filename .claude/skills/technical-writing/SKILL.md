@@ -231,7 +231,19 @@ Three passes, minimum, and they are separate acts. Do not merge them.
    `checklist.md` and the verb test. Write down every hit. **Fix nothing during this pass.**
 3. **Rewrite.** Fix everything the audit recorded.
 
-Repeat steps 2 and 3 until an audit finds nothing.
+4. **Fresh-context rewrite.** Hand the finished page to a subagent that has never seen the draft
+   evolve. Give it the skill files, the source-fact list, and the page. Tell it to rewrite, not to
+   review. Compare its version against yours and take whatever is better.
+
+Repeat steps 2 and 3 until an audit finds nothing, then run step 4 once.
+
+**Step 4 exists because your context is poisoned.** You know what you meant, so you read intent
+rather than text. That is not a discipline problem and more care will not fix it. A reader who has
+never seen the draft evolve is the only one who reads what is actually on the page, and a subagent
+with just the rules and the page is that reader.
+
+Ask it to rewrite rather than review. A reviewer confirms; a writer has to make every sentence work,
+which surfaces the ones that do not.
 
 **The separation is the point.** Auditing while drafting finds almost nothing, because you read what
 you meant rather than what you wrote. Every violation a reviewer has caught in this repo's docs
@@ -246,6 +258,29 @@ A violation that reaches review costs a round trip and a rebase.
 prose is worth reading, whether a section earns its place, or whether the order makes sense. Read the
 finished page once as a reader before you call it done, and expect a human reviewer to catch things
 no pass will.
+
+## The page has to render
+
+Prose passing an audit says nothing about the page working. Before calling any page done:
+
+1. `pnpm --filter=docs build` exits 0. **An HTTP 200 from the dev server is not verification** — a
+   dev server serves a broken page happily.
+2. Code fences are balanced: even count, no two adjacent fence lines, and JSX tags closed.
+3. Look at the rendered page.
+
+A page assembled by extracting spans and wrapping them in fences shipped with ten doubled fences,
+and every code block after the first rendered as literal backticks. It had been checked, but only for
+an HTTP 200.
+
+```bash
+python3 - <<'EOF'
+import io, sys
+L = io.open(sys.argv[1], encoding='utf-8').read().split('\n')
+f = [i + 1 for i, l in enumerate(L) if l.strip().startswith('```')]
+adj = [f[i] for i in range(len(f) - 1) if f[i + 1] == f[i] + 1]
+print('fences=%d even=%s adjacent=%s' % (len(f), len(f) % 2 == 0, adj or 'none'))
+EOF
+```
 
 ## Before prose ships
 
