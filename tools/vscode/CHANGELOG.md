@@ -1,5 +1,25 @@
 # @three-flatland/vscode
 
+## 0.2.0-alpha.6
+
+### Patch Changes
+
+- feaf721: Keep React runtime consumers on React Three Fiber's WebGPU entrypoint so Devtools, Skia, and the VS Code encoder webview do not retain the legacy R3F/WebGL module graph. A TypeScript-syntax-aware repository guard now catches multiline imports, re-exports, dynamic imports, and CommonJS requires while allowing type-only references.
+
+  Simplify generated React and Three.js starter renderer failures to use the native R3F `Canvas` fallback or a DOM error scoped specifically to terminal renderer initialization failure, removing custom backend-probing machinery and keeping the starter output aligned with Three's built-in WebGPU-to-WebGL 2 node-backend fallback.
+
+- Updated dependencies [9dcf4f7]
+- Updated dependencies [0fe56e5]
+- Updated dependencies [feaf721]
+- Updated dependencies [1a48e67]
+- Updated dependencies [0fe56e5]
+- Updated dependencies [939cd64]
+  - three-flatland@0.1.0-alpha.11
+  - @three-flatland/bake@0.1.0-alpha.3
+  - @three-flatland/preview@1.0.0-alpha.3
+  - @three-flatland/image@0.1.0-alpha.4
+  - @three-flatland/normals@0.1.0-alpha.5
+
 ## 0.2.0-alpha.5
 
 ### Patch Changes
