@@ -28,7 +28,7 @@ the epic covers these six.
 | --- | --- |
 | `syncKey` on every code-sample `Tabs` block | **2 defects, fixed** — `examples/hit-test.mdx:156,177` |
 | Tab labels match the site convention (`Three.js` / `React`) | **2 defects, fixed** — `Three.js (Sprite2D)` / `Three.js (AnimatedSprite2D)` were one-off labels that break framework sync (site uses `Three.js` 57x, `React` 58x) |
-| R3F imports from `@react-three/fiber/webgpu` | pass — zero bare `@react-three/fiber` imports |
+| R3F imports from `@react-three/fiber/webgpu` | pass — zero `import` statements use bare `@react-three/fiber`. Prose and install commands mention the bare package 12 times, correctly, since that is the peer-dependency name |
 | Relative cross-links resolve | pass — **158/158**, verified against route semantics (`trailingSlash: always`, so each page is a route directory) |
 | Malformed anchors (`../page#frag/`) | pass — none |
 | Version-pin consistency | pass — three.js `^0.185.1` (10 mentions, matches catalog), R3F `10.0.0-alpha.3` (12 mentions) |

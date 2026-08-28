@@ -154,13 +154,13 @@ The sidecar is **optional at runtime**. If the loader cannot find it — or the 
 Pass `alpha: true` to the loader. The loader probes for the `sprites.alpha.png` sibling, loads it if the hash matches, and attaches the result to `sheet.alphaMap`.
 
 <Tabs syncKey="framework">
-<TabItem label="Three.js">
+<TabItem label="Three.js" icon="simple-icons:threedotjs">
 ```typescript
 const sheet = await SpriteSheetLoader.load('/sprites/sprites.json', { alpha: true })
 // sheet.alphaMap is now populated (AlphaMap instance)
 ```
 </TabItem>
-<TabItem label="React">
+<TabItem label="React" icon="simple-icons:react">
 ```tsx
 const sheet = useLoader(SpriteSheetLoader, '/sprites/sprites.json', (loader) => {
   loader.alpha = true
@@ -175,7 +175,7 @@ const sheet = useLoader(SpriteSheetLoader, '/sprites/sprites.json', (loader) => 
 For a `Sprite2D`, assign the map and switch the mode. For `AnimatedSprite2D`, the constructor and the `spriteSheet` setter both adopt `sheet.alphaMap` automatically — you only need to set `hitTestMode`.
 
 <Tabs syncKey="framework">
-<TabItem label="Three.js">
+<TabItem label="Three.js" icon="simple-icons:threedotjs">
 ```typescript
 // Sprite2D — assign the map, then switch the mode
 const sprite = new Sprite2D({ texture: sheet.texture, frame: sheet.getFrame('knight_idle') })
@@ -189,7 +189,7 @@ knight.hitTestMode = 'alpha'
 // knight.alphaThreshold defaults to 0.5
 ```
 </TabItem>
-<TabItem label="React">
+<TabItem label="React" icon="simple-icons:react">
 ```tsx
 // AnimatedSprite2D adopts sheet.alphaMap via the spriteSheet prop
 <animatedSprite2D
