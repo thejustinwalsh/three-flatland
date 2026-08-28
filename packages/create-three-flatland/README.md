@@ -44,7 +44,7 @@ npm create three-flatland@latest my-app -- --template react
 | Flag | Meaning |
 | --- | --- |
 | `-t, --template <name>` | Template to scaffold: `three` \| `react` |
-| `--overwrite` | Scaffold into a non-empty target directory |
+| `--overwrite` | Delete everything in the target directory except `.git`, then scaffold |
 | `--help` | Show usage |
 
 ## Templates
