@@ -186,9 +186,15 @@ The full list is in `banned.md` and in Google's [word list](https://developers.g
 prose is good.
 
 **Assemble the source facts first**, as a list: every claim the prose may contain, and nothing else.
-Write only from that list. In testing, a drafter working without this constraint merged two facts
-into a connection neither stated, and a drafter working with it still invented a timing detail. The
-list makes invention visible; it does not prevent it. Check the finished prose against the list.
+Write only from that list, then check the finished prose back against it.
+
+**Cite every fact in the list.** Each entry names where it comes from: a file and line, a page
+section, a test. **A fact you cannot cite is a fact you invented.** Delete it or go find its source.
+
+The list is where invention gets in. On one page five claims reached a finished draft that appear
+nowhere in the source, including an entire sentence about ownership semantics and an invented
+frequency claim. Three of them entered through the fact list, before a word of prose was written, so
+every later pass treated them as given. Tracing the list is the only pass that catches this.
 
 **Variants are a fallback, not the default.** Reach for them when a section resists rewriting, or
 when you have written the same paragraph three ways and cannot tell which is better. Then:
@@ -303,6 +309,8 @@ Run `checklist.md`. Two checks catch the most:
 | "The reference table belongs here for convenience." | Convenient to skim, useless to use. Link the API reference. |
 | "It's a docs page, the anti-slop rules are for marketing." | They apply to every reader-facing surface. |
 | "I'll clean up the prose after I get the content down." | The check runs before it ships, not after review catches it. |
+| "That claim is obviously true, it is a design invariant." | You cannot audit a fabrication you believe. An invented sentence about ownership survived an audit because the author read it as self-evidently correct and marked it a false positive. Cite it or cut it. |
+| "The fact list is mine, I do not need to source it." | Three fabrications on one page entered through an unsourced fact list and were never questioned again. |
 
 ## Red flags: stop and rewrite
 

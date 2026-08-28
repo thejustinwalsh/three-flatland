@@ -71,6 +71,8 @@ Auditing while drafting finds almost nothing. You read what you meant rather tha
 
 ## 9. Claims
 
+- [ ] **Every factual sentence traces to a cited source.** Not "sounds right", not "follows from the
+      design" — a file and line, a page section, or a test. Anything that fails this is invented.
 - [ ] Every number is real and attributable.
 - [ ] No performance, cost, or security claim the reader cannot verify.
 - [ ] Every sentence ends on a fact, not an assertion that something matters.
