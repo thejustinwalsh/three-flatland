@@ -18,6 +18,31 @@ ship.
 3. **Microsoft Writing Style Guide** for technical questions Google does not answer, and
    Merriam-Webster for spelling.
 
+## The audience
+
+Developers doing graphics work, across a range of skill levels. Most arrive knowing three.js and
+general graphics well. That is never guaranteed, so it is never assumed.
+
+Write at a competent, skillful level and stay clear. Do not dumb the material down. Do not talk down.
+No winking, no jokes, no knowing asides.
+
+Whether a term needs explaining depends on which list it is on.
+
+**Assume known.** Core three.js and graphics vocabulary: `Object3D`, `Mesh`, `Scene`, camera, draw
+call, shader, texture, UV, atlas, render target, orthographic projection, WebGL, WebGPU. A paragraph
+that stops to define one of these is in the wrong section.
+
+**Define in a clause or link on first use.** Adjacent-specialty terms a competent three.js developer
+may not carry: device pixel ratio, texel, frustum, color space, sRGB, signed distance field, and ECS
+vocabulary. One clause or one link, then continue.
+
+**Always define.** Anything this project invented: `Flatland`, `SpriteGroup`, `LightEffect`, sort
+layers, batch archetypes. A reader cannot get these anywhere else.
+
+Both directions fail. Explaining `Object3D` wastes an expert's time. Using `texel` unlinked loses a
+capable developer who has never shipped a DPR-aware canvas. Reviewers have caught this page set doing
+the second one.
+
 ## Diátaxis is required, and it comes first
 
 **Name the page's one type out loud before writing a sentence.** Type decides what belongs on the
