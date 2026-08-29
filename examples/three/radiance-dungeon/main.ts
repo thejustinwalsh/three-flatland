@@ -273,11 +273,16 @@ async function main() {
   const initialLightingEnabled = query.get('lighting') !== '0'
   const requestedSlimes = integerParam(query, 'slimes', 5)
   const seed = integerParam(query, 'seed', DEFAULT_BENCHMARK_SEED)
+  const initialPaused = query.get('pause') === '1'
   const fixedDeltaMs = numberParam(query, 'fixedDelta')
   const benchmarkBaseRayCount = integerParam(query, 'rays', 16)
   const ddaResolutionScale = Math.max(1, numberParam(query, 'ddaScale') ?? 1)
   const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
   const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
+  // Spawn layout is deterministic in both interactive and benchmark modes.
+  // Runtime motion/flicker stays organic unless the benchmark explicitly
+  // requests a fully seeded simulation.
+  const spawnRandom = createSeededRandom(seed)
 
   // ─── Renderer ───────────────────────────────────────────────────
   const renderer = new WebGPURenderer({ antialias: false })
@@ -484,9 +489,9 @@ async function main() {
   const slimes: SlimeState[] = []
 
   function addSlime(): void {
-    let s = newSlime(mapHalfW, mapHalfH, random)
+    let s = newSlime(mapHalfW, mapHalfH, spawnRandom)
     for (let attempt = 0; attempt < 24 && isBlocked(s.pos.x, s.pos.y, TILE_PX * 0.4); attempt++) {
-      s = newSlime(mapHalfW, mapHalfH, random)
+      s = newSlime(mapHalfW, mapHalfH, spawnRandom)
     }
     const sprite = new AnimatedSprite2D({
       spriteSheet: slimeSheet,
@@ -512,7 +517,7 @@ async function main() {
     sprite.addEffect(slimeNormals)
     // Stagger animation cursor so slimes don't lock-step on first frame.
     const frames = slimeAnimations.animations[s.animation]!.frames.length
-    sprite.play(s.animation, { startFrame: Math.floor(random() * frames) })
+    sprite.play(s.animation, { startFrame: Math.floor(spawnRandom() * frames) })
     flatland.add(sprite)
 
     s.sprite = sprite
@@ -532,17 +537,15 @@ async function main() {
   }
 
   // ─── Tweakpane params ───────────────────────────────────────────
-  // `paused` and `stationary` are NOT exposed in the pane — they exist
-  // only so the `__captureScene` / `__endCapture` console helpers can
-  // freeze the scene during recording. If you want them back on the
-  // UI, add `pane.addBinding(params, 'paused')` etc. below.
+  // `stationary` remains capture-only. `paused` is a public scene mode:
+  // rendering continues while animation, motion, and flicker are frozen.
   //   paused     — full freeze: rawDelta zeroed, no animation, no motion
   //   stationary — animations and torch flicker keep ticking, but
   //                entities don't move. Used by the synchronized
   //                pair-capture recorder so two takes share identical
   //                entity positions.
   const params = {
-    paused: false,
+    paused: initialPaused,
     stationary: false,
     lightingEnabled: initialLightingEnabled,
     webGpuAcceleration: true,
@@ -567,6 +570,8 @@ async function main() {
   const paneBundle = createPane({ driver: 'manual' })
   const { pane } = paneBundle
   const updateDevtools = () => paneBundle.update()
+
+  pane.addBinding(params, 'paused', { label: 'pause' })
 
   const lightFolder = pane.addFolder({ title: 'Lighting', expanded: true })
   lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' }).on('change', () => {

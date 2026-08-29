@@ -118,6 +118,7 @@ const benchmarkQuery = benchmarkParams()
 const benchmarkEnabled = benchmarkQuery.get('bench') === '1'
 const benchmarkSlimes = integerParam(benchmarkQuery, 'slimes', 5)
 const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
+const initiallyPaused = benchmarkQuery.get('pause') === '1'
 const benchmarkFixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
 const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
 
@@ -338,6 +339,9 @@ interface SceneProps {
 
 function FlatlandScene(props: SceneProps) {
   const random = useMemo(() => (benchmarkEnabled ? createSeededRandom(benchmarkSeed) : Math.random), [])
+  // Keep initial actor placement reproducible outside benchmark mode too.
+  // Runtime decisions remain unseeded during normal interactive play.
+  const spawnRandom = useMemo(() => createSeededRandom(benchmarkSeed), [])
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
     l.normals = true
     l.forceRuntime = true
@@ -498,14 +502,14 @@ function FlatlandScene(props: SceneProps) {
       // shares a single collective cycle phase. drainBias (±10%)
       // ensures that even slimes that happen to align drift apart
       // over time from the accumulated rate difference.
-      const stamina = random()
+      const stamina = spawnRandom()
       const state = stamina < 0.4 ? 'rest' : 'wander'
       // Random initial hop phase + leftover timer so wandering slimes
       // don't all burst out of the gate in unison either.
-      const hopPhase = random() < 0.5 ? 'hop' : 'pause'
-      let anim = newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE, random)
+      const hopPhase = spawnRandom() < 0.5 ? 'hop' : 'pause'
+      let anim = newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE, spawnRandom)
       for (let attempt = 0; attempt < 24 && isBlocked(anim.pos.x, anim.pos.y, TILE_PX * 0.4); attempt++) {
-        anim = newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE, random)
+        anim = newInteriorWanderer(mapHalfW, mapHalfH, SLIME_SCALE / 2, TILE_PX * TILE_SCALE, spawnRandom)
       }
       slimesRef.current.push({
         // Full-tile wall inset (TILE_PX * TILE_SCALE = 32) keeps the
@@ -518,9 +522,9 @@ function FlatlandScene(props: SceneProps) {
         stamina,
         state,
         hopPhase,
-        hopTimer: random() * 0.5,
+        hopTimer: spawnRandom() * 0.5,
         animation: state === 'rest' || hopPhase === 'pause' ? 'idle' : 'walk',
-        drainBias: 0.85 + random() * 0.3,
+        drainBias: 0.85 + spawnRandom() * 0.3,
       })
     }
     if (slimesRef.current.length > props.slimeCount) slimesRef.current.length = props.slimeCount
@@ -1038,7 +1042,7 @@ function FlatlandScene(props: SceneProps) {
               s.sprite = el
               if (firstMount && el !== null) {
                 const frames = slimeAnimations.animations[s.animation]!.frames.length
-                el.play(s.animation, { startFrame: Math.floor(random() * frames) })
+                el.play(s.animation, { startFrame: Math.floor(spawnRandom() * frames) })
               }
             }}
             texture={slimeSheet.texture}
@@ -1087,7 +1091,7 @@ export default function App() {
 
   // The example exposes scene-level values only. Fixed-point transport
   // defaults come directly from DdaFixedRadianceLightEffect.
-  const [paused] = usePaneInput(pane, 'pause', false)
+  const [paused] = usePaneInput(pane, 'pause', initiallyPaused)
 
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [lightingEnabled] = usePaneInput(light, 'enabled', true)
