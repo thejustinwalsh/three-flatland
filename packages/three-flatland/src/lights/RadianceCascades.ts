@@ -40,7 +40,12 @@ import {
   smoothstep,
 } from 'three/tsl'
 import { worldToUV, uvToWorld } from './coordUtils'
-import { resolveDdaExecutionPath, type DdaExecutionPath, type ResolvedDdaExecutionPath } from './DdaAcceleration'
+import {
+  resolveDdaExecutionPath,
+  type DdaAccelerationFallbackReason,
+  type DdaExecutionPath,
+  type ResolvedDdaExecutionPath,
+} from './DdaAcceleration'
 import { rayBoundsInterval, traceDdaIntegerRadiance } from './ddaGrid'
 import { DdaHierarchy, getDdaCascadeHierarchyLevel, type DdaHierarchyLevel } from './DdaHierarchy'
 import { EmissivePass } from './EmissivePass'
@@ -458,6 +463,8 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   wideDownsampleFactor: 2,
   wideLevels: 1,
   ddaPixelSize: 4,
+  // Two conservative coarse levels skip empty blocks while preserving each
+  // occupancy/emitter/emission signal independently.
   ddaHierarchyLevel: 2,
   ddaWebGpuAccelerationEnabled: true,
   ddaExecutionPath: 'auto',
@@ -593,7 +600,7 @@ export class RadianceCascades {
   private _ddaPaletteBandsNode = uniform(32)
   private _ddaPaletteExposureNode = uniform(16)
   private _resolvedDdaExecutionPath: ResolvedDdaExecutionPath = 'fragment'
-  private _ddaAccelerationFallbackReason: 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null = null
+  private _ddaAccelerationFallbackReason: DdaAccelerationFallbackReason | null = null
 
   private _sdfTexture: Texture | null = null
   private _occlusionTexture: Texture | null = null
@@ -805,7 +812,7 @@ export class RadianceCascades {
     return this._resolvedDdaExecutionPath
   }
 
-  get ddaAccelerationFallbackReason(): 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null {
+  get ddaAccelerationFallbackReason(): DdaAccelerationFallbackReason | null {
     return this._ddaAccelerationFallbackReason
   }
 
@@ -1306,7 +1313,7 @@ export class RadianceCascades {
 
   private _setResolvedDdaExecutionPath(
     path: ResolvedDdaExecutionPath,
-    fallbackReason: 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null
+    fallbackReason: DdaAccelerationFallbackReason | null
   ): void {
     const changed = path !== this._resolvedDdaExecutionPath
     this._resolvedDdaExecutionPath = path

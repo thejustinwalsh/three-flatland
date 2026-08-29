@@ -1,0 +1,46 @@
+{
+  "baseline": {
+    "width": 640,
+    "height": 360,
+    "meanLuminance": 0.02614878616612164,
+    "totalLuminance": 6024.680332674426,
+    "p10Luminance": 0.004735614188696125,
+    "p50Luminance": 0.022924994530388643,
+    "p90Luminance": 0.033559023928093464,
+    "darkPixelRatio": 0.3429730902777778,
+    "clippedPixelRatio": 0.0020746527777777777,
+    "meanRgb": [
+      0.2528645833334605,
+      0.11533828635646026,
+      0.09817109204814127
+    ],
+    "edgeEnergyPerPixel": 0.007829592129795759
+  },
+  "candidate": {
+    "width": 640,
+    "height": 360,
+    "meanLuminance": 0.02614838002725936,
+    "totalLuminance": 6024.586758280557,
+    "p10Luminance": 0.004735614188696125,
+    "p50Luminance": 0.022924994530388643,
+    "p90Luminance": 0.033559023928093464,
+    "darkPixelRatio": 0.34293402777777776,
+    "clippedPixelRatio": 0.0020746527777777777,
+    "meanRgb": [
+      0.25286363017441843,
+      0.11533614174861703,
+      0.09816904956448162
+    ],
+    "edgeEnergyPerPixel": 0.007829299221561946
+  },
+  "comparison": {
+    "meanAbsoluteError": 0.000013741376180101623,
+    "rootMeanSquareError": 0.00030772215450600046,
+    "changedPixelRatio": 0.0005946180555555556,
+    "meanLuminanceDeltaRatio": -0.000015531843799576165,
+    "totalLuminanceDeltaRatio": -0.0000155318437994883,
+    "darkPixelRatioDelta": -0.000039062500000019984,
+    "clippedPixelRatioDelta": 0,
+    "edgeEnergyDeltaRatio": -0.000037410407714449546
+  }
+}

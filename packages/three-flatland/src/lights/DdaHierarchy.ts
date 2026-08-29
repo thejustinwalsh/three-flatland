@@ -217,7 +217,18 @@ export class DdaHierarchy {
         ).toConst()
         signals.assign(signals.max(textureLoad(sourceTexture, sourceCell).rgb))
       }
-      const present = signals.greaterThan(float(0.5 / DDA_MASK_BYTE_SCALE)).select(vec3(1), vec3(0))
+      const threshold = float(0.5 / DDA_MASK_BYTE_SCALE)
+      // TSL's vector-condition `.select(vec3, vec3)` lowers through `all()`:
+      // it would set every channel only when occupancy, emitter silhouette,
+      // and emissive radiance are all present in the same coarse block. Keep
+      // the three conservative OR flags independent instead. Most blocks are
+      // intentionally wall-only or emission-only, so coupling them makes the
+      // hierarchy report false-empty space and skip real transport.
+      const present = vec3(
+        signals.x.greaterThan(threshold).select(float(1), float(0)),
+        signals.y.greaterThan(threshold).select(float(1), float(0)),
+        signals.z.greaterThan(threshold).select(float(1), float(0)),
+      )
       return vec4(present, float(0))
     })() as Node<'vec4'>
     return material

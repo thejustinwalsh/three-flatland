@@ -118,7 +118,15 @@ export function createDdaWorkgroupReductionKernel(
       ).toConst()
       signals.assign(signals.max(textureLoad(sourceTexture, sourceCell).rgb))
     }
-    const present = signals.greaterThan(float(0.5 / DDA_MASK_BYTE_SCALE)).select(vec3(1), vec3(0))
+    const threshold = float(0.5 / DDA_MASK_BYTE_SCALE)
+    // A vector condition passed to TSL `select()` lowers through `all()`,
+    // coupling the three otherwise independent hierarchy flags. Preserve the
+    // conservative occupancy/emitter/emission OR channels independently.
+    const present = vec3(
+      signals.x.greaterThan(threshold).select(float(1), float(0)),
+      signals.y.greaterThan(threshold).select(float(1), float(0)),
+      signals.z.greaterThan(threshold).select(float(1), float(0)),
+    )
     textureStore(target, uvec2(cell), vec4(present, float(0))).toWriteOnly()
   })()
     .compute(outputWidth * outputHeight, [DDA_WORKGROUP_2D_SIZE * DDA_WORKGROUP_2D_SIZE])

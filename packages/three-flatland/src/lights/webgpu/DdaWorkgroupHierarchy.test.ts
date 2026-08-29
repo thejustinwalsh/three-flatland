@@ -1,5 +1,5 @@
 import { NearestFilter } from 'three'
-import { createShaderTexture } from '@three-flatland/tsl-test'
+import { compileComputeNode, createShaderTexture } from '@three-flatland/tsl-test'
 import { describe, expect, it } from 'vitest'
 import { DDA_WORKGROUP_2D_SIZE, DdaWorkgroupHierarchy } from './DdaWorkgroupHierarchy'
 
@@ -21,6 +21,24 @@ describe('DdaWorkgroupHierarchy lifecycle', () => {
 
     hierarchy.dispose()
     expect(hierarchy.levelCount).toBe(0)
+    occlusion.dispose()
+    emission.dispose()
+  })
+
+  it('keeps occupancy, emitter, and emission reduction flags independent in generated WGSL', () => {
+    const occlusion = createShaderTexture()
+    const emission = createShaderTexture()
+    const hierarchy = new DdaWorkgroupHierarchy()
+    hierarchy.configure(occlusion, emission, 8, 8, 2)
+
+    const leafProgram = compileComputeNode(hierarchy.computeNodes[0]!)
+    const reductionProgram = compileComputeNode(hierarchy.computeNodes[1]!)
+    expect(leafProgram.diagnostics).toEqual([])
+    expect(reductionProgram.diagnostics).toEqual([])
+    expect(reductionProgram.computeShader).not.toContain('all(')
+    expect(reductionProgram.computeShader?.match(/> 0\.00196078431372549/g)).toHaveLength(3)
+
+    hierarchy.dispose()
     occlusion.dispose()
     emission.dispose()
   })
