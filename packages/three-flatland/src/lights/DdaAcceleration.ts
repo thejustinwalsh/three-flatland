@@ -2,6 +2,8 @@ export type DdaExecutionPath = 'auto' | 'fragment' | 'webgpu-workgroup' | 'webgp
 
 export type ResolvedDdaExecutionPath = Exclude<DdaExecutionPath, 'auto'>
 
+export type DdaAccelerationFallbackReason = 'disabled' | 'not-webgpu' | 'subgroup-parity-disabled'
+
 export interface DdaAccelerationCapabilities {
   readonly webgpu: boolean
   readonly workgroupCompute: boolean
@@ -19,7 +21,7 @@ export interface DdaAccelerationResolution {
   readonly requestedPath: DdaExecutionPath
   readonly path: ResolvedDdaExecutionPath
   readonly capabilities: DdaAccelerationCapabilities
-  readonly fallbackReason: 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null
+  readonly fallbackReason: DdaAccelerationFallbackReason | null
 }
 
 interface DdaRendererProbe {
@@ -85,9 +87,12 @@ export function resolveDdaExecutionPath(renderer: unknown, policy: DdaAccelerati
   if (policy.requestedPath === 'webgpu-subgroup') {
     return {
       requestedPath: policy.requestedPath,
-      path: capabilities.subgroups ? 'webgpu-subgroup' : 'fragment',
+      path: capabilities.workgroupCompute ? 'webgpu-workgroup' : 'fragment',
       capabilities,
-      fallbackReason: capabilities.subgroups ? null : capabilities.webgpu ? 'subgroups-unavailable' : 'not-webgpu',
+      // The subgroup kernel remains available as an implementation fixture,
+      // but real-device output does not yet match the fragment/workgroup
+      // oracle. Never expose different lighting through the public selector.
+      fallbackReason: capabilities.workgroupCompute ? 'subgroup-parity-disabled' : 'not-webgpu',
     }
   }
 
@@ -100,26 +105,13 @@ export function resolveDdaExecutionPath(renderer: unknown, policy: DdaAccelerati
     }
   }
 
-  if (capabilities.subgroups) {
-    return {
-      requestedPath: policy.requestedPath,
-      path: 'webgpu-subgroup',
-      capabilities,
-      fallbackReason: null,
-    }
-  }
-  if (capabilities.workgroupCompute) {
-    return {
-      requestedPath: policy.requestedPath,
-      path: 'webgpu-workgroup',
-      capabilities,
-      fallbackReason: null,
-    }
-  }
+  // Workgroup now matches the fragment oracle in the deterministic dungeon
+  // fixture. Subgroup remains quarantined above until texture readback proves
+  // byte-level cascade parity on a real subgroup backend.
   return {
     requestedPath: policy.requestedPath,
-    path: 'fragment',
+    path: capabilities.workgroupCompute ? 'webgpu-workgroup' : 'fragment',
     capabilities,
-    fallbackReason: 'not-webgpu',
+    fallbackReason: capabilities.workgroupCompute ? null : 'not-webgpu',
   }
 }

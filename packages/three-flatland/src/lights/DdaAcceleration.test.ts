@@ -45,24 +45,36 @@ describe('DDA acceleration path selection', () => {
     ).toMatchObject({ path: 'fragment', fallbackReason: 'disabled' })
   })
 
-  it('selects subgroup, workgroup, then fragment in automatic mode', () => {
-    expect(resolveDdaExecutionPath(renderer(true, true), { webgpuEnabled: true, requestedPath: 'auto' }).path).toBe(
-      'webgpu-subgroup'
+  it('automatically selects the parity-validated workgroup path on WebGPU', () => {
+    expect(resolveDdaExecutionPath(renderer(true, true), { webgpuEnabled: true, requestedPath: 'auto' })).toMatchObject(
+      {
+        path: 'webgpu-workgroup',
+        fallbackReason: null,
+      }
     )
-    expect(resolveDdaExecutionPath(renderer(true, false), { webgpuEnabled: true, requestedPath: 'auto' }).path).toBe(
-      'webgpu-workgroup'
-    )
+    expect(
+      resolveDdaExecutionPath(renderer(true, false), { webgpuEnabled: true, requestedPath: 'auto' })
+    ).toMatchObject({
+      path: 'webgpu-workgroup',
+      fallbackReason: null,
+    })
     expect(resolveDdaExecutionPath(renderer(false, false), { webgpuEnabled: true, requestedPath: 'auto' }).path).toBe(
       'fragment'
     )
   })
 
-  it('does not silently replace an unavailable forced subgroup test with workgroup compute', () => {
+  it('quarantines subgroup behind the matching workgroup path until readback parity exists', () => {
+    expect(
+      resolveDdaExecutionPath(renderer(true, true), {
+        webgpuEnabled: true,
+        requestedPath: 'webgpu-subgroup',
+      })
+    ).toMatchObject({ path: 'webgpu-workgroup', fallbackReason: 'subgroup-parity-disabled' })
     expect(
       resolveDdaExecutionPath(renderer(true, false), {
         webgpuEnabled: true,
         requestedPath: 'webgpu-subgroup',
       })
-    ).toMatchObject({ path: 'fragment', fallbackReason: 'subgroups-unavailable' })
+    ).toMatchObject({ path: 'webgpu-workgroup', fallbackReason: 'subgroup-parity-disabled' })
   })
 })
