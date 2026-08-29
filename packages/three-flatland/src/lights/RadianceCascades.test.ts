@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DataTexture, FloatType, NearestFilter, RGBAFormat, UnsignedByteType, Vector2 } from 'three'
+import { DataTexture, FloatType, LinearFilter, NearestFilter, RGBAFormat, UnsignedByteType, Vector2 } from 'three'
 import { uniform } from 'three/tsl'
 import {
   DDA_FIXED_RADIANCE_CASCADES_CONFIG,
@@ -38,7 +38,7 @@ describe('RadianceCascades', () => {
     })
   })
 
-  it('uses a four-pixel logical grid and RGBA8 nearest cascade storage for DDA Fixed RC', () => {
+  it('uses a four-pixel logical grid and filterable RGBA8 cascade storage for DDA Fixed RC', () => {
     const radiance = new RadianceCascades({
       ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
       cascadeResolution: 512,
@@ -56,16 +56,18 @@ describe('RadianceCascades', () => {
     }
     expect(radiance.requiresSdf).toBe(false)
     expect(internals._cascadeRTs).toHaveLength(4)
-    // 360×240 / 4 = a 90×60 visible integer grid. Cascade atlases pad that
-    // grid to 96×64 so all four hierarchy levels retain integral blocks.
-    expect(internals._cascadeRTs.every((target) => target.width === 384 && target.height === 256)).toBe(true)
+    // 360×240 / 4 = a 90×60 visible integer grid. One 8-cell guard page
+    // produces 98×68 output cells; cascade atlases pad that to 104×72 so all
+    // four hierarchy levels retain integral direction blocks without
+    // rephasing when the camera scrolls inside the page.
+    expect(internals._cascadeRTs.every((target) => target.width === 416 && target.height === 288)).toBe(true)
     expect(internals._cascadeRTs.every((target) => target.texture.type === UnsignedByteType)).toBe(true)
-    expect(internals._cascadeRTs.every((target) => target.texture.minFilter === NearestFilter)).toBe(true)
-    expect(internals._finalRadianceRT.width).toBe(90)
-    expect(internals._finalRadianceRT.height).toBe(60)
+    expect(internals._cascadeRTs.every((target) => target.texture.minFilter === LinearFilter)).toBe(true)
+    expect(internals._finalRadianceRT.width).toBe(98)
+    expect(internals._finalRadianceRT.height).toBe(68)
     expect(internals._finalRadianceRT.texture.magFilter).toBe(NearestFilter)
     expect(radiance.cascadeStorageBytesPerTexel).toBe(4)
-    expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 384 * 256 * 4)
+    expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 416 * 288 * 4)
     expect(radiance.estimatedRaymarchSampleCount).toBeGreaterThan(radiance.estimatedRaymarchTexelCount)
 
     radiance.dispose()
@@ -83,8 +85,8 @@ describe('RadianceCascades', () => {
       _cascadeRTs: Array<{ width: number; height: number }>
       _finalRadianceRT: { width: number; height: number }
     }
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 192, height: 128 })
-    expect(internals._finalRadianceRT).toMatchObject({ width: 45, height: 30 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 224, height: 160 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 53, height: 38 })
 
     radiance.dispose()
   })
@@ -103,8 +105,8 @@ describe('RadianceCascades', () => {
       _cascadeRTs: Array<{ width: number; height: number }>
       _finalRadianceRT: { width: number; height: number }
     }
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 384, height: 256 })
-    expect(internals._finalRadianceRT).toMatchObject({ width: 90, height: 60 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 416, height: 288 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 98, height: 68 })
     expect(radiance.finalRadianceTexture).toBe(texture)
 
     radiance.dispose()
@@ -150,8 +152,50 @@ describe('RadianceCascades', () => {
       _cascadeRTs: Array<{ width: number; height: number }>
       _finalRadianceRT: { width: number; height: number }
     }
-    expect(internals._finalRadianceRT).toMatchObject({ width: 320, height: 180 })
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 1280, height: 736 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 328, height: 188 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 1312, height: 768 })
+    radiance.dispose()
+  })
+
+  it('rolls the guarded DDA window only on the coarsest cascade page', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 512,
+      ddaPixelSize: 4,
+      cascadeCount: 4,
+    })
+    radiance.init(640, 360, createLightsTexture(), uniform(0))
+
+    const internals = radiance as unknown as {
+      _worldSize: Vector2
+      _worldOffset: Vector2
+    }
+    const scale = new Vector2()
+    const offset = new Vector2()
+
+    radiance.setWorldBounds(new Vector2(640, 360), new Vector2(2, 6))
+    expect(internals._worldSize.toArray()).toEqual([672, 392])
+    expect(internals._worldOffset.toArray()).toEqual([0, 0])
+    radiance.getVisibleUvTransform(scale, offset)
+    expect(scale.x).toBeCloseTo(640 / 672)
+    expect(scale.y).toBeCloseTo(360 / 392)
+    expect(offset.x).toBeCloseTo(2 / 672)
+    expect(offset.y).toBeCloseTo(6 / 392)
+
+    const worldPoint = new Vector2(128, 144)
+    const screenUvAfterFlipY = new Vector2((worldPoint.x - 2) / 640, (worldPoint.y - 6) / 360)
+    expect(screenUvAfterFlipY.x * scale.x + offset.x).toBeCloseTo(worldPoint.x / 672)
+    expect(screenUvAfterFlipY.y * scale.y + offset.y).toBeCloseTo(worldPoint.y / 392)
+
+    radiance.setWorldBounds(new Vector2(640, 360), new Vector2(31, 31))
+    expect(internals._worldOffset.toArray()).toEqual([0, 0])
+    radiance.setWorldBounds(new Vector2(640, 360), new Vector2(32, 32))
+    expect(internals._worldOffset.toArray()).toEqual([32, 32])
+    radiance.getVisibleUvTransform(scale, offset)
+    const rolledScreenUvAfterFlipY = new Vector2((worldPoint.x - 32) / 640, (worldPoint.y - 32) / 360)
+    expect(rolledScreenUvAfterFlipY.x * scale.x + offset.x).toBeCloseTo((worldPoint.x - 32) / 672)
+    expect(rolledScreenUvAfterFlipY.y * scale.y + offset.y).toBeCloseTo((worldPoint.y - 32) / 392)
+
     radiance.dispose()
   })
 

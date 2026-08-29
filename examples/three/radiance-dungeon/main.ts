@@ -545,7 +545,6 @@ async function main() {
     stationary: false,
     lightingEnabled: initialLightingEnabled,
     pixelSize: Math.max(1, Math.round(ART_WORLD_SCALE * ddaResolutionScale)),
-    cameraCellSnap: query.get('gridlock') === '1',
     renderSurface: `${renderSurface.width}x${renderSurface.height}`,
     ambient: DUNGEON_LIGHTING_DEFAULTS.ambient,
     torchIntensity: DUNGEON_LIGHTING_DEFAULTS.torchEmission,
@@ -569,12 +568,9 @@ async function main() {
     flatland.setLighting(params.lightingEnabled ? lightEffect : null)
   })
   lightFolder.addBinding(params, 'pixelSize', {
-    min: 1,
-    max: 16,
-    step: 1,
+    options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
     label: 'DDA cell px',
   })
-  lightFolder.addBinding(params, 'cameraCellSnap', { label: 'camera cell snap' })
   lightFolder.addBinding(params, 'renderSurface', { label: 'buffer', readonly: true })
   lightFolder.addBinding(params, 'ambient', { min: 0, max: 0.5, step: 0.01 }).on('change', () => {
     ambientLight.intensity = params.ambient
@@ -845,9 +841,8 @@ async function main() {
     const cameraLimitY = Math.max(0, mapHalfH - halfViewH)
     const followX = Math.max(-cameraLimitX, Math.min(cameraLimitX, heroPos.x))
     const followY = Math.max(-cameraLimitY, Math.min(cameraLimitY, heroPos.y))
-    const cameraSnapStep = params.cameraCellSnap ? Math.max(1, Math.round(params.pixelSize)) : ART_WORLD_SCALE
     camera.position.set(followX, followY, camera.position.z)
-    if (camera instanceof PixelPerfectCamera) camera.snapPositionToGrid(cameraSnapStep)
+    if (camera instanceof PixelPerfectCamera) camera.snapPositionToGrid(ART_WORLD_SCALE)
     if (moving && heroAnim !== 'run') {
       hero.play('run')
       heroAnim = 'run'

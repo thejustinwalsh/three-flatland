@@ -326,7 +326,6 @@ interface SceneProps {
   ambient: number
   slimeCount: number
   pixelSize: number
-  cameraCellSnap: boolean
   paletteBands: number
   torchIntensity: number
   slimeIntensity: number
@@ -399,10 +398,7 @@ function FlatlandScene(props: SceneProps) {
     [mapData]
   )
 
-  const floorTorchPositions = useMemo(
-    () => tilePositionsById(mapData, FLOOR_TORCH_TILE_ID, TILE_SCALE),
-    [mapData]
-  )
+  const floorTorchPositions = useMemo(() => tilePositionsById(mapData, FLOOR_TORCH_TILE_ID, TILE_SCALE), [mapData])
   const switchToTorch = useMemo(
     () =>
       switchPositions.map(([sx, sy]) => {
@@ -768,9 +764,8 @@ function FlatlandScene(props: SceneProps) {
       const cameraLimitY = Math.max(0, mapHalfH - halfViewH)
       const followX = Math.max(-cameraLimitX, Math.min(cameraLimitX, heroPos.current.x))
       const followY = Math.max(-cameraLimitY, Math.min(cameraLimitY, heroPos.current.y))
-      const cameraSnapStep = props.cameraCellSnap ? Math.max(1, Math.round(props.pixelSize)) : ART_WORLD_SCALE
       camera.position.set(followX, followY, camera.position.z)
-      if (camera instanceof PixelPerfectCamera) camera.snapPositionToGrid(cameraSnapStep)
+      if (camera instanceof PixelPerfectCamera) camera.snapPositionToGrid(ART_WORLD_SCALE)
     }
     // Build a flat list of "predator" positions (hero + knight NPCs)
     // once per frame; each slime samples it for proximity. O(slimes ×
@@ -951,11 +946,7 @@ function FlatlandScene(props: SceneProps) {
     <>
       <flatland ref={flatlandRef} viewSize={viewSize} clearColor={0x06060c}>
         {props.lightingEnabled && (
-          <ddaFixedRadianceLightEffect
-            ref={lightEffectRef}
-            attach={attachLighting}
-            radianceIntensity={2.5}
-          />
+          <ddaFixedRadianceLightEffect ref={lightEffectRef} attach={attachLighting} radianceIntensity={2.5} />
         )}
 
         {/* Floor + walls. Tileset's baked normalMap (synthesized by
@@ -1090,14 +1081,12 @@ export default function App() {
 
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [lightingEnabled] = usePaneInput(light, 'enabled', true)
-  const [pixelSize] = usePaneInput(light, 'DDA cell px', ART_WORLD_SCALE, { min: 1, max: 16, step: 1 })
-  const [cameraCellSnap] = usePaneInput(light, 'camera cell snap', benchmarkQuery.get('gridlock') === '1')
-  const [_renderSurface, setRenderSurface] = usePaneInput(
-    light,
-    'buffer',
-    `${surface.width}x${surface.height}`,
-    { readonly: true }
-  )
+  const [pixelSize] = usePaneInput(light, 'DDA cell px', ART_WORLD_SCALE, {
+    options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
+  })
+  const [_renderSurface, setRenderSurface] = usePaneInput(light, 'buffer', `${surface.width}x${surface.height}`, {
+    readonly: true,
+  })
   const [ambient] = usePaneInput(light, 'ambient', DUNGEON_LIGHTING_DEFAULTS.ambient, {
     min: 0,
     max: 0.5,
@@ -1160,7 +1149,6 @@ export default function App() {
               ambient={ambient}
               slimeCount={sceneSlimeCount}
               pixelSize={pixelSize}
-              cameraCellSnap={cameraCellSnap}
               paletteBands={paletteBands}
               torchIntensity={torchIntensity}
               slimeIntensity={slimeIntensity}

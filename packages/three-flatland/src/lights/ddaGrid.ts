@@ -26,12 +26,22 @@ export function rayBoundsInterval(
   return parallelOutside.select(vec2(1, -1), vec2(near, far))
 }
 
+const DDA_TIME_FIXED_SCALE = 4096
+const DDA_TIME_SENTINEL = 0x3fffffff
+const DDA_TIME_MAX = DDA_TIME_SENTINEL / DDA_TIME_FIXED_SCALE
+
 /**
- * Integer supercover traversal between quantized lighting-grid cells.
+ * Parametric fixed-point supercover traversal on one globally anchored grid.
  *
- * The walk is division-free after quantizing the two endpoints. Corner
- * crossings conservatively test both side-adjacent cells so one-cell walls
- * cannot leak through a shared corner. Returns
+ * Floating-point geometry establishes the entry cell and boundary distances
+ * once. The hot loop then compares and increments Q12.12 `tMax` / `tDelta`
+ * integers. The interval endpoint contributes only `traceSpan`, never the ray
+ * slope, so every longer interval preserves the exact prefix of a shorter one.
+ * This is the fixed-point Amanatides-Woo invariant that endpoint-derived
+ * Bresenham traversal violated.
+ *
+ * Corner crossings conservatively test both side-adjacent cells so one-cell
+ * walls cannot leak through a shared corner. Returns
  * `<transmittance, reachedTraceLimit>`.
  */
 export function traceDdaIntegerOcclusion(
@@ -48,14 +58,8 @@ export function traceDdaIntegerOcclusion(
   gridHeight: number,
   maxSteps: number
 ): Node<'vec2'> {
-  const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst('ddaGridSize')
-  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1)).toConst('ddaGridMax')
-  const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
-    const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1)
-    const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y))
-    const cell = floor(textureUV.mul(gridSize)).clamp(vec2(0), gridSize.sub(float(0.0001)))
-    return ivec2(int(cell.x), int(cell.y))
-  }
+  const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst()
+  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1)).toConst()
   const occupiedAt = (cell: Node<'ivec2'>): Node<'bool'> => {
     const clampedCell = ivec2(
       cell.x.lessThan(int(0)).select(int(0), cell.x.greaterThan(gridMax.x).select(gridMax.x, cell.x)),
@@ -75,17 +79,48 @@ export function traceDdaIntegerOcclusion(
     )
   }
 
-  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry))
-  const endWorld = rayOrigin.add(rayDirection.mul(traceExit))
-  const cell = worldToCell(startWorld).toVar()
-  const endCell = worldToCell(endWorld)
-  const delta = ivec2(endCell.x.sub(cell.x).abs(), endCell.y.sub(cell.y).abs())
+  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst()
+  const startWorldUV = worldToUV(startWorld, worldSize, worldOffset).clamp(0, 1).toConst()
+  const startTextureUV = vec2(startWorldUV.x, float(1).sub(startWorldUV.y)).toConst()
+  const gridPosition = startTextureUV
+    .mul(gridSize)
+    .clamp(vec2(0), gridSize.sub(float(0.0001)))
+    .toConst()
+  const gridDirection = vec2(
+    rayDirection.x.div(worldSize.x).mul(gridSize.x),
+    rayDirection.y.div(worldSize.y).mul(gridSize.y).mul(float(-1))
+  ).toConst()
+  const parallelX = gridDirection.x.abs().lessThan(float(1e-8)).toConst()
+  const parallelY = gridDirection.y.abs().lessThan(float(1e-8)).toConst()
   const stepDirection = ivec2(
-    endCell.x.greaterThan(cell.x).select(int(1), endCell.x.lessThan(cell.x).select(int(-1), int(0))),
-    endCell.y.greaterThan(cell.y).select(int(1), endCell.y.lessThan(cell.y).select(int(-1), int(0)))
-  )
-  const advancedX = int(0).toVar()
-  const advancedY = int(0).toVar()
+    parallelX.select(int(0), gridDirection.x.greaterThan(float(0)).select(int(1), int(-1))),
+    parallelY.select(int(0), gridDirection.y.greaterThan(float(0)).select(int(1), int(-1)))
+  ).toConst()
+  // Give exact internal boundaries to the cell the ray actually enters.
+  const ownedPosition = gridPosition
+    .add(vec2(stepDirection).mul(float(1e-5)))
+    .clamp(vec2(0), gridSize.sub(float(0.0001)))
+    .toConst()
+  const cell = ivec2(int(floor(ownedPosition.x)), int(floor(ownedPosition.y))).toVar()
+  const nextBoundary = vec2(
+    stepDirection.x.greaterThan(int(0)).select(float(cell.x.add(int(1))), float(cell.x)),
+    stepDirection.y.greaterThan(int(0)).select(float(cell.y.add(int(1))), float(cell.y))
+  ).toConst()
+  const quantizeTime = (value: Node<'float'>): Node<'int'> =>
+    int(floor(value.clamp(float(0), float(DDA_TIME_MAX)).mul(float(DDA_TIME_FIXED_SCALE)).add(float(0.5))))
+  const tDeltaX = quantizeTime(float(1).div(gridDirection.x.abs())).toConst()
+  const tDeltaY = quantizeTime(float(1).div(gridDirection.y.abs())).toConst()
+  const safeTDeltaX = tDeltaX.lessThan(int(1)).select(int(1), tDeltaX).toConst()
+  const safeTDeltaY = tDeltaY.lessThan(int(1)).select(int(1), tDeltaY).toConst()
+  const tDelta = ivec2(
+    parallelX.select(int(DDA_TIME_SENTINEL), safeTDeltaX),
+    parallelY.select(int(DDA_TIME_SENTINEL), safeTDeltaY)
+  ).toConst()
+  const tMax = ivec2(
+    parallelX.select(int(DDA_TIME_SENTINEL), quantizeTime(nextBoundary.x.sub(gridPosition.x).div(gridDirection.x))),
+    parallelY.select(int(DDA_TIME_SENTINEL), quantizeTime(nextBoundary.y.sub(gridPosition.y).div(gridDirection.y)))
+  ).toVar()
+  const traceSpan = quantizeTime(traceExit.sub(traceEntry).max(float(0))).toConst()
   const transmittance = float(1).toVar()
   const reachedTraceLimit = intersectsWorld.not().select(float(1), float(0)).toVar()
 
@@ -97,19 +132,15 @@ export function traceDdaIntegerOcclusion(
       transmittance.assign(float(0))
       Break()
     })
-    const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y))
-    If(reachedEnd, () => {
+    const nextCrossing = tMax.x.lessThan(tMax.y).select(tMax.x, tMax.y).toConst()
+    If(nextCrossing.greaterThanEqual(traceSpan), () => {
       reachedTraceLimit.assign(float(1))
       Break()
     })
 
-    const onlyY = delta.x.equal(int(0))
-    const onlyX = delta.y.equal(int(0))
-    const crossingX = advancedX.mul(int(2)).add(int(1)).mul(delta.y)
-    const crossingY = advancedY.mul(int(2)).add(int(1)).mul(delta.x)
-    const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY)))
-    const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX)))
-    const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY))
+    const stepCorner = tMax.x.sub(tMax.y).abs().lessThanEqual(int(1)).toConst()
+    const stepX = stepCorner.not().and(tMax.x.lessThan(tMax.y)).toConst()
+    const stepY = stepCorner.not().and(tMax.y.lessThan(tMax.x)).toConst()
 
     If(stepCorner, () => {
       const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y)
@@ -120,16 +151,16 @@ export function traceDdaIntegerOcclusion(
       })
       cell.x.addAssign(stepDirection.x)
       cell.y.addAssign(stepDirection.y)
-      advancedX.addAssign(int(1))
-      advancedY.addAssign(int(1))
+      tMax.x.addAssign(tDelta.x)
+      tMax.y.addAssign(tDelta.y)
     })
     If(stepX, () => {
       cell.x.addAssign(stepDirection.x)
-      advancedX.addAssign(int(1))
+      tMax.x.addAssign(tDelta.x)
     })
     If(stepY, () => {
       cell.y.addAssign(stepDirection.y)
-      advancedY.addAssign(int(1))
+      tMax.y.addAssign(tDelta.y)
     })
   })
 
@@ -137,7 +168,8 @@ export function traceDdaIntegerOcclusion(
 }
 
 /**
- * Integer supercover traversal that resolves the first emissive texel or wall.
+ * Parametric fixed-point supercover traversal that resolves the first
+ * emissive texel or wall.
  *
  * RGB contains captured sprite radiance. Alpha is a traversal result:
  * `-1` = blocked by an occluder, `0` = step budget exhausted,
@@ -159,39 +191,58 @@ export function traceDdaIntegerRadiance(
   gridHeight: number,
   maxSteps: number
 ): Node<'vec4'> {
-  const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst('ddaGridSize')
-  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1)).toConst('ddaGridMax')
-  const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
-    const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1).toConst()
-    const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y)).toConst()
-    const cell = floor(textureUV.mul(gridSize)).clamp(vec2(0), gridSize.sub(float(0.0001))).toConst()
-    return ivec2(int(cell.x), int(cell.y))
-  }
+  const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst()
   const occlusionAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
-    // The clipped endpoints are clamped to the grid and Bresenham advances
-    // monotonically between them, so current and supercover-neighbor cells
-    // are provably in bounds. Avoid four comparisons plus two nested selects
-    // around every texture load in the hottest loop.
+    // The clipped endpoints are clamped to the grid and parametric DDA
+    // advances monotonically between them, so current and supercover-neighbor
+    // cells are provably in bounds. Avoid four comparisons plus two nested
+    // selects around every texture load in the hottest loop.
     const sample = textureLoad(occlusionTexture, cell).toConst()
     return vec2(sample.r, sample.a)
   }
   const emissionAt = (cell: Node<'ivec2'>): Node<'vec3'> => textureLoad(emissiveTexture, cell).rgb.toConst()
 
-  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst('ddaStartWorld')
-  const endWorld = rayOrigin.add(rayDirection.mul(traceExit)).toConst('ddaEndWorld')
-  const cell = worldToCell(startWorld).toVar()
-  const endCell = worldToCell(endWorld).toConst('ddaEndCell')
-  const delta = ivec2(endCell.x.sub(cell.x).abs(), endCell.y.sub(cell.y).abs()).toConst('ddaDelta')
+  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst()
+  const startWorldUV = worldToUV(startWorld, worldSize, worldOffset).clamp(0, 1).toConst()
+  const startTextureUV = vec2(startWorldUV.x, float(1).sub(startWorldUV.y)).toConst()
+  const gridPosition = startTextureUV
+    .mul(gridSize)
+    .clamp(vec2(0), gridSize.sub(float(0.0001)))
+    .toConst()
+  const gridDirection = vec2(
+    rayDirection.x.div(worldSize.x).mul(gridSize.x),
+    rayDirection.y.div(worldSize.y).mul(gridSize.y).mul(float(-1))
+  ).toConst()
+  const parallelX = gridDirection.x.abs().lessThan(float(1e-8)).toConst()
+  const parallelY = gridDirection.y.abs().lessThan(float(1e-8)).toConst()
   const stepDirection = ivec2(
-    endCell.x.greaterThan(cell.x).select(int(1), endCell.x.lessThan(cell.x).select(int(-1), int(0))),
-    endCell.y.greaterThan(cell.y).select(int(1), endCell.y.lessThan(cell.y).select(int(-1), int(0)))
-  ).toConst('ddaStepDirection')
-  const onlyY = delta.x.equal(int(0)).toConst('ddaOnlyY')
-  const onlyX = delta.y.equal(int(0)).toConst('ddaOnlyX')
-  const crossingX = int(delta.y).toVar()
-  const crossingY = int(delta.x).toVar()
-  const crossingXIncrement = delta.y.mul(int(2)).toConst('ddaCrossingXIncrement')
-  const crossingYIncrement = delta.x.mul(int(2)).toConst('ddaCrossingYIncrement')
+    parallelX.select(int(0), gridDirection.x.greaterThan(float(0)).select(int(1), int(-1))),
+    parallelY.select(int(0), gridDirection.y.greaterThan(float(0)).select(int(1), int(-1)))
+  ).toConst()
+  const ownedPosition = gridPosition
+    .add(vec2(stepDirection).mul(float(1e-5)))
+    .clamp(vec2(0), gridSize.sub(float(0.0001)))
+    .toConst()
+  const cell = ivec2(int(floor(ownedPosition.x)), int(floor(ownedPosition.y))).toVar()
+  const nextBoundary = vec2(
+    stepDirection.x.greaterThan(int(0)).select(float(cell.x.add(int(1))), float(cell.x)),
+    stepDirection.y.greaterThan(int(0)).select(float(cell.y.add(int(1))), float(cell.y))
+  ).toConst()
+  const quantizeTime = (value: Node<'float'>): Node<'int'> =>
+    int(floor(value.clamp(float(0), float(DDA_TIME_MAX)).mul(float(DDA_TIME_FIXED_SCALE)).add(float(0.5))))
+  const tDeltaX = quantizeTime(float(1).div(gridDirection.x.abs())).toConst()
+  const tDeltaY = quantizeTime(float(1).div(gridDirection.y.abs())).toConst()
+  const safeTDeltaX = tDeltaX.lessThan(int(1)).select(int(1), tDeltaX).toConst()
+  const safeTDeltaY = tDeltaY.lessThan(int(1)).select(int(1), tDeltaY).toConst()
+  const tDelta = ivec2(
+    parallelX.select(int(DDA_TIME_SENTINEL), safeTDeltaX),
+    parallelY.select(int(DDA_TIME_SENTINEL), safeTDeltaY)
+  ).toConst()
+  const tMax = ivec2(
+    parallelX.select(int(DDA_TIME_SENTINEL), quantizeTime(nextBoundary.x.sub(gridPosition.x).div(gridDirection.x))),
+    parallelY.select(int(DDA_TIME_SENTINEL), quantizeTime(nextBoundary.y.sub(gridPosition.y).div(gridDirection.y)))
+  ).toVar()
+  const traceSpan = quantizeTime(traceExit.sub(traceEntry).max(float(0))).toConst()
   const radiance = vec3(0).toVar()
   const result = intersectsWorld.not().select(float(1), float(0)).toVar()
   // A probe may begin inside the silhouette of the receiver being shaded
@@ -237,15 +288,15 @@ export function traceDdaIntegerRadiance(
       If(testsOcclusion.and(currentEmitter), () => {
         emitterPending.assign(float(1))
       })
-      const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y)).toConst()
-      If(reachedEnd, () => {
+      const nextCrossing = tMax.x.lessThan(tMax.y).select(tMax.x, tMax.y).toConst()
+      If(nextCrossing.greaterThanEqual(traceSpan), () => {
         result.assign(emitterPending.greaterThan(float(0.5)).select(float(-1), float(1)))
         Break()
       })
 
-      const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY))).toConst()
-      const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX))).toConst()
-      const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY)).toConst()
+      const stepCorner = tMax.x.sub(tMax.y).abs().lessThanEqual(int(1)).toConst()
+      const stepX = stepCorner.not().and(tMax.x.lessThan(tMax.y)).toConst()
+      const stepY = stepCorner.not().and(tMax.y.lessThan(tMax.x)).toConst()
 
       If(stepCorner, () => {
         const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y).toConst()
@@ -273,16 +324,16 @@ export function traceDdaIntegerRadiance(
         })
         cell.x.addAssign(stepDirection.x)
         cell.y.addAssign(stepDirection.y)
-        crossingX.addAssign(crossingXIncrement)
-        crossingY.addAssign(crossingYIncrement)
+        tMax.x.addAssign(tDelta.x)
+        tMax.y.addAssign(tDelta.y)
       })
       If(stepX, () => {
         cell.x.addAssign(stepDirection.x)
-        crossingX.addAssign(crossingXIncrement)
+        tMax.x.addAssign(tDelta.x)
       })
       If(stepY, () => {
         cell.y.addAssign(stepDirection.y)
-        crossingY.addAssign(crossingYIncrement)
+        tMax.y.addAssign(tDelta.y)
       })
     })
   })

@@ -9,7 +9,7 @@ describe.each([
   [
     'DdaFixedRadianceLightEffect',
     DdaFixedRadianceLightEffect,
-    ['radianceIntensity', 'lightHeight', 'radianceUvOffset', 'includeAnalyticLights', 'radiance'],
+    ['radianceIntensity', 'lightHeight', 'radianceUvScale', 'radianceUvOffset', 'includeAnalyticLights', 'radiance'],
   ],
   ['HierarchicalRadianceLightEffect', HierarchicalRadianceLightEffect, ['radianceIntensity', 'radiance']],
 ] as const)('%s current LightEffect API integration', (_name, EffectClass, expectedSchema) => {
@@ -59,7 +59,7 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
     effect.dispose()
   })
 
-  it('keeps coarse DDA lighting registered while the camera moves within a capture cell', () => {
+  it('samples the visible camera rectangle from the guarded DDA radiance window', () => {
     const effect = new DdaFixedRadianceLightEffect()
     const worldSize = new Vector2(640, 360)
     const worldOffset = new Vector2(2, 6)
@@ -67,6 +67,10 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
     const shadowCaptureWorldOffset = new Vector2(-128, -128)
     const setWorldBounds = vi.spyOn(effect.radiance, 'setWorldBounds')
     const setTransportBounds = vi.spyOn(effect.radiance, 'setTransportBounds')
+    vi.spyOn(effect.radiance, 'getVisibleUvTransform').mockImplementation((scale, offset) => {
+      scale.set(640 / 672, 360 / 392)
+      offset.set(2 / 672, 6 / 392)
+    })
     vi.spyOn(effect.radiance, 'generate').mockImplementation(() => {})
 
     effect.update({
@@ -80,9 +84,10 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
       camera: {},
     } as never)
 
-    expect(setWorldBounds).toHaveBeenCalledWith(worldSize, new Vector2(0, 0))
+    expect(setWorldBounds).toHaveBeenCalledWith(worldSize, worldOffset)
     expect(setTransportBounds).toHaveBeenCalledWith(shadowCaptureWorldSize, shadowCaptureWorldOffset)
-    expect(effect.radianceUvOffset).toEqual([2 / 640, -6 / 360])
+    expect(effect.radianceUvScale).toEqual([640 / 672, 360 / 392])
+    expect(effect.radianceUvOffset).toEqual([2 / 672, 6 / 392])
 
     effect.dispose()
   })

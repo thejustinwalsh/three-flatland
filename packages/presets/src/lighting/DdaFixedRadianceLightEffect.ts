@@ -9,7 +9,9 @@ import {
 } from 'three-flatland'
 
 const DDA_CAPTURE_MARGIN = 128
-const _visibleGridOffset = new Vector2()
+const _radianceUvScaleVector = new Vector2(1, 1)
+const _radianceUvOffsetVector = new Vector2()
+const _radianceUvScale: [number, number] = [1, 1]
 const _radianceUvOffset: [number, number] = [0, 0]
 
 /**
@@ -23,6 +25,7 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   schema: {
     radianceIntensity: 1.0,
     lightHeight: 0.75,
+    radianceUvScale: [1, 1],
     radianceUvOffset: [0, 0],
     includeAnalyticLights: () => false,
     radiance: () => new RadianceCascades(DDA_FIXED_RADIANCE_CASCADES_CONFIG),
@@ -40,6 +43,7 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   light: ({ uniforms, constants, lightStore }) => {
     const radianceIntensity = uniforms.radianceIntensity
     const lightHeight = uniforms.lightHeight
+    const radianceUvScale = uniforms.radianceUvScale
     const radianceUvOffset = uniforms.radianceUvOffset
     const radianceTexture = constants.radiance.finalRadianceTexture
 
@@ -53,7 +57,10 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
         // This render target is regenerated for the active camera window.
         // ScreenNode's Y convention is opposite texture()'s render-target
         // convention here, so flip exactly once at the final lookup.
-        const radiance = sampleTexture(radianceTexture, screenUV.flipY().add(radianceUvOffset).clamp(0, 1)).rgb
+        const radiance = sampleTexture(
+          radianceTexture,
+          screenUV.flipY().mul(radianceUvScale).add(radianceUvOffset).clamp(0, 1)
+        ).rgb
         // RC's final resolve is directionally averaged, so it cannot perform
         // the per-light N.L used by direct lighting. Preserve the authored
         // height contract instead: elevated wall caps above the emitter plane
@@ -77,16 +84,14 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   update(ctx) {
     if (!ctx.occlusionTexture) return
     this.radiance.includeAnalyticLights = this.includeAnalyticLights
-    _visibleGridOffset.set(
-      ctx.shadowCaptureWorldOffset.x + DDA_CAPTURE_MARGIN,
-      ctx.shadowCaptureWorldOffset.y + DDA_CAPTURE_MARGIN
-    )
-    this.radiance.setWorldBounds(ctx.worldSize, _visibleGridOffset)
+    this.radiance.setWorldBounds(ctx.worldSize, ctx.worldOffset)
     this.radiance.setTransportBounds(ctx.shadowCaptureWorldSize, ctx.shadowCaptureWorldOffset)
-    _radianceUvOffset[0] = (ctx.worldOffset.x - _visibleGridOffset.x) / ctx.worldSize.x
-    // Render-target Y is flipped exactly once at the final lookup, so moving
-    // the visible world window upward advances toward decreasing texture V.
-    _radianceUvOffset[1] = -(ctx.worldOffset.y - _visibleGridOffset.y) / ctx.worldSize.y
+    this.radiance.getVisibleUvTransform(_radianceUvScaleVector, _radianceUvOffsetVector)
+    _radianceUvScale[0] = _radianceUvScaleVector.x
+    _radianceUvScale[1] = _radianceUvScaleVector.y
+    _radianceUvOffset[0] = _radianceUvOffsetVector.x
+    _radianceUvOffset[1] = _radianceUvOffsetVector.y
+    this.radianceUvScale = _radianceUvScale
     this.radianceUvOffset = _radianceUvOffset
     this.radiance.generate(ctx.renderer, null, ctx.occlusionTexture, ctx.scene, ctx.camera)
   },

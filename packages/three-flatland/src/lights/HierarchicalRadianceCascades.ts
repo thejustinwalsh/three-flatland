@@ -50,7 +50,7 @@ import {
   type RadianceCascadesQuality,
 } from './RadianceCascades'
 import { worldToUV, uvToWorld } from './coordUtils'
-import { rayBoundsInterval } from './ddaGrid'
+import { rayBoundsInterval, traceDdaIntegerOcclusion } from './ddaGrid'
 
 /**
  * Hierarchical and Holographic Radiance Cascades renderer for Flatland.
@@ -175,122 +175,6 @@ function traceDdaFloatOcclusion(
     If(stepX.not(), () => {
       cell.y.addAssign(stepDirection.y)
       tMax.y.addAssign(tDelta.y)
-    })
-  })
-
-  return vec2(transmittance, reachedTraceLimit)
-}
-
-/**
- * Integer supercover traversal between quantized lighting-grid cells.
- *
- * The comparison `(2 * stepX + 1) * deltaY` versus
- * `(2 * stepY + 1) * deltaX` is the cross-multiplied form of the next
- * vertical/horizontal boundary time. It avoids division and keeps the walk in
- * integer arithmetic after the world-space endpoints have been quantized.
- * Corner crossings conservatively test both side-adjacent cells before moving
- * diagonally so a one-cell wall cannot leak light through a shared corner.
- *
- * Returns `<transmittance, reachedTraceLimit>`.
- */
-function traceDdaIntegerOcclusion(
-  occlusionTexture: Texture,
-  occlusionTextureSize: Node<'vec2'>,
-  rayOrigin: Node<'vec2'>,
-  rayDirection: Node<'vec2'>,
-  traceEntry: Node<'float'>,
-  traceExit: Node<'float'>,
-  intersectsWorld: Node<'bool'>,
-  worldSize: Node<'vec2'>,
-  worldOffset: Node<'vec2'>,
-  gridWidth: number,
-  gridHeight: number,
-  maxSteps: number
-): Node<'vec2'> {
-  const gridSize = vec2(float(gridWidth), float(gridHeight))
-  const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1))
-  const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
-    const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1)
-    const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y))
-    const cell = floor(textureUV.mul(gridSize)).clamp(vec2(0), gridSize.sub(float(0.0001)))
-    return ivec2(int(cell.x), int(cell.y))
-  }
-  const occupiedAt = (cell: Node<'ivec2'>): Node<'bool'> => {
-    const clampedCell = ivec2(
-      cell.x.lessThan(int(0)).select(int(0), cell.x.greaterThan(gridMax.x).select(gridMax.x, cell.x)),
-      cell.y.lessThan(int(0)).select(int(0), cell.y.greaterThan(gridMax.y).select(gridMax.y, cell.y))
-    )
-    const texelFloat = floor(vec2(clampedCell).add(float(0.5)).div(gridSize).mul(occlusionTextureSize)).clamp(
-      vec2(0),
-      occlusionTextureSize.sub(float(1))
-    )
-    const inBounds = cell.x
-      .greaterThanEqual(int(0))
-      .and(cell.x.lessThanEqual(gridMax.x))
-      .and(cell.y.greaterThanEqual(int(0)))
-      .and(cell.y.lessThanEqual(gridMax.y))
-    return inBounds.and(
-      textureLoad(occlusionTexture, ivec2(int(texelFloat.x), int(texelFloat.y))).a.greaterThan(float(0.5))
-    )
-  }
-
-  const startWorld = rayOrigin.add(rayDirection.mul(traceEntry))
-  const endWorld = rayOrigin.add(rayDirection.mul(traceExit))
-  const cell = worldToCell(startWorld).toVar()
-  const endCell = worldToCell(endWorld)
-  const delta = ivec2(endCell.x.sub(cell.x).abs(), endCell.y.sub(cell.y).abs())
-  const stepDirection = ivec2(
-    endCell.x.greaterThan(cell.x).select(int(1), endCell.x.lessThan(cell.x).select(int(-1), int(0))),
-    endCell.y.greaterThan(cell.y).select(int(1), endCell.y.lessThan(cell.y).select(int(-1), int(0)))
-  )
-  const advancedX = int(0).toVar()
-  const advancedY = int(0).toVar()
-  const transmittance = float(1).toVar()
-  const reachedTraceLimit = intersectsWorld.not().select(float(1), float(0)).toVar()
-
-  Loop(maxSteps, () => {
-    If(intersectsWorld.not(), () => {
-      Break()
-    })
-
-    If(occupiedAt(cell), () => {
-      transmittance.assign(float(0))
-      Break()
-    })
-
-    const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y))
-    If(reachedEnd, () => {
-      reachedTraceLimit.assign(float(1))
-      Break()
-    })
-
-    const onlyY = delta.x.equal(int(0))
-    const onlyX = delta.y.equal(int(0))
-    const crossingX = advancedX.mul(int(2)).add(int(1)).mul(delta.y)
-    const crossingY = advancedY.mul(int(2)).add(int(1)).mul(delta.x)
-    const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY)))
-    const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX)))
-    const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY))
-
-    If(stepCorner, () => {
-      const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y)
-      const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y))
-      If(occupiedAt(neighborX).or(occupiedAt(neighborY)), () => {
-        transmittance.assign(float(0))
-        Break()
-      })
-      cell.x.addAssign(stepDirection.x)
-      cell.y.addAssign(stepDirection.y)
-      advancedX.addAssign(int(1))
-      advancedY.addAssign(int(1))
-    })
-    If(stepX, () => {
-      cell.x.addAssign(stepDirection.x)
-      advancedX.addAssign(int(1))
-    })
-    If(stepY, () => {
-      cell.y.addAssign(stepDirection.y)
-      advancedY.addAssign(int(1))
     })
   })
 

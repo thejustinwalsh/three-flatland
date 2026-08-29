@@ -560,15 +560,16 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
     expect(fixedRcCascadeMaterials).toHaveLength(4)
     for (let cascade = 0; cascade < fixedRcCascadeMaterials.length; cascade++) {
       const cascadeProgram = capture(`rc-dda-fixed-cascade-${cascade}`, backend, fixedRcCascadeMaterials[cascade]!)
-      expect(cascadeProgram.fragmentShader, 'emissive-only DDA must compile out analytic circle intersections').not.toMatch(
-        /sqrt\s*\(/
-      )
+      expect(
+        cascadeProgram.fragmentShader,
+        'emissive-only DDA must compile out analytic circle intersections'
+      ).not.toMatch(/sqrt\s*\(/)
     }
     const finalProgram = capture('rc-dda-fixed-final', backend, fixedRcFinalMaterial)
     expect(
       finalProgram.fragmentShader,
-      'DDA final resolve must crop padded cascade probes to the 320x180 visible grid'
-    ).toMatch(/vec2(?:<f32>)?\(\s*320(?:\.0)?,\s*180(?:\.0)?\s*\)/)
+      'DDA final resolve must crop the guarded cascade field to its 328x188 output grid'
+    ).toMatch(/vec2(?:<f32>)?\(\s*328(?:\.0)?,\s*188(?:\.0)?\s*\)/)
     capture('rc-dda-fixed-filter', backend, fixedRcFilterMaterial)
   })
 

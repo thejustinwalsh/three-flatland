@@ -283,8 +283,7 @@
       "w": 16,
       "h": 16,
       "bump": "luminance",
-      "strength": 1.1,
-      "elevation": 1
+      "strength": 1.1
     },
     {
       "x": 32,
@@ -292,8 +291,7 @@
       "w": 16,
       "h": 16,
       "bump": "luminance",
-      "strength": 1.1,
-      "elevation": 1
+      "strength": 1.1
     },
     {
       "x": 48,
@@ -301,8 +299,7 @@
       "w": 16,
       "h": 16,
       "bump": "luminance",
-      "strength": 1.1,
-      "elevation": 1
+      "strength": 1.1
     },
     {
       "x": 64,
@@ -310,8 +307,7 @@
       "w": 16,
       "h": 16,
       "bump": "luminance",
-      "strength": 1.1,
-      "elevation": 1
+      "strength": 1.1
     },
     {
       "x": 80,

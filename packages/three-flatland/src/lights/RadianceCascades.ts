@@ -541,6 +541,10 @@ export class RadianceCascades {
 
   private _worldSize = new Vector2(1, 1)
   private _worldOffset = new Vector2(0, 0)
+  private _visibleWorldSize = new Vector2(1, 1)
+  private _visibleWorldOffset = new Vector2(0, 0)
+  private _visibleUvScale = new Vector2(1, 1)
+  private _visibleUvOffset = new Vector2(0, 0)
   private _transportWorldSize = new Vector2(1, 1)
   private _transportWorldOffset = new Vector2(0, 0)
   private _hasExplicitTransportBounds = false
@@ -657,6 +661,8 @@ export class RadianceCascades {
   set cascadeCount(value: number) {
     if (value !== this._config.cascadeCount) {
       this._config.cascadeCount = Math.max(2, Math.min(6, value))
+      this._syncWorldWindow()
+      this._resizeFinalRadianceTargets()
       this._rebuildCascadeRTs()
     }
   }
@@ -726,6 +732,7 @@ export class RadianceCascades {
     const pixelSize = Math.max(1, Math.min(32, Math.round(value)))
     if (pixelSize === this._config.ddaPixelSize) return
     this._config.ddaPixelSize = pixelSize
+    this._syncWorldWindow()
     if (this._cascadeRTs.length > 0) {
       this._resizeFinalRadianceTargets()
       this._rebuildCascadeRTs()
@@ -951,6 +958,8 @@ export class RadianceCascades {
     height: number
     probeWidth: number
     probeHeight: number
+    visibleOutputWidth: number
+    visibleOutputHeight: number
     outputWidth: number
     outputHeight: number
   } {
@@ -963,13 +972,20 @@ export class RadianceCascades {
         height: baseResolution,
         probeWidth: probeSize,
         probeHeight: probeSize,
+        visibleOutputWidth: probeSize,
+        visibleOutputHeight: probeSize,
         outputWidth: probeSize,
         outputHeight: probeSize,
       }
     }
     const coarsestStride = 2 ** (this._config.cascadeCount - 1)
-    const outputWidth = Math.max(1, Math.ceil(this._processingSize.x / this._config.ddaPixelSize))
-    const outputHeight = Math.max(1, Math.ceil(this._processingSize.y / this._config.ddaPixelSize))
+    const visibleOutputWidth = Math.max(1, Math.ceil(this._processingSize.x / this._config.ddaPixelSize))
+    const visibleOutputHeight = Math.max(1, Math.ceil(this._processingSize.y / this._config.ddaPixelSize))
+    // One coarsest-stride guard page lets the camera scroll inside a stable
+    // globally phased probe lattice. The world origin rolls only after that
+    // page is exhausted, rather than rephasing C1/C2/C3 every fine cell.
+    const outputWidth = visibleOutputWidth + coarsestStride
+    const outputHeight = visibleOutputHeight + coarsestStride
     const probeWidth = Math.ceil(outputWidth / coarsestStride) * coarsestStride
     const probeHeight = Math.ceil(outputHeight / coarsestStride) * coarsestStride
     return {
@@ -977,6 +993,8 @@ export class RadianceCascades {
       height: probeHeight * baseAngular,
       probeWidth,
       probeHeight,
+      visibleOutputWidth,
+      visibleOutputHeight,
       outputWidth,
       outputHeight,
     }
@@ -1059,6 +1077,15 @@ export class RadianceCascades {
     return this.estimatedRaymarchTexelCount * this.cascadeStorageBytesPerTexel
   }
 
+  /**
+   * Copy the UV transform that selects the visible camera rectangle from the
+   * guarded, page-aligned DDA radiance window.
+   */
+  getVisibleUvTransform(scaleTarget: Vector2, offsetTarget: Vector2): void {
+    scaleTarget.copy(this._visibleUvScale)
+    offsetTarget.copy(this._visibleUvOffset)
+  }
+
   private _usesLocalFilter(): boolean {
     return this._config.filterRadius > 0 && this._config.filterStrength > 0
   }
@@ -1091,12 +1118,8 @@ export class RadianceCascades {
   }
 
   init(worldWidth: number, worldHeight: number, lightsTexture: DataTexture, lightCountNode: Node<'float'>): void {
-    this._worldSize.set(worldWidth, worldHeight)
-    this._worldSizeNode.value.set(worldWidth, worldHeight)
-    if (!this._hasExplicitTransportBounds) {
-      this._transportWorldSize.set(worldWidth, worldHeight)
-      this._transportWorldSizeNode.value.set(worldWidth, worldHeight)
-    }
+    this._visibleWorldSize.set(worldWidth, worldHeight)
+    this._visibleWorldOffset.set(0, 0)
     this._lightsTexture = lightsTexture
     this._lightCountNode = lightCountNode
 
@@ -1106,6 +1129,7 @@ export class RadianceCascades {
     if (!this._hasExplicitProcessingSize) {
       this._processingSize.set(Math.max(1, Math.ceil(worldWidth)), Math.max(1, Math.ceil(worldHeight)))
     }
+    this._syncWorldWindow()
 
     // Auto-calculate cascadeResolution from world size if not explicitly set.
     // Target ~1 probe per 1.5 world units, rounded up to next power of 2.
@@ -1191,8 +1215,11 @@ export class RadianceCascades {
     for (let i = 0; i < this._config.cascadeCount; i++) {
       const rt = new RenderTarget(dimensions.width, dimensions.height, {
         type: packed ? UnsignedByteType : HalfFloatType,
-        minFilter: packed ? NearestFilter : LinearFilter,
-        magFilter: packed ? NearestFilter : LinearFilter,
+        // Packed RGBA8 remains fixed-point storage. Linear sampling is still
+        // required because the direction-first merge addresses parent probes
+        // at fractional spatial positions.
+        minFilter: LinearFilter,
+        magFilter: LinearFilter,
         wrapS: ClampToEdgeWrapping,
         wrapT: ClampToEdgeWrapping,
         depthBuffer: false,
@@ -1239,24 +1266,56 @@ export class RadianceCascades {
     }
   }
 
-  resize(worldWidth: number, worldHeight: number): void {
-    this._worldSize.set(worldWidth, worldHeight)
-    this._worldSizeNode.value.set(worldWidth, worldHeight)
+  private _syncWorldWindow(): void {
+    if (this._usesDdaFixed()) {
+      const dimensions = this._transportDimensions()
+      const cellWorldWidth =
+        (this._visibleWorldSize.x / Math.max(1, this._processingSize.x)) * this._config.ddaPixelSize
+      const cellWorldHeight =
+        (this._visibleWorldSize.y / Math.max(1, this._processingSize.y)) * this._config.ddaPixelSize
+      const coarsestStride = 2 ** (this._config.cascadeCount - 1)
+      const pageWorldWidth = cellWorldWidth * coarsestStride
+      const pageWorldHeight = cellWorldHeight * coarsestStride
+      this._worldOffset.set(
+        Math.floor(this._visibleWorldOffset.x / pageWorldWidth) * pageWorldWidth,
+        Math.floor(this._visibleWorldOffset.y / pageWorldHeight) * pageWorldHeight
+      )
+      this._worldSize.set(cellWorldWidth * dimensions.outputWidth, cellWorldHeight * dimensions.outputHeight)
+      this._visibleUvScale.set(
+        this._visibleWorldSize.x / this._worldSize.x,
+        this._visibleWorldSize.y / this._worldSize.y
+      )
+      this._visibleUvOffset.set(
+        (this._visibleWorldOffset.x - this._worldOffset.x) / this._worldSize.x,
+        (this._visibleWorldOffset.y - this._worldOffset.y) / this._worldSize.y
+      )
+    } else {
+      this._worldSize.copy(this._visibleWorldSize)
+      this._worldOffset.copy(this._visibleWorldOffset)
+      this._visibleUvScale.set(1, 1)
+      this._visibleUvOffset.set(0, 0)
+    }
+
+    this._worldSizeNode.value.copy(this._worldSize)
+    this._worldOffsetNode.value.copy(this._worldOffset)
+    if (!this._hasExplicitTransportBounds) {
+      this._transportWorldSize.copy(this._worldSize)
+      this._transportWorldOffset.copy(this._worldOffset)
+      this._transportWorldSizeNode.value.copy(this._worldSize)
+      this._transportWorldOffsetNode.value.copy(this._worldOffset)
+    }
     this._updateIntervalUniforms()
   }
 
+  resize(worldWidth: number, worldHeight: number): void {
+    this._visibleWorldSize.set(worldWidth, worldHeight)
+    this._syncWorldWindow()
+  }
+
   setWorldBounds(worldSize: Vector2, worldOffset: Vector2): void {
-    this._worldSize.copy(worldSize)
-    this._worldOffset.copy(worldOffset)
-    this._worldSizeNode.value.copy(worldSize)
-    this._worldOffsetNode.value.copy(worldOffset)
-    if (!this._hasExplicitTransportBounds) {
-      this._transportWorldSize.copy(worldSize)
-      this._transportWorldOffset.copy(worldOffset)
-      this._transportWorldSizeNode.value.copy(worldSize)
-      this._transportWorldOffsetNode.value.copy(worldOffset)
-    }
-    this._updateIntervalUniforms()
+    this._visibleWorldSize.copy(worldSize)
+    this._visibleWorldOffset.copy(worldOffset)
+    this._syncWorldWindow()
   }
 
   /**
@@ -1285,6 +1344,7 @@ export class RadianceCascades {
     if (nextWidth === this._processingSize.x && nextHeight === this._processingSize.y) return
     const previousDimensions = this._usesDdaFixed() ? this._transportDimensions() : null
     this._processingSize.set(nextWidth, nextHeight)
+    this._syncWorldWindow()
     if (!previousDimensions || this._cascadeRTs.length === 0) return
     const nextDimensions = this._transportDimensions()
     if (
@@ -1460,11 +1520,19 @@ export class RadianceCascades {
     return vec4(encodedRgb, encodedTransmittance)
   }
 
-  private _decodeDdaFixed(value: Node<'vec4'>): Node<'vec4'> {
+  private _decodeDdaFixedExact(value: Node<'vec4'>): Node<'vec4'> {
     if (!this._usesDdaFixed()) return value
     const levels = this._ddaQuantizationLevelsNode
     const fixedCode = floor(value.mul(levels).add(float(0.5))).clamp(0, levels)
     return vec4(fixedCode.rgb.div(levels).mul(this._ddaRadianceRangeNode), fixedCode.a.div(levels))
+  }
+
+  private _decodeDdaFixedFiltered(value: Node<'vec4'>): Node<'vec4'> {
+    if (!this._usesDdaFixed()) return value
+    // Preserve hardware interpolation between packed parent probes. Cascade
+    // output is quantized again on write, so rounding here only destroys the
+    // spatial interpolation and recreates large hard blocks.
+    return vec4(value.rgb.mul(this._ddaRadianceRangeNode), value.a)
   }
 
   /**
@@ -1513,10 +1581,7 @@ export class RadianceCascades {
           ? min(worldSize.x, worldSize.y)
               .mul(float(AUTO_LIGHT_SOURCE_VIEW_FRACTION))
               .max(
-                min(
-                  transportWorldSize.x.div(float(ddaGridWidth)),
-                  transportWorldSize.y.div(float(ddaGridHeight))
-                ).mul(
+                min(transportWorldSize.x.div(float(ddaGridWidth)), transportWorldSize.y.div(float(ddaGridHeight))).mul(
                   float(AUTO_DDA_LIGHT_SOURCE_RADIUS_TEXELS)
                 )
               )
@@ -1528,7 +1593,9 @@ export class RadianceCascades {
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
-      const fragCoord = uv().mul(vec2(float(atlasWidth), float(atlasHeight))).toConst('rcFragCoord')
+      const fragCoord = uv()
+        .mul(vec2(float(atlasWidth), float(atlasHeight)))
+        .toConst('rcFragCoord')
 
       // Direction-first layout decomposition
       const probeGroupSize = vec2(float(probeGroupWidth), float(probeGroupHeight)).toConst('rcProbeGroupSize')
@@ -1562,7 +1629,10 @@ export class RadianceCascades {
       // inside the analytic-light branch and the DDA traversal.
       const probeLocalPos = probeUV.mul(worldSize).toConst('rcProbeLocalPos')
 
-      const theta = rayIndex.add(float(0.5)).mul(float(TAU / angularSq)).toConst('rcTheta')
+      const theta = rayIndex
+        .add(float(0.5))
+        .mul(float(TAU / angularSq))
+        .toConst('rcTheta')
       const rayDir = vec2(cos(theta), sin(theta)).toConst('rcRayDirection')
 
       const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toConst('rcSegmentStartLocal')
@@ -1583,9 +1653,12 @@ export class RadianceCascades {
         // Probes cover only the visible camera, while DDA traverses the larger
         // source/occluder capture window. Keeping these bounds separate avoids
         // paying cascade-fragment cost for the offscreen guard band.
-        const boundsInterval = rayBoundsInterval(segmentStart, rayDir, transportWorldSize, transportWorldOffset).toConst(
-          'rcBoundsInterval'
-        )
+        const boundsInterval = rayBoundsInterval(
+          segmentStart,
+          rayDir,
+          transportWorldSize,
+          transportWorldOffset
+        ).toConst('rcBoundsInterval')
         const traceEntry = boundsInterval.x.max(float(0)).toConst('rcTraceEntry')
         const traceExit = boundsInterval.y.min(traceLimit).toConst('rcTraceExit')
         const intersectsWorld = traceExit.greaterThanEqual(traceEntry).toConst('rcIntersectsWorld')
@@ -1702,7 +1775,7 @@ export class RadianceCascades {
             // render targets in WebGPU — no Y-flip needed.
             const texelPos = rayN1XY.mul(vec2(float(probeGroupWidthN1), float(probeGroupHeightN1))).add(probeN1)
             const mergeUV = texelPos.div(vec2(float(atlasWidth), float(atlasHeight)))
-            const mergedSample = this._decodeDdaFixed(sampleTexture(prevCascadeTexture, mergeUV))
+            const mergedSample = this._decodeDdaFixedFiltered(sampleTexture(prevCascadeTexture, mergeUV))
             farRadiance.addAssign(mergedSample.rgb)
             farTransmittance.addAssign(mergedSample.a)
           }
@@ -1786,7 +1859,7 @@ export class RadianceCascades {
             float(dirY * probeGroupHeight).add(probeXY.y)
           )
           const lookupUV = lookupCoord.div(vec2(float(atlasWidth), float(atlasHeight)))
-          const sample = this._decodeDdaFixed(sampleTexture(cascade0Texture, lookupUV))
+          const sample = this._decodeDdaFixedExact(sampleTexture(cascade0Texture, lookupUV))
           irradiance.addAssign(sample.rgb)
         }
       }
@@ -1925,10 +1998,18 @@ export class RadianceCascades {
     material.fragmentNode = Fn(() => {
       const centerUV = uv()
       const center = sampleTexture(sourceTexture, centerUV)
-      const pointIsOpen = (pointUV: Node<'vec2'>): Node<'bool'> =>
-        usesDda
-          ? sampleTexture(occlusionTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).a.lessThan(float(0.5))
-          : sampleTexture(sdfTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).r.greaterThan(this._sdfHitEpsilonNode)
+      const pointIsOpen = (pointUV: Node<'vec2'>): Node<'bool'> => {
+        // The radiance target covers the guarded cascade window while the
+        // occlusion/SDF texture covers the larger capture window. Address the
+        // mask by world position so its edge gate cannot parallax or scale
+        // differently from the radiance being filtered.
+        const pointWorld = uvToWorld(pointUV, this._worldSizeNode, this._worldOffsetNode)
+        const captureUV = worldToUV(pointWorld, this._transportWorldSizeNode, this._transportWorldOffsetNode)
+        const captureTextureUV = vec2(captureUV.x, float(1).sub(captureUV.y)).clamp(0, 1)
+        return usesDda
+          ? sampleTexture(occlusionTexture!, captureTextureUV).a.lessThan(float(0.5))
+          : sampleTexture(sdfTexture!, captureTextureUV).r.greaterThan(this._sdfHitEpsilonNode)
+      }
       const centerOpen = pointIsOpen(centerUV)
 
       const total = vec3(center.rgb).mul(float(4)).toVar()
@@ -2017,12 +2098,20 @@ export class RadianceCascades {
     this._filterRadianceMaterial.fragmentNode = Fn(() => {
       const centerUV = uv()
       const center = sampleTexture(rawFinalTexture, centerUV)
-      const pointIsOpen = (pointUV: Node<'vec2'>): Node<'bool'> =>
-        usesDda
-          ? sampleTexture(occlusionTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).a.lessThan(float(0.5))
-          : sampleTexture(sdfTexture!, vec2(pointUV.x, float(1).sub(pointUV.y))).r.greaterThan(this._sdfHitEpsilonNode)
+      const pointIsOpen = (pointUV: Node<'vec2'>): Node<'bool'> => {
+        const pointWorld = uvToWorld(pointUV, this._worldSizeNode, this._worldOffsetNode)
+        const captureUV = worldToUV(pointWorld, this._transportWorldSizeNode, this._transportWorldOffsetNode)
+        const captureTextureUV = vec2(captureUV.x, float(1).sub(captureUV.y)).clamp(0, 1)
+        return usesDda
+          ? sampleTexture(occlusionTexture!, captureTextureUV).a.lessThan(float(0.5))
+          : sampleTexture(sdfTexture!, captureTextureUV).r.greaterThan(this._sdfHitEpsilonNode)
+      }
       const centerOpen = pointIsOpen(centerUV)
-      const centerSDF = usesDda ? float(0) : sampleTexture(sdfTexture!, vec2(centerUV.x, float(1).sub(centerUV.y))).r
+      const centerWorld = uvToWorld(centerUV, this._worldSizeNode, this._worldOffsetNode)
+      const centerCaptureUV = worldToUV(centerWorld, this._transportWorldSizeNode, this._transportWorldOffsetNode)
+      const centerSDF = usesDda
+        ? float(0)
+        : sampleTexture(sdfTexture!, vec2(centerCaptureUV.x, float(1).sub(centerCaptureUV.y)).clamp(0, 1)).r
 
       const paletteQuantize = (color: Node<'vec3'>): Node<'vec3'> => {
         if (!this._usesPaletteFilter()) return color
