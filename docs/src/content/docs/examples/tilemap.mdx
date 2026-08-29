@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'tilemap')
   reactFiles={reactFiles}
 >
 
-## Tilemap Setup
+## Tilemap setup
 
 Load a map file and create a `TileMap2D`. Both `TiledLoader` and `LDtkLoader` return a `TileMapData` structure that `TileMap2D` consumes:
 
@@ -52,7 +52,7 @@ const gid = groundLayer.getTileAt(x, y);
 wallsLayer.setTileAt(x, y, newGid);
 ```
 
-## Animated Tiles
+## Animated tiles
 
 Call `update(deltaMs)` each frame to advance tile animations defined in the source map:
 
@@ -64,7 +64,7 @@ function animate() {
 }
 ```
 
-## Further Reading
+## Further reading
 
 - [Tilemaps Guide](../../guides/tilemaps/) - Advanced tilemap features
 - [Batch Rendering](../batch-demo/) - Other optimization techniques

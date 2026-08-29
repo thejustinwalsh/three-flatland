@@ -18,7 +18,7 @@ export const reactFiles = loadExample('react', 'knightmark')
   showCommonFiles={['public/sprites/knight.json']}
 >
 
-## What It Demonstrates
+## What it demonstrates
 
 Knightmark is a sprite stress test inspired by classic benchmarks like Bunnymark. It showcases:
 
@@ -27,9 +27,9 @@ Knightmark is a sprite stress test inspired by classic benchmarks like Bunnymark
 - **Spatial hashing** — efficient collision detection between sprites
 - **Y-sorting** — depth-correct rendering via `zIndex`
 
-## Key Patterns
+## Key patterns
 
-### Animated Sprites with State Machines
+### Animated sprites with state machines
 
 Each knight has a state machine (walk, roll, trip, idle) driving its animation:
 
@@ -47,7 +47,7 @@ sprite.play('death', {
 });
 ```
 
-### Y-Sort Depth Ordering
+### Y-Sort depth ordering
 
 Knights render in correct depth order by setting `zIndex` from their Y position:
 
@@ -55,7 +55,7 @@ Knights render in correct depth order by setting `zIndex` from their Y position:
 sprite.zIndex = -Math.floor(sprite.position.y);
 ```
 
-### Spatial Hash for Collisions
+### Spatial hash for collisions
 
 A simple spatial hash grid enables O(n) collision checks instead of O(n^2):
 
@@ -68,7 +68,7 @@ spatialHash.forEachNeighbor(knight, (other) => {
 });
 ```
 
-## Further Reading
+## Further reading
 
 - [Batch Rendering](../batch-demo/) - Learn more about batching
 - [Animation](../animation/) - Sprite animation basics

@@ -27,11 +27,11 @@ TSL node functions (tint, hueShift, outline, dissolve, etc.) are exported from `
 
 <Diagram caption="Composing a sprite's effect chain — the base texture color flows through each effect node as inputColor and out as a vec4, chaining in addEffect order into one node material." src={tslNodeChain} />
 
-## Material Effects :badge[Recommended]{variant=success}
+## Material effects :badge[Recommended]{variant=success}
 
 The Material Effect system lets you define shader effects as reusable classes with typed, animatable properties. Effects are composed into the sprite's shader pipeline automatically.
 
-### Defining an Effect
+### Defining an effect
 
 Use `createMaterialEffect` with a schema (per-sprite data) and a TSL node builder:
 
@@ -63,7 +63,7 @@ The `node` callback receives:
 - `inputUV` — atlas UV coordinates (TSL vec2 node)
 - `attrs` — TSL nodes for each schema field, automatically packed into GPU buffers
 
-### Using Effects
+### Using effects
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -101,7 +101,7 @@ The `node` callback receives:
   </TabItem>
 </Tabs>
 
-### Closure-Captured Textures
+### Closure-Captured textures
 
 Effects that need texture references can capture them via closures. The `node` callback runs once during shader compilation:
 
@@ -118,7 +118,7 @@ const Dissolve = createMaterialEffect({
 
 See the [TSL Nodes example](../../examples/tsl-nodes/) for all 8 effects in action.
 
-## Low-Level TSL Usage :badge[Advanced]{variant=note}
+## Low-Level TSL usage :badge[Advanced]{variant=note}
 
 For full shader control, you can compose TSL nodes directly on a `MeshBasicNodeMaterial`. This is useful for custom materials outside the sprite pipeline:
 
@@ -143,7 +143,7 @@ material.colorNode = Fn(() => {
 })();
 ```
 
-## Sprite Sampling Nodes
+## Sprite sampling nodes
 
 ### `sampleSprite`
 
@@ -170,7 +170,7 @@ const frameUV = spriteUV(frameUniform);
 // Use frameUV for texture sampling or effects
 ```
 
-## Color Nodes
+## Color nodes
 
 ### `tint` / `tintAdditive`
 
@@ -228,7 +228,7 @@ const bright = brightness(color, 0.2);
 const contrasty = contrast(color, 1.5);
 ```
 
-## Effect Nodes
+## Effect nodes
 
 ### `outline8`
 
@@ -274,7 +274,7 @@ const dissolved = dissolvePixelated(color, uv, progress, noiseTexture, 16);
 const dissolved = dissolveDirectional(color, uv, progress, direction);
 ```
 
-## Retro Effect Nodes
+## Retro effect nodes
 
 ### `colorReplace`
 
@@ -335,7 +335,7 @@ import { posterize } from '@three-flatland/nodes';
 const posterized = posterize(color, 4);
 ```
 
-## Combining Effects
+## Combining effects
 
 With Material Effects, multiple effects can be active simultaneously. Each effect chains through the previous color:
 
@@ -363,7 +363,7 @@ material.colorNode = Fn(() => {
 })();
 ```
 
-## Performance Tips
+## Performance tips
 
 :::tip[Performance note]
 Material Effects pack per-sprite data into fixed-size GPU buffers, so adding effects to thousands of sprites doesn't cost extra draw calls — it costs shader ops per fragment. Reach for `addEffect()` freely. Compose, don't worry.
@@ -374,7 +374,7 @@ Material Effects pack per-sprite data into fixed-size GPU buffers, so adding eff
 - Cache compiled materials when reusing effects
 - Avoid dynamic branching in hot paths
 
-## Next Steps
+## Next steps
 
 - [TSL Nodes Example](../../examples/tsl-nodes/) — Interactive demo of 8 material effects
 - [Pass Effects Guide](../pass-effects/) — Full-screen post-processing with CRT, LCD, VHS, and more

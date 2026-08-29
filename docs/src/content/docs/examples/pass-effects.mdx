@@ -18,7 +18,7 @@ export const reactFiles = loadExample('react', 'pass-effects')
   reactFiles={reactFiles}
 >
 
-## What This Example Shows
+## What this example shows
 
 This example demonstrates the **Pass Effect** system for full-screen post-processing. Switch between 5 presets to see different effect chains applied to a sprite scene:
 
@@ -30,7 +30,7 @@ This example demonstrates the **Pass Effect** system for full-screen post-proces
 | VHS Tape | 3 | VHS distortion + static noise + chromatic aberration |
 | Retro PC | 3 | Color quantize + scanlines + vignette |
 
-## Defining Pass Effects
+## Defining pass effects
 
 Use `createPassEffect` with a schema for parameters and a TSL node builder:
 
@@ -93,7 +93,7 @@ Use `createPassEffect` with a schema for parameters and a TSL node builder:
   </TabItem>
 </Tabs>
 
-## Adding Passes at Runtime
+## Adding passes at runtime
 
 Instantiate a pass and add it to Flatland. Passes chain in order — each receives the previous output:
 
@@ -140,7 +140,7 @@ Instantiate a pass and add it to Flatland. Passes chain in order — each receiv
   </TabItem>
 </Tabs>
 
-## Further Reading
+## Further reading
 
 - [Pass Effects Guide](../../guides/pass-effects/) — Full API reference and pass chain architecture
 - [TSL Nodes](../tsl-nodes/) — Per-sprite material effects

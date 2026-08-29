@@ -15,7 +15,7 @@ import ShowcaseGame from '../../../components/ShowcaseGame';
 
 The breakout mini-game is built on three-flatland and [Koota ECS](https://github.com/pmndrs/koota). All game state lives in ECS traits, all logic runs in pure-function systems, and all rendering flows through a single Flatland instance.
 
-### Game Loop
+### Game loop
 
 A 4-state machine drives the top-level loop. Each state runs a different subset of systems per frame:
 
@@ -28,7 +28,7 @@ A 4-state machine drives the top-level loop. Each state runs a different subset 
 
 State transitions are explicit — `startGame`, `levelClear`, `loseLife`, `gameOver`, `returnToAttract` — each one resets the appropriate entities and spawns new ones.
 
-### Collision Detection
+### Collision detection
 
 The game uses swept line-segment vs AABB testing (slab method) to prevent tunneling at high ball speeds:
 
@@ -39,7 +39,7 @@ The game uses swept line-segment vs AABB testing (slab method) to prevent tunnel
 
 Paddle collision adds angle control: the horizontal offset from paddle center maps to a launch angle (up to 60 degrees), and paddle velocity at the moment of contact applies english to the ball's trajectory.
 
-### Rendering Pipeline
+### Rendering pipeline
 
 All sprites render through a single `<flatland>` element:
 
@@ -52,9 +52,9 @@ All sprites render through a single `<flatland>` element:
 </flatland>
 ```
 
-Game logic runs in R3F's default update phase. Flatland renders in the **render phase** (`{ phase: 'render' }`), which tells R3F to skip its own render pass. This separation ensures all ECS trait values are synced to `MaterialEffect` instances before the draw call.
+Game logic runs in R3F's default update phase. Flatland renders in the **render phase** (`{ phase: 'render' }`), so R3F skips its own render pass. This separation ensures all ECS trait values are synced to `MaterialEffect` instances before the draw call.
 
-### Material Effects
+### Material effects
 
 Two custom effects built with `createMaterialEffect` provide visual feedback without shader recompilation:
 
@@ -64,11 +64,11 @@ Two custom effects built with `createMaterialEffect` provide visual feedback wit
 
 Both effects are registered on their materials at creation time. Each component's `useFrame` reads the ECS trait value and writes it to the effect instance ref — a one-line sync per entity per frame.
 
-### Dithered Shading
+### Dithered shading
 
 All sprite materials use a `colorTransform` that applies Bayer 4x4 ordered dithering with a diagonal self-shadow. The dither grid is scaled by sprite world-size so cells are square regardless of aspect ratio. UVs are quantized to cell centers, then a diagonal gradient (upper-left = light, lower-right = shadow) modulates brightness through the dither pattern. The result is a retro shading style with no textures needed beyond the base sprite.
 
-### ECS Trait Design
+### ECS trait design
 
 Traits fall into four categories:
 
@@ -79,7 +79,7 @@ Traits fall into four categories:
 
 The `GameState` singleton carries score, lives, level, countdown timer, streak counter, multiplier, carried ball speed across levels, and high score (persisted to `localStorage`).
 
-### Attract Mode AI
+### Attract mode AI
 
 The AI uses three layers of smoothing to mimic human play:
 
@@ -89,7 +89,7 @@ The AI uses three layers of smoothing to mimic human play:
 
 A slow-drifting offset (re-randomized every 4-8 seconds) adds subtle imperfection so the AI doesn't look robotic.
 
-### Project Structure
+### Project structure
 
 ```
 minis/breakout/
@@ -121,13 +121,13 @@ minis/breakout/
 The mini-game is designed to be importable by the docs site as a library package. This drove two design choices: all textures are generated at runtime via `CanvasTexture` (zero network requests), and sound is injected as a `zzfx` prop function so the host controls audio context and volume.
 :::
 
-### External Dependencies
+### External dependencies
 
 - [Koota](https://github.com/pmndrs/koota) — Entity Component System
 - [React Three Fiber](https://r3f.docs.pmnd.rs/) — React renderer for Three.js
 - [ZzFX](https://github.com/KilledByAPixel/ZzFX) — Tiny sound generator
 
-## Next Steps
+## Next steps
 
 - [Flatland Guide](../../guides/flatland/) — Deep dive into the Flatland API used by this game
 - [TSL Nodes Guide](../../guides/tsl-nodes/) — Custom material effects like the flash and dissolve

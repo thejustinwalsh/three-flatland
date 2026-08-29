@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'batch-demo')
   reactFiles={reactFiles}
 >
 
-## Automatic Batching
+## Automatic batching
 
 `SpriteGroup` automatically batches sprites that share the same material, minimizing draw calls:
 
@@ -33,7 +33,7 @@ for (let i = 0; i < 1000; i++) {
 }
 ```
 
-## Sort Layers and Sorting
+## Sort layers and sorting
 
 Use sort layers and zIndex for proper depth sorting:
 
@@ -53,7 +53,7 @@ const { spriteCount, batchCount, visibleSprites } = spriteGroup.stats;
 console.log(`Sprites: ${spriteCount}, Batches: ${batchCount}, Visible: ${visibleSprites}`);
 ```
 
-## Further Reading
+## Further reading
 
 - [TSL Nodes](../tsl-nodes/) - Add shader effects
 - [Tilemap](../tilemap/) - Efficient tile-based rendering

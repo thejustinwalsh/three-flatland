@@ -20,7 +20,7 @@ You only need this page when you're ready to *ship*. During development, the run
 
 For the runtime side of the same pipeline — how `SpriteSheetLoader` and `LDtkLoader` consume baked siblings via `normals: true` — see the [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) section of the Loaders guide. This page is the *workflow* counterpart: how to run the baker offline, integrate it into CI, and reason about staleness.
 
-## The Bake Pipeline at a Glance
+## The bake pipeline at a glance
 
 <Diagram caption="The baked-normal pipeline — probe for a hash-stamped sidecar, load it on a match, or fall back to an in-memory bake; forceRuntime skips the probe." src={bakedNormalPipeline} />
 
@@ -72,7 +72,7 @@ Contributed by `@three-flatland/alphamap`. Reads an RGBA PNG and writes `<input>
 npx flatland-bake alpha <input.png> [output.png]
 ```
 
-## Sidecar Files & Hash Stamping
+## Sidecar files & hash stamping
 
 The baker writes a sibling PNG next to the source. Naming follows a fixed convention per baker type:
 
@@ -92,7 +92,7 @@ When the runtime probes the sidecar:
 3. Parse the `flatland` `tEXt` chunk and compare its `hash` to what the loader would have used.
 4. **Match** → load the baked PNG directly. **Mismatch** → re-bake in memory and warn.
 
-## Dev-Time Staleness Warnings
+## Dev-Time staleness warnings
 
 `devtimeWarn` is the shared warning channel — gated on `NODE_ENV !== 'production'` and deduped per `(category, url)` so the same message never fires twice. Sidecar-aware loaders use it uniformly across the ecosystem (currently just `normal`; future bakers slot into the same surface).
 
@@ -108,7 +108,7 @@ Two warning shapes you'll see while iterating:
 
 The canonical fix is to **re-bake** — run `flatland-bake` with the same descriptor your loader is using, the hash matches, the warning goes away. Don't reach for `forceRuntime` here: that flag declares "this asset's normal map is generated in the browser as a matter of architecture" (see [Browser-generated assets](#browser-generated-assets) below), not "shut this warning up while I iterate." Silencing the warn the wrong way buries the signal — the engine still gives you the data, but future maintainers lose the breadcrumb pointing at the missing bake step.
 
-## CI / Build Integration
+## CI / build integration
 
 `flatland-bake` is CLI-only today — there's no Vite or Rollup plugin yet. The recommended pattern is a `package.json` script that runs ahead of your main build:
 
@@ -125,7 +125,7 @@ For tilemaps and other multi-region descriptors, drive the bake from a small `ts
 
 The output PNGs are deterministic for a given descriptor — same input, same hash stamp, same bytes. Re-running the bake is a no-op when nothing changed, which makes incremental builds and `git diff` review straightforward.
 
-## When to Bake Offline vs Runtime
+## When to bake offline vs runtime
 
 :::tip[Performance note]
 Both paths produce identical pixel data — the in-memory bake and `flatland-bake` share the same `bakeNormalMap` core. The choice is about *when* the work happens, not what comes out. Iterate runtime; ship offline.
@@ -141,7 +141,7 @@ The choice is about *when* the work happens:
 
 In production, ship baked siblings and the loader becomes a single-image-fetch with no decode overhead. In development, skip the bake step entirely and let the runtime regenerate — much faster than re-running the CLI on every descriptor tweak.
 
-## Browser-Generated Assets
+## Browser-Generated assets
 
 `forceRuntime: true` declares **the browser is where this asset's normal map is produced** — not the CI bake step. The contract that "if you ask for normals, you get normals" doesn't change; only *where* the bake runs does.
 
@@ -161,11 +161,11 @@ const sheet = await SpriteSheetLoader.load('./sprites/proc-tiles.json', {
 
 If you just want to silence a stale-sidecar warning while iterating, **re-bake** instead. `forceRuntime` is the wrong tool for that — it silences the warn but it also tells every future maintainer "this asset's normals are produced in the browser, on purpose, forever," which is a different statement about the project's architecture.
 
-## Adding a New Bake Type
+## Adding a new bake type
 
 `@three-flatland/bake` is the generic framework; `@three-flatland/normals` is the model implementation. A new bake type lives in its own package, declares a `flatland.bake` manifest entry in its `package.json` pointing at a default-exported `Baker`, and reuses `hashDescriptor` + `writeSidecarPng` from `@three-flatland/bake/node` to stamp its outputs. On the runtime side it imports `bakedSiblingURL`, `probeBakedSibling`, and `devtimeWarn` from `@three-flatland/bake` to wire up the same probe-then-fallback flow. Once published, `flatland-bake --list` picks up the subcommand automatically — no central registry, no version coupling.
 
-## Related Reading
+## Related reading
 
 - **Runtime side of the normal pipeline** — [Loaders → Baked Normal Pipeline](../loaders/#baked-normal-pipeline)
 - **Wiring baked normals into lighting** — [Lighting → NormalMapProvider](../lighting-setup/#normalmapprovider)

@@ -20,7 +20,7 @@ For your first map, you don't need to think about chunks, layers, or culling. Dr
 
 <Diagram caption="How TileMap2D builds a map — a tile atlas plus per-layer grid data become chunked geometry, stacked by layer for depth, with markOccluders flagging wall tiles as shadow casters." src={tilemapStructure} />
 
-## Creating a Tilemap
+## Creating a tilemap
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -77,7 +77,7 @@ For your first map, you don't need to think about chunks, layers, or culling. Dr
   </TabItem>
 </Tabs>
 
-## Map Data Structure
+## Map data structure
 
 The `TileMapData` interface describes the map format:
 
@@ -97,9 +97,9 @@ interface TileMapData {
 }
 ```
 
-## Loading Maps
+## Loading maps
 
-### Tiled Editor (.json/.tmj)
+### Tiled editor (.json/.tmj)
 
 Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
 
@@ -134,7 +134,7 @@ Load maps created with the [Tiled Map Editor](https://www.mapeditor.org/):
   </TabItem>
 </Tabs>
 
-### LDtk Editor (.ldtk)
+### LDtk editor (.ldtk)
 
 Load maps created with [LDtk](https://ldtk.io/):
 
@@ -186,7 +186,7 @@ Load maps created with [LDtk](https://ldtk.io/):
 See the [Loaders guide](../loaders/#texture-presets) to configure texture filtering for pixel-art or smooth rendering.
 :::
 
-## Working with Layers
+## Working with layers
 
 Access and manipulate tile layers:
 
@@ -202,7 +202,7 @@ groundLayer.visible = false;
 console.log(tilemap.layerCount);
 ```
 
-## Tile Operations
+## Tile operations
 
 Read and modify tiles at runtime:
 
@@ -217,7 +217,7 @@ const tileGid = layer.getTileAt(x, y);
 layer.setTileAt(x, y, newTileGid);
 ```
 
-## Shadow Casting
+## Shadow casting
 
 Tilemaps participate in the lighting pipeline as shadow occluders. Rather than tagging tiles one by one, you mark whole categories of tiles by their LDtk `obj.type` — typically the `'collision'` IntGrid identifier that LDtk assigns to wall tiles by default.
 
@@ -271,7 +271,7 @@ Per-tile cast-shadow flags are preserved when you toggle layer-level state like 
 
 For the broader story on how the SDF pre-pass, occlusion mask, and shadow tracing fit together, see the [Shadows guide](../shadows/). For the per-sprite analogue (`Sprite2D` instances opting in/out as occluders), see the [Sprites guide](../sprites/).
 
-## Coordinate Conversion
+## Coordinate conversion
 
 Convert between world and tile coordinates:
 
@@ -295,7 +295,7 @@ console.log('Total chunks:', tilemap.totalChunkCount);
 console.log('Layer count:', tilemap.layerCount);
 ```
 
-## Chunked Rendering
+## Chunked rendering
 
 Tilemaps use chunked rendering for performance. Configure the chunk size based on your needs:
 
@@ -308,7 +308,7 @@ const tilemap = new TileMap2D({
 
 Smaller chunks = more draw calls but finer culling. Larger chunks = fewer draw calls but coarser culling. The default of 512 keeps most maps in a single chunk; lower it only for very large maps where finer culling pays off.
 
-## Animated Tiles
+## Animated tiles
 
 Tiles with animation data (from Tiled) are automatically animated. Call `update()` each frame:
 
