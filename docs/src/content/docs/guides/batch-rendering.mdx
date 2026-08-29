@@ -215,7 +215,7 @@ console.log(`Draw calls: ${renderer.info.render.calls}`)
 ### Share materials
 
 :::tip[Performance note]
-Sprites only batch together when they share the **same material instance** — not just the same texture, the same `new Sprite2DMaterial(...)` reference. Allocating a fresh material per sprite is the easiest way to silently tank batching.
+Sprites only batch together when they share the **same material instance** — not just the same texture, the same `new Sprite2DMaterial(...)` reference. Allocating a fresh material per sprite prevents batching, with no error to indicate it.
 :::
 
 ```typescript

@@ -131,7 +131,7 @@ lighting.shadowStartOffsetScale = 1.2
 1. Attach a `NormalMapProvider` with a baked normal map whose blue channel encodes elevation (see [Lighting → NormalMapProvider](../lighting-setup/#normalmapprovider)).
 2. Use `DefaultLightEffect`, which declares `requires: ['normal', 'elevation']`.
 
-The fastest way to get a normal map with a populated elevation channel is `LDtkLoader`'s [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) — tagging tiles with `tileDir` / `tileCap*` / `tileElevation` custom data produces a per-tileset atlas where wall caps bake at elevation 1 and faces at the configured face elevation. The elevation channel is populated via the same offline pipeline `flatland-bake` ships — see the [Baking guide](../baking/) for running it ahead of time.
+`LDtkLoader`'s [baked normal pipeline](../loaders/#baked-normal-pipeline) populates the elevation channel — tagging tiles with `tileDir` / `tileCap*` / `tileElevation` custom data produces a per-tileset atlas where wall caps bake at elevation 1 and faces at the configured face elevation. The elevation channel is populated via the same offline pipeline `flatland-bake` ships — see the [Baking guide](../baking/) for running it ahead of time.
 
 Tune `lightHeight` to taste — `0.75` reads as "torches sit above the floor, below the wall caps." Raising it to `1.5` lights everything (sun-like); lowering toward `0` makes torches barely scrape the floor and dramatically extends shadows.
 
