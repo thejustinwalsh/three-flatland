@@ -13,6 +13,7 @@ import {
   SpriteSheetLoader,
   LDtkLoader,
   SortLayers,
+  PixelPerfectCamera,
   attachLighting,
   attachEffect,
   type AnimationSetDefinition,
@@ -768,8 +769,8 @@ function FlatlandScene(props: SceneProps) {
       const followX = Math.max(-cameraLimitX, Math.min(cameraLimitX, heroPos.current.x))
       const followY = Math.max(-cameraLimitY, Math.min(cameraLimitY, heroPos.current.y))
       const cameraSnapStep = props.cameraCellSnap ? Math.max(1, Math.round(props.pixelSize)) : ART_WORLD_SCALE
-      camera.position.x = Math.round(followX / cameraSnapStep) * cameraSnapStep
-      camera.position.y = Math.round(followY / cameraSnapStep) * cameraSnapStep
+      camera.position.set(followX, followY, camera.position.z)
+      if (camera instanceof PixelPerfectCamera) camera.snapPositionToGrid(cameraSnapStep)
     }
     // Build a flat list of "predator" positions (hero + knight NPCs)
     // once per frame; each slime samples it for proximity. O(slimes ×

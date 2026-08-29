@@ -200,7 +200,19 @@ export class PixelPerfectCamera extends OrthographicCamera {
    * never mutates it behind the caller's back.
    */
   snapPositionToPixelGrid(): this {
-    const step = this.worldUnitsPerPixel
+    return this.snapPositionToGrid(this.worldUnitsPerPixel)
+  }
+
+  /**
+   * Round this camera's local X/Y position to an explicit world-space grid.
+   *
+   * This is useful when a pixel-perfect scene intentionally renders an
+   * auxiliary buffer at a coarser texel size (for example a 4× DDA lighting
+   * grid). Invalid grid sizes are ignored so transient UI values cannot poison
+   * camera state.
+   */
+  snapPositionToGrid(step: number): this {
+    if (!isPositiveFinite(step)) return this
     this.position.x = Math.round(this.position.x / step) * step
     this.position.y = Math.round(this.position.y / step) * step
     return this

@@ -848,8 +848,8 @@ async function main() {
     const followX = Math.max(-cameraLimitX, Math.min(cameraLimitX, heroPos.x))
     const followY = Math.max(-cameraLimitY, Math.min(cameraLimitY, heroPos.y))
     const cameraSnapStep = params.cameraCellSnap ? Math.max(1, Math.round(params.pixelSize)) : ART_WORLD_SCALE
-    camera.position.x = Math.round(followX / cameraSnapStep) * cameraSnapStep
-    camera.position.y = Math.round(followY / cameraSnapStep) * cameraSnapStep
+    camera.position.set(followX, followY, camera.position.z)
+    if (camera instanceof PixelPerfectCamera) camera.snapPositionToGrid(cameraSnapStep)
     if (moving && heroAnim !== 'run') {
       hero.play('run')
       heroAnim = 'run'
