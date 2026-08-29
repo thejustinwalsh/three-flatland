@@ -1,12 +1,12 @@
 # Docs Diátaxis Restructure Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Every prose edit MUST also load the `documentation` skill (type rules + split recipe) and `marketing-voice` (calm register).
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Every prose edit MUST also load the `documentation` skill (type rules + split recipe) and `technical-writing` (Google developer documentation style guide).
 
 **Goal:** Bring the three-flatland docs to Diátaxis type purity — every page is exactly one type (tutorial / how-to / reference / explanation) — without losing any content, by relocating mixed-in spans to their correct page and replacing them with cross-links.
 
 **Architecture:** Content moves, not rewrites. Each mixed-mode page keeps only its declared-type spans; how-to/reference/explanation spans that don't belong are relocated to the right page (or the generated API reference) and replaced with a one-line cross-link. Generated API pages exist for `three-flatland`, `@three-flatland/nodes`, and `@three-flatland/presets` only — so option tables for those packages link to `/three-flatland/api/...`; skia/slug/bake/devtools have no generated API surface and are handled per Task 1.
 
-**Tech Stack:** Astro + Starlight MDX (`docs/src/content/docs/`), starlight-typedoc (generated API under `docs/src/content/docs/api/`), the `documentation` and `marketing-voice` skills.
+**Tech Stack:** Astro + Starlight MDX (`docs/src/content/docs/`), starlight-typedoc (generated API under `docs/src/content/docs/api/`), the `documentation` and `technical-writing` skills.
 
 **Source of truth for the audit that produced this plan:** the 2026-05-24 full 4-layer audit (this session). Type-pure templates to imitate: `guides/lighting.mdx`, `guides/shadows.mdx` (Explanation); `guides/devtools.mdx`, `guides/baking.mdx` (How-to); `getting-started/quick-start.mdx` (Tutorial).
 
@@ -70,7 +70,7 @@ git commit -m "docs(api): generate reference pages for @three-flatland/devtools"
 
 The page is Explanation but carries Basic Setup, Adding Objects, Render Loop, Post-Processing, Render-to-Texture, Disposal (how-to) and Constructor Options + method/uniform tables (reference).
 
-- [ ] **Step 1: Create the How-to page** `guides/flatland-setup.mdx` with frontmatter `title: Set up a Flatland scene`, `description: Create a Flatland instance, add objects, drive its render loop, and dispose it.` Move into it (cut from `flatland.mdx`): the Basic Setup tabs + the R3F-phase caution, Adding Objects code, Render Loop code, Post-Processing recipe, Render to Texture, Disposal. Add `import { Tabs, TabItem } from 'starlight-theme/components'`. Open with a one-line "what you'll do." Apply `marketing-voice` calm register.
+- [ ] **Step 1: Create the How-to page** `guides/flatland-setup.mdx` with frontmatter `title: Set up a Flatland scene`, `description: Create a Flatland instance, add objects, drive its render loop, and dispose it.` Move into it (cut from `flatland.mdx`): the Basic Setup tabs + the R3F-phase caution, Adding Objects code, Render Loop code, Post-Processing recipe, Render to Texture, Disposal. Add `import { Tabs, TabItem } from 'starlight-theme/components'`. Open with a one-line "what you'll do." Apply the `technical-writing` skill.
 
 - [ ] **Step 2: Reduce `flatland.mdx` to Explanation.** Keep: intro, "When to Use Flatland vs SpriteGroup" table, the render-loop **diagram** + narrative (concept), the auto-vs-manual time *concept* (one paragraph, no table). Delete the Constructor Options table and the method/uniform/stats tables. Replace the deleted setup spans with one cross-link line:
 
