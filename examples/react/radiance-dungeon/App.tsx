@@ -13,14 +13,14 @@ import {
   SpriteSheetLoader,
   LDtkLoader,
   SortLayers,
-  PixelPerfectCamera,
   attachLighting,
   attachEffect,
   type AnimationSetDefinition,
+  type SpriteFrame,
 } from 'three-flatland/react'
 import { exampleRendererColorConfig } from './rendererColorManagement'
 import { ExampleFallback } from './ExampleFallback'
-import { DdaFixedRadianceLightEffect } from '@three-flatland/presets'
+import { DdaFixedRadianceLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import '@three-flatland/presets/react'
 import { usePane, usePaneFolder, usePaneInput } from '@three-flatland/devtools/react'
 import {
@@ -44,6 +44,7 @@ extend({
   Light2D,
   EmissiveEffect,
   DdaFixedRadianceLightEffect,
+  NormalMapProvider,
 })
 
 // ============================================
@@ -52,22 +53,68 @@ extend({
 
 const TILE_PX = 16
 const ART_WORLD_SCALE = 2
-const VIEW_SOURCE_PIXELS = 160
 const TILE_SCALE = ART_WORLD_SCALE
 const KNIGHT_SCALE = 32 * ART_WORLD_SCALE
 const SLIME_SCALE = 24 * ART_WORLD_SCALE
 const WALL_TILE = 24
+const AUTHORED_LANDSCAPE = { width: 640, height: 360 } as const
+const AUTHORED_PORTRAIT = { width: 360, height: 640 } as const
+const DUNGEON_LIGHTING_DEFAULTS = {
+  ambient: 0.28,
+  torchEmission: 8,
+  slimeEmission: 0.5,
+  radianceRange: 8,
+} as const
+const WALL_TORCH_TILE_ID = 91
+const FLOOR_TORCH_TILE_ID = 93
+const TILE_FLIP_X = 0x80000000
+const TILE_FLIP_Y = 0x40000000
+const TILE_GID_MASK = 0x1fffffff
+const WALL_TORCH_FRAME: SpriteFrame = {
+  name: 'wall-torch',
+  x: 0.1,
+  y: 0,
+  width: 0.1,
+  height: 0.1,
+  sourceWidth: TILE_PX,
+  sourceHeight: TILE_PX,
+}
+const FLOOR_TORCH_FRAME: SpriteFrame = {
+  name: 'floor-torch',
+  x: 0.3,
+  y: 0,
+  width: 0.1,
+  height: 0.1,
+  sourceWidth: TILE_PX,
+  sourceHeight: TILE_PX,
+}
 
-function sourcePixelViewHeight(canvasW: number, canvasH: number): number {
-  const aspect = Math.max(1 / 8, canvasW / Math.max(1, canvasH))
-  const shortAxisWorldSize = VIEW_SOURCE_PIXELS * ART_WORLD_SCALE
-  return aspect >= 1 ? shortAxisWorldSize : shortAxisWorldSize / aspect
+type AuthoredSurface = { width: number; height: number }
+
+function authoredSurface(): AuthoredSurface {
+  const landscapeFit = Math.min(
+    window.innerWidth / AUTHORED_LANDSCAPE.width,
+    window.innerHeight / AUTHORED_LANDSCAPE.height
+  )
+  const portraitFit = Math.min(
+    window.innerWidth / AUTHORED_PORTRAIT.width,
+    window.innerHeight / AUTHORED_PORTRAIT.height
+  )
+  return landscapeFit >= 1 || landscapeFit >= portraitFit ? { ...AUTHORED_LANDSCAPE } : { ...AUTHORED_PORTRAIT }
+}
+
+function authoredSurfaceScale(surface: AuthoredSurface): number {
+  const fit = Math.min(window.innerWidth / surface.width, window.innerHeight / surface.height)
+  return fit >= 1 ? Math.max(1, Math.floor(fit)) : fit
+}
+
+function pixelPerfectViewHeight(_canvasW: number, canvasH: number): number {
+  return canvasH
 }
 
 const benchmarkQuery = benchmarkParams()
 const benchmarkEnabled = benchmarkQuery.get('bench') === '1'
 const benchmarkSlimes = integerParam(benchmarkQuery, 'slimes', 5)
-const benchmarkLights = integerParam(benchmarkQuery, 'lights', benchmarkSlimes)
 const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
 const benchmarkFixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
 const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
@@ -177,6 +224,59 @@ function mapToWorld(obj: TileMapObject, mapData: TileMapData, scale: number): [n
   return [cx - offsetX, cy - offsetY]
 }
 
+function tileFlipAtObject(
+  obj: TileMapObject,
+  mapData: TileMapData,
+  localTileId: number
+): { flipX: boolean; flipY: boolean } {
+  const cellX = Math.floor((obj.x + obj.width * 0.5) / mapData.tileWidth)
+  const cellY = Math.floor((obj.y + obj.height * 0.5) / mapData.tileHeight)
+
+  for (const layer of mapData.tileLayers) {
+    const packed = layer.data[cellY * layer.width + cellX] ?? 0
+    const gid = packed & TILE_GID_MASK
+    const tileset = mapData.tilesets.find(({ firstGid, tileCount }) => gid >= firstGid && gid < firstGid + tileCount)
+    if (!tileset || gid !== tileset.firstGid + localTileId) continue
+    return {
+      flipX: (packed & TILE_FLIP_X) !== 0,
+      flipY: (packed & TILE_FLIP_Y) !== 0,
+    }
+  }
+
+  return { flipX: false, flipY: false }
+}
+
+function tilePositionsById(
+  mapData: TileMapData,
+  localTileId: number,
+  scale: number
+): Array<[number, number, boolean, boolean]> {
+  const positions: Array<[number, number, boolean, boolean]> = []
+  const mapWidth = mapData.width * mapData.tileWidth * scale
+  const mapHeight = mapData.height * mapData.tileHeight * scale
+
+  for (const layer of mapData.tileLayers) {
+    for (let cellY = 0; cellY < layer.height; cellY++) {
+      for (let cellX = 0; cellX < layer.width; cellX++) {
+        const packed = layer.data[cellY * layer.width + cellX] ?? 0
+        const gid = packed & TILE_GID_MASK
+        const tileset = mapData.tilesets.find(
+          ({ firstGid, tileCount }) => gid >= firstGid && gid < firstGid + tileCount
+        )
+        if (!tileset || gid !== tileset.firstGid + localTileId) continue
+        positions.push([
+          (cellX + 0.5) * mapData.tileWidth * scale - mapWidth * 0.5,
+          mapHeight * 0.5 - (cellY + 0.5) * mapData.tileHeight * scale,
+          (packed & TILE_FLIP_X) !== 0,
+          (packed & TILE_FLIP_Y) !== 0,
+        ])
+      }
+    }
+  }
+
+  return positions
+}
+
 // ============================================
 // WANDERERS
 // ============================================
@@ -224,32 +324,39 @@ interface SceneProps {
   lightingEnabled: boolean
   ambient: number
   slimeCount: number
-  slimeLightCount: number
-  slimeLights: boolean
+  pixelSize: number
+  cameraCellSnap: boolean
+  paletteBands: number
   torchIntensity: number
-  torchDistance: number
+  slimeIntensity: number
+  surface: AuthoredSurface
 }
 
 function FlatlandScene(props: SceneProps) {
   const random = useMemo(() => (benchmarkEnabled ? createSeededRandom(benchmarkSeed) : Math.random), [])
   const knightSheet = useLoader(SpriteSheetLoader, './sprites/knight.json', (l) => {
+    l.normals = true
     l.forceRuntime = true
   })
   const slimeSheet = useLoader(SpriteSheetLoader, './sprites/slime.json', (l) => {
+    l.normals = true
     l.forceRuntime = true
   })
-  const sourceMapData = useLoader(LDtkLoader, './maps/dungeon.ldtk')
+  const sourceMapData = useLoader(LDtkLoader, './maps/dungeon.ldtk', (l) => {
+    l.normals = true
+    l.forceRuntime = true
+  })
   const mapData = useMemo(() => expandDungeonMap(sourceMapData), [sourceMapData])
 
   const renderer = useThree((s) => s.renderer)
-  const size = useThree((s) => s.size)
   const flatlandRef = useRef<Flatland>(null)
   const lightEffectRef = useRef<InstanceType<typeof DdaFixedRadianceLightEffect>>(null)
   const tilemapRef = useRef<TileMap2D>(null)
 
-  const torchLightRefs = useRef<(Light2D | null)[]>([])
-  const [torchEnabled, setTorchEnabled] = useState<boolean[]>([])
-  const flickerTimer = useRef(0)
+  const torchEmissionRefs = useRef<(InstanceType<typeof EmissiveEffect> | null)[]>([])
+  const torchStatesRef = useRef<
+    Array<{ enabled: boolean; current: number; target: number; changeIn: number; response: number }>
+  >([])
 
   const mapHalfW = (mapData.width * mapData.tileWidth * TILE_SCALE) / 2
   const mapHalfH = (mapData.height * mapData.tileHeight * TILE_SCALE) / 2
@@ -275,9 +382,14 @@ function FlatlandScene(props: SceneProps) {
         y - halfExtent < rect.maxY
     )
 
-  const viewSize = useMemo(() => sourcePixelViewHeight(size.width, size.height), [size.width, size.height])
+  const viewSize = pixelPerfectViewHeight(props.surface.width, props.surface.height)
   const fixedLightPositions = useMemo(
-    () => extractObjectsByType(mapData, 'light').map((obj) => mapToWorld(obj, mapData, TILE_SCALE)),
+    () =>
+      extractObjectsByType(mapData, 'light').map((obj) => {
+        const [x, y] = mapToWorld(obj, mapData, TILE_SCALE)
+        const { flipX, flipY } = tileFlipAtObject(obj, mapData, WALL_TORCH_TILE_ID)
+        return [x, y, flipX, flipY] as const
+      }),
     [mapData]
   )
 
@@ -286,18 +398,46 @@ function FlatlandScene(props: SceneProps) {
     [mapData]
   )
 
-  const allTorchPositions = useMemo(
-    () => [...fixedLightPositions, ...switchPositions],
+  const floorTorchPositions = useMemo(
+    () => tilePositionsById(mapData, FLOOR_TORCH_TILE_ID, TILE_SCALE),
+    [mapData]
+  )
+  const switchToTorch = useMemo(
+    () =>
+      switchPositions.map(([sx, sy]) => {
+        let best = 0
+        let bestDistance = Infinity
+        for (let i = 0; i < fixedLightPositions.length; i++) {
+          const [tx, ty] = fixedLightPositions[i]!
+          const distance = (tx - sx) ** 2 + (ty - sy) ** 2
+          if (distance < bestDistance) {
+            bestDistance = distance
+            best = i
+          }
+        }
+        return best
+      }),
     [fixedLightPositions, switchPositions]
   )
-  const torchCount = allTorchPositions.length
-
-  useEffect(() => {
-    setTorchEnabled(Array.from({ length: torchCount }, () => true))
-  }, [torchCount])
+  const torchEmitters = useMemo(
+    () => [
+      ...fixedLightPositions.map(([x, y, flipX, flipY]) => ({ x, y, flipX, flipY, frame: 'wall' as const })),
+      ...floorTorchPositions.map(([x, y, flipX, flipY]) => ({ x, y, flipX, flipY, frame: 'floor' as const })),
+    ],
+    [fixedLightPositions, floorTorchPositions]
+  )
+  while (torchStatesRef.current.length < torchEmitters.length) {
+    torchStatesRef.current.push({
+      enabled: true,
+      current: 1,
+      target: 1,
+      changeIn: random() * 0.2,
+      response: 8,
+    })
+  }
+  if (torchStatesRef.current.length > torchEmitters.length) torchStatesRef.current.length = torchEmitters.length
 
   const heroRef = useRef<AnimatedSprite2D | null>(null)
-  const heroLightRef = useRef<Light2D | null>(null)
   const heroPos = useRef(new Vector2(0, 0))
   const heroKeys = useRef({ up: false, down: false, left: false, right: false })
   const heroAnim = useRef<'idle' | 'run'>('idle')
@@ -311,8 +451,7 @@ function FlatlandScene(props: SceneProps) {
   const heroMoveTarget = useRef<Vector2 | null>(null)
   /**
    * When the click target is a torch switch, we queue its index here
-   * so the hero can toggle it on arrival. `switchStart + idx` indexes
-   * into `torchEnabled`, matching the existing space-key logic.
+   * so the hero can toggle the corresponding emissive overlay on arrival.
    */
   const heroTargetTorchIdx = useRef<number | null>(null)
   /** Once-only flag so hero placement only runs after map data lands. */
@@ -330,7 +469,7 @@ function FlatlandScene(props: SceneProps) {
     Array<{
       anim: Wanderer
       sprite: AnimatedSprite2D | null
-      light: Light2D | null
+      emission: InstanceType<typeof EmissiveEffect> | null
       stamina: number
       state: 'rest' | 'wander' | 'excited'
       hopPhase: 'hop' | 'pause'
@@ -374,7 +513,7 @@ function FlatlandScene(props: SceneProps) {
         // padding that can visually overlap the wall without clipping.
         anim,
         sprite: null,
-        light: null,
+        emission: null,
         stamina,
         state,
         hopPhase,
@@ -418,7 +557,6 @@ function FlatlandScene(props: SceneProps) {
       const facing = heroFacing.current
       const activationRadius = TILE_PX * TILE_SCALE * 2.5
       const facingThreshold = 0.3 // ~72° cone — plenty of slop
-      const switchStart = fixedLightPositions.length
       let bestIdx = -1
       let bestDist = Infinity
       for (let i = 0; i < switchPositions.length; i++) {
@@ -437,11 +575,8 @@ function FlatlandScene(props: SceneProps) {
         }
       }
       if (bestIdx < 0) return
-      setTorchEnabled((prev) => {
-        const next = [...prev]
-        next[switchStart + bestIdx] = !next[switchStart + bestIdx]
-        return next
-      })
+      const torch = torchStatesRef.current[switchToTorch[bestIdx]!]
+      if (torch) torch.enabled = !torch.enabled
     }
     const down = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -491,7 +626,7 @@ function FlatlandScene(props: SceneProps) {
         const d2 = dx * dx + dy * dy
         if (d2 < bestDistSq) {
           bestDistSq = d2
-          torchIdx = i
+          torchIdx = switchToTorch[i]!
           // Stand one sprite-width off the torch so the hero's own
           // body doesn't fully occlude the light glyph.
           const dist = Math.sqrt(d2) || 1
@@ -517,7 +652,7 @@ function FlatlandScene(props: SceneProps) {
       window.removeEventListener('keyup', up)
       canvas.removeEventListener('click', click)
     }
-  }, [renderer, fixedLightPositions.length, switchPositions])
+  }, [renderer, switchPositions, switchToTorch])
 
   useFrame((_, rawDelta) => {
     // When paused, freeze the simulation. Rendering still happens, so the
@@ -526,20 +661,20 @@ function FlatlandScene(props: SceneProps) {
     if (props.paused) return
     if (!simulationGate.advance()) return
     const delta = benchmarkFixedDeltaMs === undefined ? rawDelta : benchmarkFixedDeltaMs / 1000
-    flickerTimer.current += delta
-    const t = flickerTimer.current
 
-    const wallCount = fixedLightPositions.length
-    for (let i = 0; i < torchLightRefs.current.length; i++) {
-      const torch = torchLightRefs.current[i]
-      if (!torch) continue
-      torch.enabled = torchEnabled[i] ?? true
-      const isWall = i < wallCount
-      const intensityMul = isWall ? 1.6 : 0.8
-      const distanceMul = isWall ? 1.0 : 0.7
-      torch.distance = props.torchDistance * distanceMul
-      torch.intensity =
-        props.torchIntensity * intensityMul * (1 + Math.sin(t * (15 + i * 2)) * 0.1 + Math.sin(t * (23 + i * 3)) * 0.05)
+    for (let i = 0; i < torchStatesRef.current.length; i++) {
+      const torch = torchStatesRef.current[i]!
+      torch.changeIn -= delta
+      if (torch.changeIn <= 0) {
+        const fastFlicker = random() < 0.08
+        torch.target = fastFlicker ? 0.2 + random() * 0.45 : 0.86 + random() * 0.24
+        torch.changeIn = fastFlicker ? 0.025 + random() * 0.055 : 0.12 + random() * 0.28
+        torch.response = fastFlicker ? 30 : 7 + random() * 4
+      }
+      const smoothing = 1 - Math.exp(-torch.response * delta)
+      torch.current += (torch.target - torch.current) * smoothing
+      const emission = torchEmissionRefs.current[i]
+      if (emission) emission.intensity = torch.enabled ? props.torchIntensity * torch.current : 0
     }
     // ── Hero movement: keyboard wins, else click-to-walk ──────
     const k = heroKeys.current
@@ -564,21 +699,9 @@ function FlatlandScene(props: SceneProps) {
       const dy = tgt.y - heroPos.current.y
       const dist = Math.hypot(dx, dy)
       if (dist <= HERO_ARRIVE_RADIUS) {
-        // Arrived. If the target carried a torch toggle, flip it now.
-        // Defer the setState off the frame — examples/react/AGENTS.md
-        // forbids setState in useFrame because it triggers a synchronous
-        // mid-frame re-render. The microtask runs after useFrame returns,
-        // letting React's automatic batching schedule a normal render.
         if (heroTargetTorchIdx.current !== null) {
-          const idx = heroTargetTorchIdx.current
-          const switchStart = fixedLightPositions.length
-          queueMicrotask(() => {
-            setTorchEnabled((prev) => {
-              const next = [...prev]
-              next[switchStart + idx] = !next[switchStart + idx]
-              return next
-            })
-          })
+          const torch = torchStatesRef.current[heroTargetTorchIdx.current]
+          if (torch) torch.enabled = !torch.enabled
         }
         heroMoveTarget.current = null
         heroTargetTorchIdx.current = null
@@ -636,10 +759,6 @@ function FlatlandScene(props: SceneProps) {
       if (Math.abs(facingX) > 0.01) heroRef.current.flipX = facingX < 0
       heroRef.current.update(delta * 1000)
     }
-    if (heroLightRef.current) {
-      heroLightRef.current.position.set(heroPos.current.x, heroPos.current.y, 0)
-    }
-
     const camera = flatlandRef.current?.camera
     if (camera) {
       const halfViewW = (camera.right - camera.left) / 2
@@ -648,8 +767,9 @@ function FlatlandScene(props: SceneProps) {
       const cameraLimitY = Math.max(0, mapHalfH - halfViewH)
       const followX = Math.max(-cameraLimitX, Math.min(cameraLimitX, heroPos.current.x))
       const followY = Math.max(-cameraLimitY, Math.min(cameraLimitY, heroPos.current.y))
-      camera.position.x = Math.round(followX / ART_WORLD_SCALE) * ART_WORLD_SCALE
-      camera.position.y = Math.round(followY / ART_WORLD_SCALE) * ART_WORLD_SCALE
+      const cameraSnapStep = props.cameraCellSnap ? Math.max(1, Math.round(props.pixelSize)) : ART_WORLD_SCALE
+      camera.position.x = Math.round(followX / cameraSnapStep) * cameraSnapStep
+      camera.position.y = Math.round(followY / cameraSnapStep) * cameraSnapStep
     }
     // Build a flat list of "predator" positions (hero + knight NPCs)
     // once per frame; each slime samples it for proximity. O(slimes ×
@@ -785,11 +905,9 @@ function FlatlandScene(props: SceneProps) {
         s.sprite.update(delta * 1000)
       }
 
-      // Slime radiance follows its state without rebuilding the light store.
-      if (s.light) {
-        s.light.enabled = props.slimeLights
-        s.light.position.set(s.anim.pos.x, s.anim.pos.y, 0)
-        s.light.intensity = s.state === 'excited' ? 1 : s.state === 'rest' ? 0.55 : 0.8
+      if (s.emission) {
+        const stateScale = s.state === 'excited' ? 1.35 : s.state === 'rest' ? 0.65 : 1
+        s.emission.intensity = props.slimeIntensity * stateScale
       }
     }
   })
@@ -798,9 +916,13 @@ function FlatlandScene(props: SceneProps) {
     () => {
       const flatland = flatlandRef.current
       const effect = lightEffectRef.current
-      if (flatland?.camera instanceof PixelPerfectCamera && effect) {
-        effect.radiance.lightSourceRadius = TILE_PX * ART_WORLD_SCALE * 0.5
-        effect.radiance.ddaPixelSize = ART_WORLD_SCALE * flatland.camera.resolvedPixelScale
+      if (effect) {
+        effect.radiance.ddaPixelSize = Math.max(1, Math.round(props.pixelSize))
+        effect.radiance.ddaPaletteBands = Math.max(0, Math.round(props.paletteBands))
+        effect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
+        effect.radiance.mipStrength = 0
+        effect.radiance.filterRadius = 1.25
+        effect.radiance.filterStrength = 0.85
       }
       flatland?.render(renderer as unknown as WebGPURenderer)
       if (benchmarkEnabled && flatland) {
@@ -817,8 +939,8 @@ function FlatlandScene(props: SceneProps) {
           simulationGated: benchmarkEnabled,
           simulationFrame: simulationGate.frame(),
           gpuAdapter: rendererGpuAdapterInfo(renderer),
-          requestedLights: benchmarkLights,
-          actualLights: slimesRef.current.reduce((count, slime) => count + (slime.light ? 1 : 0), 0),
+          requestedLights: 0,
+          actualLights: 0,
         })
       }
     },
@@ -846,43 +968,40 @@ function FlatlandScene(props: SceneProps) {
           data={mapData}
           scale={[TILE_SCALE, TILE_SCALE, 1]}
           position={[-mapHalfW, -mapHalfH, -100]}
-        />
+        >
+          <normalMapProvider attach={attachEffect} normalMap={mapData.tilesets[0]?.normalMap ?? null} />
+        </tileMap2D>
 
         {/* Ambient — purple-tinted dungeon atmosphere */}
         <light2D lightType="ambient" color={0x8190bd} intensity={props.ambient} />
 
-        {/* Wall torches (fixed) — warm orange */}
-        {fixedLightPositions.map((pos, i) => (
-          <light2D
-            key={`wall-torch-${i}`}
-            ref={(el) => {
-              torchLightRefs.current[i] = el
-            }}
-            lightType="point"
-            position={[pos[0], pos[1], 0]}
-            color={0xff6600}
-            intensity={props.torchIntensity}
-            distance={props.torchDistance}
-            decay={2}
-            importance={10}
-          />
-        ))}
-        {/* Toggle torches (switchable) — cool amber */}
-        {switchPositions.map((pos, i) => (
-          <light2D
-            key={`switch-torch-${i}`}
-            ref={(el) => {
-              torchLightRefs.current[fixedLightPositions.length + i] = el
-            }}
-            lightType="point"
-            position={[pos[0], pos[1], 0]}
-            color={0xffcc44}
-            intensity={props.torchIntensity * 0.8}
-            distance={props.torchDistance * 0.7}
-            decay={2}
-            importance={10}
-          />
-        ))}
+        {/* RC transports sprite radiance, not point lights. These source-only
+            overlays reuse the exact authored torch pixels and tile flips. */}
+        {mapData.tilesets[0]?.texture &&
+          torchEmitters.map((torch, i) => (
+            <sprite2D
+              key={`${torch.frame}-torch-${i}`}
+              texture={mapData.tilesets[0]!.texture}
+              frame={torch.frame === 'wall' ? WALL_TORCH_FRAME : FLOOR_TORCH_FRAME}
+              flipX={torch.flipX}
+              flipY={torch.flipY}
+              position={[torch.x, torch.y, 0]}
+              scale={[TILE_PX * TILE_SCALE, TILE_PX * TILE_SCALE, 1]}
+              lit={false}
+              castsShadow={false}
+              sortLayer={SortLayers.EFFECTS}
+            >
+              <emissiveEffect
+                ref={(effect) => {
+                  torchEmissionRefs.current[i] = effect
+                }}
+                attach={attachEffect}
+                color={[1, 0.2, 0.02]}
+                intensity={1}
+                threshold={0.18}
+              />
+            </sprite2D>
+          ))}
 
         {/* Hero — rendered on a layer ABOVE slimes (ENTITIES + 1) so
             the knight sorts on top when they overlap. Slimes share a
@@ -899,24 +1018,15 @@ function FlatlandScene(props: SceneProps) {
           animation="idle"
           position={[0, 0, 0]}
           scale={[KNIGHT_SCALE, KNIGHT_SCALE, 1]}
-          castsShadow={false}
+          castsShadow
           lit
           sortLayer={SortLayers.ENTITIES + 1}
         >
-          <emissiveEffect attach={attachEffect} color={[0.18, 0.3, 0.65]} intensity={0.08} />
+          <normalMapProvider attach={attachEffect} normalMap={knightSheet.normalMap ?? null} />
         </animatedSprite2D>
 
-        <light2D
-          ref={heroLightRef}
-          lightType="point"
-          color={0x6688ff}
-          intensity={2}
-          distance={TILE_PX * ART_WORLD_SCALE * 2.5}
-          decay={2}
-        />
-
-        {/* Slimes emit from both their colored pixels and a compact point
-            source. They deliberately do not occlude their own radiance. */}
+        {/* Emission is resolved before occupancy, so slimes can emit from
+            their green pixels and still occlude radiance from other sources. */}
         {slimesRef.current.map((s, i) => (
           <animatedSprite2D
             key={`slime-${i}`}
@@ -938,28 +1048,21 @@ function FlatlandScene(props: SceneProps) {
             scale={[SLIME_SCALE, SLIME_SCALE, 1]}
             anchor={[0.5, 0.5]}
             lit
+            castsShadow
             sortLayer={SortLayers.ENTITIES}
           >
-            <emissiveEffect attach={attachEffect} color={[0.033, 1, 0.135]} intensity={0.18} />
+            <emissiveEffect
+              ref={(effect) => {
+                s.emission = effect
+              }}
+              attach={attachEffect}
+              color={[0.033, 1, 0.135]}
+              intensity={props.slimeIntensity}
+              threshold={0.1}
+            />
+            <normalMapProvider attach={attachEffect} normalMap={slimeSheet.normalMap ?? null} />
           </animatedSprite2D>
         ))}
-        {slimesRef.current.map((s, i) =>
-          i < props.slimeLightCount ? (
-            <light2D
-              key={`slime-light-${i}`}
-              ref={(el) => {
-                s.light = el
-              }}
-              lightType="point"
-              color={0x33ff66}
-              intensity={0.8}
-              distance={72}
-              decay={2}
-              castsShadow={false}
-              category="slime"
-            />
-          ) : null
-        )}
       </flatland>
     </>
   )
@@ -971,6 +1074,16 @@ function FlatlandScene(props: SceneProps) {
 
 export default function App() {
   const { pane } = usePane()
+  const [surface, setSurface] = useState<AuthoredSurface>(() => authoredSurface())
+
+  useEffect(() => {
+    const resize = () => {
+      const next = authoredSurface()
+      setSurface((current) => (current.width === next.width && current.height === next.height ? current : next))
+    }
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
 
   // The example exposes scene-level values only. Fixed-point transport
   // defaults come directly from DdaFixedRadianceLightEffect.
@@ -978,33 +1091,85 @@ export default function App() {
 
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [lightingEnabled] = usePaneInput(light, 'enabled', true)
-  const [ambient] = usePaneInput(light, 'ambient', 0.35, { min: 0, max: 0.5, step: 0.01 })
+  const [pixelSize] = usePaneInput(light, 'DDA cell px', ART_WORLD_SCALE, { min: 1, max: 16, step: 1 })
+  const [cameraCellSnap] = usePaneInput(light, 'camera cell snap', benchmarkQuery.get('gridlock') === '1')
+  const [_renderSurface, setRenderSurface] = usePaneInput(
+    light,
+    'buffer',
+    `${surface.width}x${surface.height}`,
+    { readonly: true }
+  )
+  const [ambient] = usePaneInput(light, 'ambient', DUNGEON_LIGHTING_DEFAULTS.ambient, {
+    min: 0,
+    max: 0.5,
+    step: 0.01,
+  })
+  const [paletteBands] = usePaneInput(light, 'bands', 0, { min: 0, max: 64, step: 1 })
 
   const torches = usePaneFolder(pane, 'Torches')
-  const [torchIntensity] = usePaneInput(torches, 'intensity', 1.25, { min: 0, max: 3, step: 0.05 })
-  const [torchDistance] = usePaneInput(torches, 'distance', 180, { min: 40, max: 400, step: 10 })
+  const [torchIntensity] = usePaneInput(torches, 'emission', DUNGEON_LIGHTING_DEFAULTS.torchEmission, {
+    min: 0,
+    max: 16,
+    step: 0.1,
+  })
 
   const slimes = usePaneFolder(pane, 'Slimes')
   const [slimeCount] = usePaneInput(slimes, 'count', 5, { min: 0, max: 1000, step: 1 })
-  const [slimeLights] = usePaneInput(slimes, 'lights', true)
+  const [slimeIntensity] = usePaneInput(slimes, 'emission', DUNGEON_LIGHTING_DEFAULTS.slimeEmission, {
+    min: 0,
+    max: 12,
+    step: 0.1,
+  })
+  useEffect(() => setRenderSurface(`${surface.width}x${surface.height}`), [setRenderSurface, surface])
   const sceneSlimeCount = benchmarkEnabled ? benchmarkSlimes : slimeCount
-  const sceneSlimeLightCount = benchmarkEnabled ? benchmarkLights : sceneSlimeCount
+  const surfaceScale = authoredSurfaceScale(surface)
 
   return (
-    <Canvas dpr={1} renderer={{ antialias: false, ...exampleRendererColorConfig }} fallback={<ExampleFallback />}>
-      <color attach="background" args={['#06060c']} />
-      <Suspense fallback={null}>
-        <FlatlandScene
-          paused={paused}
-          lightingEnabled={lightingEnabled}
-          ambient={ambient}
-          slimeCount={sceneSlimeCount}
-          slimeLightCount={sceneSlimeLightCount}
-          slimeLights={slimeLights}
-          torchIntensity={torchIntensity}
-          torchDistance={torchDistance}
-        />
-      </Suspense>
-    </Canvas>
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        background: '#06060c',
+      }}
+    >
+      <div
+        style={{
+          width: `${surface.width}px`,
+          height: `${surface.height}px`,
+          flex: '0 0 auto',
+          transform: `scale(${surfaceScale})`,
+          imageRendering: 'pixelated',
+        }}
+      >
+        <Canvas
+          width={surface.width}
+          height={surface.height}
+          dpr={1}
+          renderer={{ antialias: false, ...exampleRendererColorConfig }}
+          fallback={<ExampleFallback />}
+          style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }}
+        >
+          <color attach="background" args={['#06060c']} />
+          <Suspense fallback={null}>
+            <FlatlandScene
+              paused={paused}
+              lightingEnabled={lightingEnabled}
+              ambient={ambient}
+              slimeCount={sceneSlimeCount}
+              pixelSize={pixelSize}
+              cameraCellSnap={cameraCellSnap}
+              paletteBands={paletteBands}
+              torchIntensity={torchIntensity}
+              slimeIntensity={slimeIntensity}
+              surface={surface}
+            />
+          </Suspense>
+        </Canvas>
+      </div>
+    </div>
   )
 }

@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Vector2 } from 'three'
 import { HierarchicalRadianceLightEffect } from './HierarchicalRadianceLightEffect'
 import { RadianceLightEffect } from './RadianceLightEffect'
 import { DdaFixedRadianceLightEffect } from './DdaFixedRadianceLightEffect'
 
 describe.each([
   ['RadianceLightEffect', RadianceLightEffect, ['radianceIntensity', 'radiance']],
-  ['DdaFixedRadianceLightEffect', DdaFixedRadianceLightEffect, ['radianceIntensity', 'lightHeight', 'radiance']],
+  [
+    'DdaFixedRadianceLightEffect',
+    DdaFixedRadianceLightEffect,
+    ['radianceIntensity', 'lightHeight', 'radianceUvOffset', 'includeAnalyticLights', 'radiance'],
+  ],
   ['HierarchicalRadianceLightEffect', HierarchicalRadianceLightEffect, ['radianceIntensity', 'radiance']],
 ] as const)('%s current LightEffect API integration', (_name, EffectClass, expectedSchema) => {
   it('uses the shared world-bound nodes instead of per-instance duplicates', () => {
@@ -45,6 +50,34 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
       ddaBleedThreshold: 0.65,
       ddaPaletteBands: 0,
     })
+
+    effect.dispose()
+  })
+
+  it('keeps coarse DDA lighting registered while the camera moves within a capture cell', () => {
+    const effect = new DdaFixedRadianceLightEffect()
+    const worldSize = new Vector2(640, 360)
+    const worldOffset = new Vector2(2, 6)
+    const shadowCaptureWorldSize = new Vector2(896, 616)
+    const shadowCaptureWorldOffset = new Vector2(-128, -128)
+    const setWorldBounds = vi.spyOn(effect.radiance, 'setWorldBounds')
+    const setTransportBounds = vi.spyOn(effect.radiance, 'setTransportBounds')
+    vi.spyOn(effect.radiance, 'generate').mockImplementation(() => {})
+
+    effect.update({
+      worldSize,
+      worldOffset,
+      shadowCaptureWorldSize,
+      shadowCaptureWorldOffset,
+      occlusionTexture: {},
+      renderer: {},
+      scene: {},
+      camera: {},
+    } as never)
+
+    expect(setWorldBounds).toHaveBeenCalledWith(worldSize, new Vector2(0, 0))
+    expect(setTransportBounds).toHaveBeenCalledWith(shadowCaptureWorldSize, shadowCaptureWorldOffset)
+    expect(effect.radianceUvOffset).toEqual([2 / 640, -6 / 360])
 
     effect.dispose()
   })

@@ -5,6 +5,7 @@ import {
   Mesh,
   PlaneGeometry,
   RenderTarget,
+  Vector2,
   type DataTexture,
   type Material,
   type Texture,
@@ -242,9 +243,15 @@ const fixedRc = new RadianceCascades({
   includeAmbient: false,
   includeAnalyticLights: false,
 })
-fixedRc.init(320, 180, shaderTexture() as DataTexture, uniform(1))
+fixedRc.init(640, 360, shaderTexture() as DataTexture, uniform(1))
 fixedRc.setProcessingSize(640, 360)
-fixedRc.setOcclusionTexture(shaderTexture())
+fixedRc.setWorldBounds(new Vector2(640, 360), new Vector2(0, 0))
+fixedRc.setTransportBounds(new Vector2(896, 616), new Vector2(-128, -128))
+const fixedRcOcclusionTexture = shaderTexture()
+const fixedRcOcclusionImage = fixedRcOcclusionTexture.image as { width: number; height: number }
+fixedRcOcclusionImage.width = 448
+fixedRcOcclusionImage.height = 308
+fixedRc.setOcclusionTexture(fixedRcOcclusionTexture)
 const fixedRcCascadeMaterials = reflected<NodeMaterial[]>(fixedRc, '_cascadeMaterials')
 const ensureFixedRcFinal = reflected<() => void>(fixedRc, '_ensureFinalRadianceMaterial')
 ensureFixedRcFinal.call(fixedRc)

@@ -38,7 +38,6 @@ import { expandDungeonMap } from './dungeonLayout'
 
 const TILE_PX = 16
 const ART_WORLD_SCALE = 2
-const VIEW_SOURCE_PIXELS = 160
 const TILE_SCALE = ART_WORLD_SCALE
 const KNIGHT_SOURCE_PX = 32
 const SLIME_SOURCE_PX = 24
@@ -78,10 +77,11 @@ function fitAuthoredCanvas(canvas: HTMLCanvasElement, width: number, height: num
   canvas.style.height = `${Math.max(1, Math.floor(height * scale))}px`
 }
 
-function sourcePixelViewHeight(canvasW: number, canvasH: number): number {
-  const aspect = Math.max(1 / 8, canvasW / Math.max(1, canvasH))
-  const shortAxisWorldSize = VIEW_SOURCE_PIXELS * ART_WORLD_SCALE
-  return aspect >= 1 ? shortAxisWorldSize : shortAxisWorldSize / aspect
+function pixelPerfectViewHeight(_canvasW: number, canvasH: number): number {
+  // One authored framebuffer pixel is one world unit. ART_WORLD_SCALE then
+  // maps every source-art pixel to an exact 2x2 output block, and DDA cell
+  // sizes 2/4/8 share the same integer lattice as camera motion.
+  return canvasH
 }
 
 // Hero movement speed (world u/s) + click-to-walk tuning.
@@ -296,7 +296,7 @@ async function main() {
 
   // ─── Flatland ───────────────────────────────────────────────────
   const flatland = new Flatland({
-    viewSize: sourcePixelViewHeight(renderSurface.width, renderSurface.height),
+    viewSize: pixelPerfectViewHeight(renderSurface.width, renderSurface.height),
     clearColor: 0x06060c,
   })
 
@@ -341,7 +341,7 @@ async function main() {
     )
 
   const refitView = () => {
-    flatland.viewSize = sourcePixelViewHeight(renderSurface.width, renderSurface.height)
+    flatland.viewSize = pixelPerfectViewHeight(renderSurface.width, renderSurface.height)
   }
 
   // ─── Tilemap ────────────────────────────────────────────────────
@@ -547,6 +547,7 @@ async function main() {
     stationary: false,
     lightingEnabled: initialLightingEnabled,
     pixelSize: Math.max(1, Math.round(ART_WORLD_SCALE * ddaResolutionScale)),
+    cameraCellSnap: query.get('gridlock') === '1',
     renderSurface: `${renderSurface.width}x${renderSurface.height}`,
     ambient: DUNGEON_LIGHTING_DEFAULTS.ambient,
     torchIntensity: DUNGEON_LIGHTING_DEFAULTS.torchEmission,
@@ -575,6 +576,7 @@ async function main() {
     step: 1,
     label: 'DDA cell px',
   })
+  lightFolder.addBinding(params, 'cameraCellSnap', { label: 'camera cell snap' })
   lightFolder.addBinding(params, 'renderSurface', { label: 'buffer', readonly: true })
   lightFolder.addBinding(params, 'ambient', { min: 0, max: 0.5, step: 0.01 }).on('change', () => {
     ambientLight.intensity = params.ambient
@@ -845,8 +847,9 @@ async function main() {
     const cameraLimitY = Math.max(0, mapHalfH - halfViewH)
     const followX = Math.max(-cameraLimitX, Math.min(cameraLimitX, heroPos.x))
     const followY = Math.max(-cameraLimitY, Math.min(cameraLimitY, heroPos.y))
-    camera.position.x = Math.round(followX / ART_WORLD_SCALE) * ART_WORLD_SCALE
-    camera.position.y = Math.round(followY / ART_WORLD_SCALE) * ART_WORLD_SCALE
+    const cameraSnapStep = params.cameraCellSnap ? Math.max(1, Math.round(params.pixelSize)) : ART_WORLD_SCALE
+    camera.position.x = Math.round(followX / cameraSnapStep) * cameraSnapStep
+    camera.position.y = Math.round(followY / cameraSnapStep) * cameraSnapStep
     if (moving && heroAnim !== 'run') {
       hero.play('run')
       heroAnim = 'run'
