@@ -2,6 +2,7 @@ import type { Texture } from 'three'
 import { Break, Continue, If, Loop, float, floor, int, ivec2, textureLoad, uint, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { worldToUV } from './coordUtils'
+import { DDA_MASK_BYTE_SCALE, type DdaHierarchyLevel } from './DdaHierarchy'
 
 /** Ray interval inside an axis-aligned world rectangle. `x > y` means no hit. */
 export function rayBoundsInterval(
@@ -178,7 +179,7 @@ export function traceDdaIntegerOcclusion(
  * self-shadows merely because it shares a grid cell with its visible sprite.
  */
 export function traceDdaIntegerRadiance(
-  occlusionTexture: Texture,
+  hierarchyLevels: readonly DdaHierarchyLevel[],
   emissiveTexture: Texture,
   rayOrigin: Node<'vec2'>,
   rayDirection: Node<'vec2'>,
@@ -190,26 +191,39 @@ export function traceDdaIntegerRadiance(
   gridWidth: number,
   gridHeight: number,
   maxSteps: number,
-  coarseMipLevel = 0
+  maxHierarchyLevel = 0
 ): Node<'vec4'> {
+  const leafLevel = hierarchyLevels[0]
+  if (!leafLevel) throw new Error('traceDdaIntegerRadiance requires a conservative leaf hierarchy')
   const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst()
-  const occlusionAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
-    // The clipped endpoints are clamped to the grid and parametric DDA
-    // advances monotonically between them, so current and supercover-neighbor
-    // cells are provably in bounds. Avoid four comparisons plus two nested
-    // selects around every texture load in the hottest loop.
-    const sample = textureLoad(occlusionTexture, cell).toConst()
-    return vec2(sample.r, sample.a)
-  }
   const emissionAt = (cell: Node<'ivec2'>): Node<'vec3'> => textureLoad(emissiveTexture, cell).rgb.toConst()
-  const coarseScale = 2 ** coarseMipLevel
-  const coarseMipNode = uint(coarseMipLevel).toConst()
-  const coarseSignalThreshold = float(0.5 / (coarseScale * coarseScale)).toConst()
-  const coarseSignalAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
-    const coarseCell = ivec2(cell.x.div(int(coarseScale)), cell.y.div(int(coarseScale))).toConst()
-    const coarseOcclusion = textureLoad(occlusionTexture, coarseCell, coarseMipNode).toConst()
-    const coarseEmission = textureLoad(emissiveTexture, coarseCell, coarseMipNode).rgb.toConst()
-    return vec2(coarseOcclusion.a, coarseEmission.dot(coarseEmission))
+  const clampIntNode = (value: Node<'int'>, max: number): Node<'int'> =>
+    value.lessThan(int(0)).select(int(0), value.greaterThan(int(max)).select(int(max), value))
+  const hierarchySignalThreshold = float(0.5 / DDA_MASK_BYTE_SCALE).toConst()
+  const hierarchySignalsAt = (level: number, cell: Node<'ivec2'>): Node<'vec3'> => {
+    const hierarchy = hierarchyLevels[level - 1]!
+    const hierarchyCell = ivec2(
+      clampIntNode(cell.x.shiftRight(level), hierarchy.width - 1),
+      clampIntNode(cell.y.shiftRight(level), hierarchy.height - 1)
+    ).toConst()
+    return textureLoad(hierarchy.texture, hierarchyCell).rgb.toConst()
+  }
+  const fineSignalsAt = (cell: Node<'ivec2'>): Node<'vec3'> => {
+    const leafCell = ivec2(
+      clampIntNode(cell.x.shiftRight(1), leafLevel.width - 1),
+      clampIntNode(cell.y.shiftRight(1), leafLevel.height - 1)
+    ).toConst()
+    const packed = textureLoad(leafLevel.texture, leafCell).rgb.toConst()
+    const occupiedMask = uint(floor(packed.r.mul(float(DDA_MASK_BYTE_SCALE)).add(float(0.5)))).toConst()
+    const emitterMask = uint(floor(packed.g.mul(float(DDA_MASK_BYTE_SCALE)).add(float(0.5)))).toConst()
+    const emissionMask = uint(floor(packed.b.mul(float(DDA_MASK_BYTE_SCALE)).add(float(0.5)))).toConst()
+    const bitIndex = uint(cell.x.bitAnd(int(1)).add(cell.y.bitAnd(int(1)).mul(int(2)))).toConst()
+    const bit = uint(1).shiftLeft(bitIndex).toConst()
+    return vec3(
+      occupiedMask.bitAnd(bit).greaterThan(uint(0)).select(float(1), float(0)),
+      emitterMask.bitAnd(bit).greaterThan(uint(0)).select(float(1), float(0)),
+      emissionMask.bitAnd(bit).greaterThan(uint(0)).select(float(1), float(0))
+    )
   }
 
   const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst()
@@ -279,22 +293,22 @@ export function traceDdaIntegerRadiance(
 
   If(intersectsWorld, () => {
     Loop(maxSteps, () => {
-      if (coarseMipLevel > 0) {
-        // A mip texel represents a conservative coarse cell: automatic box
-        // filtering preserves any binary caster above `0.5 / area`, while the
-        // emissive mip catches luminous pixels that intentionally do not cast
-        // shadows. Values are still resolved only from mip 0. Empty blocks
-        // can therefore skip directly to their exit without changing hits.
-        const coarseSignal = coarseSignalAt(cell).toConst()
-        const coarseEmpty = coarseSignal.x
-          .lessThan(coarseSignalThreshold)
-          .and(coarseSignal.y.lessThan(float(1e-12)))
+      // Descend from the coarsest legal level. The hierarchy stores exact OR
+      // presence, so only proven-empty blocks can skip. A non-empty parent
+      // falls through to its child and ultimately the exact 2x2 leaf mask.
+      for (let level = Math.min(maxHierarchyLevel, hierarchyLevels.length); level >= 1; level--) {
+        const coarseScale = 2 ** level
+        const coarseSignals = hierarchySignalsAt(level, cell).toConst()
+        const coarseEmpty = coarseSignals.x
+          .lessThan(hierarchySignalThreshold)
+          .and(coarseSignals.y.lessThan(hierarchySignalThreshold))
+          .and(coarseSignals.z.lessThan(hierarchySignalThreshold))
           .and(receiverPending.lessThan(float(0.5)))
           .and(emitterPending.lessThan(float(0.5)))
           .toConst()
         If(coarseEmpty, () => {
-          const remainderX = cell.x.mod(int(coarseScale)).toConst()
-          const remainderY = cell.y.mod(int(coarseScale)).toConst()
+          const remainderX = cell.x.bitAnd(int(coarseScale - 1)).toConst()
+          const remainderY = cell.y.bitAnd(int(coarseScale - 1)).toConst()
           const cellsToBoundaryX = stepDirection.x
             .greaterThan(int(0))
             .select(int(coarseScale).sub(remainderX), remainderX.add(int(1)))
@@ -309,8 +323,8 @@ export function traceDdaIntegerRadiance(
           const coarseCrossingY = parallelY
             .select(int(DDA_TIME_SENTINEL), tMax.y.add(tDelta.y.mul(cellsToBoundaryY.sub(int(1)))))
             .toConst()
-          // At an exact coarse corner, fall back to the fine supercover walk
-          // so both side-adjacent cells are tested before the diagonal cell.
+          // At an exact coarse corner, descend instead of skipping so both
+          // side-adjacent blocks are conservatively considered.
           const coarseCorner = coarseCrossingX.sub(coarseCrossingY).abs().lessThanEqual(int(1)).toConst()
           If(coarseCorner.not(), () => {
             const skipCrossing = coarseCrossingX
@@ -322,27 +336,40 @@ export function traceDdaIntegerRadiance(
               Break()
             })
 
-            const crossesX = tMax.x
-              .lessThanEqual(skipCrossing)
-              .select(skipCrossing.sub(tMax.x).div(tDelta.x).add(int(1)), int(0))
-              .toConst()
-            const crossesY = tMax.y
-              .lessThanEqual(skipCrossing)
-              .select(skipCrossing.sub(tMax.y).div(tDelta.y).add(int(1)), int(0))
-              .toConst()
-            cell.x.addAssign(stepDirection.x.mul(crossesX))
-            cell.y.addAssign(stepDirection.y.mul(crossesY))
-            tMax.x.addAssign(tDelta.x.mul(crossesX))
-            tMax.y.addAssign(tDelta.y.mul(crossesY))
-            Continue()
+            // The chosen coarse boundary has a known crossing count. Only the
+            // other axis needs a variable divide, halving the expensive
+            // integer divisions used by the previous fixed-mip skip.
+            If(coarseCrossingX.lessThan(coarseCrossingY), () => {
+              const crossesY = tMax.y
+                .lessThanEqual(skipCrossing)
+                .select(skipCrossing.sub(tMax.y).div(tDelta.y).add(int(1)), int(0))
+                .toConst()
+              cell.x.addAssign(stepDirection.x.mul(cellsToBoundaryX))
+              cell.y.addAssign(stepDirection.y.mul(crossesY))
+              tMax.x.addAssign(tDelta.x.mul(cellsToBoundaryX))
+              tMax.y.addAssign(tDelta.y.mul(crossesY))
+              Continue()
+            }).Else(() => {
+              const crossesX = tMax.x
+                .lessThanEqual(skipCrossing)
+                .select(skipCrossing.sub(tMax.x).div(tDelta.x).add(int(1)), int(0))
+                .toConst()
+              cell.x.addAssign(stepDirection.x.mul(crossesX))
+              cell.y.addAssign(stepDirection.y.mul(cellsToBoundaryY))
+              tMax.x.addAssign(tDelta.x.mul(crossesX))
+              tMax.y.addAssign(tDelta.y.mul(cellsToBoundaryY))
+              Continue()
+            })
           })
         })
       }
 
-      acceptEmission(emissionAt(cell))
-      const currentOcclusion = occlusionAt(cell).toConst()
-      const currentOccupied = currentOcclusion.y.greaterThan(float(0.5)).toConst()
-      const currentEmitter = currentOcclusion.x.greaterThan(float(0.5)).toConst()
+      const currentSignals = fineSignalsAt(cell).toConst()
+      If(currentSignals.z.greaterThan(float(0.5)), () => {
+        acceptEmission(emissionAt(cell))
+      })
+      const currentOccupied = currentSignals.x.greaterThan(float(0.5)).toConst()
+      const currentEmitter = currentSignals.y.greaterThan(float(0.5)).toConst()
       If(receiverPending.greaterThan(float(0.5)).and(currentOccupied.not()), () => {
         receiverPending.assign(float(0))
       })
@@ -371,15 +398,21 @@ export function traceDdaIntegerRadiance(
       If(stepCorner, () => {
         const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y).toConst()
         const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y)).toConst()
-        const emissionX = emissionAt(neighborX).toConst()
-        const emissionY = emissionAt(neighborY).toConst()
+        const signalsX = fineSignalsAt(neighborX).toConst()
+        const signalsY = fineSignalsAt(neighborY).toConst()
+        const emissionX = vec3(0).toVar()
+        const emissionY = vec3(0).toVar()
+        If(signalsX.z.greaterThan(float(0.5)), () => {
+          emissionX.assign(emissionAt(neighborX))
+        })
+        If(signalsY.z.greaterThan(float(0.5)), () => {
+          emissionY.assign(emissionAt(neighborY))
+        })
         acceptEmission(emissionX.dot(emissionX).greaterThan(emissionY.dot(emissionY)).select(emissionX, emissionY))
-        const occlusionX = occlusionAt(neighborX).toConst()
-        const occlusionY = occlusionAt(neighborY).toConst()
-        const emitterX = occlusionX.x.greaterThan(float(0.5)).toConst()
-        const emitterY = occlusionY.x.greaterThan(float(0.5)).toConst()
-        const wallX = occlusionX.y.greaterThan(float(0.5)).and(emitterX.not()).toConst()
-        const wallY = occlusionY.y.greaterThan(float(0.5)).and(emitterY.not()).toConst()
+        const emitterX = signalsX.y.greaterThan(float(0.5)).toConst()
+        const emitterY = signalsY.y.greaterThan(float(0.5)).toConst()
+        const wallX = signalsX.x.greaterThan(float(0.5)).and(emitterX.not()).toConst()
+        const wallY = signalsY.x.greaterThan(float(0.5)).and(emitterY.not()).toConst()
         const testsCornerOcclusion = receiverPending.lessThan(float(0.5)).toConst()
         If(testsCornerOcclusion.and(wallX.or(wallY)), () => {
           result.assign(float(-1))

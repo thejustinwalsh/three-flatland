@@ -41,7 +41,9 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   },
   shadowCaptureGridAligned: true,
   shadowCaptureMipmaps() {
-    return this.radiance.ddaHierarchyLevel > 0
+    // DDA builds an explicit conservative bitmask/OR hierarchy. Hardware box
+    // mipmaps are neither conservative nor consumed by this traversal.
+    return false
   },
   light: ({ uniforms, constants, lightStore }) => {
     const radianceIntensity = uniforms.radianceIntensity

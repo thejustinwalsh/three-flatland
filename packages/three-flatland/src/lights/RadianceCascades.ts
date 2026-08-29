@@ -3,7 +3,6 @@ import {
   HalfFloatType,
   LinearFilter,
   NearestFilter,
-  NearestMipmapNearestFilter,
   ClampToEdgeWrapping,
   RepeatWrapping,
   DataTexture,
@@ -42,6 +41,7 @@ import {
 } from 'three/tsl'
 import { worldToUV, uvToWorld } from './coordUtils'
 import { rayBoundsInterval, traceDdaIntegerRadiance } from './ddaGrid'
+import { DdaHierarchy, getDdaCascadeHierarchyLevel } from './DdaHierarchy'
 import { EmissivePass } from './EmissivePass'
 import type Node from 'three/src/nodes/core/Node.js'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
@@ -532,6 +532,7 @@ export class RadianceCascades {
   private _finalRadianceRT: RenderTarget
   private _emissiveRadianceRT: RenderTarget
   private _emissivePass = new EmissivePass()
+  private _ddaHierarchy = new DdaHierarchy()
 
   private _cascadeMaterials: NodeMaterial[] = []
   private _finalRadianceMaterial: NodeMaterial | null = null
@@ -623,10 +624,10 @@ export class RadianceCascades {
     this._finalRadianceRT = new RenderTarget(probeCount, probeCount, finalOptions)
     this._emissiveRadianceRT = new RenderTarget(probeCount, probeCount, {
       ...finalOptions,
-      minFilter: this._config.ddaHierarchyLevel > 0 ? NearestMipmapNearestFilter : NearestFilter,
+      minFilter: NearestFilter,
       magFilter: NearestFilter,
     })
-    this._emissiveRadianceRT.texture.generateMipmaps = this._config.ddaHierarchyLevel > 0
+    this._emissiveRadianceRT.texture.generateMipmaps = false
     this.raymarchSteps = this._config.raymarchSteps
     this.filterRadius = this._config.filterRadius
     this.filterStrength = this._config.filterStrength
@@ -1057,6 +1058,7 @@ export class RadianceCascades {
 
   get estimatedPassCount(): number {
     let count = 1 + this._config.cascadeCount + 1
+    if (this._usesDdaFixed()) count += Math.max(1, this._config.ddaHierarchyLevel)
     if (this._usesFilteredOutput()) {
       if (this._usesMipFilter()) {
         count += 1
@@ -1129,6 +1131,21 @@ export class RadianceCascades {
   private _resizeEmissiveTarget(): void {
     const capture = this._ddaCaptureDimensions()
     this._emissiveRadianceRT.setSize(capture.width, capture.height)
+    this._configureDdaHierarchy()
+  }
+
+  private _configureDdaHierarchy(): boolean {
+    if (!this._usesDdaFixed() || !this._occlusionTexture) return false
+    const capture = this._ddaCaptureDimensions()
+    // Level 1 is always built because its packed 2x2 masks replace fine-grid
+    // occlusion loads even when coarse empty-space skipping is disabled.
+    return this._ddaHierarchy.configure(
+      this._occlusionTexture,
+      this._emissiveRadianceRT.texture,
+      capture.width,
+      capture.height,
+      Math.max(1, this._config.ddaHierarchyLevel)
+    )
   }
 
   init(worldWidth: number, worldHeight: number, lightsTexture: DataTexture, lightCountNode: Node<'float'>): void {
@@ -1402,6 +1419,7 @@ export class RadianceCascades {
       return
     }
     this._occlusionTexture = texture
+    this._configureDdaHierarchy()
     this._disposeWideRadianceMaterials()
     this._filterRadianceMaterial?.dispose()
     this._filterRadianceMaterial = null
@@ -1439,6 +1457,7 @@ export class RadianceCascades {
 
     try {
       this._captureEmissiveRadiance(renderer, scene, camera)
+      if (this._usesDdaFixed()) this._ddaHierarchy.render(renderer)
 
       // Process cascades from highest to lowest. Each cascade stores
       // <radiance.rgb, transmittance.a>; lower cascades merge their near
@@ -1515,6 +1534,7 @@ export class RadianceCascades {
     this._cascadeMaterials = []
 
     if ((!this._usesDdaFixed() && !this._sdfTexture) || (this._usesDdaFixed() && !this._occlusionTexture)) return
+    if (this._usesDdaFixed() && this._ddaHierarchy.levelCount === 0) return
     if (!this._lightsTexture) return
     for (let i = 0; i < this._config.cascadeCount; i++) {
       const prevCascadeTex = i < this._config.cascadeCount - 1 ? (this._cascadeRTs[i + 1]?.texture ?? null) : null
@@ -1677,7 +1697,7 @@ export class RadianceCascades {
         const traceExit = boundsInterval.y.min(traceLimit).toConst('rcTraceExit')
         const intersectsWorld = traceExit.greaterThanEqual(traceEntry).toConst('rcIntersectsWorld')
         const visibility = traceDdaIntegerRadiance(
-          occlusionTexture,
+          this._ddaHierarchy.levels,
           this._emissiveRadianceRT.texture,
           segmentStart,
           rayDir,
@@ -1689,7 +1709,7 @@ export class RadianceCascades {
           ddaGridWidth,
           ddaGridHeight,
           ddaMaxSteps,
-          config.ddaHierarchyLevel
+          getDdaCascadeHierarchyLevel(cascadeIndex, config.ddaHierarchyLevel, this._ddaHierarchy.levelCount)
         )
         intervalRadiance.assign(visibility.rgb)
         intervalTransmittance.assign(
@@ -2239,6 +2259,7 @@ export class RadianceCascades {
     unregisterDebugTexture('radiance.emissiveSource')
     this._emissiveRadianceRT.dispose()
     this._emissivePass.dispose()
+    this._ddaHierarchy.dispose()
 
     for (const mat of this._cascadeMaterials) {
       mat.dispose()

@@ -1,14 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  DataTexture,
-  FloatType,
-  LinearFilter,
-  NearestFilter,
-  NearestMipmapNearestFilter,
-  RGBAFormat,
-  UnsignedByteType,
-  Vector2,
-} from 'three'
+import { DataTexture, FloatType, LinearFilter, NearestFilter, RGBAFormat, UnsignedByteType, Vector2 } from 'three'
 import { uniform } from 'three/tsl'
 import {
   DDA_FIXED_RADIANCE_CASCADES_CONFIG,
@@ -79,8 +70,8 @@ describe('RadianceCascades', () => {
     expect(internals._finalRadianceRT.width).toBe(98)
     expect(internals._finalRadianceRT.height).toBe(68)
     expect(internals._finalRadianceRT.texture.magFilter).toBe(NearestFilter)
-    expect(internals._emissiveRadianceRT.texture.generateMipmaps).toBe(true)
-    expect(internals._emissiveRadianceRT.texture.minFilter).toBe(NearestMipmapNearestFilter)
+    expect(internals._emissiveRadianceRT.texture.generateMipmaps).toBe(false)
+    expect(internals._emissiveRadianceRT.texture.minFilter).toBe(NearestFilter)
     expect(radiance.cascadeStorageBytesPerTexel).toBe(4)
     expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 416 * 288 * 4)
     expect(radiance.estimatedRaymarchSampleCount).toBeGreaterThan(radiance.estimatedRaymarchTexelCount)

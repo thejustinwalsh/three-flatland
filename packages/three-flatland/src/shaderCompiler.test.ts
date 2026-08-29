@@ -254,6 +254,10 @@ fixedRcOcclusionImage.width = 448
 fixedRcOcclusionImage.height = 308
 fixedRc.setOcclusionTexture(fixedRcOcclusionTexture)
 const fixedRcCascadeMaterials = reflected<NodeMaterial[]>(fixedRc, '_cascadeMaterials')
+const fixedRcDdaHierarchy = reflected<object>(fixedRc, '_ddaHierarchy')
+const fixedRcDdaHierarchyMaterials = reflected<Array<{ material: NodeMaterial }>>(fixedRcDdaHierarchy, '_levels').map(
+  ({ material }) => material
+)
 const ensureFixedRcFinal = reflected<() => void>(fixedRc, '_ensureFinalRadianceMaterial')
 ensureFixedRcFinal.call(fixedRc)
 const fixedRcFinalMaterial = reflected<NodeMaterial>(fixedRc, '_finalRadianceMaterial')
@@ -558,6 +562,22 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
   })
 
   it('compiles the production packed fixed-point DDA RC pass set', () => {
+    expect(fixedRcDdaHierarchyMaterials).toHaveLength(2)
+    for (let level = 0; level < fixedRcDdaHierarchyMaterials.length; level++) {
+      const hierarchyProgram = capture(
+        `rc-dda-fixed-hierarchy-${level + 1}`,
+        backend,
+        fixedRcDdaHierarchyMaterials[level]!
+      )
+      const fetches =
+        hierarchyProgram.fragmentShader.match(backend === 'wgsl' ? /textureLoad\s*\(/g : /texelFetch\s*\(/g) ?? []
+      expect(fetches, 'leaf masks use eight exact source loads; OR reductions use four child loads').toHaveLength(
+        level === 0 ? 8 : 4
+      )
+      expect(hierarchyProgram.fragmentShader, 'the conservative hierarchy must never sample averaged mips').not.toMatch(
+        /textureSampleLevel\s*\(|textureLod\s*\(/
+      )
+    }
     expect(fixedRcCascadeMaterials).toHaveLength(4)
     for (let cascade = 0; cascade < fixedRcCascadeMaterials.length; cascade++) {
       const cascadeProgram = capture(`rc-dda-fixed-cascade-${cascade}`, backend, fixedRcCascadeMaterials[cascade]!)
