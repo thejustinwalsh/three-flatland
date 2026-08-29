@@ -36,12 +36,14 @@ Use `SpriteGroup` when an existing scene already owns the camera and the render 
 <Diagram caption="Per-frame render pipeline" src={framePipeline} />
 
 `render()` synchronizes four things before it draws: the camera, the global uniforms, the
-lighting buffers, and the sprite batches. Flatland recomputes all four every frame, so your
-application does not maintain them between frames.
+lighting buffers, and the sprite batches. Global uniforms and the sprite and lighting systems run
+each frame. The camera and surface-dependent resources update when the surface size changes. Your
+application maintains none of them.
 
-Flatland also tracks the render surface. It reads the size of the renderer's drawing buffer, or of
-the active render target, and updates the camera when that size changes. You do not need a resize
-listener.
+Flatland reads the size of the renderer's drawing buffer, or of the active render target, and
+updates the camera when that size changes. Your application still updates the renderer's own size
+when the canvas changes; Flatland follows the result rather than requiring a second listener for
+the camera.
 
 Two size units are in use. Surface-dependent GPU resources are measured in physical
 drawing-buffer pixels, which puts canvas device pixel ratio and render-target texels in one
@@ -54,8 +56,8 @@ viewport inside the surface. When that viewport does not fill the surface, bars 
 edges, and `resolvedAspect` then reports the ratio of the viewport rather than of the whole
 surface.
 
-Supplying your own camera moves that boundary. Flatland preserves an authored frustum rather than
-reframing it, and `resolvedAspect` reports that camera's actual frustum ratio.
+Supplying your own camera changes this behavior. Flatland preserves that camera's frustum, its
+visible bounds, rather than reframing it, and `resolvedAspect` reports that camera's ratio.
 
 ## Object routing
 
@@ -86,17 +88,17 @@ once the effect is detached.
 
 ## Post-processing cost
 
-Adding the first pass changes how a frame is drawn. With no passes, the scene draws directly to
-the destination. With one or more, the scene renders to an offscreen target, and each pass runs as
-a full-screen draw over it.
+Adding a pass enables post-processing. With no passes, the scene draws directly to the
+destination. With one or more, Flatland creates the render pipeline on the first `render()` call
+and composes the enabled pass functions into its output node.
 
 :::tip[Performance note]
 One or two passes are cheap. A long chain costs a full-screen sample per pass per frame, so
 combine effects into a single pass where you can.
 :::
 
-That switch is invisible from the API. Because the render pipeline initializes on the first
-`addPass()` call, that call costs more than each one after it.
+The API does not expose this distinction. The first `render()` after a pass is added builds the
+pipeline, so that frame costs more than the ones after it.
 
 ## Next steps
 

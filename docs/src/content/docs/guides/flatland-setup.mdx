@@ -115,7 +115,7 @@ flatland.setLighting(lighting)
 ```
 
 ```typescript
-const indicator = new Sprite2D({ texture, lit: false }) // always full brightness
+const indicator = new Sprite2D({ texture, lit: false }) // does not receive Flatland lighting
 ```
 
 Flatland disposes an attached effect's GPU resources when you replace or clear it. See
@@ -161,7 +161,8 @@ console.log(`Batches: ${stats.batchCount}`)
 console.log(`Visible: ${stats.visibleSprites}`)
 ```
 
-Draw calls are not part of `stats`. Read `renderer.info.render.calls` after a frame instead.
+Draw calls are not part of `stats`. Capture `renderer.info.render.calls` before and after the
+Flatland render, then subtract the two values.
 
 ## Add a post-processing pass
 
@@ -186,8 +187,8 @@ flatland.addPass(post)
 post.bands = 10
 ```
 
-Passes chain in insertion order, and each one receives the previous pass's output. The pipeline
-initializes on the first `addPass()` call. See
+Passes chain in insertion order, and each one receives the previous pass's output. Flatland
+builds the pipeline on the first `render()` after a pass is added. See
 [post-processing cost](../flatland/#post-processing-cost) for the performance implications, and the
 [pass effects guide](../pass-effects/) for creating custom effects.
 
