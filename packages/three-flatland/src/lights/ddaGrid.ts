@@ -1,5 +1,5 @@
 import type { Texture } from 'three'
-import { Break, If, Loop, float, floor, int, ivec2, textureLoad, uniform, vec2, vec3, vec4 } from 'three/tsl'
+import { Break, If, Loop, float, floor, int, ivec2, textureLoad, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { worldToUV } from './coordUtils'
 
@@ -147,7 +147,6 @@ export function traceDdaIntegerOcclusion(
  */
 export function traceDdaIntegerRadiance(
   occlusionTexture: Texture,
-  occlusionTextureSize: Node<'vec2'>,
   emissiveTexture: Texture,
   rayOrigin: Node<'vec2'>,
   rayDirection: Node<'vec2'>,
@@ -158,32 +157,10 @@ export function traceDdaIntegerRadiance(
   worldOffset: Node<'vec2'>,
   gridWidth: number,
   gridHeight: number,
-  maxSteps: number,
-  mipLevel = 0
+  maxSteps: number
 ): Node<'vec4'> {
   const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst('ddaGridSize')
   const gridMax = ivec2(int(gridWidth - 1), int(gridHeight - 1)).toConst('ddaGridMax')
-  const mipScale = 2 ** mipLevel
-  // TextureNode formats explicit mip levels as floats before each backend adds
-  // its required integer cast. A typed uniform avoids invalid WGSL such as
-  // `u32( 1.0 )` while remaining valid for GLSL's `int(...)` texelFetch level.
-  const mipLevelNode = uniform(mipLevel)
-  const mipTexelArea = mipScale * mipScale
-  const mipSignalThreshold = float(0.5 / mipTexelArea).toConst('ddaMipSignalThreshold')
-  const occlusionMipSize = floor(occlusionTextureSize.div(float(mipScale)))
-    .max(vec2(1))
-    .toConst('ddaOcclusionMipSize')
-  const inBounds = (cell: Node<'ivec2'>): Node<'bool'> =>
-    cell.x
-      .greaterThanEqual(int(0))
-      .and(cell.x.lessThanEqual(gridMax.x))
-      .and(cell.y.greaterThanEqual(int(0)))
-      .and(cell.y.lessThanEqual(gridMax.y))
-  const clampCell = (cell: Node<'ivec2'>): Node<'ivec2'> =>
-    ivec2(
-      cell.x.lessThan(int(0)).select(int(0), cell.x.greaterThan(gridMax.x).select(gridMax.x, cell.x)),
-      cell.y.lessThan(int(0)).select(int(0), cell.y.greaterThan(gridMax.y).select(gridMax.y, cell.y))
-    )
   const worldToCell = (worldPosition: Node<'vec2'>): Node<'ivec2'> => {
     const worldUV = worldToUV(worldPosition, worldSize, worldOffset).clamp(0, 1).toConst()
     const textureUV = vec2(worldUV.x, float(1).sub(worldUV.y)).toConst()
@@ -191,25 +168,14 @@ export function traceDdaIntegerRadiance(
     return ivec2(int(cell.x), int(cell.y))
   }
   const occlusionAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
-    const clampedCell = clampCell(cell).toConst()
-    const texelFloat = floor(vec2(clampedCell).add(float(0.5)).div(gridSize).mul(occlusionMipSize))
-      .clamp(vec2(0), occlusionMipSize.sub(float(1)))
-      .toConst()
-    const sample = textureLoad(
-      occlusionTexture,
-      ivec2(int(texelFloat.x), int(texelFloat.y)),
-      mipLevelNode
-    ).toConst()
-    return inBounds(cell).select(vec2(sample.r, sample.a), vec2(0))
+    // The clipped endpoints are clamped to the grid and Bresenham advances
+    // monotonically between them, so current and supercover-neighbor cells
+    // are provably in bounds. Avoid four comparisons plus two nested selects
+    // around every texture load in the hottest loop.
+    const sample = textureLoad(occlusionTexture, cell).toConst()
+    return vec2(sample.r, sample.a)
   }
-  const emissionAt = (cell: Node<'ivec2'>): Node<'vec4'> => {
-    const clampedCell = clampCell(cell).toConst()
-    const sample = textureLoad(emissiveTexture, clampedCell, mipLevelNode).toConst()
-    // Mips contain the spatial average of source radiance. Keep that coverage
-    // weighting: multiplying by texel area would make a single luminous pixel
-    // fill the entire coarse cell at full energy, producing oversized halos.
-    return inBounds(cell).select(sample, vec4(0))
-  }
+  const emissionAt = (cell: Node<'ivec2'>): Node<'vec3'> => textureLoad(emissiveTexture, cell).rgb.toConst()
 
   const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst('ddaStartWorld')
   const endWorld = rayOrigin.add(rayDirection.mul(traceExit)).toConst('ddaEndWorld')
@@ -220,8 +186,12 @@ export function traceDdaIntegerRadiance(
     endCell.x.greaterThan(cell.x).select(int(1), endCell.x.lessThan(cell.x).select(int(-1), int(0))),
     endCell.y.greaterThan(cell.y).select(int(1), endCell.y.lessThan(cell.y).select(int(-1), int(0)))
   ).toConst('ddaStepDirection')
-  const advancedX = int(0).toVar()
-  const advancedY = int(0).toVar()
+  const onlyY = delta.x.equal(int(0)).toConst('ddaOnlyY')
+  const onlyX = delta.y.equal(int(0)).toConst('ddaOnlyX')
+  const crossingX = int(delta.y).toVar()
+  const crossingY = int(delta.x).toVar()
+  const crossingXIncrement = delta.y.mul(int(2)).toConst('ddaCrossingXIncrement')
+  const crossingYIncrement = delta.x.mul(int(2)).toConst('ddaCrossingYIncrement')
   const radiance = vec3(0).toVar()
   const result = intersectsWorld.not().select(float(1), float(0)).toVar()
   // A probe may begin inside the silhouette of the receiver being shaded
@@ -237,88 +207,83 @@ export function traceDdaIntegerRadiance(
   const receiverPending = intersectsWorld.select(float(1), float(0)).toVar()
   const emitterPending = float(0).toVar()
 
-  const acceptEmission = (sample: Node<'vec4'>): void => {
-    If(sample.rgb.length().greaterThan(float(0.00001)), () => {
-      radiance.assign(sample.rgb)
+  const acceptEmission = (sample: Node<'vec3'>): void => {
+    // Squared magnitude preserves the comparison without a sqrt per cell.
+    If(sample.dot(sample).greaterThan(float(1e-10)), () => {
+      radiance.assign(sample)
       result.assign(float(2))
       Break()
     })
   }
 
-  Loop(maxSteps, () => {
-    If(intersectsWorld.not(), () => {
-      Break()
-    })
-
-    acceptEmission(emissionAt(cell))
-    const currentOcclusion = occlusionAt(cell).toConst()
-    const currentOccupied = currentOcclusion.y.greaterThan(mipSignalThreshold).toConst()
-    const currentEmitter = currentOcclusion.x.greaterThan(mipSignalThreshold).toConst()
-    If(receiverPending.greaterThan(float(0.5)).and(currentOccupied.not()), () => {
-      receiverPending.assign(float(0))
-    })
-    const testsOcclusion = receiverPending.lessThan(float(0.5)).toConst()
-    If(testsOcclusion.and(emitterPending.greaterThan(float(0.5))).and(currentEmitter.not()), () => {
-      result.assign(float(-1))
-      Break()
-    })
-    If(testsOcclusion.and(currentOccupied).and(currentEmitter.not()), () => {
-      result.assign(float(-1))
-      Break()
-    })
-    If(testsOcclusion.and(currentEmitter), () => {
-      emitterPending.assign(float(1))
-    })
-    const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y)).toConst()
-    If(reachedEnd, () => {
-      result.assign(emitterPending.greaterThan(float(0.5)).select(float(-1), float(1)))
-      Break()
-    })
-
-    const onlyY = delta.x.equal(int(0)).toConst()
-    const onlyX = delta.y.equal(int(0)).toConst()
-    const crossingX = advancedX.mul(int(2)).add(int(1)).mul(delta.y).toConst()
-    const crossingY = advancedY.mul(int(2)).add(int(1)).mul(delta.x).toConst()
-    const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY))).toConst()
-    const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX))).toConst()
-    const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY)).toConst()
-
-    If(stepCorner, () => {
-      const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y).toConst()
-      const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y)).toConst()
-      const emissionX = emissionAt(neighborX).toConst()
-      const emissionY = emissionAt(neighborY).toConst()
-      acceptEmission(emissionX.rgb.length().greaterThan(emissionY.rgb.length()).select(emissionX, emissionY))
-      const occlusionX = occlusionAt(neighborX).toConst()
-      const occlusionY = occlusionAt(neighborY).toConst()
-      const emitterX = occlusionX.x.greaterThan(mipSignalThreshold).toConst()
-      const emitterY = occlusionY.x.greaterThan(mipSignalThreshold).toConst()
-      const wallX = occlusionX.y.greaterThan(mipSignalThreshold).and(emitterX.not()).toConst()
-      const wallY = occlusionY.y.greaterThan(mipSignalThreshold).and(emitterY.not()).toConst()
-      const testsCornerOcclusion = receiverPending.lessThan(float(0.5)).toConst()
-      If(testsCornerOcclusion.and(wallX.or(wallY)), () => {
+  If(intersectsWorld, () => {
+    Loop(maxSteps, () => {
+      acceptEmission(emissionAt(cell))
+      const currentOcclusion = occlusionAt(cell).toConst()
+      const currentOccupied = currentOcclusion.y.greaterThan(float(0.5)).toConst()
+      const currentEmitter = currentOcclusion.x.greaterThan(float(0.5)).toConst()
+      If(receiverPending.greaterThan(float(0.5)).and(currentOccupied.not()), () => {
+        receiverPending.assign(float(0))
+      })
+      const testsOcclusion = receiverPending.lessThan(float(0.5)).toConst()
+      If(testsOcclusion.and(emitterPending.greaterThan(float(0.5))).and(currentEmitter.not()), () => {
         result.assign(float(-1))
         Break()
       })
-      If(testsCornerOcclusion.and(emitterX.or(emitterY)), () => {
+      If(testsOcclusion.and(currentOccupied).and(currentEmitter.not()), () => {
+        result.assign(float(-1))
+        Break()
+      })
+      If(testsOcclusion.and(currentEmitter), () => {
         emitterPending.assign(float(1))
       })
-      If(testsCornerOcclusion.and(emitterPending.greaterThan(float(0.5))).and(emitterX.or(emitterY).not()), () => {
-        result.assign(float(-1))
+      const reachedEnd = cell.x.equal(endCell.x).and(cell.y.equal(endCell.y)).toConst()
+      If(reachedEnd, () => {
+        result.assign(emitterPending.greaterThan(float(0.5)).select(float(-1), float(1)))
         Break()
       })
-      cell.x.addAssign(stepDirection.x)
-      cell.y.addAssign(stepDirection.y)
-      advancedX.addAssign(int(1))
-      advancedY.addAssign(int(1))
-    })
-    If(stepX, () => {
-      cell.x.addAssign(stepDirection.x)
-      advancedX.addAssign(int(1))
-    })
-    If(stepY, () => {
-      cell.y.addAssign(stepDirection.y)
-      advancedY.addAssign(int(1))
+
+      const stepX = onlyY.not().and(onlyX.or(crossingX.lessThan(crossingY))).toConst()
+      const stepY = onlyX.not().and(onlyY.or(crossingY.lessThan(crossingX))).toConst()
+      const stepCorner = onlyX.not().and(onlyY.not()).and(crossingX.equal(crossingY)).toConst()
+
+      If(stepCorner, () => {
+        const neighborX = ivec2(cell.x.add(stepDirection.x), cell.y).toConst()
+        const neighborY = ivec2(cell.x, cell.y.add(stepDirection.y)).toConst()
+        const emissionX = emissionAt(neighborX).toConst()
+        const emissionY = emissionAt(neighborY).toConst()
+        acceptEmission(emissionX.dot(emissionX).greaterThan(emissionY.dot(emissionY)).select(emissionX, emissionY))
+        const occlusionX = occlusionAt(neighborX).toConst()
+        const occlusionY = occlusionAt(neighborY).toConst()
+        const emitterX = occlusionX.x.greaterThan(float(0.5)).toConst()
+        const emitterY = occlusionY.x.greaterThan(float(0.5)).toConst()
+        const wallX = occlusionX.y.greaterThan(float(0.5)).and(emitterX.not()).toConst()
+        const wallY = occlusionY.y.greaterThan(float(0.5)).and(emitterY.not()).toConst()
+        const testsCornerOcclusion = receiverPending.lessThan(float(0.5)).toConst()
+        If(testsCornerOcclusion.and(wallX.or(wallY)), () => {
+          result.assign(float(-1))
+          Break()
+        })
+        If(testsCornerOcclusion.and(emitterX.or(emitterY)), () => {
+          emitterPending.assign(float(1))
+        })
+        If(testsCornerOcclusion.and(emitterPending.greaterThan(float(0.5))).and(emitterX.or(emitterY).not()), () => {
+          result.assign(float(-1))
+          Break()
+        })
+        cell.x.addAssign(stepDirection.x)
+        cell.y.addAssign(stepDirection.y)
+        crossingX.addAssign(crossingXIncrement)
+        crossingY.addAssign(crossingYIncrement)
+      })
+      If(stepX, () => {
+        cell.x.addAssign(stepDirection.x)
+        crossingX.addAssign(crossingXIncrement)
+      })
+      If(stepY, () => {
+        cell.y.addAssign(stepDirection.y)
+        crossingY.addAssign(crossingYIncrement)
+      })
     })
   })
 

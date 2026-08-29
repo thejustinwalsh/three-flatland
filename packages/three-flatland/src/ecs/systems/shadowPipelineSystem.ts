@@ -132,8 +132,7 @@ export function shadowPipelineSystem(world: World): void {
     pipeline.occlusionPass = new OcclusionPass()
     pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
-  pipeline.occlusionPass.setMipmapsEnabled(effect?.shadowCaptureMipmaps ?? false)
-
+  pipeline.occlusionPass.resolutionScale = effect?.shadowCaptureResolutionScale ?? 0.5
   // Size from the active LightEffect processing surface (the physical render
   // surface multiplied by effect.resolutionScale). Using the trait keeps shadow
   // buffers in the same coordinate space as the effect-owned resources.
@@ -161,6 +160,16 @@ export function shadowPipelineSystem(world: World): void {
   const scale = pipeline.occlusionPass.resolutionScale
   const sdfW = Math.max(1, Math.floor(captureSurfaceWidth * scale))
   const sdfH = Math.max(1, Math.floor(captureSurfaceHeight * scale))
+  if (effect?.shadowCaptureGridAligned) {
+    const cellWorldWidth = _captureWorldSizeScratch.x / sdfW
+    const cellWorldHeight = _captureWorldSizeScratch.y / sdfH
+    _captureWorldOffsetScratch.set(
+      Math.floor(_captureWorldOffsetScratch.x / cellWorldWidth) * cellWorldWidth,
+      Math.floor(_captureWorldOffsetScratch.y / cellWorldHeight) * cellWorldHeight
+    )
+  }
+  pipeline.captureWorldSize.copy(_captureWorldSizeScratch)
+  pipeline.captureWorldOffset.copy(_captureWorldOffsetScratch)
 
   // OcclusionPass applies this same scale internally and stores only the
   // resulting physical RT dimensions. If an unscaled surface change rounds

@@ -137,26 +137,6 @@ describe('RadianceCascades', () => {
     radiance.dispose()
   })
 
-  it('coarsens the DDA grid per cascade instead of traversing the full-resolution source at every level', () => {
-    const radiance = new RadianceCascades({
-      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
-      cascadeCount: 4,
-      baseRayCount: 16,
-      cascadeResolution: 0,
-      maxAutoCascadeResolution: 512,
-      maxTransportDistance: 256,
-      ddaPixelSize: 2,
-    })
-    radiance.init(320, 180, createLightsTexture(), uniform(0))
-    radiance.setProcessingSize(640, 360)
-
-    const internals = radiance as unknown as {
-      _ddaMaxSteps: (cascadeIndex: number) => number
-    }
-    expect(Array.from({ length: 4 }, (_, cascade) => internals._ddaMaxSteps(cascade))).toEqual([8, 13, 22, 41])
-    radiance.dispose()
-  })
-
   it('derives DDA RC work from the processing surface without a transport cap', () => {
     const radiance = new RadianceCascades({
       ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,

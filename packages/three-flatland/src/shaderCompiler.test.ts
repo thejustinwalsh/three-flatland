@@ -240,6 +240,7 @@ const fixedRc = new RadianceCascades({
   ddaBleedThreshold: 0.65,
   ddaPaletteBands: 0,
   includeAmbient: false,
+  includeAnalyticLights: false,
 })
 fixedRc.init(320, 180, shaderTexture() as DataTexture, uniform(1))
 fixedRc.setProcessingSize(640, 360)
@@ -551,9 +552,16 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
   it('compiles the production packed fixed-point DDA RC pass set', () => {
     expect(fixedRcCascadeMaterials).toHaveLength(4)
     for (let cascade = 0; cascade < fixedRcCascadeMaterials.length; cascade++) {
-      capture(`rc-dda-fixed-cascade-${cascade}`, backend, fixedRcCascadeMaterials[cascade]!)
+      const cascadeProgram = capture(`rc-dda-fixed-cascade-${cascade}`, backend, fixedRcCascadeMaterials[cascade]!)
+      expect(cascadeProgram.fragmentShader, 'emissive-only DDA must compile out analytic circle intersections').not.toMatch(
+        /sqrt\s*\(/
+      )
     }
-    capture('rc-dda-fixed-final', backend, fixedRcFinalMaterial)
+    const finalProgram = capture('rc-dda-fixed-final', backend, fixedRcFinalMaterial)
+    expect(
+      finalProgram.fragmentShader,
+      'DDA final resolve must crop padded cascade probes to the 320x180 visible grid'
+    ).toMatch(/vec2(?:<f32>)?\(\s*320(?:\.0)?,\s*180(?:\.0)?\s*\)/)
     capture('rc-dda-fixed-filter', backend, fixedRcFilterMaterial)
   })
 

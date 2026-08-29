@@ -10,9 +10,7 @@ import {
   type ColorRepresentation,
   Color,
   NearestFilter,
-  NearestMipmapNearestFilter,
   LinearFilter,
-  LinearMipmapLinearFilter,
   type Vector2,
 } from 'three'
 import type { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
@@ -59,8 +57,6 @@ export interface OcclusionPassOptions {
    * anti-aliased silhouette.
    */
   linearFilter?: boolean
-  /** Build an averaged mip chain for multilevel integer DDA traversal. */
-  generateMipmaps?: boolean
 }
 
 /**
@@ -86,8 +82,6 @@ export class OcclusionPass {
   private _rt: RenderTarget
   private _width = 1
   private _height = 1
-  private _mipmapsEnabled: boolean
-  private _linearFilter: boolean
 
   /**
    * Per-source-texture occlusion material cache. Each SpriteBatch that feeds
@@ -135,23 +129,14 @@ export class OcclusionPass {
     this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
     this._clearAlpha = options.clearAlpha ?? 0
-    this._mipmapsEnabled = options.generateMipmaps ?? false
-    this._linearFilter = options.linearFilter ?? false
 
     this._rt = new RenderTarget(this._width, this._height, {
       depthBuffer: false,
       stencilBuffer: false,
     })
-    const filter = this._linearFilter
-      ? this._mipmapsEnabled
-        ? LinearMipmapLinearFilter
-        : LinearFilter
-      : this._mipmapsEnabled
-        ? NearestMipmapNearestFilter
-        : NearestFilter
+    const filter = options.linearFilter ? LinearFilter : NearestFilter
     this._rt.texture.minFilter = filter
-    this._rt.texture.magFilter = this._linearFilter ? LinearFilter : NearestFilter
-    this._rt.texture.generateMipmaps = this._mipmapsEnabled
+    this._rt.texture.magFilter = filter
 
     registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
       display: 'alpha',
@@ -165,15 +150,14 @@ export class OcclusionPass {
     return this._rt
   }
 
-  /**
-   * Read-only — set at construction only. Treated as a static config
-   * value so the shadow pipeline doesn't need teardown/rebuild logic
-   * for runtime scale changes. Viewport resizes take the cheap
-   * `resize()` path (RTs set new dimensions, JFA pass count
-   * recomputed) without touching material / node graphs.
-   */
   get resolutionScale(): number {
     return this._resolutionScale
+  }
+
+  set resolutionScale(value: number) {
+    this._assertUsable('resolutionScale')
+    if (!Number.isFinite(value) || value <= 0) return
+    this._resolutionScale = value
   }
 
   get width(): number {
@@ -182,22 +166,6 @@ export class OcclusionPass {
 
   get height(): number {
     return this._height
-  }
-
-  setMipmapsEnabled(enabled: boolean): void {
-    this._assertUsable('setMipmapsEnabled')
-    if (enabled === this._mipmapsEnabled) return
-    this._mipmapsEnabled = enabled
-    this._rt.texture.generateMipmaps = enabled
-    this._rt.texture.minFilter = this._linearFilter
-      ? enabled
-        ? LinearMipmapLinearFilter
-        : LinearFilter
-      : enabled
-        ? NearestMipmapNearestFilter
-        : NearestFilter
-    this._rt.texture.magFilter = this._linearFilter ? LinearFilter : NearestFilter
-    this._rt.texture.needsUpdate = true
   }
 
   /**

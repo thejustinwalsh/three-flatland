@@ -801,7 +801,6 @@ function FlatlandScene(props: SceneProps) {
       if (flatland?.camera instanceof PixelPerfectCamera && effect) {
         effect.radiance.lightSourceRadius = TILE_PX * ART_WORLD_SCALE * 0.5
         effect.radiance.ddaPixelSize = ART_WORLD_SCALE * flatland.camera.resolvedPixelScale
-        effect.radiance.maxTransportDistance = 128
       }
       flatland?.render(renderer as unknown as WebGPURenderer)
       if (benchmarkEnabled && flatland) {
@@ -833,6 +832,7 @@ function FlatlandScene(props: SceneProps) {
           <ddaFixedRadianceLightEffect
             ref={lightEffectRef}
             attach={attachLighting}
+            includeAnalyticLights={false}
             radianceIntensity={2.5}
           />
         )}

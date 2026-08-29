@@ -52,7 +52,6 @@ const DUNGEON_LIGHTING_DEFAULTS = {
   torchEmission: 8,
   slimeEmission: 0.5,
   radianceRange: 8,
-  maxTransportDistance: 128,
 } as const
 const WALL_TORCH_TILE_ID = 91
 const FLOOR_TORCH_TILE_ID = 93
@@ -303,12 +302,12 @@ async function main() {
 
   // ─── Lighting ───────────────────────────────────────────────────
   const lightEffect = new DdaFixedRadianceLightEffect()
+  lightEffect.includeAnalyticLights = false
   lightEffect.radianceIntensity = 2.5
   lightEffect.radiance.mipStrength = 0
   lightEffect.radiance.filterRadius = 1.25
   lightEffect.radiance.filterStrength = 0.85
   lightEffect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
-  lightEffect.radiance.maxTransportDistance = DUNGEON_LIGHTING_DEFAULTS.maxTransportDistance
   if (benchmarkBaseRayCount === 4 || benchmarkBaseRayCount === 16) {
     lightEffect.radiance.config.baseRayCount = benchmarkBaseRayCount
   }
@@ -547,7 +546,7 @@ async function main() {
     paused: false,
     stationary: false,
     lightingEnabled: initialLightingEnabled,
-    pixelSize: ART_WORLD_SCALE,
+    pixelSize: Math.max(1, Math.round(ART_WORLD_SCALE * ddaResolutionScale)),
     renderSurface: `${renderSurface.width}x${renderSurface.height}`,
     ambient: DUNGEON_LIGHTING_DEFAULTS.ambient,
     torchIntensity: DUNGEON_LIGHTING_DEFAULTS.torchEmission,
@@ -570,7 +569,12 @@ async function main() {
   lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' }).on('change', () => {
     flatland.setLighting(params.lightingEnabled ? lightEffect : null)
   })
-  lightFolder.addBinding(params, 'pixelSize', { label: 'DDA cell px', readonly: true })
+  lightFolder.addBinding(params, 'pixelSize', {
+    min: 1,
+    max: 16,
+    step: 1,
+    label: 'DDA cell px',
+  })
   lightFolder.addBinding(params, 'renderSurface', { label: 'buffer', readonly: true })
   lightFolder.addBinding(params, 'ambient', { min: 0, max: 0.5, step: 0.01 }).on('change', () => {
     ambientLight.intensity = params.ambient
@@ -581,13 +585,6 @@ async function main() {
     step: 1,
     label: 'bands',
   })
-  lightFolder.addBinding(lightEffect.radiance, 'maxTransportDistance', {
-    min: 32,
-    max: 384,
-    step: 16,
-    label: 'transport radius',
-  })
-
   const torchFolder = pane.addFolder({ title: 'Torches', expanded: false })
   torchFolder.addBinding(params, 'torchIntensity', { min: 0, max: 16, step: 0.1, label: 'emission' })
 
@@ -716,14 +713,11 @@ async function main() {
   let appliedDdaPixelSize = 0
 
   function renderFrame(): void {
-    const camera = flatland.camera
-    if (camera instanceof PixelPerfectCamera) {
-      const ddaPixelSize = ART_WORLD_SCALE * camera.resolvedPixelScale * ddaResolutionScale
-      if (ddaPixelSize !== appliedDdaPixelSize) {
-        lightEffect.radiance.ddaPixelSize = ddaPixelSize
-        params.pixelSize = ddaPixelSize
-        appliedDdaPixelSize = ddaPixelSize
-      }
+    const ddaPixelSize = Math.max(1, Math.round(params.pixelSize))
+    if (ddaPixelSize !== appliedDdaPixelSize) {
+      lightEffect.radiance.ddaPixelSize = ddaPixelSize
+      params.pixelSize = ddaPixelSize
+      appliedDdaPixelSize = ddaPixelSize
     }
     flatland.render(renderer)
     if (benchmarkEnabled) {

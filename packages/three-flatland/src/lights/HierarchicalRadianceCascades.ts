@@ -403,6 +403,7 @@ const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
   wideLevels: 1,
   lightSourceRadius: 0,
   includeAmbient: true,
+  includeAnalyticLights: true,
   shortIntervalCount: 4,
   compositionLevels: 2,
   compositionMode: 'holographic',
@@ -2052,6 +2053,7 @@ export class HierarchicalRadianceCascades {
         )
       )
     const sourceRadius = this._config.lightSourceRadius > 0 ? float(this._config.lightSourceRadius) : autoSourceRadius
+    const includeAnalyticLights = this._config.includeAnalyticLights
 
     const material = new NodeMaterial()
     material.fragmentNode = Fn(() => {
@@ -2095,14 +2097,9 @@ export class HierarchicalRadianceCascades {
       const segment = endWorld.sub(startWorld)
       const segmentLength = segment.length().max(float(0.001))
       const rayDir = segment.div(segmentLength)
-      const source = traceAnalyticLightSources(
-        lightsTexture,
-        lightCount,
-        startWorld,
-        rayDir,
-        segmentLength,
-        sourceRadius
-      )
+      const source = includeAnalyticLights
+        ? traceAnalyticLightSources(lightsTexture, lightCount, startWorld, rayDir, segmentLength, sourceRadius)
+        : { radiance: vec3(0), distance: segmentLength, hit: float(0) }
       const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, segmentLength)
       const boundsInterval = rayBoundsInterval(startWorld, rayDir, sdfWorldSize, sdfWorldOffset)
       const traceEntry = boundsInterval.x.max(float(0))
@@ -2530,14 +2527,9 @@ export class HierarchicalRadianceCascades {
 
         const start = intervalIndex.mul(intervalLength)
         const segmentStart = probeWorldPos.add(rayDir.mul(start))
-        const source = traceAnalyticLightSources(
-          lightsTexture,
-          lightCount,
-          segmentStart,
-          rayDir,
-          intervalLength,
-          sourceRadius
-        )
+        const source = config.includeAnalyticLights
+          ? traceAnalyticLightSources(lightsTexture, lightCount, segmentStart, rayDir, intervalLength, sourceRadius)
+          : { radiance: vec3(0), distance: intervalLength, hit: float(0) }
         const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, intervalLength)
         const radiance = vec3(0).toVar()
         const transmittance = float(1).toVar()
@@ -2769,6 +2761,7 @@ export class HierarchicalRadianceCascades {
         )
       )
     const sourceRadius = this._config.lightSourceRadius > 0 ? float(this._config.lightSourceRadius) : autoSourceRadius
+    const includeAnalyticLights = this._config.includeAnalyticLights
 
     this._finalRadianceMaterial = new NodeMaterial()
     this._finalRadianceMaterial.fragmentNode = Fn(() => {
@@ -2819,14 +2812,9 @@ export class HierarchicalRadianceCascades {
         const segment = endWorld.sub(startWorld)
         const segmentLength = segment.length().max(float(0.001))
         const rayDirection = segment.div(segmentLength)
-        const source = traceAnalyticLightSources(
-          lightsTexture,
-          lightCount,
-          startWorld,
-          rayDirection,
-          segmentLength,
-          sourceRadius
-        )
+        const source = includeAnalyticLights
+          ? traceAnalyticLightSources(lightsTexture, lightCount, startWorld, rayDirection, segmentLength, sourceRadius)
+          : { radiance: vec3(0), distance: segmentLength, hit: float(0) }
         const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, segmentLength)
         const boundsInterval = rayBoundsInterval(startWorld, rayDirection, sdfWorldSize, sdfWorldOffset)
         const traceEntry = boundsInterval.x.max(float(0))

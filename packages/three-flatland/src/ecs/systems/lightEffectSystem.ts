@@ -30,6 +30,8 @@ function runtimeContextFor(world: World): LightEffectRuntimeContext {
       lights: [],
       worldSize: null,
       worldOffset: null,
+      shadowCaptureWorldSize: null,
+      shadowCaptureWorldOffset: null,
     } as unknown as LightEffectRuntimeContext
     _runtimeContexts.set(world, context)
   }
@@ -81,6 +83,8 @@ export function lightEffectSystem(world: World): void {
   runtimeCtx.lights = ctx.lights
   runtimeCtx.worldSize = worldSize
   runtimeCtx.worldOffset = worldOffset
+  runtimeCtx.shadowCaptureWorldSize = pipeline?.captureWorldSize ?? worldSize
+  runtimeCtx.shadowCaptureWorldOffset = pipeline?.captureWorldOffset ?? worldOffset
 
   // Lazy init on first render
   if (!ctx.initialized) {
@@ -123,5 +127,7 @@ export function lightEffectRenderSystem(world: World): void {
   runtimeCtx.lights = ctx.lights
   runtimeCtx.worldSize = ctx.worldSize
   runtimeCtx.worldOffset = ctx.worldOffset
+  runtimeCtx.shadowCaptureWorldSize = pipeline?.captureWorldSize ?? ctx.worldSize
+  runtimeCtx.shadowCaptureWorldOffset = pipeline?.captureWorldOffset ?? ctx.worldOffset
   ctx.effect.update(runtimeCtx)
 }

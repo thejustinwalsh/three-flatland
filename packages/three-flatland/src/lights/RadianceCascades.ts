@@ -3,7 +3,6 @@ import {
   HalfFloatType,
   LinearFilter,
   NearestFilter,
-  NearestMipmapNearestFilter,
   ClampToEdgeWrapping,
   RepeatWrapping,
   DataTexture,
@@ -400,6 +399,8 @@ export interface RadianceCascadesConfig {
   ddaPaletteExposure: number
   /** Include unshadowed ambient Light2D energy in the resolved transport texture. */
   includeAmbient: boolean
+  /** Trace point and spot Light2D entries as finite analytic emitters. */
+  includeAnalyticLights: boolean
 }
 
 const DEFAULT_CONFIG: RadianceCascadesConfig = {
@@ -427,6 +428,7 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
   ddaPaletteBands: 0,
   ddaPaletteExposure: 16,
   includeAmbient: true,
+  includeAnalyticLights: true,
 }
 
 /** Canonical mobile/stylized settings for integer-grid, packed RC. */
@@ -448,6 +450,7 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   ddaPaletteBands: 0,
   ddaPaletteExposure: 16,
   includeAmbient: false,
+  includeAnalyticLights: true,
 }
 
 export type RadianceCascadesQuality = 'fast' | 'balanced' | 'quality'
@@ -607,10 +610,9 @@ export class RadianceCascades {
     this._finalRadianceRT = new RenderTarget(probeCount, probeCount, finalOptions)
     this._emissiveRadianceRT = new RenderTarget(probeCount, probeCount, {
       ...finalOptions,
-      minFilter: this._config.traversal === 'dda-fixed' ? NearestMipmapNearestFilter : NearestFilter,
+      minFilter: NearestFilter,
       magFilter: NearestFilter,
     })
-    this._emissiveRadianceRT.texture.generateMipmaps = this._config.traversal === 'dda-fixed'
     this.raymarchSteps = this._config.raymarchSteps
     this.filterRadius = this._config.filterRadius
     this.filterStrength = this._config.filterStrength
@@ -677,6 +679,17 @@ export class RadianceCascades {
 
   get raymarchSteps(): number {
     return this._config.raymarchSteps
+  }
+
+  get includeAnalyticLights(): boolean {
+    return this._config.includeAnalyticLights
+  }
+
+  set includeAnalyticLights(value: boolean) {
+    const enabled = Boolean(value)
+    if (enabled === this._config.includeAnalyticLights) return
+    this._config.includeAnalyticLights = enabled
+    if (this._cascadeRTs.length > 0) this._createCascadeMaterials()
   }
 
   get maxTransportDistance(): number {
@@ -973,6 +986,12 @@ export class RadianceCascades {
   private _ddaCaptureDimensions(): { width: number; height: number } {
     const visible = this._transportDimensions()
     if (!this._usesDdaFixed()) return { width: visible.outputWidth, height: visible.outputHeight }
+    if (this._occlusionTexture) {
+      return {
+        width: Math.max(1, Math.round(this._occlusionTextureSizeNode.value.x)),
+        height: Math.max(1, Math.round(this._occlusionTextureSizeNode.value.y)),
+      }
+    }
     const widthRatio = this._transportWorldSize.x / Math.max(1e-6, this._worldSize.x)
     const heightRatio = this._transportWorldSize.y / Math.max(1e-6, this._worldSize.y)
     return {
@@ -982,10 +1001,7 @@ export class RadianceCascades {
   }
 
   private _ddaMaxSteps(cascadeIndex: number): number {
-    const capture = this._ddaCaptureDimensions()
-    const mipScale = 2 ** cascadeIndex
-    const gridWidth = Math.max(1, Math.floor(capture.width / mipScale))
-    const gridHeight = Math.max(1, Math.floor(capture.height / mipScale))
+    const { width: gridWidth, height: gridHeight } = this._ddaCaptureDimensions()
     const minCellWorldSize = Math.max(
       1e-6,
       Math.min(this._transportWorldSize.x / gridWidth, this._transportWorldSize.y / gridHeight)
@@ -1295,12 +1311,22 @@ export class RadianceCascades {
 
   setOcclusionTexture(texture: Texture | null): void {
     const image = texture?.image as { width?: number; height?: number } | undefined
-    this._occlusionTextureSizeNode.value.set(Math.max(1, image?.width ?? 1), Math.max(1, image?.height ?? 1))
+    const width = Math.max(1, image?.width ?? 1)
+    const height = Math.max(1, image?.height ?? 1)
+    const sizeChanged =
+      width !== this._occlusionTextureSizeNode.value.x || height !== this._occlusionTextureSizeNode.value.y
+    this._occlusionTextureSizeNode.value.set(width, height)
     // RenderTarget textures retain their identity across setSize(). Refresh
     // the physical texel dimensions even when the texture object is unchanged;
     // otherwise DDA can keep the constructor-time 1x1 size and sample a single
     // corner occlusion texel for the entire viewport.
-    if (this._occlusionTexture === texture) return
+    if (this._occlusionTexture === texture) {
+      if (sizeChanged && this._usesDdaFixed()) {
+        this._resizeEmissiveTarget()
+        if (this._cascadeRTs.length > 0) this._createCascadeMaterials()
+      }
+      return
+    }
     this._occlusionTexture = texture
     this._disposeWideRadianceMaterials()
     this._filterRadianceMaterial?.dispose()
@@ -1477,10 +1503,8 @@ export class RadianceCascades {
     const activeProbeWidth = Math.ceil(dimensions.outputWidth / cascadeStride)
     const activeProbeHeight = Math.ceil(dimensions.outputHeight / cascadeStride)
     const captureDimensions = this._ddaCaptureDimensions()
-    const ddaMipLevel = cascadeIndex
-    const ddaMipScale = 2 ** ddaMipLevel
-    const ddaGridWidth = Math.max(1, Math.floor(captureDimensions.width / ddaMipScale))
-    const ddaGridHeight = Math.max(1, Math.floor(captureDimensions.height / ddaMipScale))
+    const ddaGridWidth = captureDimensions.width
+    const ddaGridHeight = captureDimensions.height
     const ddaMaxSteps = this._ddaMaxSteps(cascadeIndex)
     const sourceRadius =
       config.lightSourceRadius > 0
@@ -1543,14 +1567,9 @@ export class RadianceCascades {
 
       const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toConst('rcSegmentStartLocal')
       const segmentStart = segmentStartLocal.add(worldOffset).toConst('rcSegmentStart')
-      const source = traceAnalyticLightSources(
-        lightsTexture,
-        lightCount,
-        segmentStart,
-        rayDir,
-        intervalRange,
-        sourceRadius
-      )
+      const source = config.includeAnalyticLights
+        ? traceAnalyticLightSources(lightsTexture, lightCount, segmentStart, rayDir, intervalRange, sourceRadius)
+        : { radiance: vec3(0), distance: intervalRange, hit: float(0) }
       const traceLimit = source.hit
         .greaterThan(float(0.5))
         .select(source.distance, intervalRange)
@@ -1572,7 +1591,6 @@ export class RadianceCascades {
         const intersectsWorld = traceExit.greaterThanEqual(traceEntry).toConst('rcIntersectsWorld')
         const visibility = traceDdaIntegerRadiance(
           occlusionTexture,
-          this._occlusionTextureSizeNode,
           this._emissiveRadianceRT.texture,
           segmentStart,
           rayDir,
@@ -1583,8 +1601,7 @@ export class RadianceCascades {
           transportWorldOffset,
           ddaGridWidth,
           ddaGridHeight,
-          ddaMaxSteps,
-          ddaMipLevel
+          ddaMaxSteps
         )
         intervalRadiance.assign(visibility.rgb)
         intervalTransmittance.assign(
@@ -1750,8 +1767,14 @@ export class RadianceCascades {
 
     this._finalRadianceMaterial = new NodeMaterial()
     this._finalRadianceMaterial.fragmentNode = Fn(() => {
-      // Map final RT UV → probe position in cascade 0
-      const probeXY = uv().mul(vec2(float(probeGroupWidth), float(probeGroupHeight)))
+      // Map final RT UV to the *visible* probe grid. The cascade atlas pads
+      // its probe groups to a multiple of the coarsest cascade stride, while
+      // the final target deliberately excludes that padding. Scaling UV by
+      // the padded probe-group extent stretched those extra rows/columns over
+      // the visible image; the resulting Y error grew with ddaPixelSize.
+      // Sampling the logical output extent crops the padding and keeps every
+      // DDA resolution registered to the same authored-pixel origin.
+      const probeXY = uv().mul(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
 
       const irradiance = vec3(0).toVar()
 

@@ -100,6 +100,9 @@ export interface LightEffectRuntimeContext {
   lights: readonly Light2D[]
   worldSize: Vector2
   worldOffset: Vector2
+  /** Exact world bounds represented by the current binary shadow texture. */
+  shadowCaptureWorldSize: Vector2
+  shadowCaptureWorldOffset: Vector2
 }
 
 // Forward-declare Flatland to avoid circular import
@@ -443,8 +446,18 @@ export abstract class LightEffect {
     return 0
   }
 
-  /** Whether the binary shadow capture must retain a generated mip chain. */
-  get shadowCaptureMipmaps(): boolean {
+  /**
+   * Physical resolution of the binary shadow capture relative to the
+   * effect's capture surface. `undefined` preserves the shared shadow
+   * pipeline default. Grid effects override this so one occlusion texel maps
+   * to one traversal cell at every runtime cell size.
+   */
+  get shadowCaptureResolutionScale(): number | undefined {
+    return undefined
+  }
+
+  /** Keep binary shadow texels anchored to a stable world-space grid. */
+  get shadowCaptureGridAligned(): boolean {
     return false
   }
 
@@ -735,8 +748,10 @@ interface LightEffectConfig<S extends EffectSchema, C extends readonly ChannelNa
   shadowPipelineMode?: ShadowPipelineMode | ((this: LightEffectInstance<S>) => ShadowPipelineMode)
   /** World-space guard band for shadow/emissive capture around the camera. */
   shadowCaptureMargin?: number | ((this: LightEffectInstance<S>) => number)
-  /** Generate shadow-capture mips for multilevel occupancy traversal. */
-  shadowCaptureMipmaps?: boolean | ((this: LightEffectInstance<S>) => boolean)
+  /** Runtime binary-shadow resolution relative to the capture surface. */
+  shadowCaptureResolutionScale?: number | ((this: LightEffectInstance<S>) => number)
+  /** Snap the capture origin to whole binary-shadow texels. */
+  shadowCaptureGridAligned?: boolean | ((this: LightEffectInstance<S>) => boolean)
   /** Per-fragment channels this effect requires (e.g., ['normal'] as const). */
   requires?: C
   /**
@@ -808,7 +823,8 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
     needsShadows: shadows = false,
     shadowPipelineMode,
     shadowCaptureMargin,
-    shadowCaptureMipmaps,
+    shadowCaptureResolutionScale,
+    shadowCaptureGridAligned,
     requires: requiredChannels = [] as unknown as C,
     light: lightFn,
     init: initHook,
@@ -844,10 +860,19 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
       return Number.isFinite(margin) ? Math.max(0, margin) : 0
     }
 
-    override get shadowCaptureMipmaps(): boolean {
-      return typeof shadowCaptureMipmaps === 'function'
-        ? shadowCaptureMipmaps.call(this as unknown as LightEffectInstance<S>)
-        : (shadowCaptureMipmaps ?? false)
+    override get shadowCaptureResolutionScale(): number | undefined {
+      if (shadowCaptureResolutionScale === undefined) return undefined
+      const scale =
+        typeof shadowCaptureResolutionScale === 'function'
+          ? shadowCaptureResolutionScale.call(this as unknown as LightEffectInstance<S>)
+          : shadowCaptureResolutionScale
+      return Number.isFinite(scale) && scale > 0 ? scale : undefined
+    }
+
+    override get shadowCaptureGridAligned(): boolean {
+      return typeof shadowCaptureGridAligned === 'function'
+        ? shadowCaptureGridAligned.call(this as unknown as LightEffectInstance<S>)
+        : (shadowCaptureGridAligned ?? false)
     }
 
     override init(ctx: LightEffectRuntimeContext): void {

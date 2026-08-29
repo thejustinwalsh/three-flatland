@@ -8,8 +8,9 @@ import {
   RadianceCascades,
 } from 'three-flatland'
 
-const _transportWorldSize = new Vector2()
-const _transportWorldOffset = new Vector2()
+const DDA_CAPTURE_MARGIN = 128
+const _visibleGridOffset = new Vector2()
+const _radianceUvOffset: [number, number] = [0, 0]
 
 /**
  * Direction-first Radiance Cascades with integer supercover occlusion and
@@ -21,18 +22,24 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   schema: {
     radianceIntensity: 1.0,
     lightHeight: 0.75,
+    radianceUvOffset: [0, 0],
+    includeAnalyticLights: () => true,
     radiance: () => new RadianceCascades(DDA_FIXED_RADIANCE_CASCADES_CONFIG),
   } as const,
   requires: ['normal', 'elevation'] as const,
   needsShadows: true,
   shadowPipelineMode: 'occlusion',
-  shadowCaptureMipmaps: true,
   shadowCaptureMargin() {
-    return this.radiance.maxTransportDistance
+    return DDA_CAPTURE_MARGIN
   },
+  shadowCaptureResolutionScale() {
+    return 1 / this.radiance.ddaPixelSize
+  },
+  shadowCaptureGridAligned: true,
   light: ({ uniforms, constants, lightStore }) => {
     const radianceIntensity = uniforms.radianceIntensity
     const lightHeight = uniforms.lightHeight
+    const radianceUvOffset = uniforms.radianceUvOffset
     const radianceTexture = constants.radiance.finalRadianceTexture
 
     return (ctx) => {
@@ -45,7 +52,7 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
         // This render target is regenerated for the active camera window.
         // ScreenNode's Y convention is opposite texture()'s render-target
         // convention here, so flip exactly once at the final lookup.
-        const radiance = sampleTexture(radianceTexture, screenUV.flipY()).rgb
+        const radiance = sampleTexture(radianceTexture, screenUV.flipY().add(radianceUvOffset).clamp(0, 1)).rgb
         // RC's final resolve is directionally averaged, so it cannot perform
         // the per-light N.L used by direct lighting. Preserve the authored
         // height contract instead: elevated wall caps above the emitter plane
@@ -68,11 +75,18 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
   },
   update(ctx) {
     if (!ctx.occlusionTexture) return
-    this.radiance.setWorldBounds(ctx.worldSize, ctx.worldOffset)
-    const margin = this.radiance.maxTransportDistance
-    _transportWorldSize.set(ctx.worldSize.x + margin * 2, ctx.worldSize.y + margin * 2)
-    _transportWorldOffset.set(ctx.worldOffset.x - margin, ctx.worldOffset.y - margin)
-    this.radiance.setTransportBounds(_transportWorldSize, _transportWorldOffset)
+    this.radiance.includeAnalyticLights = this.includeAnalyticLights
+    _visibleGridOffset.set(
+      ctx.shadowCaptureWorldOffset.x + DDA_CAPTURE_MARGIN,
+      ctx.shadowCaptureWorldOffset.y + DDA_CAPTURE_MARGIN
+    )
+    this.radiance.setWorldBounds(ctx.worldSize, _visibleGridOffset)
+    this.radiance.setTransportBounds(ctx.shadowCaptureWorldSize, ctx.shadowCaptureWorldOffset)
+    _radianceUvOffset[0] = (ctx.worldOffset.x - _visibleGridOffset.x) / ctx.worldSize.x
+    // Render-target Y is flipped exactly once at the final lookup, so moving
+    // the visible world window upward advances toward decreasing texture V.
+    _radianceUvOffset[1] = -(ctx.worldOffset.y - _visibleGridOffset.y) / ctx.worldSize.y
+    this.radianceUvOffset = _radianceUvOffset
     this.radiance.generate(ctx.renderer, null, ctx.occlusionTexture, ctx.scene, ctx.camera)
   },
   resize(width, height) {
