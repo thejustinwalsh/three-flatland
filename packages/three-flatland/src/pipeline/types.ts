@@ -49,7 +49,7 @@ export interface SortLayerDescriptor {
  * Tracks counts the sprite pipeline owns: sprite instance count,
  * batch count, visible-after-culling count. Does NOT include
  * renderer-level stats (draw calls, triangles, GPU time) — those live
- * in the devtools producer (`@three-flatland/debug` subpath), which is
+ * in the devtools producer (`three-flatland/debug-protocol` subpath), which is
  * fully tree-shaken in prod builds and therefore doesn't pollute the
  * prod bundle with stats math. If you want renderer stats, subscribe
  * to the debug bus's `stats` feature.

@@ -165,5 +165,5 @@ Repeat the discovery search and inspect every remaining match. The migration is 
 ## Related
 
 - Codemod index: `codemods/README.md`
-- Migration guide: `https://tjw.dev/three-flatland/guides/private-ecs-migration/`
+- Release notes: the private-ECS entries in the `three-flatland` CHANGELOG carry the full breaking-change list.
 - Effect guide: `https://tjw.dev/three-flatland/guides/tsl-nodes/`

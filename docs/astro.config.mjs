@@ -401,7 +401,7 @@ export default defineConfig({
             label: 'Guides',
             items: [
               { label: 'Sprites', slug: 'guides/sprites' },
-              { label: 'Alpha API Migration', slug: 'guides/private-ecs-migration' },
+              { label: 'Set up a Flatland scene', slug: 'guides/flatland-setup' },
               { label: 'Pixel-Perfect Rendering', slug: 'guides/pixel-perfect-rendering' },
               { label: 'Animation', slug: 'guides/animation' },
               { label: 'Loaders', slug: 'guides/loaders' },
