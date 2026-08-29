@@ -921,7 +921,6 @@ function FlatlandScene(props: SceneProps) {
         effect.radiance.ddaPixelSize = Math.max(1, Math.round(props.pixelSize))
         effect.radiance.ddaPaletteBands = Math.max(0, Math.round(props.paletteBands))
         effect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
-        effect.radiance.mipStrength = 0
         effect.radiance.filterRadius = 1.25
         effect.radiance.filterStrength = 0.85
       }
@@ -955,7 +954,6 @@ function FlatlandScene(props: SceneProps) {
           <ddaFixedRadianceLightEffect
             ref={lightEffectRef}
             attach={attachLighting}
-            includeAnalyticLights={false}
             radianceIntensity={2.5}
           />
         )}

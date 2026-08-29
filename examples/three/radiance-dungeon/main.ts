@@ -302,9 +302,7 @@ async function main() {
 
   // ─── Lighting ───────────────────────────────────────────────────
   const lightEffect = new DdaFixedRadianceLightEffect()
-  lightEffect.includeAnalyticLights = false
   lightEffect.radianceIntensity = 2.5
-  lightEffect.radiance.mipStrength = 0
   lightEffect.radiance.filterRadius = 1.25
   lightEffect.radiance.filterStrength = 0.85
   lightEffect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange

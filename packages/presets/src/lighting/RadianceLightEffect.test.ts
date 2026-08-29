@@ -43,12 +43,17 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
     const effect = new DdaFixedRadianceLightEffect()
 
     expect(effect.shadowPipelineMode).toBe('occlusion')
+    expect(effect.includeAnalyticLights).toBe(false)
     expect(effect.radiance.config).toMatchObject({
       traversal: 'dda-fixed',
       ddaPixelSize: 4,
       ddaQuantizationBits: 8,
       ddaBleedThreshold: 0.65,
       ddaPaletteBands: 0,
+      mipBlur: 0,
+      mipStrength: 0,
+      includeAmbient: false,
+      includeAnalyticLights: false,
     })
 
     effect.dispose()

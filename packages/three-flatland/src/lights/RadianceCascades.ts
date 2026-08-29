@@ -439,8 +439,8 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   maxAutoCascadeResolution: 512,
   filterRadius: 1,
   filterStrength: 1,
-  mipBlur: 0.25,
-  mipStrength: 0.15,
+  mipBlur: 0,
+  mipStrength: 0,
   wideDownsampleFactor: 2,
   wideLevels: 1,
   ddaPixelSize: 4,
@@ -450,7 +450,7 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   ddaPaletteBands: 0,
   ddaPaletteExposure: 16,
   includeAmbient: false,
-  includeAnalyticLights: true,
+  includeAnalyticLights: false,
 }
 
 export type RadianceCascadesQuality = 'fast' | 'balanced' | 'quality'

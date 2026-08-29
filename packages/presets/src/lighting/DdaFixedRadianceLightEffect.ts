@@ -14,8 +14,9 @@ const _radianceUvOffset: [number, number] = [0, 0]
 
 /**
  * Direction-first Radiance Cascades with integer supercover occlusion and
- * packed fixed-point cascade storage. This deliberately keeps conventional
- * RC's compact pass topology instead of HRC's transfer/radiance hierarchy.
+ * packed fixed-point cascade storage. Transport is emissive-only by default;
+ * ambient is composed separately by the final light function. This keeps
+ * conventional RC's compact pass topology instead of HRC's hierarchy.
  */
 export const DdaFixedRadianceLightEffect = createLightEffect({
   name: 'ddaFixedRadianceLight',
@@ -23,7 +24,7 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
     radianceIntensity: 1.0,
     lightHeight: 0.75,
     radianceUvOffset: [0, 0],
-    includeAnalyticLights: () => true,
+    includeAnalyticLights: () => false,
     radiance: () => new RadianceCascades(DDA_FIXED_RADIANCE_CASCADES_CONFIG),
   } as const,
   requires: ['normal', 'elevation'] as const,
