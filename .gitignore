@@ -99,3 +99,6 @@ tools/vscode/LICENSE
 .nx/
 .labs/
 .claude/worktrees
+
+# Local external-model run manifests and review prompts
+.cache/side-piece/
