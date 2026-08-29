@@ -41,7 +41,7 @@ import AnnotatedImage from '../../../components/AnnotatedImage.astro';
   caption="Each panel is independently subscribable — collapsing a panel stops the corresponding data collection on the producer side too."
 />
 
-## Vite Plugin Setup
+## Vite plugin setup
 
 The dashboard is served as middleware by your Vite dev server. Add the plugin to your `vite.config.ts`:
 
@@ -79,7 +79,7 @@ The plugin sets `apply: 'serve'` internally — it's inert during production bui
 The dashboard's own assets are served by Vite via `/@fs/`, `/@vite/client`, and `node_modules/.vite/` — none of which are namespaced under the mount path. If your app sits behind a proxy (microfrontends, reverse proxy, etc.), open the dashboard at the underlying Vite port directly rather than the proxy origin.
 :::
 
-## Scene-Side Wiring (Flatland)
+## Scene-Side wiring (Flatland)
 
 Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite sets `import.meta.env.DEV` in dev) and `isDevtoolsActive()` returns true at runtime, Flatland constructs its own `DevtoolsProvider` in its constructor and pumps stats into the bus on every `flatland.render(renderer)` call:
 
@@ -139,7 +139,7 @@ The runtime gate `isDevtoolsActive()` returns `false` when `window.__FLATLAND_DE
 The provider is a no-op stub when devtools isn't active, so per-frame cost stays negligible even when no dashboard is connected. Leaving devtools wiring in your scene code is free in production.
 :::
 
-## Scene-Side Wiring (Plain Three.js)
+## Scene-Side wiring (Plain Three.js)
 
 If you're driving three.js directly — no Flatland — call `createDevtoolsProvider()` from `three-flatland` and bracket your render call with `beginFrame` / `endFrame`:
 
@@ -177,7 +177,7 @@ Multi-pass renderers (SDF pass, occlusion pass, post-processing) work correctly:
 
 In production (when `DEVTOOLS_BUNDLED` is `false`), `createDevtoolsProvider` returns a no-op stub; `beginFrame`/`endFrame`/`dispose` all become empty calls that minify away.
 
-## In-Page Tweakpane Controls
+## In-Page Tweakpane controls
 
 `@three-flatland/devtools` wraps [Tweakpane v4](https://tweakpane.github.io/docs/) with a Flatland-themed pane that mounts directly into your page. Because it consumes the same bus as the standalone dashboard, the pane needs no scene wiring of its own — it discovers any provider the page has constructed and streams stats from it.
 
@@ -219,7 +219,7 @@ Two entry points:
 - `@three-flatland/devtools` — vanilla: `createPane`, `DevtoolsClient`, `applyTheme`, `FLATLAND_THEME`.
 - `@three-flatland/devtools/react` — hooks: `usePane`, `usePaneFolder`, `usePaneInput`, `usePaneButton`, `useFpsGraph`.
 
-### What You Get
+### What you get
 
 Calling `createPane()` (or `usePane()`) gives you:
 
@@ -231,7 +231,7 @@ Calling `createPane()` (or `usePane()`) gives you:
 
 There are no extra wiring calls. The pane has zero knowledge of your scene, your renderer, or your frame loop — it discovers a provider on the bus and streams stats. If your app already constructs a Flatland (or calls `createDevtoolsProvider` per the section above), the pane just works.
 
-### Three.js Usage
+### Three.js usage
 
 ```typescript
 import { WebGPURenderer } from 'three/webgpu'
@@ -262,7 +262,7 @@ You don't enable GPU timing yourself. When devtools is active the provider opts 
 
 On WebGPU, the adapter must expose `GPUFeatureName.TimestampQuery` (most desktop browsers). On WebGL2, `EXT_disjoint_timer_query_webgl2` must be present. Values trail by ~1 frame because the readback is async. The pane silently hides `gpu` from the mode cycle when unsupported.
 
-### React Usage
+### React usage
 
 The React hook is R3F-aware: it internally forces `driver: 'manual'` and registers a `useFrame(update, 1000)` at a late priority so the graph tick runs AFTER R3F's auto-render, capturing the true end-of-frame `renderer.info`.
 
@@ -315,7 +315,7 @@ export default function App() {
 
 All hooks create bindings synchronously during render (so controls appear without pop-in) and defer disposal across React Strict Mode's cleanup / re-mount cycle.
 
-### Bus Architecture (for the curious)
+### Bus architecture (for the curious)
 
 The pane, the dashboard, and the provider all communicate via two `BroadcastChannel`s:
 
@@ -338,7 +338,7 @@ applyTheme(pane.element, FLATLAND_THEME)
 
 `applyTheme` sets CSS custom properties on the pane element — fork `FLATLAND_THEME` (it's a plain object) to tweak colours without touching the package.
 
-### Pane Options
+### Pane options
 
 ```typescript
 createPane({
@@ -349,7 +349,7 @@ createPane({
 })
 ```
 
-## Dashboard Panels
+## Dashboard panels
 
 The dashboard renders four panels driven by feature subscriptions. Each panel is independently subscribable — collapse a panel and its data stops being collected on the producer side too.
 
@@ -383,7 +383,7 @@ Registered CPU arrays — `Float32Array`, `Uint32Array`, `Int32Array`. Each entr
 
 Registered `DataTexture` and `RenderTarget` outputs, viewable as images. Readbacks are async — the dashboard only triggers them when a texture is selected for preview, so leaving things registered is free until somebody actually opens the panel.
 
-## Custom Debug Instrumentation
+## Custom debug instrumentation
 
 Anything your scene already keeps in CPU memory or in a render target can show up in the dashboard. The `register*` calls are no-op when devtools isn't bundled, so they're safe to leave permanently in engine code.
 
@@ -460,7 +460,7 @@ The lighting and tile pipelines lean on the same APIs. Treat them as canonical e
 
 Both unregister on dispose to keep the registry tidy across hot-reloads.
 
-## Production Gating
+## Production gating
 
 Two layers turn the entire devtools subsystem off:
 
@@ -487,7 +487,7 @@ Only reachable when `DEVTOOLS_BUNDLED` is true. Reads `window.__FLATLAND_DEVTOOL
 
 This is a one-way switch: rogue clients can't enable devtools that wasn't bundled, so it's safe even if `__FLATLAND_DEVTOOLS__` somehow leaks into a production bundle.
 
-## Next Steps
+## Next steps
 
 - [Pass Effects guide](../pass-effects/) — Many of the lighting fields you'll see in the dashboard come from `DefaultLightEffect`'s schema.
 - [Batch Rendering guide](../batch-rendering/) — Background for what the dashboard's Batches panel is showing you.

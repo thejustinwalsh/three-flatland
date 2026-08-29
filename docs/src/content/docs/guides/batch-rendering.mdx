@@ -11,7 +11,7 @@ SpriteGroup automatically batches sprites that share the same material into sing
 
 The defaults are tuned for the common case (thousands of sprites, one or two materials). You almost never need to think about batching — but on the day you do, this page is the map.
 
-## How It Works
+## How it works
 
 When you add sprites to a `SpriteGroup`, they're grouped by material and layer into efficient GPU batches. Systems run automatically during Three.js rendering — no manual `update()` call needed.
 
@@ -112,7 +112,7 @@ The hint is advisory, not a hard cap. Enrollment continues automatically past it
 
 In React Three Fiber, pass a stable or memoized options tuple through `args`. `expectedSprites` is intentionally not a mutable JSX property, so changing the hint means changing the memoized constructor args and letting React Three Fiber reconstruct the object. Do not write `<spriteGroup expectedSprites={...}>` or `<flatland expectedSprites={...}>`.
 
-## Renderer Options
+## Renderer options
 
 The `SpriteGroup` constructor accepts optional batch configuration:
 
@@ -177,7 +177,7 @@ Older releases flattened some batched sprites against the batching root. If your
 When an automatically batched or retained hierarchy source remains in the authored scene graph, the batch suppresses its duplicate draw by temporarily setting the runtime `isMesh` discriminator to `false`. It returns to `true` when the sprite leaves the batch and has renderable content. Direct `SpriteGroup` sources are not scene children and can keep `isMesh === true`. Use `sprite instanceof Sprite2D` rather than `sprite.isMesh` to classify logical sprites, and serialize authored sprite data before enrollment: generic `Object3D.toJSON()` omits mesh geometry while a source draw is suppressed.
 :::
 
-## Automatic Change Detection
+## Automatic change detection
 
 Property changes on sprites are detected automatically through the ECS. When you update a sprite's tint, alpha, flip, frame, sortLayer, position, or ancestor transform, the renderer syncs only the changed data to the GPU on the next frame. No manual invalidation is needed with the default `autoInvalidateTransforms: true`.
 
@@ -193,7 +193,7 @@ For a static scene with `autoInvalidateTransforms: false`, call `spriteGroup.inv
 
 Retained hierarchy mode checks the authored subtree on each matrix update so arbitrary Three.js reparenting is detected without a Flatland-specific mutation API. For very large flat populations, add sprites directly to `SpriteGroup` or use automatic batching; those paths avoid the retained-subtree walk.
 
-## Performance Monitoring
+## Performance monitoring
 
 Check batch efficiency with the `stats` property:
 
@@ -210,12 +210,12 @@ console.log(`Draw calls: ${renderer.info.render.calls}`)
 
 **Goal:** Keep `batchCount` low relative to `spriteCount`. If you have 1000 sprites but 100 batches, you're not batching efficiently.
 
-## Optimization Tips
+## Optimization tips
 
-### Share Materials
+### Share materials
 
 :::tip[Performance note]
-Sprites only batch together when they share the **same material instance** — not just the same texture, the same `new Sprite2DMaterial(...)` reference. Allocating a fresh material per sprite is the easiest way to silently tank batching.
+Sprites only batch together when they share the **same material instance** — not just the same texture, the same `new Sprite2DMaterial(...)` reference. Allocating a fresh material per sprite prevents batching, with no error to indicate it.
 :::
 
 ```typescript
@@ -229,7 +229,7 @@ sprites.forEach((s) => {
 })
 ```
 
-### Use Texture Atlases
+### Use texture atlases
 
 Combine textures into a single atlas. All sprites using the atlas can share one material:
 
@@ -244,7 +244,7 @@ const player = new Sprite2D({ material, frame: frames.get('player') })
 const enemy = new Sprite2D({ material, frame: frames.get('enemy') })
 ```
 
-### Organize by Sort Layer
+### Organize by sort layer
 
 Sprites are sorted by sortLayer before batching. Keep related sprites on the same layer:
 
@@ -258,7 +258,7 @@ backgrounds.forEach((s) => (s.sortLayer = SortLayers.BACKGROUND))
 entities.forEach((s) => (s.sortLayer = SortLayers.ENTITIES))
 ```
 
-## Custom Materials
+## Custom materials
 
 If you're authoring a custom `Sprite2DMaterial` subclass — or a stand-alone TSL shader that consumes the same per-instance data — you read from the interleaved instance buffer that every batch shares.
 
@@ -329,7 +329,7 @@ Lit sprites in this batch render at full color; sprites with `lit = false` rende
 
 For the broader `colorTransform` / `MaterialEffect` API and where it sits in the pipeline, see the [Pass Effects guide](../pass-effects/). For the Sprite2D-side accessors that drive these flags (`lit`, `receiveShadows`, `castsShadow`, `shadowRadius`), see the [Sprites guide](../sprites/).
 
-## Next Steps
+## Next steps
 
 - [Flatland Guide](../flatland/) — Wrap SpriteGroup with camera, post-processing, and global uniforms
 - [Sprites Guide](../sprites/) — Sprite2D properties and configuration

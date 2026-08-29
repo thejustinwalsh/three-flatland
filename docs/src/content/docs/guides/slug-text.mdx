@@ -79,7 +79,7 @@ The `@three-flatland/slug` API isn't settled yet. We're dogfooding it and foldin
 Slug text works with both the WebGPU renderer and its WebGL2 fallback. The TSL shaders compile to WGSL or GLSL ES 3.0 automatically.
 :::
 
-## Loading Fonts
+## Loading fonts
 
 `SlugFontLoader` is the single entry point for loading fonts. It automatically tries pre-baked data first (a single `.slug.glb`), and falls back to runtime parsing from the `.ttf` if baked data isn't available.
 
@@ -114,7 +114,7 @@ After loading, the font provides:
 - `font.unitsPerEm`, `font.ascender`, `font.descender`, `font.capHeight` — font metrics
 - `font.measureText(text, fontSize)`, `font.measureParagraph(text, fontSize, opts)`, `font.wrapText(text, fontSize, maxWidth)` — measurement helpers
 
-## SlugText Properties
+## SlugText properties
 
 `SlugText` extends `InstancedMesh` — each glyph is an instanced quad evaluated per-pixel by the Slug fragment shader.
 
@@ -133,7 +133,7 @@ After loading, the font provides:
 
 All properties can be set after construction. Changes are applied on the next `update()` call.
 
-## Per-Frame Updates
+## Per-Frame updates
 
 `SlugText.update(camera)` does two things:
 
@@ -159,7 +159,7 @@ All properties can be set after construction. Changes are applied on the next `u
   </TabItem>
 </Tabs>
 
-## Viewport Size
+## Viewport size
 
 For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `setViewportSize` when the viewport changes:
 
@@ -186,7 +186,7 @@ For correct edge dilation (half-pixel anti-aliasing at quad boundaries), call `s
   </TabItem>
 </Tabs>
 
-## Dynamic Text
+## Dynamic text
 
 Change any property and the text rebuilds on the next `update()`:
 
@@ -198,7 +198,7 @@ text.color = 0xff0000
 // Geometry rebuilds automatically on next update() call
 ```
 
-## Multi-line & Word Wrap
+## Multi-line & word wrap
 
 Set `maxWidth` to enable automatic word wrapping. Line breaks (`\n`) are also supported:
 
@@ -341,7 +341,7 @@ text.setOpacity(0) // hide fill, keep outline visible
 
 The current dynamic shader uses `min(distance)` over the glyph's curves, producing a clean **bevel** at exterior corners. Interior corners stay crisp by construction. Miter / round joins, caps, dashing, and a 1× fill cost baked path are landing in [Phase 5 (#37)](https://github.com/thejustinwalsh/three-flatland/issues/37); the dynamic shader will stay as `outline.mode = 'dynamic'` for live width scrubbing.
 
-## Material Options
+## Material options
 
 `SlugText` creates a `SlugMaterial` internally. Several shader-level options are available at construction time (some compile-time constants, some runtime uniforms):
 
@@ -354,7 +354,7 @@ The current dynamic shader uses `min(distance)` over the glyph's curves, produci
 | `pixelSnap`   | `boolean` | `true`  | Snap glyph positions to pixel grid.      |
 | `supersample` | `boolean` | `false` | 2×2 supersampling (expensive).           |
 
-## Pre-baking Fonts
+## Pre-baking fonts
 
 For production, use `slug-bake` to pre-process fonts offline. This eliminates opentype.js at runtime and lets you subset to only the glyphs you need:
 
@@ -386,7 +386,7 @@ Rely on your CDN's gzip/brotli — the browser decompresses automatically with z
 
 Missing glyphs render as a fallback rectangle. Named ranges: `ascii`, `latin`, `latin+`. Custom ranges use hex (`0x20-0x7E`) or decimal (`32-126`).
 
-## How It Works
+## How it works
 
 The Slug algorithm renders each pixel by:
 

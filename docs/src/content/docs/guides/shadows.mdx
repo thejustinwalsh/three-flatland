@@ -11,7 +11,7 @@ three-flatland renders per-light, SDF-traced soft shadows. Casters silhouette th
 
 If your scene doesn't have shadows yet, you don't need this page. Come back when your hero is on screen and you want a proper torch-on-wall moment. This page is the mental model: how the pipeline turns casters into a distance field and how the trace reads it. For opting sprites and tiles in or out, the `shadowRadius` knobs, and the tuning uniforms, see the [Shadows guide](../shadows-setup/).
 
-## How Shadows Work
+## How shadows work
 
 The shadow pipeline runs as a pre-pass before the main scene render:
 
@@ -37,7 +37,7 @@ shadowRadius = max(Math.abs(scale.x), Math.abs(scale.y))
 
 This tracks scale changes automatically and covers animated sprites whose source frame size differs (e.g. `AnimatedSprite2D` updates `scale` from `frame.sourceWidth/Height`). For most scenes you set `castsShadow = true` and never think about `shadowRadius` again. When you do need to override it — transparent art padding, non-uniform scale, a tighter escape — the [Shadows guide](../shadows-setup/#self-shadow-and-shadowradius) covers the manual knobs.
 
-## Elevation-Aware Shadows
+## Elevation-Aware shadows
 
 <Diagram caption="Why elevated wall caps go dark — a light's +Z component is lightHeight − elevation, so caps above the torch get a negative L.z and N·L clamps to zero." src={shadowElevation} />
 
@@ -71,7 +71,7 @@ In practice this means most fragments skip the trace cheaply:
 
 This is why flipping cosmetic fills to `castsShadow: false` is the dominant shadow-perf lever: the 32-tap SDF trace is the per-light cost, and a fill that skips it is nearly free. The [Shadows guide](../shadows-setup/#performance-knobs) covers the practical knobs (occlusion-mask resolution, caster counts).
 
-## Next Steps
+## Next steps
 
 - [Shadows guide](../shadows-setup/) — Opt-in flags, `shadowRadius`, elevation setup, and tuning uniforms
 - [2D Lighting](../lighting/) — The Forward+ pipeline shadows plug into

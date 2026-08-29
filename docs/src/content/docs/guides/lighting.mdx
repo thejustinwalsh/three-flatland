@@ -24,7 +24,7 @@ three-flatland provides a complete 2D lighting system. Add `Light2D` instances a
 
 You don't need to understand Forward+, SDF tracing, or per-tile slot allocation to make a torch work — drop a `DefaultLightEffect` in, add a `Light2D`, your sprite gets lit. This page is the mental model: how lights reach the GPU, why dense scenes have a slot budget, and where shadows fit. For the step-by-step setup, the `Light2D` field reference, and the quota-tuning knobs, see the [Lighting guide](../lighting-setup/).
 
-## How It Works
+## How it works
 
 1. **Light2D** — scene graph objects that define light sources (point, spot, directional, ambient)
 2. **LightEffect** — a shader pipeline that reads all lights and produces per-fragment lighting
@@ -36,7 +36,7 @@ Flatland manages the lifecycle: it collects lights, syncs them to a GPU texture 
 
 `DefaultLightEffect`, the recommended preset, runs Forward+ tiled lighting: the screen is divided into tiles, each tile culls the lights that can't reach it, and the fragment shader iterates only the survivors. The per-fragment cost scales with lights *per tile*, not lights in the scene — a room with 200 lights costs the same per fragment as a room with 16, as long as no single tile is oversubscribed.
 
-## Tiled Lighting and the Slot Budget
+## Tiled lighting and the slot budget
 
 Forward+ gives each tile at most `MAX_LIGHTS_PER_TILE` (default `16`) light slots. In a sparsely lit room that ceiling is invisible — every torch fits in every tile and ranking doesn't matter. Pack the same room with 1000 glowing slimes and the picture changes: the tile budget becomes the bottleneck, and a misallocation will visibly push hero torches out of slots, dropping rooms into darkness despite the physical light still being present. The natural failure mode is a checkerboard of dark tiles where cosmetic fills won the slots and lit tiles where they didn't.
 
@@ -60,7 +60,7 @@ Hero lights (`castsShadow: true`) trace shadows against a signed-distance field 
 
 For the occlusion pipeline, occluder setup, and the per-light tracing math, see [Shadows](../shadows/).
 
-## Normal-Based Diffuse Shading
+## Normal-Based diffuse shading
 
 `DefaultLightEffect` reads a per-fragment normal when one is available, giving sprites directional diffuse response instead of flat illumination. Normals come from a baked normal-map atlas attached via `NormalMapProvider`; without one, surfaces are treated as flat (facing the camera) and lighting still works. The atlas's blue channel encodes elevation, which the effect consumes for elevation-aware shading.
 
@@ -101,7 +101,7 @@ The tiled architecture is what makes the lighting scale, and a few habits keep i
 - Toggle `light.enabled` rather than adding and removing lights; a disabled light is culled before the per-tile upload.
 - Set `lit: false` on sprites that never need lighting (UI, light indicators) so they skip the effect entirely.
 
-## Next Steps
+## Next steps
 
 - [Lighting guide](../lighting-setup/) — Setup, `Light2D` types, presets, animation, and quota tuning
 - [Lighting Example](../../examples/lighting/) — Interactive demo with draggable lights
