@@ -79,7 +79,7 @@ The plugin sets `apply: 'serve'` internally — it's inert during production bui
 The dashboard's own assets are served by Vite via `/@fs/`, `/@vite/client`, and `node_modules/.vite/` — none of which are namespaced under the mount path. If your app sits behind a proxy (microfrontends, reverse proxy, etc.), open the dashboard at the underlying Vite port directly rather than the proxy origin.
 :::
 
-## Scene-Side wiring (Flatland)
+## Scene-side wiring (Flatland)
 
 Flatland users have nothing to wire up. When `DEVTOOLS_BUNDLED` is true (Vite sets `import.meta.env.DEV` in dev) and `isDevtoolsActive()` returns true at runtime, Flatland constructs its own `DevtoolsProvider` in its constructor and pumps stats into the bus on every `flatland.render(renderer)` call:
 
@@ -139,7 +139,7 @@ The runtime gate `isDevtoolsActive()` returns `false` when `window.__FLATLAND_DE
 The provider is a no-op stub when devtools isn't active, so per-frame cost stays negligible even when no dashboard is connected. Leaving devtools wiring in your scene code is free in production.
 :::
 
-## Scene-Side wiring (Plain Three.js)
+## Scene-side wiring (plain Three.js)
 
 If you're driving three.js directly — no Flatland — call `createDevtoolsProvider()` from `three-flatland` and bracket your render call with `beginFrame` / `endFrame`:
 
@@ -177,7 +177,7 @@ Multi-pass renderers (SDF pass, occlusion pass, post-processing) work correctly:
 
 In production (when `DEVTOOLS_BUNDLED` is `false`), `createDevtoolsProvider` returns a no-op stub; `beginFrame`/`endFrame`/`dispose` all become empty calls that minify away.
 
-## In-Page Tweakpane controls
+## In-page Tweakpane controls
 
 `@three-flatland/devtools` wraps [Tweakpane v4](https://tweakpane.github.io/docs/) with a Flatland-themed pane that mounts directly into your page. Because it consumes the same bus as the standalone dashboard, the pane needs no scene wiring of its own — it discovers any provider the page has constructed and streams stats from it.
 

@@ -313,7 +313,7 @@ Assigning these is a `.value =` write on a TSL uniform node — costs nothing. A
 | `lightHeight` | `0.75` | Universal +Z component added to every light's direction — higher reads as more top-lit. |
 | `rimIntensity` | `0` | Strength of the rim-lighting accumulator. Rim power is fixed at `(1 − N·L)²`. |
 
-### Compile-Time constants (writable, but each write rebuilds)
+### Compile-time constants (writable, but each write rebuilds)
 
 These are stored as primitive constants on the effect instance. Setting them is legal at runtime, but each assignment triggers a shader rebuild and emits a dev-mode warning:
 
@@ -352,7 +352,7 @@ The following fields existed in earlier versions and have been removed. If you'r
 - **`rimPower`** — rim sharpness is now hardcoded as `(1 − N·L)²`. Saves a per-light `pow()` (an SFU instruction) for the case nobody actually slid at runtime. Fork the effect if you need a different curve.
 - **`capShadowStrength`** / **`capShadowThreshold`** — the manual wall-cap darkening hack is replaced by elevation-aware N·L. Walls whose elevation exceeds `lightHeight` physically receive a negative L.z, clamp N·L to zero, and end up with only ambient — no special-case uniform required.
 
-### `categoryQuotas` — JSX-Only sugar
+### `categoryQuotas` — JSX-only sugar
 
 `DefaultLightEffect` instances expose a `categoryQuotas` accessor that proxies to the underlying `forwardPlus.setFillQuota(category, quota)` API. It's purely a declarative convenience for JSX users who don't want to grab a ref and reach into `forwardPlus`:
 

@@ -25,7 +25,7 @@ A single distance field serves every hero light, so occlusion cost is shared acr
 
 <Diagram caption="The shadow pipeline — casters become an occlusion mask, JFA builds a signed distance field, and each lit fragment sphere-traces toward the light through it" src={shadowTrace} />
 
-## Self-Shadowing
+## Self-shadowing
 
 The first time you mark a sprite as a caster, a question arises: the sprite *is* an occluder, so the shadow trace starts inside its own silhouette. Without an escape, every fragment of every caster would self-shadow against itself.
 
@@ -37,7 +37,7 @@ shadowRadius = max(Math.abs(scale.x), Math.abs(scale.y))
 
 This tracks scale changes automatically and covers animated sprites whose source frame size differs (e.g. `AnimatedSprite2D` updates `scale` from `frame.sourceWidth/Height`). For most scenes you set `castsShadow = true` and never think about `shadowRadius` again. When you do need to override it — transparent art padding, non-uniform scale, a tighter escape — the [Shadows guide](../shadows-setup/#self-shadow-and-shadowradius) covers the manual knobs.
 
-## Elevation-Aware shadows
+## Elevation-aware shadows
 
 <Diagram caption="Why elevated wall caps go dark — a light's +Z component is lightHeight − elevation, so caps above the torch get a negative L.z and N·L clamps to zero." src={shadowElevation} />
 

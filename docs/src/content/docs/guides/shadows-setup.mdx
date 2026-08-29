@@ -99,7 +99,7 @@ Tilemap walls are the bulk of static occluders in most scenes. Rather than taggi
 
 `markOccluders(typeNames, layerIndex?)` walks every object layer, finds objects whose `type` matches, and flips the per-tile cast-shadow bit on the matching tile in the target layer (default: layer `0`). See the [Tilemaps guide](../tilemaps/#shadow-casting) for the deeper story on per-tile flag bits and how they interact with layer-level toggles.
 
-## Self-Shadow and `shadowRadius`
+## Self-shadow and `shadowRadius`
 
 A caster *is* an occluder, so the shadow trace starts inside its own silhouette. Each caster carries a per-instance `shadowRadius` — the world-units distance the trace skips before sampling the SDF — to escape self-shadowing. By default it auto-derives from the sprite's scale every frame (`max(|scale.x|, |scale.y|)`), so for most scenes you set `castsShadow = true` and never touch it. For why the escape is needed and how auto-derivation works, see [Self-Shadowing](../shadows/#self-shadowing).
 
@@ -124,7 +124,7 @@ sprite.shadowRadius = 28  // tighter than auto-derived ~64
 lighting.shadowStartOffsetScale = 1.2
 ```
 
-## Enabling Elevation-Aware shadows
+## Enabling Elevation-aware shadows
 
 `DefaultLightEffect` shapes light by elevation automatically once a sprite provides a per-fragment `elevation` channel — wall caps stop receiving direct light because they sit above the torch in the lighting math. The mechanism and the `L = normalize(vec3(toLight2D, lightHeight - elevation))` math live in [Elevation-Aware Shadows](../shadows/#elevation-aware-shadows). To turn it on:
 

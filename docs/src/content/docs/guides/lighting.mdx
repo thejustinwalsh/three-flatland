@@ -60,7 +60,7 @@ Hero lights (`castsShadow: true`) trace shadows against a signed-distance field 
 
 For the occlusion pipeline, occluder setup, and the per-light tracing math, see [Shadows](../shadows/).
 
-## Normal-Based diffuse shading
+## Normal-based diffuse shading
 
 `DefaultLightEffect` reads a per-fragment normal when one is available, giving sprites directional diffuse response instead of flat illumination. Normals come from a baked normal-map atlas attached via `NormalMapProvider`; without one, surfaces are treated as flat (facing the camera) and lighting still works. The atlas's blue channel encodes elevation, which the effect consumes for elevation-aware shading.
 

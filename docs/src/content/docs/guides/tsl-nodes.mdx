@@ -101,7 +101,7 @@ The `node` callback receives:
   </TabItem>
 </Tabs>
 
-### Closure-Captured textures
+### Closure-captured textures
 
 Effects that need texture references can capture them via closures. The `node` callback runs once during shader compilation:
 
@@ -118,7 +118,7 @@ const Dissolve = createMaterialEffect({
 
 See the [TSL Nodes example](../../examples/tsl-nodes/) for all 8 effects in action.
 
-## Low-Level TSL usage :badge[Advanced]{variant=note}
+## Low-level TSL usage :badge[Advanced]{variant=note}
 
 For full shader control, you can compose TSL nodes directly on a `MeshBasicNodeMaterial`. This is useful for custom materials outside the sprite pipeline:
 

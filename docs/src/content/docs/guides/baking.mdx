@@ -92,7 +92,7 @@ When the runtime probes the sidecar:
 3. Parse the `flatland` `tEXt` chunk and compare its `hash` to what the loader would have used.
 4. **Match** → load the baked PNG directly. **Mismatch** → re-bake in memory and warn.
 
-## Dev-Time staleness warnings
+## Dev-time staleness warnings
 
 `devtimeWarn` is the shared warning channel — gated on `NODE_ENV !== 'production'` and deduped per `(category, url)` so the same message never fires twice. Sidecar-aware loaders use it uniformly across the ecosystem (currently just `normal`; future bakers slot into the same surface).
 
@@ -141,7 +141,7 @@ The choice is about *when* the work happens:
 
 In production, ship baked siblings and the loader becomes a single-image-fetch with no decode overhead. In development, skip the bake step entirely and let the runtime regenerate — much faster than re-running the CLI on every descriptor tweak.
 
-## Browser-Generated assets
+## Browser-generated assets
 
 `forceRuntime: true` declares **the browser is where this asset's normal map is produced** — not the CI bake step. The contract that "if you ask for normals, you get normals" doesn't change; only *where* the bake runs does.
 
