@@ -461,6 +461,11 @@ export abstract class LightEffect {
     return false
   }
 
+  /** Build shadow-capture mips for conservative hierarchical grid traversal. */
+  get shadowCaptureMipmaps(): boolean {
+    return false
+  }
+
   /**
    * Processing-resolution multiplier for resources owned by this effect.
    * The default `1` receives the full physical drawing-buffer size; `0.5`
@@ -752,6 +757,8 @@ interface LightEffectConfig<S extends EffectSchema, C extends readonly ChannelNa
   shadowCaptureResolutionScale?: number | ((this: LightEffectInstance<S>) => number)
   /** Snap the capture origin to whole binary-shadow texels. */
   shadowCaptureGridAligned?: boolean | ((this: LightEffectInstance<S>) => boolean)
+  /** Build binary-shadow mips for hierarchical empty-space skipping. */
+  shadowCaptureMipmaps?: boolean | ((this: LightEffectInstance<S>) => boolean)
   /** Per-fragment channels this effect requires (e.g., ['normal'] as const). */
   requires?: C
   /**
@@ -825,6 +832,7 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
     shadowCaptureMargin,
     shadowCaptureResolutionScale,
     shadowCaptureGridAligned,
+    shadowCaptureMipmaps,
     requires: requiredChannels = [] as unknown as C,
     light: lightFn,
     init: initHook,
@@ -867,6 +875,12 @@ export function createLightEffect<const S extends EffectSchema, const C extends 
           ? shadowCaptureResolutionScale.call(this as unknown as LightEffectInstance<S>)
           : shadowCaptureResolutionScale
       return Number.isFinite(scale) && scale > 0 ? scale : undefined
+    }
+
+    override get shadowCaptureMipmaps(): boolean {
+      return typeof shadowCaptureMipmaps === 'function'
+        ? shadowCaptureMipmaps.call(this as unknown as LightEffectInstance<S>)
+        : (shadowCaptureMipmaps ?? false)
     }
 
     override get shadowCaptureGridAligned(): boolean {

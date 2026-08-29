@@ -133,6 +133,7 @@ export function shadowPipelineSystem(world: World): void {
     pipeline.onResourcesChanged?.(pipeline.sdfGenerator, pipeline.occlusionPass)
   }
   pipeline.occlusionPass.resolutionScale = effect?.shadowCaptureResolutionScale ?? 0.5
+  if (pipeline.occlusionPass.setMipmapsEnabled(effect?.shadowCaptureMipmaps ?? false)) mustRegen = true
   // Size from the active LightEffect processing surface (the physical render
   // surface multiplied by effect.resolutionScale). Using the trait keeps shadow
   // buffers in the same coordinate space as the effect-owned resources.

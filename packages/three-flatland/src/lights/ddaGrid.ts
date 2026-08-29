@@ -1,5 +1,5 @@
 import type { Texture } from 'three'
-import { Break, If, Loop, float, floor, int, ivec2, textureLoad, vec2, vec3, vec4 } from 'three/tsl'
+import { Break, Continue, If, Loop, float, floor, int, ivec2, textureLoad, uint, vec2, vec3, vec4 } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import { worldToUV } from './coordUtils'
 
@@ -189,7 +189,8 @@ export function traceDdaIntegerRadiance(
   worldOffset: Node<'vec2'>,
   gridWidth: number,
   gridHeight: number,
-  maxSteps: number
+  maxSteps: number,
+  coarseMipLevel = 0
 ): Node<'vec4'> {
   const gridSize = vec2(float(gridWidth), float(gridHeight)).toConst()
   const occlusionAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
@@ -201,6 +202,15 @@ export function traceDdaIntegerRadiance(
     return vec2(sample.r, sample.a)
   }
   const emissionAt = (cell: Node<'ivec2'>): Node<'vec3'> => textureLoad(emissiveTexture, cell).rgb.toConst()
+  const coarseScale = 2 ** coarseMipLevel
+  const coarseMipNode = uint(coarseMipLevel).toConst()
+  const coarseSignalThreshold = float(0.5 / (coarseScale * coarseScale)).toConst()
+  const coarseSignalAt = (cell: Node<'ivec2'>): Node<'vec2'> => {
+    const coarseCell = ivec2(cell.x.div(int(coarseScale)), cell.y.div(int(coarseScale))).toConst()
+    const coarseOcclusion = textureLoad(occlusionTexture, coarseCell, coarseMipNode).toConst()
+    const coarseEmission = textureLoad(emissiveTexture, coarseCell, coarseMipNode).rgb.toConst()
+    return vec2(coarseOcclusion.a, coarseEmission.dot(coarseEmission))
+  }
 
   const startWorld = rayOrigin.add(rayDirection.mul(traceEntry)).toConst()
   const startWorldUV = worldToUV(startWorld, worldSize, worldOffset).clamp(0, 1).toConst()
@@ -269,6 +279,66 @@ export function traceDdaIntegerRadiance(
 
   If(intersectsWorld, () => {
     Loop(maxSteps, () => {
+      if (coarseMipLevel > 0) {
+        // A mip texel represents a conservative coarse cell: automatic box
+        // filtering preserves any binary caster above `0.5 / area`, while the
+        // emissive mip catches luminous pixels that intentionally do not cast
+        // shadows. Values are still resolved only from mip 0. Empty blocks
+        // can therefore skip directly to their exit without changing hits.
+        const coarseSignal = coarseSignalAt(cell).toConst()
+        const coarseEmpty = coarseSignal.x
+          .lessThan(coarseSignalThreshold)
+          .and(coarseSignal.y.lessThan(float(1e-12)))
+          .and(receiverPending.lessThan(float(0.5)))
+          .and(emitterPending.lessThan(float(0.5)))
+          .toConst()
+        If(coarseEmpty, () => {
+          const remainderX = cell.x.mod(int(coarseScale)).toConst()
+          const remainderY = cell.y.mod(int(coarseScale)).toConst()
+          const cellsToBoundaryX = stepDirection.x
+            .greaterThan(int(0))
+            .select(int(coarseScale).sub(remainderX), remainderX.add(int(1)))
+            .toConst()
+          const cellsToBoundaryY = stepDirection.y
+            .greaterThan(int(0))
+            .select(int(coarseScale).sub(remainderY), remainderY.add(int(1)))
+            .toConst()
+          const coarseCrossingX = parallelX
+            .select(int(DDA_TIME_SENTINEL), tMax.x.add(tDelta.x.mul(cellsToBoundaryX.sub(int(1)))))
+            .toConst()
+          const coarseCrossingY = parallelY
+            .select(int(DDA_TIME_SENTINEL), tMax.y.add(tDelta.y.mul(cellsToBoundaryY.sub(int(1)))))
+            .toConst()
+          // At an exact coarse corner, fall back to the fine supercover walk
+          // so both side-adjacent cells are tested before the diagonal cell.
+          const coarseCorner = coarseCrossingX.sub(coarseCrossingY).abs().lessThanEqual(int(1)).toConst()
+          If(coarseCorner.not(), () => {
+            const skipCrossing = coarseCrossingX
+              .lessThan(coarseCrossingY)
+              .select(coarseCrossingX, coarseCrossingY)
+              .toConst()
+            If(skipCrossing.greaterThanEqual(traceSpan), () => {
+              result.assign(float(1))
+              Break()
+            })
+
+            const crossesX = tMax.x
+              .lessThanEqual(skipCrossing)
+              .select(skipCrossing.sub(tMax.x).div(tDelta.x).add(int(1)), int(0))
+              .toConst()
+            const crossesY = tMax.y
+              .lessThanEqual(skipCrossing)
+              .select(skipCrossing.sub(tMax.y).div(tDelta.y).add(int(1)), int(0))
+              .toConst()
+            cell.x.addAssign(stepDirection.x.mul(crossesX))
+            cell.y.addAssign(stepDirection.y.mul(crossesY))
+            tMax.x.addAssign(tDelta.x.mul(crossesX))
+            tMax.y.addAssign(tDelta.y.mul(crossesY))
+            Continue()
+          })
+        })
+      }
+
       acceptEmission(emissionAt(cell))
       const currentOcclusion = occlusionAt(cell).toConst()
       const currentOccupied = currentOcclusion.y.greaterThan(float(0.5)).toConst()

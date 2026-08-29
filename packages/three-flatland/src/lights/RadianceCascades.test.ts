@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DataTexture, FloatType, LinearFilter, NearestFilter, RGBAFormat, UnsignedByteType, Vector2 } from 'three'
+import {
+  DataTexture,
+  FloatType,
+  LinearFilter,
+  NearestFilter,
+  NearestMipmapNearestFilter,
+  RGBAFormat,
+  UnsignedByteType,
+  Vector2,
+} from 'three'
 import { uniform } from 'three/tsl'
 import {
   DDA_FIXED_RADIANCE_CASCADES_CONFIG,
@@ -53,8 +62,12 @@ describe('RadianceCascades', () => {
         texture: { type: number; minFilter: number; magFilter: number }
       }>
       _finalRadianceRT: { width: number; height: number; texture: { minFilter: number; magFilter: number } }
+      _emissiveRadianceRT: {
+        texture: { generateMipmaps: boolean; minFilter: number }
+      }
     }
     expect(radiance.requiresSdf).toBe(false)
+    expect(radiance.ddaHierarchyLevel).toBe(2)
     expect(internals._cascadeRTs).toHaveLength(4)
     // 360×240 / 4 = a 90×60 visible integer grid. One 8-cell guard page
     // produces 98×68 output cells; cascade atlases pad that to 104×72 so all
@@ -66,6 +79,8 @@ describe('RadianceCascades', () => {
     expect(internals._finalRadianceRT.width).toBe(98)
     expect(internals._finalRadianceRT.height).toBe(68)
     expect(internals._finalRadianceRT.texture.magFilter).toBe(NearestFilter)
+    expect(internals._emissiveRadianceRT.texture.generateMipmaps).toBe(true)
+    expect(internals._emissiveRadianceRT.texture.minFilter).toBe(NearestMipmapNearestFilter)
     expect(radiance.cascadeStorageBytesPerTexel).toBe(4)
     expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 416 * 288 * 4)
     expect(radiance.estimatedRaymarchSampleCount).toBeGreaterThan(radiance.estimatedRaymarchTexelCount)

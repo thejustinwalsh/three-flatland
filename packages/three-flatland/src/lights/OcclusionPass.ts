@@ -10,7 +10,9 @@ import {
   type ColorRepresentation,
   Color,
   NearestFilter,
+  NearestMipmapNearestFilter,
   LinearFilter,
+  LinearMipmapLinearFilter,
   type Vector2,
 } from 'three'
 import type { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
@@ -57,6 +59,8 @@ export interface OcclusionPassOptions {
    * anti-aliased silhouette.
    */
   linearFilter?: boolean
+  /** Build an averaged mip chain for conservative hierarchical grid traversal. */
+  generateMipmaps?: boolean
 }
 
 /**
@@ -78,8 +82,11 @@ export class OcclusionPass {
   private _resolutionScale: number
   private _clearColor: Color
   private _clearAlpha: number
+  private _linearFilter: boolean
+  private _mipmapsEnabled: boolean
 
   private _rt: RenderTarget
+  private _retiredRTs: RenderTarget[] = []
   private _width = 1
   private _height = 1
 
@@ -129,14 +136,10 @@ export class OcclusionPass {
     this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
     this._clearAlpha = options.clearAlpha ?? 0
+    this._linearFilter = options.linearFilter ?? false
+    this._mipmapsEnabled = options.generateMipmaps ?? false
 
-    this._rt = new RenderTarget(this._width, this._height, {
-      depthBuffer: false,
-      stencilBuffer: false,
-    })
-    const filter = options.linearFilter ? LinearFilter : NearestFilter
-    this._rt.texture.minFilter = filter
-    this._rt.texture.magFilter = filter
+    this._rt = this._createRenderTarget()
 
     registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
       display: 'alpha',
@@ -166,6 +169,38 @@ export class OcclusionPass {
 
   get height(): number {
     return this._height
+  }
+
+  setMipmapsEnabled(enabled: boolean): boolean {
+    this._assertUsable('setMipmapsEnabled')
+    if (enabled === this._mipmapsEnabled) return false
+    const retired = this._rt
+    this._mipmapsEnabled = enabled
+    this._rt = this._createRenderTarget()
+    this._retiredRTs.push(retired)
+    unregisterDebugTexture('occlusion.mask')
+    registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
+      display: 'alpha',
+      label: 'Occlusion mask',
+    })
+    return true
+  }
+
+  private _createRenderTarget(): RenderTarget {
+    const target = new RenderTarget(this._width, this._height, {
+      depthBuffer: false,
+      stencilBuffer: false,
+    })
+    target.texture.minFilter = this._linearFilter
+      ? this._mipmapsEnabled
+        ? LinearMipmapLinearFilter
+        : LinearFilter
+      : this._mipmapsEnabled
+        ? NearestMipmapNearestFilter
+        : NearestFilter
+    target.texture.magFilter = this._linearFilter ? LinearFilter : NearestFilter
+    target.texture.generateMipmaps = this._mipmapsEnabled
+    return target
   }
 
   /**
@@ -333,6 +368,7 @@ export class OcclusionPass {
     this._disposed = true
 
     const materials = Array.from(this._occlusionMaterials.values())
+    const retiredRTs = this._retiredRTs.splice(0)
     this._occlusionMaterials.clear()
     let firstError: unknown
     let didError = false
@@ -349,6 +385,7 @@ export class OcclusionPass {
 
     runCleanup(() => unregisterDebugTexture('occlusion.mask'))
     runCleanup(() => this._rt.dispose())
+    for (const target of retiredRTs) runCleanup(() => target.dispose())
     for (const material of materials) runCleanup(() => material.dispose())
     if (didError) throw firstError
   }

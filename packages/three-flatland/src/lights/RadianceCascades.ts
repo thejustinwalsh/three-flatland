@@ -3,6 +3,7 @@ import {
   HalfFloatType,
   LinearFilter,
   NearestFilter,
+  NearestMipmapNearestFilter,
   ClampToEdgeWrapping,
   RepeatWrapping,
   DataTexture,
@@ -387,6 +388,8 @@ export interface RadianceCascadesConfig {
   lightSourceRadius: number
   /** Full-resolution scene texels represented by one logical DDA lighting pixel. */
   ddaPixelSize: number
+  /** Structural conservative empty-space hierarchy level. `0` keeps fine-cell traversal only. */
+  readonly ddaHierarchyLevel: number
   /** Fixed-point precision stored in each RGBA8 cascade channel. */
   ddaQuantizationBits: number
   /** Maximum linear radiance represented by a packed cascade RGB channel. */
@@ -422,6 +425,7 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
   wideLevels: 1,
   lightSourceRadius: 0,
   ddaPixelSize: 4,
+  ddaHierarchyLevel: 0,
   ddaQuantizationBits: 8,
   ddaRadianceRange: 1,
   ddaBleedThreshold: 0.65,
@@ -444,6 +448,7 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   wideDownsampleFactor: 2,
   wideLevels: 1,
   ddaPixelSize: 4,
+  ddaHierarchyLevel: 2,
   ddaQuantizationBits: 8,
   ddaRadianceRange: 1,
   ddaBleedThreshold: 0.65,
@@ -583,7 +588,11 @@ export class RadianceCascades {
   private _autoCascadeResolution: boolean
 
   constructor(config?: Partial<RadianceCascadesConfig>) {
-    this._config = { ...DEFAULT_CONFIG, ...config }
+    const mergedConfig = { ...DEFAULT_CONFIG, ...config }
+    this._config = {
+      ...mergedConfig,
+      ddaHierarchyLevel: Math.max(0, Math.min(3, Math.round(mergedConfig.ddaHierarchyLevel))),
+    }
     this._autoBaseInterval = this._config.baseInterval <= 0
     this._autoCascadeResolution = this._config.cascadeResolution <= 0
 
@@ -614,9 +623,10 @@ export class RadianceCascades {
     this._finalRadianceRT = new RenderTarget(probeCount, probeCount, finalOptions)
     this._emissiveRadianceRT = new RenderTarget(probeCount, probeCount, {
       ...finalOptions,
-      minFilter: NearestFilter,
+      minFilter: this._config.ddaHierarchyLevel > 0 ? NearestMipmapNearestFilter : NearestFilter,
       magFilter: NearestFilter,
     })
+    this._emissiveRadianceRT.texture.generateMipmaps = this._config.ddaHierarchyLevel > 0
     this.raymarchSteps = this._config.raymarchSteps
     this.filterRadius = this._config.filterRadius
     this.filterStrength = this._config.filterStrength
@@ -737,6 +747,10 @@ export class RadianceCascades {
       this._resizeFinalRadianceTargets()
       this._rebuildCascadeRTs()
     }
+  }
+
+  get ddaHierarchyLevel(): number {
+    return this._config.ddaHierarchyLevel
   }
 
   get ddaQuantizationBits(): number {
@@ -1674,7 +1688,8 @@ export class RadianceCascades {
           transportWorldOffset,
           ddaGridWidth,
           ddaGridHeight,
-          ddaMaxSteps
+          ddaMaxSteps,
+          config.ddaHierarchyLevel
         )
         intervalRadiance.assign(visibility.rgb)
         intervalTransmittance.assign(

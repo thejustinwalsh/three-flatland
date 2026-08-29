@@ -236,6 +236,7 @@ const fixedRc = new RadianceCascades({
   mipBlur: 0,
   mipStrength: 0,
   ddaPixelSize: 2,
+  ddaHierarchyLevel: 2,
   ddaQuantizationBits: 8,
   ddaRadianceRange: 8,
   ddaBleedThreshold: 0.65,

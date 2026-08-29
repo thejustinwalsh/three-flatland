@@ -40,6 +40,9 @@ export const DdaFixedRadianceLightEffect = createLightEffect({
     return 1 / this.radiance.ddaPixelSize
   },
   shadowCaptureGridAligned: true,
+  shadowCaptureMipmaps() {
+    return this.radiance.ddaHierarchyLevel > 0
+  },
   light: ({ uniforms, constants, lightStore }) => {
     const radianceIntensity = uniforms.radianceIntensity
     const lightHeight = uniforms.lightHeight

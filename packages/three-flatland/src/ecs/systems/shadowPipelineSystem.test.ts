@@ -43,6 +43,7 @@ function makeOcclusionPass() {
     renderTarget: {},
     render: vi.fn(),
     resize: vi.fn(),
+    setMipmapsEnabled: vi.fn(),
     dispose: vi.fn(),
   }
 }
@@ -65,6 +66,7 @@ interface SetupOpts {
   occludersDirty?: boolean
   shadowPipelineMode?: 'sdf' | 'occlusion'
   shadowCaptureResolutionScale?: number
+  shadowCaptureMipmaps?: boolean
   /** Overrides merged onto the effect's `constants` (DefaultLightEffect-style). */
   constants?: Record<string, unknown>
 }
@@ -77,6 +79,7 @@ function setup(world: World, opts: SetupOpts = {}) {
         needsShadows: true,
         shadowPipelineMode: opts.shadowPipelineMode,
         shadowCaptureResolutionScale: opts.shadowCaptureResolutionScale,
+        shadowCaptureMipmaps: opts.shadowCaptureMipmaps,
         light: () => stubLightFn,
       })
     : ShadowEffectClass()
@@ -195,6 +198,17 @@ describe('shadowPipelineSystem — occluder-dirty gate', () => {
     expect(occlusionPass.resolutionScale).toBe(0.125)
     expect(occlusionPass.resize).toHaveBeenCalledWith(640, 360)
     expect(sdfGenerator.init).not.toHaveBeenCalled()
+  })
+
+  it('enables binary capture mips for hierarchical grid traversal', () => {
+    const { occlusionPass } = setup(world, {
+      shadowPipelineMode: 'occlusion',
+      shadowCaptureMipmaps: true,
+    })
+
+    shadowPipelineSystem(world)
+
+    expect(occlusionPass.setMipmapsEnabled).toHaveBeenCalledWith(true)
   })
 
   it('does not resize either scaled shadow resource when rounding keeps their size unchanged', () => {
