@@ -15,7 +15,12 @@ interface RenderInfo {
 }
 
 interface RendererLike {
-  info?: { render?: RenderInfo; memory?: { geometries: number; textures: number }; frame?: number }
+  info?: {
+    render?: RenderInfo
+    compute?: RenderInfo
+    memory?: { geometries: number; textures: number }
+    frame?: number
+  }
   backend?: {
     trackTimestamp?: boolean
     constructor?: { name?: string }
@@ -203,7 +208,7 @@ export class StatsCollector {
 
     // The feature probe is a cheap gate, not proof of capability:
     // backends like Safari WebGPU may expose `timestamp-query` yet
-    // never return a non-zero `info.render.timestamp` in practice. So
+    // never return a non-zero render or compute timestamp in practice. So
     // we use the probe only to skip the API call on hopeless backends
     // (WebGL2 without disjoint, etc) and let `_gpuCapable` flip true
     // ONLY after we observe a real positive timestamp below. That
@@ -224,11 +229,15 @@ export class StatsCollector {
     if (!fn) return
 
     this._gpuResolveInFlight = true
-    void Promise.resolve(fn('render'))
+    void Promise.all([fn('render'), fn('compute')])
       .then(() => {
         this._gpuResolveInFlight = false
-        const gpuMs = renderer.info?.render?.timestamp
-        if (typeof gpuMs !== 'number' || gpuMs <= 0) return
+        const renderMs = renderer.info?.render?.timestamp
+        const computeMs = renderer.info?.compute?.timestamp
+        const gpuMs =
+          (typeof renderMs === 'number' && renderMs > 0 ? renderMs : 0) +
+          (typeof computeMs === 'number' && computeMs > 0 ? computeMs : 0)
+        if (gpuMs <= 0) return
         // First positive timestamp confirms the renderer actually emits
         // GPU timing — flip `_gpuCapable` here, not at probe time. Once
         // verified it stays verified for the session.
@@ -248,10 +257,10 @@ export class StatsCollector {
         this._lastResolvedGpuMs = gpuMs
 
         // Ask three.js which frame id this duration belongs to.
-        // `getTimestampFrames('render')` returns the array of tjs
-        // frame ids that were in the just-resolved batch; the LAST
-        // entry matches `info.render.timestamp` (per three.js's
-        // `WebGPUTimestampQueryPool._resolveQueries`).
+        // Each timestamp pool returns the frame ids in its just-resolved
+        // batch. Render and compute are separate pools in three.js, so use
+        // the newest frame represented by either pool for the combined
+        // frame duration.
         //
         // **Coalescing caveat**: three.js's `resolveQueriesAsync`
         // uses a `pendingResolve` guard — multiple calls made while
@@ -261,9 +270,15 @@ export class StatsCollector {
         // `framesDuration[frame]` internally but only returns the
         // LAST frame's value. We can't recover the intermediate
         // frames' individual durations — they're aggregated away.
-        const frames = renderer.backend?.getTimestampFrames?.('render')
-        if (!frames || frames.length === 0) return
-        const tjsFrame = frames[frames.length - 1]!
+        const renderFrames = renderer.backend?.getTimestampFrames?.('render') ?? []
+        const computeFrames = renderer.backend?.getTimestampFrames?.('compute') ?? []
+        const renderFrame = renderFrames.at(-1)
+        const computeFrame = computeFrames.at(-1)
+        const tjsFrame = Math.max(
+          typeof renderFrame === 'number' ? renderFrame : -1,
+          typeof computeFrame === 'number' ? computeFrame : -1
+        )
+        if (tjsFrame < 0) return
         const encoded = Math.min(65535, Math.round(gpuMs * 100))
 
         // Update EVERY slot we're still tracking with the new value.
@@ -311,7 +326,7 @@ export class StatsCollector {
     if (!detectGpuTimingActive(renderer.backend)) return
     const fn = renderer.resolveTimestampsAsync?.bind(renderer)
     if (!fn) return
-    void Promise.resolve(fn('render')).catch(() => {
+    void Promise.all([fn('render'), fn('compute')]).catch(() => {
       /* tearing down sampling */
     })
   }

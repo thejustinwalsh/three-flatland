@@ -998,7 +998,7 @@ async function main() {
     }
     const resolve = (
       renderer as unknown as {
-        resolveTimestampsAsync?: (type: 'render') => Promise<void>
+        resolveTimestampsAsync?: (type: 'render' | 'compute') => Promise<void>
       }
     ).resolveTimestampsAsync
     if (backend.device?.features?.has('timestamp-query') !== true || typeof resolve !== 'function') {
@@ -1013,13 +1013,24 @@ async function main() {
       for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame)
       for (let i = 0; i < requested * 3 && samples.length < requested; i++) {
         await new Promise(requestAnimationFrame)
-        await resolve.call(renderer, 'render')
-        const value = renderer.info.render.timestamp
+        await Promise.all([resolve.call(renderer, 'render'), resolve.call(renderer, 'compute')])
+        const timingInfo = renderer.info as unknown as {
+          render: { timestamp?: number }
+          compute?: { timestamp?: number }
+        }
+        const renderMs = timingInfo.render.timestamp
+        const computeMs = timingInfo.compute?.timestamp
+        const value =
+          (typeof renderMs === 'number' && renderMs > 0 ? renderMs : 0) +
+          (typeof computeMs === 'number' && computeMs > 0 ? computeMs : 0)
         if (Number.isFinite(value) && value > 0) samples.push(value)
       }
     } finally {
       if (previousTracking !== true) {
-        await resolve.call(renderer, 'render').catch(() => undefined)
+        await Promise.all([
+          resolve.call(renderer, 'render').catch(() => undefined),
+          resolve.call(renderer, 'compute').catch(() => undefined),
+        ])
         backend.trackTimestamp = previousTracking
       }
     }
