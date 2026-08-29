@@ -8,6 +8,19 @@
         "mcp"
       ],
       "enabled": true
+    },
+    "side-piece": {
+      "type": "local",
+      "command": [
+        "pnpm",
+        "exec",
+        "side-piece-mcp"
+      ],
+      "enabled": true,
+      "environment": {
+        "MCP_CLAUDE_DEBUG": "false"
+      }
     }
-  }
+  },
+  "$schema": "https://opencode.ai/config.json"
 }

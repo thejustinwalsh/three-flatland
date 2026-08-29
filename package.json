@@ -61,6 +61,7 @@
     "@size-limit/preset-small-lib": "^12.0.0",
     "@three-flatland/bake": "workspace:*",
     "@three-flatland/normals": "workspace:*",
+    "@tjw.dev/side-piece": "catalog:",
     "@types/dagre": "^0.7.54",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "^3.2.6",

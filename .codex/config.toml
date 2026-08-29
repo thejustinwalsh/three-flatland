@@ -8,3 +8,12 @@ multi_agent = true
 [agents.ci-monitor-subagent]
 description = "CI helper for /monitor-ci. Fetches CI status, retrieves fix details, or updates self-healing fixes. Executes one MCP tool call and returns the result."
 config_file = "agents/ci-monitor-subagent.toml"
+
+[mcp_servers.side-piece]
+command = "pnpm"
+args = ["exec", "side-piece-mcp"]
+startup_timeout_sec = 20
+tool_timeout_sec = 3600
+
+[mcp_servers.side-piece.env]
+MCP_CLAUDE_DEBUG = "false"

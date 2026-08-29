@@ -1,0 +1,25 @@
+# Codex skill sidecar. Optional, and read only by Codex.
+# https://learn.chatgpt.com/docs/build-skills
+interface:
+  display_name: side-piece
+  short_description: Route resumable reviews and delegated work to another model.
+  brand_color: "#8a1f2c"
+  default_prompt:
+    - Have another model review the working tree adversarially and cite file and line.
+    - Get a second opinion on this change from a model other than you.
+    - Resume the last side-piece session and push back on its weakest claim.
+
+policy:
+  # The skill should engage when the user names a model or asks for an outside
+  # read, without being invoked by name.
+  allow_implicit_invocation: true
+
+dependencies:
+  tools:
+    - type: mcp
+      value: side-piece
+      transport: stdio
+      description: >-
+        The side-piece MCP server. Provides run, wait, peek, get_result,
+        list_processes, kill_process, doctor, and models. Install it with
+        `npx side-piece install`.
