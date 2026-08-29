@@ -35,6 +35,7 @@ export {
   createRadianceCascadesConfig,
 } from './RadianceCascades'
 export type { RadianceCascadesConfig, RadianceCascadesQuality, RadianceCascadesTraversal } from './RadianceCascades'
+export type { DdaExecutionPath, ResolvedDdaExecutionPath } from './DdaAcceleration'
 export {
   HierarchicalRadianceCascades,
   HIERARCHICAL_RADIANCE_CASCADES_PRESETS,

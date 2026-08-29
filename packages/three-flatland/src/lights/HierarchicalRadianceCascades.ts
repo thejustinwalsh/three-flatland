@@ -294,6 +294,8 @@ const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
   holographicTraversal: 'sdf',
   ddaPixelSize: 4,
   ddaHierarchyLevel: 0,
+  ddaWebGpuAccelerationEnabled: false,
+  ddaExecutionPath: 'fragment',
   ddaBleedThreshold: 0.65,
   ddaQuantizationBits: 8,
   ddaTransferRange: 4,

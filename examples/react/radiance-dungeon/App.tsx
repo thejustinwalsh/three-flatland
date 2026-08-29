@@ -16,6 +16,7 @@ import {
   PixelPerfectCamera,
   attachLighting,
   attachEffect,
+  type DdaExecutionPath,
   type AnimationSetDefinition,
   type SpriteFrame,
 } from 'three-flatland/react'
@@ -323,6 +324,9 @@ function newInteriorWanderer(
 interface SceneProps {
   paused: boolean
   lightingEnabled: boolean
+  webGpuAcceleration: boolean
+  executionPath: DdaExecutionPath
+  onDdaDiagnostics: (path: string, fallback: string) => void
   ambient: number
   slimeCount: number
   pixelSize: number
@@ -913,11 +917,17 @@ function FlatlandScene(props: SceneProps) {
       const flatland = flatlandRef.current
       const effect = lightEffectRef.current
       if (effect) {
+        effect.radiance.ddaWebGpuAccelerationEnabled = props.webGpuAcceleration
+        effect.radiance.ddaExecutionPath = props.executionPath
         effect.radiance.ddaPixelSize = Math.max(1, Math.round(props.pixelSize))
         effect.radiance.ddaPaletteBands = Math.max(0, Math.round(props.paletteBands))
         effect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
         effect.radiance.filterRadius = 1.25
         effect.radiance.filterStrength = 0.85
+        props.onDdaDiagnostics(
+          effect.radiance.resolvedDdaExecutionPath,
+          effect.radiance.ddaAccelerationFallbackReason ?? 'none'
+        )
       }
       flatland?.render(renderer as unknown as WebGPURenderer)
       if (benchmarkEnabled && flatland) {
@@ -1081,6 +1091,23 @@ export default function App() {
 
   const light = usePaneFolder(pane, 'Lighting', { expanded: true })
   const [lightingEnabled] = usePaneInput(light, 'enabled', true)
+  const [webGpuAcceleration] = usePaneInput(light, 'WebGPU accel', true)
+  const [executionPath] = usePaneInput<DdaExecutionPath>(light, 'DDA path', 'auto', {
+    options: {
+      auto: 'auto',
+      fragment: 'fragment',
+      workgroup: 'webgpu-workgroup',
+      subgroup: 'webgpu-subgroup',
+    },
+  })
+  const [resolvedPath, setResolvedPath] = usePaneInput(light, 'active path', 'fragment', { readonly: true })
+  const [accelerationFallback, setAccelerationFallback] = usePaneInput(light, 'fallback', 'pending', {
+    readonly: true,
+  })
+  const updateDdaDiagnostics = (path: string, fallback: string) => {
+    if (path !== resolvedPath) setResolvedPath(path)
+    if (fallback !== accelerationFallback) setAccelerationFallback(fallback)
+  }
   const [pixelSize] = usePaneInput(light, 'DDA cell px', ART_WORLD_SCALE, {
     options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
   })
@@ -1146,6 +1173,9 @@ export default function App() {
             <FlatlandScene
               paused={paused}
               lightingEnabled={lightingEnabled}
+              webGpuAcceleration={webGpuAcceleration}
+              executionPath={executionPath}
+              onDdaDiagnostics={updateDdaDiagnostics}
               ambient={ambient}
               slimeCount={sceneSlimeCount}
               pixelSize={pixelSize}

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { Fn, workgroupBarrier } from 'three/tsl'
 import {
+  compileComputeNode,
   glslCompilerFailure,
   hasSemanticGLSLCompiler,
   nagaFailure,
@@ -14,6 +16,29 @@ function shader(output: string, backend: 'glsl' | 'wgsl'): ShaderSource {
 }
 
 describe('shader validators', () => {
+  it('compiles and exposes a WebGPU TSL compute stage', async () => {
+    const compute = Fn(() => {
+      workgroupBarrier()
+    })()
+      .compute(1, [1])
+      .setName('compute fixture')
+    const program = compileComputeNode(compute)
+
+    expect(program.diagnostics).toEqual([])
+    expect(program.computeShader).toMatch(/@compute\s+@workgroup_size\(\s*1,\s*1,\s*1\s*\)/)
+    const sources = program.computeShader
+      ? [
+          {
+            backend: 'wgsl' as const,
+            label: 'compute-fixture',
+            output: program.computeShader,
+            stage: 'compute' as const,
+          },
+        ]
+      : []
+    await expect(validateWGSL(sources)).resolves.toBeUndefined()
+  })
+
   it('accepts empty and single-backend batches', async () => {
     await expect(validateWGSL([])).resolves.toBeUndefined()
     await expect(

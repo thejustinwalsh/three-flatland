@@ -100,7 +100,6 @@ export function lightEffectSystem(world: World): void {
     ctx.effect.resize(ctx.surfaceSize.x, ctx.surfaceSize.y)
     ctx.resizePending = false
   }
-
 }
 
 /**

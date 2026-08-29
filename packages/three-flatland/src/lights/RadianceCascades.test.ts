@@ -1,6 +1,9 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { DataTexture, FloatType, LinearFilter, NearestFilter, RGBAFormat, UnsignedByteType, Vector2 } from 'three'
 import { uniform } from 'three/tsl'
+import type ComputeNode from 'three/src/nodes/gpgpu/ComputeNode.js'
+import { compileComputeNode, createShaderTexture, shaderSources, validateShaderSources } from '@three-flatland/tsl-test'
 import {
   DDA_FIXED_RADIANCE_CASCADES_CONFIG,
   RadianceCascades,
@@ -9,6 +12,13 @@ import {
 } from './RadianceCascades'
 
 describe('RadianceCascades', () => {
+  function exportComputeShader(label: string, source: string | null): void {
+    const directory = process.env.THREE_FLATLAND_SHADER_EXPORT_DIR
+    if (!directory || !source) return
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(`${directory}/${label}-compute.wgsl`, source)
+  }
+
   function createLightsTexture(): DataTexture {
     const texture = new DataTexture(new Float32Array(4 * 4), 1, 4, RGBAFormat, FloatType)
     texture.needsUpdate = true
@@ -59,6 +69,9 @@ describe('RadianceCascades', () => {
     }
     expect(radiance.requiresSdf).toBe(false)
     expect(radiance.ddaHierarchyLevel).toBe(2)
+    expect(radiance.ddaWebGpuAccelerationEnabled).toBe(true)
+    expect(radiance.ddaExecutionPath).toBe('auto')
+    expect(radiance.resolvedDdaExecutionPath).toBe('fragment')
     expect(internals._cascadeRTs).toHaveLength(4)
     // 360×240 / 4 = a 90×60 visible integer grid. One 8-cell guard page
     // produces 98×68 output cells; cascade atlases pad that to 104×72 so all
@@ -76,6 +89,18 @@ describe('RadianceCascades', () => {
     expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 416 * 288 * 4)
     expect(radiance.estimatedRaymarchSampleCount).toBeGreaterThan(radiance.estimatedRaymarchTexelCount)
 
+    radiance.dispose()
+  })
+
+  it('exposes independent hard and forced DDA acceleration gates', () => {
+    const radiance = new RadianceCascades(DDA_FIXED_RADIANCE_CASCADES_CONFIG)
+
+    radiance.ddaWebGpuAccelerationEnabled = false
+    radiance.ddaExecutionPath = 'webgpu-subgroup'
+
+    expect(radiance.ddaWebGpuAccelerationEnabled).toBe(false)
+    expect(radiance.ddaExecutionPath).toBe('webgpu-subgroup')
+    expect(radiance.resolvedDdaExecutionPath).toBe('fragment')
     radiance.dispose()
   })
 
@@ -460,6 +485,85 @@ describe('RadianceCascades', () => {
     radiance.filterStrength = 0.8
     expect(radiance.estimatedPassCount).toBe(10)
     radiance.dispose()
+  })
+
+  it('counts the reset dispatch required by each WebGPU DDA cascade', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeCount: 4,
+      ddaHierarchyLevel: 2,
+      filterRadius: 0,
+      filterStrength: 0,
+      mipStrength: 0,
+    })
+    const internals = radiance as unknown as {
+      _setResolvedDdaExecutionPath(path: 'fragment' | 'webgpu-workgroup', fallbackReason: null): void
+    }
+
+    expect(radiance.estimatedPassCount).toBe(8)
+    internals._setResolvedDdaExecutionPath('webgpu-workgroup', null)
+    expect(radiance.estimatedPassCount).toBe(12)
+    radiance.dispose()
+  })
+
+  it('compiles the integrated shared DDA builder for both WebGPU execution paths', async () => {
+    const lights = createShaderTexture()
+    const occlusion = createShaderTexture()
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeCount: 2,
+      baseRayCount: 4,
+      ddaPixelSize: 4,
+      ddaHierarchyLevel: 2,
+    })
+    radiance.init(16, 16, lights, uniform(0))
+    radiance.setProcessingSize(16, 16)
+    radiance.setOcclusionTexture(occlusion)
+
+    const internals = radiance as unknown as {
+      _setResolvedDdaExecutionPath(path: 'webgpu-workgroup' | 'webgpu-subgroup', fallbackReason: null): void
+      _ensureDdaComputeResources(): void
+      _ddaWorkgroupHierarchy: { computeNodes: readonly ComputeNode[] }
+      _ddaWorkgroupCascades: Array<{ resetNode: ComputeNode; computeNode: ComputeNode }>
+      _ddaSubgroupCascades: Array<{ resetNode: ComputeNode; computeNode: ComputeNode }>
+    }
+
+    internals._setResolvedDdaExecutionPath('webgpu-workgroup', null)
+    internals._ensureDdaComputeResources()
+    const workgroupPrograms = [
+      ...internals._ddaWorkgroupHierarchy.computeNodes.map((node) => compileComputeNode(node)),
+      ...internals._ddaWorkgroupCascades.flatMap(({ resetNode, computeNode }) => [
+        compileComputeNode(resetNode),
+        compileComputeNode(computeNode),
+      ]),
+    ]
+    for (let index = 0; index < workgroupPrograms.length; index++) {
+      const program = workgroupPrograms[index]!
+      expect(program.diagnostics).toEqual([])
+      exportComputeShader(`rc-dda-workgroup-${index}`, program.computeShader)
+    }
+    await validateShaderSources(
+      workgroupPrograms.flatMap((program, index) => shaderSources(program, `radiance-workgroup-${index}`))
+    )
+
+    internals._setResolvedDdaExecutionPath('webgpu-subgroup', null)
+    internals._ensureDdaComputeResources()
+    for (let index = 0; index < internals._ddaSubgroupCascades.length; index++) {
+      const { resetNode, computeNode } = internals._ddaSubgroupCascades[index]!
+      const reset = compileComputeNode(resetNode)
+      const subgroup = compileComputeNode(computeNode, { features: ['subgroups'] })
+      expect(reset.diagnostics).toEqual([])
+      expect(subgroup.diagnostics).toEqual([])
+      expect(subgroup.computeShader).toContain('subgroupBallot(')
+      expect(subgroup.computeShader).toContain('subgroupExclusiveAdd(')
+      expect(subgroup.computeShader).not.toMatch(/if \( instanceIndex >=/)
+      exportComputeShader(`rc-dda-subgroup-${index}`, subgroup.computeShader)
+      await validateShaderSources(shaderSources(reset, 'radiance-subgroup-reset'))
+    }
+
+    radiance.dispose()
+    lights.dispose()
+    occlusion.dispose()
   })
 
   it('estimates physical raymarch texels and samples for RC cascades', () => {

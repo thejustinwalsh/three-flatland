@@ -17,6 +17,7 @@ import {
   type AnimationSetDefinition,
   type SpriteFrame,
   PixelPerfectCamera,
+  type DdaExecutionPath,
 } from 'three-flatland'
 import { DdaFixedRadianceLightEffect, NormalMapProvider } from '@three-flatland/presets'
 import { createPane } from '@three-flatland/devtools'
@@ -544,6 +545,10 @@ async function main() {
     paused: false,
     stationary: false,
     lightingEnabled: initialLightingEnabled,
+    webGpuAcceleration: true,
+    executionPath: 'auto' as DdaExecutionPath,
+    resolvedPath: 'fragment',
+    accelerationFallback: 'pending',
     pixelSize: Math.max(1, Math.round(ART_WORLD_SCALE * ddaResolutionScale)),
     renderSurface: `${renderSurface.width}x${renderSurface.height}`,
     ambient: DUNGEON_LIGHTING_DEFAULTS.ambient,
@@ -567,6 +572,18 @@ async function main() {
   lightFolder.addBinding(params, 'lightingEnabled', { label: 'enabled' }).on('change', () => {
     flatland.setLighting(params.lightingEnabled ? lightEffect : null)
   })
+  lightFolder.addBinding(params, 'webGpuAcceleration', { label: 'WebGPU accel' })
+  lightFolder.addBinding(params, 'executionPath', {
+    label: 'DDA path',
+    options: {
+      auto: 'auto',
+      fragment: 'fragment',
+      workgroup: 'webgpu-workgroup',
+      subgroup: 'webgpu-subgroup',
+    },
+  })
+  lightFolder.addBinding(params, 'resolvedPath', { label: 'active path', readonly: true })
+  lightFolder.addBinding(params, 'accelerationFallback', { label: 'fallback', readonly: true })
   lightFolder.addBinding(params, 'pixelSize', {
     options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
     label: 'DDA cell px',
@@ -709,6 +726,10 @@ async function main() {
   let appliedDdaPixelSize = 0
 
   function renderFrame(): void {
+    lightEffect.radiance.ddaWebGpuAccelerationEnabled = params.webGpuAcceleration
+    lightEffect.radiance.ddaExecutionPath = params.executionPath
+    params.resolvedPath = lightEffect.radiance.resolvedDdaExecutionPath
+    params.accelerationFallback = lightEffect.radiance.ddaAccelerationFallbackReason ?? 'none'
     const ddaPixelSize = Math.max(1, Math.round(params.pixelSize))
     if (ddaPixelSize !== appliedDdaPixelSize) {
       lightEffect.radiance.ddaPixelSize = ddaPixelSize

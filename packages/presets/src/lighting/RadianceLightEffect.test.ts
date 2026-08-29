@@ -49,6 +49,8 @@ describe('DdaFixedRadianceLightEffect shadow representation', () => {
       traversal: 'dda-fixed',
       ddaPixelSize: 4,
       ddaHierarchyLevel: 2,
+      ddaWebGpuAccelerationEnabled: true,
+      ddaExecutionPath: 'auto',
       ddaQuantizationBits: 8,
       ddaBleedThreshold: 0.65,
       ddaPaletteBands: 0,

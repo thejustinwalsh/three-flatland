@@ -40,9 +40,13 @@ import {
   smoothstep,
 } from 'three/tsl'
 import { worldToUV, uvToWorld } from './coordUtils'
+import { resolveDdaExecutionPath, type DdaExecutionPath, type ResolvedDdaExecutionPath } from './DdaAcceleration'
 import { rayBoundsInterval, traceDdaIntegerRadiance } from './ddaGrid'
-import { DdaHierarchy, getDdaCascadeHierarchyLevel } from './DdaHierarchy'
+import { DdaHierarchy, getDdaCascadeHierarchyLevel, type DdaHierarchyLevel } from './DdaHierarchy'
 import { EmissivePass } from './EmissivePass'
+import { DdaWorkgroupAtomicQueuePass } from './webgpu/DdaWorkgroupCascade'
+import { DdaWorkgroupHierarchy } from './webgpu/DdaWorkgroupHierarchy'
+import { createDdaSubgroupCascadeKernel, type DdaSubgroupCascadeKernel } from './webgpu/DdaSubgroupCascade'
 import type Node from 'three/src/nodes/core/Node.js'
 import type UniformNode from 'three/src/nodes/core/UniformNode.js'
 
@@ -390,6 +394,10 @@ export interface RadianceCascadesConfig {
   ddaPixelSize: number
   /** Structural conservative empty-space hierarchy level. `0` keeps fine-cell traversal only. */
   readonly ddaHierarchyLevel: number
+  /** Hard gate for WebGPU-only DDA acceleration. `false` always uses portable fragment HDDA. */
+  ddaWebGpuAccelerationEnabled: boolean
+  /** Automatic selection or an explicitly forced DDA execution path for parity/performance tests. */
+  ddaExecutionPath: DdaExecutionPath
   /** Fixed-point precision stored in each RGBA8 cascade channel. */
   ddaQuantizationBits: number
   /** Maximum linear radiance represented by a packed cascade RGB channel. */
@@ -426,6 +434,8 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
   lightSourceRadius: 0,
   ddaPixelSize: 4,
   ddaHierarchyLevel: 0,
+  ddaWebGpuAccelerationEnabled: false,
+  ddaExecutionPath: 'fragment',
   ddaQuantizationBits: 8,
   ddaRadianceRange: 1,
   ddaBleedThreshold: 0.65,
@@ -449,6 +459,8 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   wideLevels: 1,
   ddaPixelSize: 4,
   ddaHierarchyLevel: 2,
+  ddaWebGpuAccelerationEnabled: true,
+  ddaExecutionPath: 'auto',
   ddaQuantizationBits: 8,
   ddaRadianceRange: 1,
   ddaBleedThreshold: 0.65,
@@ -533,6 +545,9 @@ export class RadianceCascades {
   private _emissiveRadianceRT: RenderTarget
   private _emissivePass = new EmissivePass()
   private _ddaHierarchy = new DdaHierarchy()
+  private _ddaWorkgroupHierarchy = new DdaWorkgroupHierarchy()
+  private _ddaWorkgroupCascades: Array<DdaWorkgroupAtomicQueuePass | undefined> = []
+  private _ddaSubgroupCascades: Array<DdaSubgroupCascadeKernel | undefined> = []
 
   private _cascadeMaterials: NodeMaterial[] = []
   private _finalRadianceMaterial: NodeMaterial | null = null
@@ -577,6 +592,8 @@ export class RadianceCascades {
   private _ddaBleedThresholdNode = uniform(0.65)
   private _ddaPaletteBandsNode = uniform(32)
   private _ddaPaletteExposureNode = uniform(16)
+  private _resolvedDdaExecutionPath: ResolvedDdaExecutionPath = 'fragment'
+  private _ddaAccelerationFallbackReason: 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null = null
 
   private _sdfTexture: Texture | null = null
   private _occlusionTexture: Texture | null = null
@@ -687,7 +704,17 @@ export class RadianceCascades {
   }
 
   get cascadeTextures(): (Texture | null)[] {
-    return this._cascadeRTs.map((rt) => rt?.texture ?? null)
+    return this._cascadeRTs.map((_rt, index) => this._activeCascadeTexture(index))
+  }
+
+  private _activeCascadeTexture(index: number): Texture | null {
+    if (this._resolvedDdaExecutionPath === 'webgpu-workgroup') {
+      return this._ddaWorkgroupCascades[index]?.output ?? null
+    }
+    if (this._resolvedDdaExecutionPath === 'webgpu-subgroup') {
+      return this._ddaSubgroupCascades[index]?.outputTexture ?? null
+    }
+    return this._cascadeRTs[index]?.texture ?? null
   }
 
   get finalRadianceTexture(): Texture {
@@ -752,6 +779,34 @@ export class RadianceCascades {
 
   get ddaHierarchyLevel(): number {
     return this._config.ddaHierarchyLevel
+  }
+
+  get ddaWebGpuAccelerationEnabled(): boolean {
+    return this._config.ddaWebGpuAccelerationEnabled
+  }
+
+  set ddaWebGpuAccelerationEnabled(value: boolean) {
+    const enabled = Boolean(value)
+    this._config.ddaWebGpuAccelerationEnabled = enabled
+    if (!enabled) this._setResolvedDdaExecutionPath('fragment', 'disabled')
+  }
+
+  get ddaExecutionPath(): DdaExecutionPath {
+    return this._config.ddaExecutionPath
+  }
+
+  set ddaExecutionPath(value: DdaExecutionPath) {
+    this._config.ddaExecutionPath = value
+    if (value === 'fragment') this._setResolvedDdaExecutionPath('fragment', null)
+  }
+
+  /** Actual backend selected during the latest generation. */
+  get resolvedDdaExecutionPath(): ResolvedDdaExecutionPath {
+    return this._resolvedDdaExecutionPath
+  }
+
+  get ddaAccelerationFallbackReason(): 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null {
+    return this._ddaAccelerationFallbackReason
   }
 
   get ddaQuantizationBits(): number {
@@ -1059,6 +1114,12 @@ export class RadianceCascades {
   get estimatedPassCount(): number {
     let count = 1 + this._config.cascadeCount + 1
     if (this._usesDdaFixed()) count += Math.max(1, this._config.ddaHierarchyLevel)
+    // Compute cascades use an explicit counter reset before each persistent
+    // queue dispatch. Keep the public estimate honest once a renderer has
+    // resolved the active backend specialization.
+    if (this._usesDdaFixed() && this._resolvedDdaExecutionPath !== 'fragment') {
+      count += this._config.cascadeCount
+    }
     if (this._usesFilteredOutput()) {
       if (this._usesMipFilter()) {
         count += 1
@@ -1132,6 +1193,7 @@ export class RadianceCascades {
     const capture = this._ddaCaptureDimensions()
     this._emissiveRadianceRT.setSize(capture.width, capture.height)
     this._configureDdaHierarchy()
+    this._disposeDdaWorkgroupResources()
   }
 
   private _configureDdaHierarchy(): boolean {
@@ -1146,6 +1208,148 @@ export class RadianceCascades {
       capture.height,
       Math.max(1, this._config.ddaHierarchyLevel)
     )
+  }
+
+  private _ensureDdaComputeResources(): void {
+    if (!this._usesDdaFixed() || !this._occlusionTexture) return
+    const capture = this._ddaCaptureDimensions()
+    const hierarchyChanged = this._ddaWorkgroupHierarchy.configure(
+      this._occlusionTexture,
+      this._emissiveRadianceRT.texture,
+      capture.width,
+      capture.height,
+      Math.max(1, this._config.ddaHierarchyLevel)
+    )
+    if (this._resolvedDdaExecutionPath === 'webgpu-workgroup') {
+      if (hierarchyChanged || this._ddaWorkgroupCascades.length !== this._config.cascadeCount) {
+        this._rebuildDdaWorkgroupCascades()
+        this._registerActiveCascadeDebugTextures()
+      }
+      return
+    }
+    if (
+      this._resolvedDdaExecutionPath === 'webgpu-subgroup' &&
+      (hierarchyChanged || this._ddaSubgroupCascades.length !== this._config.cascadeCount)
+    ) {
+      this._rebuildDdaSubgroupCascades()
+      this._registerActiveCascadeDebugTextures()
+    }
+  }
+
+  private _rebuildDdaWorkgroupCascades(): void {
+    this._disposeDdaWorkgroupCascades()
+    if (this._ddaWorkgroupHierarchy.levelCount === 0) return
+    const dimensions = this._transportDimensions()
+    const cascades: Array<DdaWorkgroupAtomicQueuePass | undefined> = Array.from({
+      length: this._config.cascadeCount,
+    })
+    for (let cascadeIndex = this._config.cascadeCount - 1; cascadeIndex >= 0; cascadeIndex--) {
+      const previousCascadeTexture = cascades[cascadeIndex + 1]?.output ?? null
+      cascades[cascadeIndex] = new DdaWorkgroupAtomicQueuePass({
+        atlasWidth: dimensions.width,
+        atlasHeight: dimensions.height,
+        label: `dda-workgroup-cascade-${cascadeIndex}`,
+        buildValue: (fragCoord) =>
+          this._buildCascadeValue(
+            cascadeIndex,
+            previousCascadeTexture,
+            fragCoord,
+            this._ddaWorkgroupHierarchy.levels,
+            (source, sourceUv) => sampleTexture(source, sourceUv, float(0))
+          ),
+      })
+    }
+    this._ddaWorkgroupCascades = cascades
+  }
+
+  private _disposeDdaWorkgroupCascades(): void {
+    for (const cascade of this._ddaWorkgroupCascades) cascade?.dispose()
+    this._ddaWorkgroupCascades = []
+  }
+
+  private _rebuildDdaSubgroupCascades(): void {
+    this._disposeDdaSubgroupCascades()
+    if (this._ddaWorkgroupHierarchy.levelCount === 0) return
+    const dimensions = this._transportDimensions()
+    const cascades: Array<DdaSubgroupCascadeKernel | undefined> = Array.from({
+      length: this._config.cascadeCount,
+    })
+    for (let cascadeIndex = this._config.cascadeCount - 1; cascadeIndex >= 0; cascadeIndex--) {
+      const previousCascadeTexture = cascades[cascadeIndex + 1]?.outputTexture ?? null
+      cascades[cascadeIndex] = createDdaSubgroupCascadeKernel({
+        width: dimensions.width,
+        height: dimensions.height,
+        name: `dda-subgroup-cascade-${cascadeIndex}`,
+        buildValue: ({ fragCoord }) =>
+          this._buildCascadeValue(
+            cascadeIndex,
+            previousCascadeTexture,
+            fragCoord,
+            this._ddaWorkgroupHierarchy.levels,
+            (source, sourceUv) => sampleTexture(source, sourceUv, float(0))
+          ),
+      })
+    }
+    this._ddaSubgroupCascades = cascades
+  }
+
+  private _disposeDdaSubgroupCascades(): void {
+    for (const cascade of this._ddaSubgroupCascades) cascade?.dispose()
+    this._ddaSubgroupCascades = []
+  }
+
+  private _disposeDdaWorkgroupResources(): void {
+    this._disposeDdaWorkgroupCascades()
+    this._disposeDdaSubgroupCascades()
+    this._ddaWorkgroupHierarchy.dispose()
+  }
+
+  private _setResolvedDdaExecutionPath(
+    path: ResolvedDdaExecutionPath,
+    fallbackReason: 'disabled' | 'not-webgpu' | 'subgroups-unavailable' | null
+  ): void {
+    const changed = path !== this._resolvedDdaExecutionPath
+    this._resolvedDdaExecutionPath = path
+    this._ddaAccelerationFallbackReason = fallbackReason
+    if (!changed) return
+    this._finalRadianceMaterial?.dispose()
+    this._finalRadianceMaterial = null
+    // Only keep the specialization that can execute. This matters on mobile:
+    // each inactive path otherwise retains a full direction atlas per cascade.
+    if (path === 'fragment') this._disposeDdaWorkgroupResources()
+    else if (path === 'webgpu-workgroup') this._disposeDdaSubgroupCascades()
+    else this._disposeDdaWorkgroupCascades()
+    this._registerActiveCascadeDebugTextures()
+  }
+
+  private _resolveDdaExecutionPath(renderer: WebGPURenderer): void {
+    if (!this._usesDdaFixed()) {
+      this._setResolvedDdaExecutionPath('fragment', null)
+      return
+    }
+    const resolution = resolveDdaExecutionPath(renderer, {
+      webgpuEnabled: this._config.ddaWebGpuAccelerationEnabled,
+      requestedPath: this._config.ddaExecutionPath,
+    })
+    this._setResolvedDdaExecutionPath(resolution.path, resolution.fallbackReason)
+  }
+
+  private _registerActiveCascadeDebugTextures(): void {
+    const dimensions = this._transportDimensions()
+    const packed = this._usesDdaFixed()
+    for (let index = 0; index < this._config.cascadeCount; index++) {
+      unregisterDebugTexture(`radiance.cascade${index}`)
+      const texture = this._activeCascadeTexture(index)
+      if (!texture) continue
+      const source =
+        this._resolvedDdaExecutionPath === 'fragment'
+          ? this._cascadeRTs[index]!
+          : { width: dimensions.width, height: dimensions.height, texture }
+      registerDebugTexture(`radiance.cascade${index}`, source, packed ? 'rgba8' : 'rgba16f', {
+        display: 'colors',
+        label: `GI cascade ${index} (${this._resolvedDdaExecutionPath})`,
+      })
+    }
   }
 
   init(worldWidth: number, worldHeight: number, lightsTexture: DataTexture, lightCountNode: Node<'float'>): void {
@@ -1211,6 +1415,7 @@ export class RadianceCascades {
   }
 
   private _rebuildCascadeRTs(): void {
+    this._disposeDdaWorkgroupResources()
     for (let i = 0; i < this._cascadeRTs.length; i++) {
       unregisterDebugTexture(`radiance.cascade${i}`)
       this._cascadeRTs[i]!.dispose()
@@ -1257,13 +1462,10 @@ export class RadianceCascades {
         stencilBuffer: false,
       })
       this._cascadeRTs.push(rt)
-      registerDebugTexture(`radiance.cascade${i}`, rt, packed ? 'rgba8' : 'rgba16f', {
-        display: 'colors',
-        label: `GI cascade ${i}`,
-      })
     }
 
     this._createCascadeMaterials()
+    this._registerActiveCascadeDebugTextures()
   }
 
   private _ensureIntervalUniforms(): void {
@@ -1419,6 +1621,7 @@ export class RadianceCascades {
       return
     }
     this._occlusionTexture = texture
+    this._disposeDdaWorkgroupResources()
     this._configureDdaHierarchy()
     this._disposeWideRadianceMaterials()
     this._filterRadianceMaterial?.dispose()
@@ -1453,11 +1656,17 @@ export class RadianceCascades {
     }
     if (!this._usesDdaFixed()) this._updateSdfHitEpsilon()
 
+    this._resolveDdaExecutionPath(renderer)
+    if (this._resolvedDdaExecutionPath !== 'fragment') this._ensureDdaComputeResources()
+
     _rendererState = RendererUtils.resetRendererState(renderer, _rendererState)
 
     try {
       this._captureEmissiveRadiance(renderer, scene, camera)
-      if (this._usesDdaFixed()) this._ddaHierarchy.render(renderer)
+      if (this._usesDdaFixed()) {
+        if (this._resolvedDdaExecutionPath === 'fragment') this._ddaHierarchy.render(renderer)
+        else this._ddaWorkgroupHierarchy.execute(renderer)
+      }
 
       // Process cascades from highest to lowest. Each cascade stores
       // <radiance.rgb, transmittance.a>; lower cascades merge their near
@@ -1517,6 +1726,28 @@ export class RadianceCascades {
   // ============================================
 
   private _renderCascade(renderer: WebGPURenderer, cascadeIndex: number): void {
+    if (this._resolvedDdaExecutionPath === 'webgpu-workgroup') {
+      const cascade = this._ddaWorkgroupCascades[cascadeIndex]
+      if (!cascade) return
+      beginDebugPass(`radiance.cascade${cascadeIndex}`, renderer)
+      cascade.execute(renderer)
+      endDebugPass(renderer)
+      return
+    }
+    if (this._resolvedDdaExecutionPath === 'webgpu-subgroup') {
+      const cascade = this._ddaSubgroupCascades[cascadeIndex]
+      if (!cascade) return
+      beginDebugPass(`radiance.cascade${cascadeIndex}`, renderer)
+      const result = cascade.execute(renderer, this._config.ddaWebGpuAccelerationEnabled)
+      endDebugPass(renderer)
+      // Capability resolution happens before hierarchy generation. Falling
+      // back here would combine a compute hierarchy with stale fragment
+      // cascades for one corrupt frame, so treat this as an invariant failure.
+      if (!result.executed) {
+        throw new Error(`DDA subgroup dispatch became unavailable after path resolution: ${result.reason}`)
+      }
+      return
+    }
     const material = this._cascadeMaterials[cascadeIndex]
     if (!material) return
 
@@ -1582,6 +1813,26 @@ export class RadianceCascades {
    * - Uses worldToUV/uvToWorld consistently
    */
   private _createCascadeMaterial(cascadeIndex: number, prevCascadeTexture: Texture | null): NodeMaterial {
+    const dimensions = this._transportDimensions()
+    const material = new NodeMaterial()
+    material.fragmentNode = Fn(() => {
+      const fragCoord = uv()
+        .mul(vec2(float(dimensions.width), float(dimensions.height)))
+        .toConst('rcFragCoord')
+      return this._buildCascadeValue(cascadeIndex, prevCascadeTexture, fragCoord)
+    })() as Node<'vec4'>
+    return material
+  }
+
+  /** Shared fragment/compute cascade math. `fragCoord` is a pixel-centred atlas coordinate. */
+  private _buildCascadeValue(
+    cascadeIndex: number,
+    prevCascadeTexture: Texture | null,
+    fragCoord: Node<'vec2'>,
+    hierarchyLevels: readonly DdaHierarchyLevel[] = this._ddaHierarchy.levels,
+    sampleParent: (source: Texture, sourceUv: Node<'vec2'>) => Node<'vec4'> = (source, sourceUv) =>
+      sampleTexture(source, sourceUv)
+  ): Node<'vec4'> {
     const config = this._config
     const sdfTexture = this._sdfTexture
     const occlusionTexture = this._occlusionTexture
@@ -1625,207 +1876,192 @@ export class RadianceCascades {
     const intervalRange = this._intervalRangeNodes[cascadeIndex]!
     const raymarchSteps = config.raymarchSteps
 
-    const material = new NodeMaterial()
-    material.fragmentNode = Fn(() => {
-      const fragCoord = uv()
-        .mul(vec2(float(atlasWidth), float(atlasHeight)))
-        .toConst('rcFragCoord')
+    // Direction-first layout decomposition
+    const probeGroupSize = vec2(float(probeGroupWidth), float(probeGroupHeight)).toConst('rcProbeGroupSize')
+    const rayXY = floor(fragCoord.div(probeGroupSize)).toConst('rcRayXY')
+    const probeXY = mod(fragCoord, probeGroupSize).toConst('rcProbeXY')
+    const rayIndex = rayXY.x.add(rayXY.y.mul(float(angular))).toConst('rcRayIndex')
 
-      // Direction-first layout decomposition
-      const probeGroupSize = vec2(float(probeGroupWidth), float(probeGroupHeight)).toConst('rcProbeGroupSize')
-      const rayXY = floor(fragCoord.div(probeGroupSize)).toConst('rcRayXY')
-      const probeXY = mod(fragCoord, probeGroupSize).toConst('rcProbeXY')
-      const rayIndex = rayXY.x.add(rayXY.y.mul(float(angular))).toConst('rcRayIndex')
+    // `fragCoord` and therefore `probeXY` are already pixel-centred
+    // (`probeXY = probeIndex + 0.5`). Adding another half texel shifts the
+    // traced interval away from the probe represented by this atlas texel.
+    // The far-cascade lookup below is phased from the unshifted centre, so
+    // that mismatch presents as parallax error and light leaking at walls.
+    // Each higher cascade halves spatial probe density while doubling its
+    // angular resolution. Its direction block therefore spans the complete
+    // world at `cascadeStride` base-grid cells per probe. Previously every
+    // level divided by the base output dimensions without this stride,
+    // compressing C1/C2/C3 into 1/2, 1/4 and 1/8 of the viewport. The merge
+    // then produced repeated quadrants, Y-displaced sources and X-shaped
+    // energy. Padding only duplicates the final active probe.
+    const activeProbeXY = probeXY
+      .clamp(vec2(0.5), vec2(float(activeProbeWidth - 0.5), float(activeProbeHeight - 0.5)))
+      .toConst('rcActiveProbeXY')
+    const probeUV = activeProbeXY
+      .mul(float(cascadeStride))
+      .div(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
+      .clamp(0, 1)
+      .toConst('rcProbeUV')
+    // Both analytic emitters and DDA consume the same probe ray. Materialize
+    // these shared expressions once: leaving them as immutable expression
+    // nodes makes TSL expand the complete probe/ray graph independently
+    // inside the analytic-light branch and the DDA traversal.
+    const probeLocalPos = probeUV.mul(worldSize).toConst('rcProbeLocalPos')
 
-      // `fragCoord` and therefore `probeXY` are already pixel-centred
-      // (`probeXY = probeIndex + 0.5`). Adding another half texel shifts the
-      // traced interval away from the probe represented by this atlas texel.
-      // The far-cascade lookup below is phased from the unshifted centre, so
-      // that mismatch presents as parallax error and light leaking at walls.
-      // Each higher cascade halves spatial probe density while doubling its
-      // angular resolution. Its direction block therefore spans the complete
-      // world at `cascadeStride` base-grid cells per probe. Previously every
-      // level divided by the base output dimensions without this stride,
-      // compressing C1/C2/C3 into 1/2, 1/4 and 1/8 of the viewport. The merge
-      // then produced repeated quadrants, Y-displaced sources and X-shaped
-      // energy. Padding only duplicates the final active probe.
-      const activeProbeXY = probeXY
-        .clamp(vec2(0.5), vec2(float(activeProbeWidth - 0.5), float(activeProbeHeight - 0.5)))
-        .toConst('rcActiveProbeXY')
-      const probeUV = activeProbeXY
-        .mul(float(cascadeStride))
-        .div(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
-        .clamp(0, 1)
-        .toConst('rcProbeUV')
-      // Both analytic emitters and DDA consume the same probe ray. Materialize
-      // these shared expressions once: leaving them as immutable expression
-      // nodes makes TSL expand the complete probe/ray graph independently
-      // inside the analytic-light branch and the DDA traversal.
-      const probeLocalPos = probeUV.mul(worldSize).toConst('rcProbeLocalPos')
+    const theta = rayIndex
+      .add(float(0.5))
+      .mul(float(TAU / angularSq))
+      .toConst('rcTheta')
+    const rayDir = vec2(cos(theta), sin(theta)).toConst('rcRayDirection')
 
-      const theta = rayIndex
-        .add(float(0.5))
-        .mul(float(TAU / angularSq))
-        .toConst('rcTheta')
-      const rayDir = vec2(cos(theta), sin(theta)).toConst('rcRayDirection')
+    const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toConst('rcSegmentStartLocal')
+    const segmentStart = segmentStartLocal.add(worldOffset).toConst('rcSegmentStart')
+    const source = config.includeAnalyticLights
+      ? traceAnalyticLightSources(lightsTexture, lightCount, segmentStart, rayDir, intervalRange, sourceRadius)
+      : { radiance: vec3(0), distance: intervalRange, hit: float(0) }
+    const traceLimit = source.hit.greaterThan(float(0.5)).select(source.distance, intervalRange).toConst('rcTraceLimit')
+    const intervalRadiance = vec3(0).toVar()
+    const intervalTransmittance = float(1).toVar()
+    const t = float(0).toVar()
+    const reachedTraceLimit = float(0).toVar()
 
-      const segmentStartLocal = probeLocalPos.add(rayDir.mul(intervalOffset)).toConst('rcSegmentStartLocal')
-      const segmentStart = segmentStartLocal.add(worldOffset).toConst('rcSegmentStart')
-      const source = config.includeAnalyticLights
-        ? traceAnalyticLightSources(lightsTexture, lightCount, segmentStart, rayDir, intervalRange, sourceRadius)
-        : { radiance: vec3(0), distance: intervalRange, hit: float(0) }
-      const traceLimit = source.hit
-        .greaterThan(float(0.5))
-        .select(source.distance, intervalRange)
-        .toConst('rcTraceLimit')
-      const intervalRadiance = vec3(0).toVar()
-      const intervalTransmittance = float(1).toVar()
-      const t = float(0).toVar()
-      const reachedTraceLimit = float(0).toVar()
-
-      if (this._usesDdaFixed() && occlusionTexture) {
-        // Probes cover only the visible camera, while DDA traverses the larger
-        // source/occluder capture window. Keeping these bounds separate avoids
-        // paying cascade-fragment cost for the offscreen guard band.
-        const boundsInterval = rayBoundsInterval(
-          segmentStart,
-          rayDir,
-          transportWorldSize,
-          transportWorldOffset
-        ).toConst('rcBoundsInterval')
-        const traceEntry = boundsInterval.x.max(float(0)).toConst('rcTraceEntry')
-        const traceExit = boundsInterval.y.min(traceLimit).toConst('rcTraceExit')
-        const intersectsWorld = traceExit.greaterThanEqual(traceEntry).toConst('rcIntersectsWorld')
-        const visibility = traceDdaIntegerRadiance(
-          this._ddaHierarchy.levels,
-          this._emissiveRadianceRT.texture,
-          segmentStart,
-          rayDir,
-          traceEntry,
-          traceExit,
-          intersectsWorld,
-          transportWorldSize,
-          transportWorldOffset,
-          ddaGridWidth,
-          ddaGridHeight,
-          ddaMaxSteps,
-          getDdaCascadeHierarchyLevel(cascadeIndex, config.ddaHierarchyLevel, this._ddaHierarchy.levelCount)
-        )
-        intervalRadiance.assign(visibility.rgb)
-        intervalTransmittance.assign(
-          visibility.a
-            .lessThan(float(-0.5))
-            .or(visibility.a.greaterThan(float(1.5)))
-            .select(float(0), float(1))
-        )
-        reachedTraceLimit.assign(
-          visibility.a
-            .greaterThan(float(0.5))
-            .and(visibility.a.lessThan(float(1.5)))
-            .select(float(1), float(0))
-        )
-      } else if (sdfTexture) {
-        Loop(raymarchSteps, () => {
-          const sampleWorld = segmentStart.add(rayDir.mul(t))
-          const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
-
-          // Bounds check
-          const outOfBounds = sampleUV.x
-            .lessThan(0)
-            .or(sampleUV.x.greaterThan(1))
-            .or(sampleUV.y.lessThan(0))
-            .or(sampleUV.y.greaterThan(1))
-
-          If(outOfBounds, () => {
-            // Leaving the scene texture is empty space, not an occluder. The
-            // interval is complete and remains transmissive.
-            reachedTraceLimit.assign(float(1))
-            Break()
-          })
-
-          const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
-          const sdfSample = sampleTexture(sdfTexture, sdfUV)
-          const sdfDist = sdfSample.r
-
-          If(sdfDist.lessThan(this._sdfHitEpsilonNode), () => {
-            intervalTransmittance.assign(float(0))
-            Break()
-          })
-
-          const stepLen = min(sdfDist.max(float(0.001)), traceLimit.sub(t).max(float(0)))
-          t.addAssign(stepLen)
-
-          If(t.greaterThanEqual(traceLimit), () => {
-            reachedTraceLimit.assign(float(1))
-            Break()
-          })
-        })
-      }
-
-      // Exhausting a fixed sphere-trace budget is not evidence of an
-      // occluder. Preserve transmittance for the parent cascade, but only add
-      // an analytic source after the marcher actually reached its distance.
-      If(
-        intervalTransmittance
-          .greaterThan(float(0.5))
-          .and(reachedTraceLimit.greaterThan(float(0.5)))
-          .and(source.hit.greaterThan(float(0.5))),
-        () => {
-          intervalRadiance.assign(source.radiance)
-          intervalTransmittance.assign(float(0))
-        }
+    if (this._usesDdaFixed() && occlusionTexture) {
+      // Probes cover only the visible camera, while DDA traverses the larger
+      // source/occluder capture window. Keeping these bounds separate avoids
+      // paying cascade-fragment cost for the offscreen guard band.
+      const boundsInterval = rayBoundsInterval(segmentStart, rayDir, transportWorldSize, transportWorldOffset).toConst(
+        'rcBoundsInterval'
       )
+      const traceEntry = boundsInterval.x.max(float(0)).toConst('rcTraceEntry')
+      const traceExit = boundsInterval.y.min(traceLimit).toConst('rcTraceExit')
+      const intersectsWorld = traceExit.greaterThanEqual(traceEntry).toConst('rcIntersectsWorld')
+      const visibility = traceDdaIntegerRadiance(
+        hierarchyLevels,
+        this._emissiveRadianceRT.texture,
+        segmentStart,
+        rayDir,
+        traceEntry,
+        traceExit,
+        intersectsWorld,
+        transportWorldSize,
+        transportWorldOffset,
+        ddaGridWidth,
+        ddaGridHeight,
+        ddaMaxSteps,
+        getDdaCascadeHierarchyLevel(cascadeIndex, config.ddaHierarchyLevel, hierarchyLevels.length)
+      )
+      intervalRadiance.assign(visibility.rgb)
+      intervalTransmittance.assign(
+        visibility.a
+          .lessThan(float(-0.5))
+          .or(visibility.a.greaterThan(float(1.5)))
+          .select(float(0), float(1))
+      )
+      reachedTraceLimit.assign(
+        visibility.a
+          .greaterThan(float(0.5))
+          .and(visibility.a.lessThan(float(1.5)))
+          .select(float(1), float(0))
+      )
+    } else if (sdfTexture) {
+      Loop(raymarchSteps, () => {
+        const sampleWorld = segmentStart.add(rayDir.mul(t))
+        const sampleUV = worldToUV(sampleWorld, worldSize, worldOffset)
 
-      const mergedRadiance = vec3(intervalRadiance).toVar()
-      const mergedTransmittance = float(intervalTransmittance).toVar()
+        // Bounds check
+        const outOfBounds = sampleUV.x
+          .lessThan(0)
+          .or(sampleUV.x.greaterThan(1))
+          .or(sampleUV.y.lessThan(0))
+          .or(sampleUV.y.greaterThan(1))
 
-      if (prevCascadeTexture && cascadeIndex < config.cascadeCount - 1) {
-        If(intervalTransmittance.greaterThan(float(0)), () => {
-          const angularN1 = angular * 2
-          const probeGroupWidthN1 = atlasWidth / angularN1
-          const probeGroupHeightN1 = atlasHeight / angularN1
-          const parentStride = cascadeStride * 2
-          const activeProbeWidthN1 = Math.ceil(dimensions.outputWidth / parentStride)
-          const activeProbeHeightN1 = Math.ceil(dimensions.outputHeight / parentStride)
-
-          // Map probe position from this cascade to next cascade's probe space.
-          // N+1 has half the probes per direction block (double angular resolution).
-          // Preserve the current probe's screen-space centre in the coarser
-          // grid. Clamp inside this direction block: the render target only
-          // clamps at its outer edge, so an unclamped hardware-filtered sample
-          // could otherwise blend with an adjacent direction block.
-          const probeN1 = probeXY
-            .mul(float(0.5))
-            .clamp(vec2(0.5), vec2(float(activeProbeWidthN1 - 0.5), float(activeProbeHeightN1 - 0.5)))
-
-          const farRadiance = vec3(0).toVar()
-          const farTransmittance = float(0).toVar()
-
-          for (let subRay = 0; subRay < 4; subRay++) {
-            const subRayIndex = rayIndex.mul(float(4)).add(float(subRay))
-            const rayN1XY = vec2(mod(subRayIndex, float(angularN1)), floor(subRayIndex.div(float(angularN1))))
-
-            // Compute full texel position, then convert to UV for bilinear sampling.
-            // textureLoad and sampleTexture share the same coordinate origin for
-            // render targets in WebGPU — no Y-flip needed.
-            const texelPos = rayN1XY.mul(vec2(float(probeGroupWidthN1), float(probeGroupHeightN1))).add(probeN1)
-            const mergeUV = texelPos.div(vec2(float(atlasWidth), float(atlasHeight)))
-            const mergedSample = this._decodeDdaFixedFiltered(sampleTexture(prevCascadeTexture, mergeUV))
-            farRadiance.addAssign(mergedSample.rgb)
-            farTransmittance.addAssign(mergedSample.a)
-          }
-
-          farRadiance.mulAssign(float(0.25))
-          farTransmittance.mulAssign(float(0.25))
-          mergedRadiance.addAssign(mergedTransmittance.mul(farRadiance))
-          mergedTransmittance.mulAssign(farTransmittance)
+        If(outOfBounds, () => {
+          // Leaving the scene texture is empty space, not an occluder. The
+          // interval is complete and remains transmissive.
+          reachedTraceLimit.assign(float(1))
+          Break()
         })
+
+        const sdfUV = vec2(sampleUV.x, float(1).sub(sampleUV.y))
+        const sdfSample = sampleTexture(sdfTexture, sdfUV)
+        const sdfDist = sdfSample.r
+
+        If(sdfDist.lessThan(this._sdfHitEpsilonNode), () => {
+          intervalTransmittance.assign(float(0))
+          Break()
+        })
+
+        const stepLen = min(sdfDist.max(float(0.001)), traceLimit.sub(t).max(float(0)))
+        t.addAssign(stepLen)
+
+        If(t.greaterThanEqual(traceLimit), () => {
+          reachedTraceLimit.assign(float(1))
+          Break()
+        })
+      })
+    }
+
+    // Exhausting a fixed sphere-trace budget is not evidence of an
+    // occluder. Preserve transmittance for the parent cascade, but only add
+    // an analytic source after the marcher actually reached its distance.
+    If(
+      intervalTransmittance
+        .greaterThan(float(0.5))
+        .and(reachedTraceLimit.greaterThan(float(0.5)))
+        .and(source.hit.greaterThan(float(0.5))),
+      () => {
+        intervalRadiance.assign(source.radiance)
+        intervalTransmittance.assign(float(0))
       }
+    )
 
-      return this._encodeDdaFixed(vec4(mergedRadiance, mergedTransmittance))
-    })() as Node<'vec4'>
+    const mergedRadiance = vec3(intervalRadiance).toVar()
+    const mergedTransmittance = float(intervalTransmittance).toVar()
 
-    return material
+    if (prevCascadeTexture && cascadeIndex < config.cascadeCount - 1) {
+      If(intervalTransmittance.greaterThan(float(0)), () => {
+        const angularN1 = angular * 2
+        const probeGroupWidthN1 = atlasWidth / angularN1
+        const probeGroupHeightN1 = atlasHeight / angularN1
+        const parentStride = cascadeStride * 2
+        const activeProbeWidthN1 = Math.ceil(dimensions.outputWidth / parentStride)
+        const activeProbeHeightN1 = Math.ceil(dimensions.outputHeight / parentStride)
+
+        // Map probe position from this cascade to next cascade's probe space.
+        // N+1 has half the probes per direction block (double angular resolution).
+        // Preserve the current probe's screen-space centre in the coarser
+        // grid. Clamp inside this direction block: the render target only
+        // clamps at its outer edge, so an unclamped hardware-filtered sample
+        // could otherwise blend with an adjacent direction block.
+        const probeN1 = probeXY
+          .mul(float(0.5))
+          .clamp(vec2(0.5), vec2(float(activeProbeWidthN1 - 0.5), float(activeProbeHeightN1 - 0.5)))
+
+        const farRadiance = vec3(0).toVar()
+        const farTransmittance = float(0).toVar()
+
+        for (let subRay = 0; subRay < 4; subRay++) {
+          const subRayIndex = rayIndex.mul(float(4)).add(float(subRay))
+          const rayN1XY = vec2(mod(subRayIndex, float(angularN1)), floor(subRayIndex.div(float(angularN1))))
+
+          // Compute full texel position, then convert to UV for bilinear sampling.
+          // textureLoad and sampleTexture share the same coordinate origin for
+          // render targets in WebGPU — no Y-flip needed.
+          const texelPos = rayN1XY.mul(vec2(float(probeGroupWidthN1), float(probeGroupHeightN1))).add(probeN1)
+          const mergeUV = texelPos.div(vec2(float(atlasWidth), float(atlasHeight)))
+          const mergedSample = this._decodeDdaFixedFiltered(sampleParent(prevCascadeTexture, mergeUV))
+          farRadiance.addAssign(mergedSample.rgb)
+          farTransmittance.addAssign(mergedSample.a)
+        }
+
+        farRadiance.mulAssign(float(0.25))
+        farTransmittance.mulAssign(float(0.25))
+        mergedRadiance.addAssign(mergedTransmittance.mul(farRadiance))
+        mergedTransmittance.mulAssign(farTransmittance)
+      })
+    }
+
+    return this._encodeDdaFixed(vec4(mergedRadiance, mergedTransmittance))
   }
 
   // ============================================
@@ -1833,7 +2069,7 @@ export class RadianceCascades {
   // ============================================
 
   private _renderFinalRadiance(renderer: WebGPURenderer, target: RenderTarget): void {
-    if (!this._cascadeRTs[0]) return
+    if (!this._activeCascadeTexture(0)) return
 
     this._ensureFinalRadianceMaterial()
     if (!this._finalRadianceMaterial) return
@@ -1857,10 +2093,10 @@ export class RadianceCascades {
    */
   private _ensureFinalRadianceMaterial(): void {
     if (this._finalRadianceMaterial) return
-    if (!this._cascadeRTs[0]) return
+    const cascade0Texture = this._activeCascadeTexture(0)
+    if (!cascade0Texture) return
     if (!this._lightsTexture || !this._lightCountNode) return
 
-    const cascade0Texture = this._cascadeRTs[0].texture
     const lightsTexture = this._lightsTexture
     const lightCount = this._lightCountNode
     const config = this._config
@@ -2260,6 +2496,7 @@ export class RadianceCascades {
     this._emissiveRadianceRT.dispose()
     this._emissivePass.dispose()
     this._ddaHierarchy.dispose()
+    this._disposeDdaWorkgroupResources()
 
     for (const mat of this._cascadeMaterials) {
       mat.dispose()
