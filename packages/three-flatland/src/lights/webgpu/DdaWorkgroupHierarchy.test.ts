@@ -25,6 +25,25 @@ describe('DdaWorkgroupHierarchy lifecycle', () => {
     emission.dispose()
   })
 
+  it('builds deep odd-sized levels and stops at the natural terminal level', () => {
+    const occlusion = createShaderTexture()
+    const emission = createShaderTexture()
+    const hierarchy = new DdaWorkgroupHierarchy()
+
+    hierarchy.configure(occlusion, emission, 65, 33, 5)
+    expect(hierarchy.levels.map(({ width, height, scale }) => ({ width, height, scale }))).toEqual([
+      { width: 33, height: 17, scale: 2 },
+      { width: 17, height: 9, scale: 4 },
+      { width: 9, height: 5, scale: 8 },
+      { width: 5, height: 3, scale: 16 },
+      { width: 3, height: 2, scale: 32 },
+    ])
+
+    hierarchy.dispose()
+    occlusion.dispose()
+    emission.dispose()
+  })
+
   it('keeps occupancy, emitter, and emission reduction flags independent in generated WGSL', () => {
     const occlusion = createShaderTexture()
     const emission = createShaderTexture()

@@ -7,6 +7,8 @@ import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugText
 /** One byte stores the exact four bits of a 2x2 fine-grid tile. */
 export const DDA_LEAF_TILE_SCALE = 2
 export const DDA_MASK_BYTE_SCALE = 255
+/** Deepest hierarchy supported by the generated portable and WebGPU tracers. */
+export const DDA_MAX_HIERARCHY_LEVEL = 5
 
 export function getDdaLeafBit(x: number, y: number): number {
   return 1 << ((x & 1) + ((y & 1) << 1))
@@ -17,7 +19,32 @@ export function getDdaCascadeHierarchyLevel(
   configuredLevel: number,
   availableLevels: number
 ): number {
-  return Math.max(0, Math.min(cascadeIndex, configuredLevel, availableLevels))
+  return Math.max(
+    0,
+    Math.min(
+      Math.round(cascadeIndex),
+      Math.round(configuredLevel),
+      Math.round(availableLevels),
+      DDA_MAX_HIERARCHY_LEVEL
+    )
+  )
+}
+
+/**
+ * Number of hierarchy textures worth building for a cascade stack.
+ *
+ * C0 always uses the exact packed 2x2 leaf. Cn can skip at most level N,
+ * therefore levels deeper than `cascadeCount - 1` can never be sampled.
+ */
+export function getDdaHierarchyBuildLevelCount(cascadeCount: number, configuredLevel: number): number {
+  return Math.max(
+    1,
+    Math.min(
+      Math.max(1, Math.round(cascadeCount) - 1),
+      Math.max(1, Math.round(configuredLevel)),
+      DDA_MAX_HIERARCHY_LEVEL
+    )
+  )
 }
 
 export interface DdaHierarchyLevel {
@@ -41,6 +68,7 @@ export function getDdaHierarchyDimensions(
       height: Math.max(1, Math.ceil(height / scale)),
       scale,
     })
+    if (levels.at(-1)!.width === 1 && levels.at(-1)!.height === 1) break
   }
   return levels
 }
@@ -92,7 +120,7 @@ export class DdaHierarchy {
   ): boolean {
     const width = Math.max(1, Math.round(sourceWidth))
     const height = Math.max(1, Math.round(sourceHeight))
-    const count = Math.max(1, Math.round(levelCount))
+    const count = getDdaHierarchyDimensions(width, height, levelCount).length
     if (
       this._occlusionTexture === occlusionTexture &&
       this._emissiveTexture === emissiveTexture &&
@@ -227,7 +255,7 @@ export class DdaHierarchy {
       const present = vec3(
         signals.x.greaterThan(threshold).select(float(1), float(0)),
         signals.y.greaterThan(threshold).select(float(1), float(0)),
-        signals.z.greaterThan(threshold).select(float(1), float(0)),
+        signals.z.greaterThan(threshold).select(float(1), float(0))
       )
       return vec4(present, float(0))
     })() as Node<'vec4'>

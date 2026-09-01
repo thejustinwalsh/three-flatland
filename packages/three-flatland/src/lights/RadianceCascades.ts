@@ -47,7 +47,13 @@ import {
   type ResolvedDdaExecutionPath,
 } from './DdaAcceleration'
 import { rayBoundsInterval, traceDdaIntegerRadiance } from './ddaGrid'
-import { DdaHierarchy, getDdaCascadeHierarchyLevel, type DdaHierarchyLevel } from './DdaHierarchy'
+import {
+  DDA_MAX_HIERARCHY_LEVEL,
+  DdaHierarchy,
+  getDdaCascadeHierarchyLevel,
+  getDdaHierarchyBuildLevelCount,
+  type DdaHierarchyLevel,
+} from './DdaHierarchy'
 import { EmissivePass } from './EmissivePass'
 import { DdaWorkgroupAtomicQueuePass } from './webgpu/DdaWorkgroupCascade'
 import { DdaWorkgroupHierarchy } from './webgpu/DdaWorkgroupHierarchy'
@@ -400,7 +406,7 @@ export interface RadianceCascadesConfig {
   /** Full-resolution scene texels represented by one resolved DDA lighting texel. */
   ddaResolvePixelSize: number
   /** Structural conservative empty-space hierarchy level. `0` keeps fine-cell traversal only. */
-  readonly ddaHierarchyLevel: number
+  ddaHierarchyLevel: number
   /** Hard gate for WebGPU-only DDA acceleration. `false` always uses portable fragment HDDA. */
   ddaWebGpuAccelerationEnabled: boolean
   /** Automatic selection or an explicitly forced DDA execution path for parity/performance tests. */
@@ -622,7 +628,7 @@ export class RadianceCascades {
     const mergedConfig = { ...DEFAULT_CONFIG, ...config }
     this._config = {
       ...mergedConfig,
-      ddaHierarchyLevel: Math.max(0, Math.min(3, Math.round(mergedConfig.ddaHierarchyLevel))),
+      ddaHierarchyLevel: Math.max(0, Math.min(DDA_MAX_HIERARCHY_LEVEL, Math.round(mergedConfig.ddaHierarchyLevel))),
     }
     this._autoBaseInterval = this._config.baseInterval <= 0
     this._autoCascadeResolution = this._config.cascadeResolution <= 0
@@ -804,6 +810,13 @@ export class RadianceCascades {
 
   get ddaHierarchyLevel(): number {
     return this._config.ddaHierarchyLevel
+  }
+
+  set ddaHierarchyLevel(value: number) {
+    const level = Math.max(0, Math.min(DDA_MAX_HIERARCHY_LEVEL, Math.round(value)))
+    if (level === this._config.ddaHierarchyLevel) return
+    this._config.ddaHierarchyLevel = level
+    if (this._usesDdaFixed() && this._cascadeRTs.length > 0) this._rebuildCascadeRTs()
   }
 
   get ddaWebGpuAccelerationEnabled(): boolean {
@@ -1138,7 +1151,9 @@ export class RadianceCascades {
 
   get estimatedPassCount(): number {
     let count = 1 + this._config.cascadeCount + 1
-    if (this._usesDdaFixed()) count += Math.max(1, this._config.ddaHierarchyLevel)
+    if (this._usesDdaFixed()) {
+      count += getDdaHierarchyBuildLevelCount(this._config.cascadeCount, this._config.ddaHierarchyLevel)
+    }
     // Compute cascades use an explicit counter reset before each persistent
     // queue dispatch. Keep the public estimate honest once a renderer has
     // resolved the active backend specialization.
@@ -1245,7 +1260,7 @@ export class RadianceCascades {
       this._emissiveRadianceRT.texture,
       capture.width,
       capture.height,
-      Math.max(1, this._config.ddaHierarchyLevel)
+      getDdaHierarchyBuildLevelCount(this._config.cascadeCount, this._config.ddaHierarchyLevel)
     )
   }
 
@@ -1257,7 +1272,7 @@ export class RadianceCascades {
       this._emissiveRadianceRT.texture,
       capture.width,
       capture.height,
-      Math.max(1, this._config.ddaHierarchyLevel)
+      getDdaHierarchyBuildLevelCount(this._config.cascadeCount, this._config.ddaHierarchyLevel)
     )
     if (this._resolvedDdaExecutionPath === 'webgpu-workgroup') {
       if (hierarchyChanged || this._ddaWorkgroupCascades.length !== this._config.cascadeCount) {

@@ -67,6 +67,10 @@ const DUNGEON_LIGHTING_DEFAULTS = {
   torchEmission: 8,
   slimeEmission: 0.5,
   radianceRange: 8,
+  giFilterEnabled: true,
+  giFilterRadius: 1.25,
+  giFilterStrength: 0.85,
+  giBleedThreshold: 0.65,
 } as const
 const WALL_TORCH_TILE_ID = 91
 const FLOOR_TORCH_TILE_ID = 93
@@ -135,6 +139,14 @@ const initialResolvePixelSize = Math.max(
   1,
   Math.round(numberParam(benchmarkQuery, 'resolvePx') ?? DDA_FIXED_RADIANCE_CASCADES_CONFIG.ddaResolvePixelSize ?? 2)
 )
+const initialHierarchyLevel = Math.max(
+  0,
+  Math.min(5, integerParam(benchmarkQuery, 'hdda', DDA_FIXED_RADIANCE_CASCADES_CONFIG.ddaHierarchyLevel ?? 2))
+)
+const initialGiFilterEnabled = benchmarkQuery.get('giFilter') !== '0'
+const initialGiFilterRadius = numberParam(benchmarkQuery, 'giRadius') ?? DUNGEON_LIGHTING_DEFAULTS.giFilterRadius
+const initialGiFilterStrength = numberParam(benchmarkQuery, 'giStrength') ?? DUNGEON_LIGHTING_DEFAULTS.giFilterStrength
+const initialGiBleedThreshold = numberParam(benchmarkQuery, 'bleed') ?? DUNGEON_LIGHTING_DEFAULTS.giBleedThreshold
 const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
 
 // Hero movement speed (world u/s) + click-to-walk tuning.
@@ -347,6 +359,11 @@ interface SceneProps {
   slimeCount: number
   transportPixelSize: number
   lightingPixelSize: number
+  hierarchyLevel: number
+  giFilterEnabled: boolean
+  giFilterRadius: number
+  giFilterStrength: number
+  giBleedThreshold: number
   paletteBands: number
   torchIntensity: number
   slimeIntensity: number
@@ -941,10 +958,12 @@ function FlatlandScene(props: SceneProps) {
         effect.radiance.ddaExecutionPath = props.executionPath
         effect.radiance.ddaPixelSize = Math.max(1, Math.round(props.transportPixelSize))
         effect.radiance.ddaResolvePixelSize = Math.max(1, Math.round(props.lightingPixelSize))
+        effect.radiance.ddaHierarchyLevel = Math.max(0, Math.min(5, Math.round(props.hierarchyLevel)))
         effect.radiance.ddaPaletteBands = Math.max(0, Math.round(props.paletteBands))
         effect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
-        effect.radiance.filterRadius = 1.25
-        effect.radiance.filterStrength = 0.85
+        effect.radiance.filterRadius = Math.max(0, props.giFilterRadius)
+        effect.radiance.filterStrength = props.giFilterEnabled ? Math.max(0, Math.min(1, props.giFilterStrength)) : 0
+        effect.radiance.ddaBleedThreshold = Math.max(0, Math.min(2, props.giBleedThreshold))
         props.onDdaDiagnostics(
           effect.radiance.resolvedDdaExecutionPath,
           effect.radiance.ddaAccelerationFallbackReason ?? 'none'
@@ -1135,6 +1154,27 @@ export default function App() {
   const [lightingPixelSize] = usePaneInput(light, 'lighting px', initialResolvePixelSize, {
     options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
   })
+  const [hierarchyLevel] = usePaneInput(light, 'HDDA level', initialHierarchyLevel, {
+    min: 0,
+    max: 5,
+    step: 1,
+  })
+  const [giFilterEnabled] = usePaneInput(light, 'GI filter', initialGiFilterEnabled)
+  const [giFilterRadius] = usePaneInput(light, 'GI radius', initialGiFilterRadius, {
+    min: 0,
+    max: 3,
+    step: 0.05,
+  })
+  const [giFilterStrength] = usePaneInput(light, 'GI strength', initialGiFilterStrength, {
+    min: 0,
+    max: 1,
+    step: 0.05,
+  })
+  const [giBleedThreshold] = usePaneInput(light, 'bleed', initialGiBleedThreshold, {
+    min: 0,
+    max: 2,
+    step: 0.05,
+  })
   const [_renderSurface, setRenderSurface] = usePaneInput(light, 'buffer', `${surface.width}x${surface.height}`, {
     readonly: true,
   })
@@ -1204,6 +1244,11 @@ export default function App() {
               slimeCount={sceneSlimeCount}
               transportPixelSize={transportPixelSize}
               lightingPixelSize={lightingPixelSize}
+              hierarchyLevel={hierarchyLevel}
+              giFilterEnabled={giFilterEnabled}
+              giFilterRadius={giFilterRadius}
+              giFilterStrength={giFilterStrength}
+              giBleedThreshold={giBleedThreshold}
               paletteBands={paletteBands}
               torchIntensity={torchIntensity}
               slimeIntensity={slimeIntensity}

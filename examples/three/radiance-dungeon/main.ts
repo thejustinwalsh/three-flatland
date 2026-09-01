@@ -12,6 +12,7 @@ import {
   SpriteSheetLoader,
   LDtkLoader,
   SortLayers,
+  DDA_FIXED_RADIANCE_CASCADES_CONFIG,
   type TileMapData,
   type TileMapObject,
   type AnimationSetDefinition,
@@ -52,6 +53,10 @@ const DUNGEON_LIGHTING_DEFAULTS = {
   torchEmission: 8,
   slimeEmission: 0.5,
   radianceRange: 8,
+  giFilterEnabled: true,
+  giFilterRadius: 1.25,
+  giFilterStrength: 0.85,
+  giBleedThreshold: 0.65,
 } as const
 const WALL_TORCH_TILE_ID = 91
 const FLOOR_TORCH_TILE_ID = 93
@@ -279,6 +284,15 @@ async function main() {
   const legacyDdaResolutionScale = numberParam(query, 'ddaScale')
   const requestedDdaCellSize = numberParam(query, 'ddaCell')
   const requestedDdaResolveSize = numberParam(query, 'resolvePx')
+  const requestedDdaHierarchyLevel = integerParam(
+    query,
+    'hdda',
+    DDA_FIXED_RADIANCE_CASCADES_CONFIG.ddaHierarchyLevel ?? 2
+  )
+  const initialGiFilterEnabled = query.get('giFilter') !== '0'
+  const initialGiFilterRadius = numberParam(query, 'giRadius') ?? DUNGEON_LIGHTING_DEFAULTS.giFilterRadius
+  const initialGiFilterStrength = numberParam(query, 'giStrength') ?? DUNGEON_LIGHTING_DEFAULTS.giFilterStrength
+  const initialGiBleedThreshold = numberParam(query, 'bleed') ?? DUNGEON_LIGHTING_DEFAULTS.giBleedThreshold
   const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
   const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
   // Spawn layout is deterministic in both interactive and benchmark modes.
@@ -311,8 +325,9 @@ async function main() {
   // ─── Lighting ───────────────────────────────────────────────────
   const lightEffect = new DdaFixedRadianceLightEffect()
   lightEffect.radianceIntensity = 2.5
-  lightEffect.radiance.filterRadius = 1.25
-  lightEffect.radiance.filterStrength = 0.85
+  lightEffect.radiance.filterRadius = initialGiFilterRadius
+  lightEffect.radiance.filterStrength = initialGiFilterEnabled ? initialGiFilterStrength : 0
+  lightEffect.radiance.ddaBleedThreshold = initialGiBleedThreshold
   lightEffect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
   if (benchmarkBaseRayCount === 4 || benchmarkBaseRayCount === 16) {
     lightEffect.radiance.config.baseRayCount = benchmarkBaseRayCount
@@ -564,6 +579,11 @@ async function main() {
       )
     ),
     lightingPixelSize: Math.max(1, Math.round(requestedDdaResolveSize ?? lightEffect.radiance.ddaResolvePixelSize)),
+    hierarchyLevel: requestedDdaHierarchyLevel,
+    giFilterEnabled: initialGiFilterEnabled,
+    giFilterRadius: initialGiFilterRadius,
+    giFilterStrength: initialGiFilterStrength,
+    giBleedThreshold: initialGiBleedThreshold,
     renderSurface: `${renderSurface.width}x${renderSurface.height}`,
     ambient: DUNGEON_LIGHTING_DEFAULTS.ambient,
     torchIntensity: DUNGEON_LIGHTING_DEFAULTS.torchEmission,
@@ -607,6 +627,31 @@ async function main() {
   lightFolder.addBinding(params, 'lightingPixelSize', {
     options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
     label: 'lighting px',
+  })
+  lightFolder.addBinding(params, 'hierarchyLevel', {
+    min: 0,
+    max: 5,
+    step: 1,
+    label: 'HDDA level',
+  })
+  lightFolder.addBinding(params, 'giFilterEnabled', { label: 'GI filter' })
+  lightFolder.addBinding(params, 'giFilterRadius', {
+    min: 0,
+    max: 3,
+    step: 0.05,
+    label: 'GI radius',
+  })
+  lightFolder.addBinding(params, 'giFilterStrength', {
+    min: 0,
+    max: 1,
+    step: 0.05,
+    label: 'GI strength',
+  })
+  lightFolder.addBinding(params, 'giBleedThreshold', {
+    min: 0,
+    max: 2,
+    step: 0.05,
+    label: 'bleed',
   })
   lightFolder.addBinding(params, 'renderSurface', { label: 'buffer', readonly: true })
   lightFolder.addBinding(params, 'ambient', { min: 0, max: 0.5, step: 0.01 }).on('change', () => {
@@ -745,6 +790,7 @@ async function main() {
   let lastTime = performance.now()
   let appliedDdaPixelSize = 0
   let appliedDdaResolvePixelSize = 0
+  let appliedDdaHierarchyLevel = -1
 
   function renderFrame(): void {
     lightEffect.radiance.ddaWebGpuAccelerationEnabled = params.webGpuAcceleration
@@ -763,6 +809,15 @@ async function main() {
       params.lightingPixelSize = ddaResolvePixelSize
       appliedDdaResolvePixelSize = ddaResolvePixelSize
     }
+    const ddaHierarchyLevel = Math.max(0, Math.min(5, Math.round(params.hierarchyLevel)))
+    if (ddaHierarchyLevel !== appliedDdaHierarchyLevel) {
+      lightEffect.radiance.ddaHierarchyLevel = ddaHierarchyLevel
+      params.hierarchyLevel = ddaHierarchyLevel
+      appliedDdaHierarchyLevel = ddaHierarchyLevel
+    }
+    lightEffect.radiance.filterRadius = Math.max(0, params.giFilterRadius)
+    lightEffect.radiance.filterStrength = params.giFilterEnabled ? Math.max(0, Math.min(1, params.giFilterStrength)) : 0
+    lightEffect.radiance.ddaBleedThreshold = Math.max(0, Math.min(2, params.giBleedThreshold))
     flatland.render(renderer)
     if (benchmarkEnabled) {
       publishBenchmarkReady({

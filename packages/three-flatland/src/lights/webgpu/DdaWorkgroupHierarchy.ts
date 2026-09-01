@@ -125,7 +125,7 @@ export function createDdaWorkgroupReductionKernel(
     const present = vec3(
       signals.x.greaterThan(threshold).select(float(1), float(0)),
       signals.y.greaterThan(threshold).select(float(1), float(0)),
-      signals.z.greaterThan(threshold).select(float(1), float(0)),
+      signals.z.greaterThan(threshold).select(float(1), float(0))
     )
     textureStore(target, uvec2(cell), vec4(present, float(0))).toWriteOnly()
   })()
@@ -174,7 +174,7 @@ export class DdaWorkgroupHierarchy {
   ): boolean {
     const width = Math.max(1, Math.round(sourceWidth))
     const height = Math.max(1, Math.round(sourceHeight))
-    const count = Math.max(1, Math.round(levelCount))
+    const count = getDdaHierarchyDimensions(width, height, levelCount).length
     if (
       this._occlusionTexture === occlusionTexture &&
       this._emissiveTexture === emissiveTexture &&
