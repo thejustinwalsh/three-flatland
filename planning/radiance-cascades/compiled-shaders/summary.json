@@ -1,0 +1,78 @@
+{
+  "fragment": [
+    {
+      "bytes": 20640,
+      "lines": 939,
+      "forLoops": 1,
+      "textureLoads": 6,
+      "textureSamples": 4,
+      "textureStores": 0,
+      "atomicAdds": 0
+    },
+    {
+      "bytes": 24313,
+      "lines": 1136,
+      "forLoops": 1,
+      "textureLoads": 7,
+      "textureSamples": 4,
+      "textureStores": 0,
+      "atomicAdds": 0
+    },
+    {
+      "bytes": 28063,
+      "lines": 1333,
+      "forLoops": 1,
+      "textureLoads": 8,
+      "textureSamples": 4,
+      "textureStores": 0,
+      "atomicAdds": 0
+    },
+    {
+      "bytes": 25055,
+      "lines": 1281,
+      "forLoops": 1,
+      "textureLoads": 8,
+      "textureSamples": 0,
+      "textureStores": 0,
+      "atomicAdds": 0
+    }
+  ],
+  "workgroup": [
+    {
+      "bytes": 22164,
+      "lines": 977,
+      "forLoops": 2,
+      "textureLoads": 6,
+      "textureSamples": 4,
+      "textureStores": 1,
+      "atomicAdds": 1
+    },
+    {
+      "bytes": 25903,
+      "lines": 1173,
+      "forLoops": 2,
+      "textureLoads": 7,
+      "textureSamples": 4,
+      "textureStores": 1,
+      "atomicAdds": 1
+    },
+    {
+      "bytes": 29764,
+      "lines": 1370,
+      "forLoops": 2,
+      "textureLoads": 8,
+      "textureSamples": 4,
+      "textureStores": 1,
+      "atomicAdds": 1
+    },
+    {
+      "bytes": 26678,
+      "lines": 1318,
+      "forLoops": 2,
+      "textureLoads": 8,
+      "textureSamples": 0,
+      "textureStores": 1,
+      "atomicAdds": 1
+    }
+  ]
+}
