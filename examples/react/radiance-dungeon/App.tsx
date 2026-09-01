@@ -14,6 +14,7 @@ import {
   LDtkLoader,
   SortLayers,
   PixelPerfectCamera,
+  DDA_FIXED_RADIANCE_CASCADES_CONFIG,
   attachLighting,
   attachEffect,
   type DdaExecutionPath,
@@ -120,6 +121,20 @@ const benchmarkSlimes = integerParam(benchmarkQuery, 'slimes', 5)
 const benchmarkSeed = integerParam(benchmarkQuery, 'seed', DEFAULT_BENCHMARK_SEED)
 const initiallyPaused = benchmarkQuery.get('pause') === '1'
 const benchmarkFixedDeltaMs = numberParam(benchmarkQuery, 'fixedDelta')
+const legacyDdaResolutionScale = numberParam(benchmarkQuery, 'ddaScale')
+const initialTransportPixelSize = Math.max(
+  1,
+  Math.round(
+    numberParam(benchmarkQuery, 'ddaCell') ??
+      (legacyDdaResolutionScale === undefined
+        ? (DDA_FIXED_RADIANCE_CASCADES_CONFIG.ddaPixelSize ?? 4)
+        : ART_WORLD_SCALE * Math.max(1, legacyDdaResolutionScale))
+  )
+)
+const initialResolvePixelSize = Math.max(
+  1,
+  Math.round(numberParam(benchmarkQuery, 'resolvePx') ?? DDA_FIXED_RADIANCE_CASCADES_CONFIG.ddaResolvePixelSize ?? 2)
+)
 const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
 
 // Hero movement speed (world u/s) + click-to-walk tuning.
@@ -330,7 +345,8 @@ interface SceneProps {
   onDdaDiagnostics: (path: string, fallback: string) => void
   ambient: number
   slimeCount: number
-  pixelSize: number
+  transportPixelSize: number
+  lightingPixelSize: number
   paletteBands: number
   torchIntensity: number
   slimeIntensity: number
@@ -923,7 +939,8 @@ function FlatlandScene(props: SceneProps) {
       if (effect) {
         effect.radiance.ddaWebGpuAccelerationEnabled = props.webGpuAcceleration
         effect.radiance.ddaExecutionPath = props.executionPath
-        effect.radiance.ddaPixelSize = Math.max(1, Math.round(props.pixelSize))
+        effect.radiance.ddaPixelSize = Math.max(1, Math.round(props.transportPixelSize))
+        effect.radiance.ddaResolvePixelSize = Math.max(1, Math.round(props.lightingPixelSize))
         effect.radiance.ddaPaletteBands = Math.max(0, Math.round(props.paletteBands))
         effect.radiance.ddaRadianceRange = DUNGEON_LIGHTING_DEFAULTS.radianceRange
         effect.radiance.filterRadius = 1.25
@@ -1112,7 +1129,10 @@ export default function App() {
     if (path !== resolvedPath) setResolvedPath(path)
     if (fallback !== accelerationFallback) setAccelerationFallback(fallback)
   }
-  const [pixelSize] = usePaneInput(light, 'DDA cell px', ART_WORLD_SCALE, {
+  const [transportPixelSize] = usePaneInput(light, 'trace cell px', initialTransportPixelSize, {
+    options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
+  })
+  const [lightingPixelSize] = usePaneInput(light, 'lighting px', initialResolvePixelSize, {
     options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
   })
   const [_renderSurface, setRenderSurface] = usePaneInput(light, 'buffer', `${surface.width}x${surface.height}`, {
@@ -1182,7 +1202,8 @@ export default function App() {
               onDdaDiagnostics={updateDdaDiagnostics}
               ambient={ambient}
               slimeCount={sceneSlimeCount}
-              pixelSize={pixelSize}
+              transportPixelSize={transportPixelSize}
+              lightingPixelSize={lightingPixelSize}
               paletteBands={paletteBands}
               torchIntensity={torchIntensity}
               slimeIntensity={slimeIntensity}

@@ -48,7 +48,7 @@ describe('RadianceCascades', () => {
     })
   })
 
-  it('uses a four-pixel logical grid and filterable RGBA8 cascade storage for DDA Fixed RC', () => {
+  it('uses four-pixel transport reconstructed onto a two-pixel DDA lighting grid', () => {
     const radiance = new RadianceCascades({
       ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
       cascadeResolution: 512,
@@ -69,6 +69,8 @@ describe('RadianceCascades', () => {
     }
     expect(radiance.requiresSdf).toBe(false)
     expect(radiance.ddaHierarchyLevel).toBe(2)
+    expect(radiance.ddaPixelSize).toBe(4)
+    expect(radiance.ddaResolvePixelSize).toBe(2)
     expect(radiance.ddaWebGpuAccelerationEnabled).toBe(true)
     expect(radiance.ddaExecutionPath).toBe('auto')
     expect(radiance.resolvedDdaExecutionPath).toBe('fragment')
@@ -80,8 +82,8 @@ describe('RadianceCascades', () => {
     expect(internals._cascadeRTs.every((target) => target.width === 416 && target.height === 288)).toBe(true)
     expect(internals._cascadeRTs.every((target) => target.texture.type === UnsignedByteType)).toBe(true)
     expect(internals._cascadeRTs.every((target) => target.texture.minFilter === LinearFilter)).toBe(true)
-    expect(internals._finalRadianceRT.width).toBe(98)
-    expect(internals._finalRadianceRT.height).toBe(68)
+    expect(internals._finalRadianceRT.width).toBe(196)
+    expect(internals._finalRadianceRT.height).toBe(136)
     expect(internals._finalRadianceRT.texture.magFilter).toBe(NearestFilter)
     expect(internals._emissiveRadianceRT.texture.generateMipmaps).toBe(false)
     expect(internals._emissiveRadianceRT.texture.minFilter).toBe(NearestFilter)
@@ -117,7 +119,7 @@ describe('RadianceCascades', () => {
       _finalRadianceRT: { width: number; height: number }
     }
     expect(internals._cascadeRTs[0]).toMatchObject({ width: 224, height: 160 })
-    expect(internals._finalRadianceRT).toMatchObject({ width: 53, height: 38 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 212, height: 152 })
 
     radiance.dispose()
   })
@@ -137,7 +139,7 @@ describe('RadianceCascades', () => {
       _finalRadianceRT: { width: number; height: number }
     }
     expect(internals._cascadeRTs[0]).toMatchObject({ width: 416, height: 288 })
-    expect(internals._finalRadianceRT).toMatchObject({ width: 98, height: 68 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 196, height: 136 })
     expect(radiance.finalRadianceTexture).toBe(texture)
 
     radiance.dispose()
@@ -183,8 +185,34 @@ describe('RadianceCascades', () => {
       _cascadeRTs: Array<{ width: number; height: number }>
       _finalRadianceRT: { width: number; height: number }
     }
-    expect(internals._finalRadianceRT).toMatchObject({ width: 328, height: 188 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 656, height: 376 })
     expect(internals._cascadeRTs[0]).toMatchObject({ width: 1312, height: 768 })
+    radiance.dispose()
+  })
+
+  it('changes the resolved lighting grid without rebuilding DDA transport', () => {
+    const radiance = new RadianceCascades({
+      ...DDA_FIXED_RADIANCE_CASCADES_CONFIG,
+      cascadeResolution: 512,
+    })
+    radiance.init(360, 240, createLightsTexture(), uniform(0))
+
+    const internals = radiance as unknown as {
+      _cascadeRTs: Array<{ width: number; height: number }>
+      _finalRadianceRT: { width: number; height: number; texture: unknown }
+    }
+    const cascade0 = internals._cascadeRTs[0]
+    const finalTexture = internals._finalRadianceRT.texture
+
+    radiance.ddaResolvePixelSize = 4
+    expect(internals._cascadeRTs[0]).toBe(cascade0)
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 416, height: 288 })
+    expect(internals._finalRadianceRT).toMatchObject({ width: 98, height: 68 })
+    expect(internals._finalRadianceRT.texture).toBe(finalTexture)
+
+    radiance.ddaResolvePixelSize = 1
+    expect(internals._cascadeRTs[0]).toBe(cascade0)
+    expect(internals._finalRadianceRT).toMatchObject({ width: 392, height: 272 })
     radiance.dispose()
   })
 

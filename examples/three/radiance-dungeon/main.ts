@@ -276,7 +276,9 @@ async function main() {
   const initialPaused = query.get('pause') === '1'
   const fixedDeltaMs = numberParam(query, 'fixedDelta')
   const benchmarkBaseRayCount = integerParam(query, 'rays', 16)
-  const ddaResolutionScale = Math.max(1, numberParam(query, 'ddaScale') ?? 1)
+  const legacyDdaResolutionScale = numberParam(query, 'ddaScale')
+  const requestedDdaCellSize = numberParam(query, 'ddaCell')
+  const requestedDdaResolveSize = numberParam(query, 'resolvePx')
   const simulationGate = createBenchmarkSimulationGate(benchmarkEnabled)
   const random = benchmarkEnabled ? createSeededRandom(seed) : Math.random
   // Spawn layout is deterministic in both interactive and benchmark modes.
@@ -552,7 +554,16 @@ async function main() {
     executionPath: 'auto' as DdaExecutionPath,
     resolvedPath: 'fragment',
     accelerationFallback: 'pending',
-    pixelSize: Math.max(1, Math.round(ART_WORLD_SCALE * ddaResolutionScale)),
+    transportPixelSize: Math.max(
+      1,
+      Math.round(
+        requestedDdaCellSize ??
+          (legacyDdaResolutionScale === undefined
+            ? lightEffect.radiance.ddaPixelSize
+            : ART_WORLD_SCALE * Math.max(1, legacyDdaResolutionScale))
+      )
+    ),
+    lightingPixelSize: Math.max(1, Math.round(requestedDdaResolveSize ?? lightEffect.radiance.ddaResolvePixelSize)),
     renderSurface: `${renderSurface.width}x${renderSurface.height}`,
     ambient: DUNGEON_LIGHTING_DEFAULTS.ambient,
     torchIntensity: DUNGEON_LIGHTING_DEFAULTS.torchEmission,
@@ -589,9 +600,13 @@ async function main() {
   })
   lightFolder.addBinding(params, 'resolvedPath', { label: 'active path', readonly: true })
   lightFolder.addBinding(params, 'accelerationFallback', { label: 'fallback', readonly: true })
-  lightFolder.addBinding(params, 'pixelSize', {
+  lightFolder.addBinding(params, 'transportPixelSize', {
     options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
-    label: 'DDA cell px',
+    label: 'trace cell px',
+  })
+  lightFolder.addBinding(params, 'lightingPixelSize', {
+    options: { '1×': 1, '2×': 2, '4×': 4, '8×': 8 },
+    label: 'lighting px',
   })
   lightFolder.addBinding(params, 'renderSurface', { label: 'buffer', readonly: true })
   lightFolder.addBinding(params, 'ambient', { min: 0, max: 0.5, step: 0.01 }).on('change', () => {
@@ -729,17 +744,24 @@ async function main() {
   // ─── Render loop ────────────────────────────────────────────────
   let lastTime = performance.now()
   let appliedDdaPixelSize = 0
+  let appliedDdaResolvePixelSize = 0
 
   function renderFrame(): void {
     lightEffect.radiance.ddaWebGpuAccelerationEnabled = params.webGpuAcceleration
     lightEffect.radiance.ddaExecutionPath = params.executionPath
     params.resolvedPath = lightEffect.radiance.resolvedDdaExecutionPath
     params.accelerationFallback = lightEffect.radiance.ddaAccelerationFallbackReason ?? 'none'
-    const ddaPixelSize = Math.max(1, Math.round(params.pixelSize))
+    const ddaPixelSize = Math.max(1, Math.round(params.transportPixelSize))
     if (ddaPixelSize !== appliedDdaPixelSize) {
       lightEffect.radiance.ddaPixelSize = ddaPixelSize
-      params.pixelSize = ddaPixelSize
+      params.transportPixelSize = ddaPixelSize
       appliedDdaPixelSize = ddaPixelSize
+    }
+    const ddaResolvePixelSize = Math.max(1, Math.round(params.lightingPixelSize))
+    if (ddaResolvePixelSize !== appliedDdaResolvePixelSize) {
+      lightEffect.radiance.ddaResolvePixelSize = ddaResolvePixelSize
+      params.lightingPixelSize = ddaResolvePixelSize
+      appliedDdaResolvePixelSize = ddaResolvePixelSize
     }
     flatland.render(renderer)
     if (benchmarkEnabled) {

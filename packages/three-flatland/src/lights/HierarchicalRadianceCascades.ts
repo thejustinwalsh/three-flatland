@@ -293,6 +293,7 @@ const DEFAULT_HRC_CONFIG: HierarchicalRadianceCascadesConfig = {
   compositionMode: 'holographic',
   holographicTraversal: 'sdf',
   ddaPixelSize: 4,
+  ddaResolvePixelSize: 4,
   ddaHierarchyLevel: 0,
   ddaWebGpuAccelerationEnabled: false,
   ddaExecutionPath: 'fragment',

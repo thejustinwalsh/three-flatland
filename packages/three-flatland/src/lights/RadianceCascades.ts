@@ -397,6 +397,8 @@ export interface RadianceCascadesConfig {
   lightSourceRadius: number
   /** Full-resolution scene texels represented by one logical DDA lighting pixel. */
   ddaPixelSize: number
+  /** Full-resolution scene texels represented by one resolved DDA lighting texel. */
+  ddaResolvePixelSize: number
   /** Structural conservative empty-space hierarchy level. `0` keeps fine-cell traversal only. */
   readonly ddaHierarchyLevel: number
   /** Hard gate for WebGPU-only DDA acceleration. `false` always uses portable fragment HDDA. */
@@ -438,6 +440,7 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
   wideLevels: 1,
   lightSourceRadius: 0,
   ddaPixelSize: 4,
+  ddaResolvePixelSize: 4,
   ddaHierarchyLevel: 0,
   ddaWebGpuAccelerationEnabled: false,
   ddaExecutionPath: 'fragment',
@@ -463,6 +466,9 @@ export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascad
   wideDownsampleFactor: 2,
   wideLevels: 1,
   ddaPixelSize: 4,
+  // Trace on a quarter-linear grid, then reconstruct onto the authored 2px
+  // art grid. The denser resolve is cheap because it does not cast more rays.
+  ddaResolvePixelSize: 2,
   // Two conservative coarse levels skip empty blocks while preserving each
   // occupancy/emitter/emission signal independently.
   ddaHierarchyLevel: 2,
@@ -661,6 +667,7 @@ export class RadianceCascades {
     this.wideLevels = this._config.wideLevels
     this.lightSourceRadius = this._config.lightSourceRadius
     this.ddaPixelSize = this._config.ddaPixelSize
+    this.ddaResolvePixelSize = this._config.ddaResolvePixelSize
     this.ddaQuantizationBits = this._config.ddaQuantizationBits
     this.ddaRadianceRange = this._config.ddaRadianceRange
     this.ddaBleedThreshold = this._config.ddaBleedThreshold
@@ -782,6 +789,17 @@ export class RadianceCascades {
       this._resizeFinalRadianceTargets()
       this._rebuildCascadeRTs()
     }
+  }
+
+  get ddaResolvePixelSize(): number {
+    return this._config.ddaResolvePixelSize
+  }
+
+  set ddaResolvePixelSize(value: number) {
+    const pixelSize = Math.max(1, Math.min(32, Math.round(value)))
+    if (pixelSize === this._config.ddaResolvePixelSize) return
+    this._config.ddaResolvePixelSize = pixelSize
+    if (this._cascadeRTs.length > 0) this._resizeResolvedRadianceTargets()
   }
 
   get ddaHierarchyLevel(): number {
@@ -1188,12 +1206,26 @@ export class RadianceCascades {
   }
 
   private _resizeFinalRadianceTargets(): void {
-    const { outputWidth, outputHeight } = this._transportDimensions()
-    this._rawFinalRadianceRT.setSize(outputWidth, outputHeight)
-    this._finalRadianceRT.setSize(outputWidth, outputHeight)
+    this._resizeResolvedRadianceTargets()
     this._resizeEmissiveTarget()
-    this._finalTexelSizeNode.value.set(1 / outputWidth, 1 / outputHeight)
+  }
+
+  private _resizeResolvedRadianceTargets(): void {
+    const { width, height } = this._resolvedRadianceDimensions()
+    this._rawFinalRadianceRT.setSize(width, height)
+    this._finalRadianceRT.setSize(width, height)
+    this._finalTexelSizeNode.value.set(1 / width, 1 / height)
     this._resizeWideRadianceTargets()
+  }
+
+  private _resolvedRadianceDimensions(): { width: number; height: number } {
+    const { outputWidth, outputHeight } = this._transportDimensions()
+    if (!this._usesDdaFixed()) return { width: outputWidth, height: outputHeight }
+    const scale = this._config.ddaPixelSize / this._config.ddaResolvePixelSize
+    return {
+      width: Math.max(1, Math.ceil(outputWidth * scale)),
+      height: Math.max(1, Math.ceil(outputHeight * scale)),
+    }
   }
 
   private _resizeEmissiveTarget(): void {
@@ -2118,13 +2150,10 @@ export class RadianceCascades {
 
     this._finalRadianceMaterial = new NodeMaterial()
     this._finalRadianceMaterial.fragmentNode = Fn(() => {
-      // Map final RT UV to the *visible* probe grid. The cascade atlas pads
-      // its probe groups to a multiple of the coarsest cascade stride, while
-      // the final target deliberately excludes that padding. Scaling UV by
-      // the padded probe-group extent stretched those extra rows/columns over
-      // the visible image; the resulting Y error grew with ddaPixelSize.
-      // Sampling the logical output extent crops the padding and keeps every
-      // DDA resolution registered to the same authored-pixel origin.
+      // The final target may be denser than the transport grid. Mapping its UV
+      // across the same guarded logical output window lets the cascade atlas's
+      // linear sampler reconstruct coarse transport onto a finer authored
+      // pixel grid without casting additional rays.
       const probeXY = uv().mul(vec2(float(dimensions.outputWidth), float(dimensions.outputHeight)))
 
       const irradiance = vec3(0).toVar()
