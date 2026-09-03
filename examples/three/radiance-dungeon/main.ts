@@ -280,7 +280,7 @@ async function main() {
   const seed = integerParam(query, 'seed', DEFAULT_BENCHMARK_SEED)
   const initialPaused = query.get('pause') === '1'
   const fixedDeltaMs = numberParam(query, 'fixedDelta')
-  const benchmarkBaseRayCount = integerParam(query, 'rays', 16)
+  const benchmarkBaseRayCount = integerParam(query, 'rays', DDA_FIXED_RADIANCE_CASCADES_CONFIG.baseRayCount ?? 4)
   const legacyDdaResolutionScale = numberParam(query, 'ddaScale')
   const requestedDdaCellSize = numberParam(query, 'ddaCell')
   const requestedDdaResolveSize = numberParam(query, 'resolvePx')

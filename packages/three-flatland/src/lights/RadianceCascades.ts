@@ -463,7 +463,10 @@ const DEFAULT_CONFIG: RadianceCascadesConfig = {
 export const DDA_FIXED_RADIANCE_CASCADES_CONFIG: Readonly<Partial<RadianceCascadesConfig>> = {
   traversal: 'dda-fixed',
   cascadeCount: 4,
-  baseRayCount: 16,
+  // Four C0 directions are the canonical RC baseline. Higher cascades grow
+  // angular resolution by 4x while the 4px DDA grid keeps nearby transport
+  // spatially coherent; 16 C0 rays quadruple this path's dominant workload.
+  baseRayCount: 4,
   maxAutoCascadeResolution: 512,
   filterRadius: 1,
   filterStrength: 1,

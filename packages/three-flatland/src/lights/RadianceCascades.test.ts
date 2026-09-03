@@ -71,6 +71,7 @@ describe('RadianceCascades', () => {
     expect(radiance.ddaHierarchyLevel).toBe(2)
     expect(radiance.ddaPixelSize).toBe(4)
     expect(radiance.ddaResolvePixelSize).toBe(2)
+    expect(radiance.config.baseRayCount).toBe(4)
     expect(radiance.ddaWebGpuAccelerationEnabled).toBe(true)
     expect(radiance.ddaExecutionPath).toBe('auto')
     expect(radiance.resolvedDdaExecutionPath).toBe('fragment')
@@ -79,7 +80,7 @@ describe('RadianceCascades', () => {
     // produces 98×68 output cells; cascade atlases pad that to 104×72 so all
     // four hierarchy levels retain integral direction blocks without
     // rephasing when the camera scrolls inside the page.
-    expect(internals._cascadeRTs.every((target) => target.width === 416 && target.height === 288)).toBe(true)
+    expect(internals._cascadeRTs.every((target) => target.width === 208 && target.height === 144)).toBe(true)
     expect(internals._cascadeRTs.every((target) => target.texture.type === UnsignedByteType)).toBe(true)
     expect(internals._cascadeRTs.every((target) => target.texture.minFilter === LinearFilter)).toBe(true)
     expect(internals._finalRadianceRT.width).toBe(196)
@@ -88,7 +89,7 @@ describe('RadianceCascades', () => {
     expect(internals._emissiveRadianceRT.texture.generateMipmaps).toBe(false)
     expect(internals._emissiveRadianceRT.texture.minFilter).toBe(NearestFilter)
     expect(radiance.cascadeStorageBytesPerTexel).toBe(4)
-    expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 416 * 288 * 4)
+    expect(radiance.estimatedCascadeStorageBytes).toBe(4 * 208 * 144 * 4)
     expect(radiance.estimatedRaymarchSampleCount).toBeGreaterThan(radiance.estimatedRaymarchTexelCount)
 
     radiance.dispose()
@@ -118,7 +119,7 @@ describe('RadianceCascades', () => {
       _cascadeRTs: Array<{ width: number; height: number }>
       _finalRadianceRT: { width: number; height: number }
     }
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 224, height: 160 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 112, height: 80 })
     expect(internals._finalRadianceRT).toMatchObject({ width: 212, height: 152 })
 
     radiance.dispose()
@@ -138,7 +139,7 @@ describe('RadianceCascades', () => {
       _cascadeRTs: Array<{ width: number; height: number }>
       _finalRadianceRT: { width: number; height: number }
     }
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 416, height: 288 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 208, height: 144 })
     expect(internals._finalRadianceRT).toMatchObject({ width: 196, height: 136 })
     expect(radiance.finalRadianceTexture).toBe(texture)
 
@@ -186,7 +187,7 @@ describe('RadianceCascades', () => {
       _finalRadianceRT: { width: number; height: number }
     }
     expect(internals._finalRadianceRT).toMatchObject({ width: 656, height: 376 })
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 1312, height: 768 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 656, height: 384 })
     radiance.dispose()
   })
 
@@ -206,7 +207,7 @@ describe('RadianceCascades', () => {
 
     radiance.ddaResolvePixelSize = 4
     expect(internals._cascadeRTs[0]).toBe(cascade0)
-    expect(internals._cascadeRTs[0]).toMatchObject({ width: 416, height: 288 })
+    expect(internals._cascadeRTs[0]).toMatchObject({ width: 208, height: 144 })
     expect(internals._finalRadianceRT).toMatchObject({ width: 98, height: 68 })
     expect(internals._finalRadianceRT.texture).toBe(finalTexture)
 
