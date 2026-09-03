@@ -1,2 +1,7 @@
 export { DefaultLightEffect } from './DefaultLightEffect'
+export { DirectLightEffect } from './DirectLightEffect'
+export { SimpleLightEffect } from './SimpleLightEffect'
+export { RadianceLightEffect } from './RadianceLightEffect'
+export { DdaFixedRadianceLightEffect } from './DdaFixedRadianceLightEffect'
+export { HierarchicalRadianceLightEffect } from './HierarchicalRadianceLightEffect'
 export { NormalMapProvider } from './NormalMapProvider'

@@ -1,5 +1,5 @@
-// One-off: bake the lighting-example dungeon tileset's normal map from
-// the LDtk-tagged tile custom data.
+// Bake each dungeon example's tileset normal map from its LDtk-tagged tile
+// custom data.
 //
 // Reads tile customData from public/maps/dungeon.ldtk, synthesizes a
 // descriptor via tilesetToRegions, and runs @three-flatland/normals
@@ -8,22 +8,23 @@
 // Usage:
 //   node scripts/bake-dungeon-normals.ts
 //
-// Output: the paired React and Three.js lighting-example normal sidecars
+// Output: paired React and Three.js normal sidecars for every dungeon example
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bakeNormalMapFile } from '@three-flatland/normals/node'
 import type { NormalSourceDescriptor } from '@three-flatland/normals'
-import { buildTilesetGrid, tilesetToRegions, type TileNormalCustomData } from 'three-flatland/loaders/normalDescriptor'
+import {
+  buildTilesetGrid,
+  tilesetToRegions,
+  type TileNormalCustomData,
+} from '../packages/three-flatland/src/loaders/normalDescriptor'
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url)
 const __dirname = dirname(SCRIPT_PATH)
 const ROOT = resolve(__dirname, '..')
-const LDTK_PATH = resolve(ROOT, 'examples/react/lighting/public/maps/dungeon.ldtk')
-const TILESET_PATHS = ['react', 'three'].map((variant) =>
-  resolve(ROOT, `examples/${variant}/lighting/public/sprites/Dungeon_Tileset.png`)
-)
+const DUNGEON_EXAMPLES = ['lighting', 'radiance-dungeon'] as const
 
 export interface LDtkTilesetDef {
   uid: number
@@ -75,18 +76,22 @@ export function buildDungeonNormalDescriptor(project: LDtkProject): NormalSource
 }
 
 function main(): void {
-  const project = JSON.parse(readFileSync(LDTK_PATH, 'utf8')) as LDtkProject
-  const descriptor = buildDungeonNormalDescriptor(project)
-  const regionCount = descriptor.regions?.length ?? 0
+  for (const example of DUNGEON_EXAMPLES) {
+    const ldtkPath = resolve(ROOT, `examples/react/${example}/public/maps/dungeon.ldtk`)
+    const project = JSON.parse(readFileSync(ldtkPath, 'utf8')) as LDtkProject
+    const descriptor = buildDungeonNormalDescriptor(project)
+    const regionCount = descriptor.regions?.length ?? 0
 
-  for (const tilesetPath of TILESET_PATHS) {
-    // Dump the descriptor next to each paired tileset for inspection + reruns.
-    const descriptorPath = tilesetPath.replace(/\.png$/, '.normal.json')
-    writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + '\n')
-    console.log(`wrote ${descriptorPath} (${regionCount} regions)`)
+    for (const variant of ['react', 'three']) {
+      const tilesetPath = resolve(ROOT, `examples/${variant}/${example}/public/sprites/Dungeon_Tileset.png`)
+      // Dump the descriptor next to each paired tileset for inspection + reruns.
+      const descriptorPath = tilesetPath.replace(/\.png$/, '.normal.json')
+      writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + '\n')
+      console.log(`wrote ${descriptorPath} (${regionCount} regions)`)
 
-    const outPath = bakeNormalMapFile(tilesetPath, descriptor)
-    console.log(`baked ${outPath}`)
+      const outPath = bakeNormalMapFile(tilesetPath, descriptor)
+      console.log(`baked ${outPath}`)
+    }
   }
 }
 

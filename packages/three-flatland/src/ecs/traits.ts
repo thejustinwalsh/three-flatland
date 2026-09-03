@@ -287,6 +287,9 @@ export const ShadowPipeline = trait(() => ({
   width: 0,
   /** Last SDF render-target height (post-resolution-scale). */
   height: 0,
+  /** Exact world bounds represented by the active shadow capture. */
+  captureWorldSize: new Vector2(1, 1),
+  captureWorldOffset: new Vector2(),
   /** True once the first-frame init() has allocated GPU resources. */
   initialized: false,
   /** Camera frustum/position at last generation — NaN sentinels force the

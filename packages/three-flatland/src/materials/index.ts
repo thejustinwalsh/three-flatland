@@ -18,6 +18,9 @@ export type {
   ChannelNodeContext,
 } from './MaterialEffect'
 
+// Built-in material effects
+export { EmissiveEffect, EMISSIVE_EFFECT_NAME } from './EmissiveEffect'
+
 // Channel types and defaults
 export { channelDefaults } from './channels'
 export type { ChannelName, ChannelNodeMap, WithRequiredChannels } from './channels'
@@ -29,6 +32,7 @@ export {
   readFlip,
   readSystemFlags,
   readEnableBits,
+  readEffectEnabledFlag,
   readShadowRadius,
   readLitFlag,
   readReceiveShadowsFlag,

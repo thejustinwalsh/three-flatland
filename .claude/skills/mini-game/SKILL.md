@@ -1,3 +1,8 @@
+---
+name: mini-game
+description: Build or revise ambient arcade mini-games that showcase three-flatland APIs using React Three Fiber, three-flatland/react, and Koota ECS. Use when creating interactive game examples, gameplay systems, entities, controls, effects, or performance-sensitive mini-game scenes in this repo.
+---
+
 # Mini-Game Development Skill
 
 > **Philosophy:** Ambient arcade experiences that **showcase three-flatland's APIs and features** while entertaining visitors.

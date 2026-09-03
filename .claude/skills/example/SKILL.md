@@ -1,3 +1,8 @@
+---
+name: example
+description: Create or update paired plain Three.js and React Three Fiber examples in three-flatland. Use when adding an example, demo, showcase, or reproduction under examples/, or when keeping the Three.js and React variants functionally equivalent.
+---
+
 # /example — Create a New Example
 
 Creates a new three-flatland example with both Three.js and React variants.

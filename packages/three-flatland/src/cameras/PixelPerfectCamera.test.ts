@@ -115,6 +115,17 @@ describe('PixelPerfectCamera', () => {
     expect(camera.position.z).toBe(123)
   })
 
+  it('can snap camera pans to a coarser effect grid', () => {
+    const camera = new PixelPerfectCamera({ viewSize: 240 })
+    camera.position.set(5.9, -5.9, 123)
+
+    expect(camera.snapPositionToGrid(4)).toBe(camera)
+    expect(camera.position.toArray()).toEqual([4, -4, 123])
+
+    camera.snapPositionToGrid(0)
+    expect(camera.position.toArray()).toEqual([4, -4, 123])
+  })
+
   it('normalizes fractional surface measurements to physical pixel dimensions', () => {
     const camera = new PixelPerfectCamera({ viewSize: 240 })
     camera.setViewportSize(640.75, 360.75, 1.5)

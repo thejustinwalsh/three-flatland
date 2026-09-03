@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tune Shader Visuals"
+  short_description: "Guard shader quality with visual evidence"
+  default_prompt: "Use $tune-shader-visuals to tune this shader without accepting visual regressions."

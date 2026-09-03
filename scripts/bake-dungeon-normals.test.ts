@@ -6,9 +6,14 @@ import { buildDungeonNormalDescriptor, type LDtkProject, type LDtkTilesetDef } f
 
 const ROOT = resolve(import.meta.dirname, '..')
 const VARIANTS = ['react', 'three'] as const
+const DUNGEON_EXAMPLES = ['lighting', 'radiance-dungeon'] as const
 
-function lightingAsset(variant: (typeof VARIANTS)[number], path: string): string {
-  return join(ROOT, 'examples', variant, 'lighting', 'public', path)
+function dungeonAsset(
+  example: (typeof DUNGEON_EXAMPLES)[number],
+  variant: (typeof VARIANTS)[number],
+  path: string
+): string {
+  return join(ROOT, 'examples', variant, example, 'public', path)
 }
 
 function readFlatlandHash(path: string): string {
@@ -19,7 +24,7 @@ function readFlatlandHash(path: string): string {
   return (JSON.parse(text!) as { hash: string }).hash
 }
 
-describe('lighting example dungeon normal sidecars', () => {
+describe('dungeon example normal sidecars', () => {
   it('keeps the bake grid formula aligned with LDtkLoader for spaced tilesets', () => {
     const tileset: LDtkTilesetDef = {
       uid: 1,
@@ -42,25 +47,35 @@ describe('lighting example dungeon normal sidecars', () => {
     ])
   })
 
-  it('matches the runtime descriptor and embedded PNG hash in both variants', () => {
-    const project = JSON.parse(readFileSync(lightingAsset('react', 'maps/dungeon.ldtk'), 'utf8')) as LDtkProject
-    const expected = buildDungeonNormalDescriptor(project)
-    const expectedHash = hashDescriptor(expected)
+  it('matches each runtime descriptor and embedded PNG hash in both variants', () => {
+    for (const example of DUNGEON_EXAMPLES) {
+      const project = JSON.parse(
+        readFileSync(dungeonAsset(example, 'react', 'maps/dungeon.ldtk'), 'utf8')
+      ) as LDtkProject
+      const expected = buildDungeonNormalDescriptor(project)
+      const expectedHash = hashDescriptor(expected)
 
-    for (const variant of VARIANTS) {
-      const descriptorPath = lightingAsset(variant, 'sprites/Dungeon_Tileset.normal.json')
-      const sidecarPath = lightingAsset(variant, 'sprites/Dungeon_Tileset.normal.png')
-      expect(JSON.parse(readFileSync(descriptorPath, 'utf8'))).toEqual(expected)
-      expect(readFlatlandHash(sidecarPath)).toBe(expectedHash)
+      for (const variant of VARIANTS) {
+        const descriptorPath = dungeonAsset(example, variant, 'sprites/Dungeon_Tileset.normal.json')
+        const sidecarPath = dungeonAsset(example, variant, 'sprites/Dungeon_Tileset.normal.png')
+        expect(JSON.parse(readFileSync(descriptorPath, 'utf8'))).toEqual(expected)
+        expect(readFlatlandHash(sidecarPath)).toBe(expectedHash)
+      }
     }
   })
 
-  it.each([
-    'maps/dungeon.ldtk',
-    'sprites/Dungeon_Tileset.png',
-    'sprites/Dungeon_Tileset.normal.json',
-    'sprites/Dungeon_Tileset.normal.png',
-  ])('keeps paired asset %s byte-identical', (path) => {
-    expect(readFileSync(lightingAsset('react', path))).toEqual(readFileSync(lightingAsset('three', path)))
+  it('keeps every paired dungeon asset byte-identical', () => {
+    for (const example of DUNGEON_EXAMPLES) {
+      for (const path of [
+        'maps/dungeon.ldtk',
+        'sprites/Dungeon_Tileset.png',
+        'sprites/Dungeon_Tileset.normal.json',
+        'sprites/Dungeon_Tileset.normal.png',
+      ]) {
+        expect(readFileSync(dungeonAsset(example, 'react', path))).toEqual(
+          readFileSync(dungeonAsset(example, 'three', path))
+        )
+      }
+    }
   })
 })

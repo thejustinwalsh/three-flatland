@@ -34,7 +34,7 @@ import { context, Fn } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 
 export type ShaderBackend = 'glsl' | 'wgsl'
-export type ShaderStage = 'fragment' | 'vertex'
+export type ShaderStage = 'compute' | 'fragment' | 'vertex'
 
 export interface ShaderSource {
   backend: ShaderBackend
@@ -45,6 +45,7 @@ export interface ShaderSource {
 
 export interface CompiledProgram {
   backend: ShaderBackend
+  computeShader: string | null
   diagnostics: unknown[][]
   fragmentShader: string | null
   vertexShader: string | null
@@ -60,6 +61,7 @@ export interface CompileMaterialOptions {
 type TestNodeBuilder = {
   build(): void
   camera: Camera
+  computeShader: string | null
   fragmentShader: string | null
   scene: Scene
   vertexShader: string | null
@@ -102,7 +104,7 @@ export function createShaderTexture(): DataTexture {
   return texture
 }
 
-export function createMockRenderer(backend: ShaderBackend) {
+export function createMockRenderer(backend: ShaderBackend, features: readonly string[] = []) {
   // This intentionally pins one deterministic code-generation profile:
   // no shadows/MRT/MSAA/reversed depth/log depth, sRGB output, and only
   // float32-filterable feature support. Add explicit matrix axes when a
@@ -123,7 +125,7 @@ export function createMockRenderer(backend: ShaderBackend) {
     getOutputBufferType: () => UnsignedByteType,
     getRenderTarget: () => null,
     hasCompatibility: () => false,
-    hasFeature: (feature: string) => feature === 'float32-filterable',
+    hasFeature: (feature: string) => feature === 'float32-filterable' || features.includes(feature),
     highPrecision: false,
     library: { fromMaterial: (material: NodeMaterial) => material },
     lighting: { enabled: true },
@@ -162,9 +164,35 @@ export function compileMaterial(
 
   return {
     backend,
+    computeShader: builder.computeShader,
     diagnostics,
     fragmentShader: builder.fragmentShader,
     vertexShader: builder.vertexShader,
+  }
+}
+
+/** Compile a WebGPU-only TSL compute graph without creating a renderer. */
+export function compileComputeNode(computeNode: Node, options: { features?: readonly string[] } = {}): CompiledProgram {
+  const renderer = createMockRenderer('wgsl', options.features)
+  const builder = new WGSLNodeBuilder(computeNode as never, renderer as never) as unknown as TestNodeBuilder
+  builder.camera = new PerspectiveCamera()
+  builder.scene = new Scene()
+
+  const diagnostics: unknown[][] = []
+  const originalError = console.error
+  console.error = (...error: unknown[]) => diagnostics.push(error)
+  try {
+    builder.build()
+  } finally {
+    console.error = originalError
+  }
+
+  return {
+    backend: 'wgsl',
+    computeShader: builder.computeShader,
+    diagnostics,
+    fragmentShader: null,
+    vertexShader: null,
   }
 }
 
@@ -184,6 +212,8 @@ export function compileFragmentNode(
 
 export function shaderSources(program: CompiledProgram, label: string): ShaderSource[] {
   const sources: ShaderSource[] = []
+  if (program.computeShader)
+    sources.push({ backend: program.backend, label, output: program.computeShader, stage: 'compute' })
   if (program.vertexShader)
     sources.push({ backend: program.backend, label, output: program.vertexShader, stage: 'vertex' })
   if (program.fragmentShader)
@@ -208,6 +238,7 @@ function normalizeUniformBlocksForShaderfrog(source: string): string {
 
 export async function validateGLSL(shaders: ShaderSource[]): Promise<void> {
   for (const shader of shaders) {
+    if (shader.stage === 'compute') throw new Error('GLSL compute validation is not supported by the WebGL fallback')
     try {
       parseGLSL(normalizeUniformBlocksForShaderfrog(shader.output), {
         failOnWarn: true,

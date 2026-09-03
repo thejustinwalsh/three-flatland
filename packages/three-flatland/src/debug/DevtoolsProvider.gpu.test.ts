@@ -116,8 +116,9 @@ describe('DevtoolsProvider GPU-timing toggle', () => {
     })
     provider.subscribers.onUnsubscribe('consumer-a')
     provider.beginFrame(performance.now(), renderer)
-    expect(resolveTimestampsAsync).toHaveBeenCalledOnce()
-    expect(resolveTimestampsAsync).toHaveBeenCalledWith('render')
+    expect(resolveTimestampsAsync).toHaveBeenCalledTimes(2)
+    expect(resolveTimestampsAsync).toHaveBeenNthCalledWith(1, 'render')
+    expect(resolveTimestampsAsync).toHaveBeenNthCalledWith(2, 'compute')
     expect(backend.trackTimestamp).toBe(false)
   })
 

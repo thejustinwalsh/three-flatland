@@ -17,7 +17,7 @@ function repositoryRoot(): string {
 }
 
 export function benchmarkFixtureSourceFiles(exampleDirectory: string): string[] {
-  if (!/^examples\/(?:three|react)\/(?:knightmark|lighting)$/.test(exampleDirectory)) {
+  if (!/^examples\/(?:three|react)\/(?:knightmark|lighting|radiance-dungeon)$/.test(exampleDirectory)) {
     throw new Error(`Invalid benchmark fixture directory: ${exampleDirectory}`)
   }
   const root = repositoryRoot()

@@ -1,14 +1,16 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import {
-  BufferAttribute,
   InstancedBufferAttribute,
   InstancedMesh,
   Mesh,
   PlaneGeometry,
   RenderTarget,
+  Vector2,
+  type DataTexture,
   type Material,
   type Texture,
 } from 'three'
-import { vec4 } from 'three/tsl'
+import { uniform, vec4 } from 'three/tsl'
 import type { NodeMaterial, WebGPURenderer } from 'three/webgpu'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
@@ -25,6 +27,8 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { BuffersSubscription } from './debug/SubscriberRegistry'
 import { DebugTextureRegistry } from './debug/DebugTextureRegistry'
 import { Flatland } from './Flatland'
+import { HierarchicalRadianceCascades } from './lights/HierarchicalRadianceCascades'
+import { RadianceCascades } from './lights/RadianceCascades'
 import { SDFGenerator } from './lights/SDFGenerator'
 import { OcclusionPass } from './lights/OcclusionPass'
 import { EffectMaterial } from './materials/EffectMaterial'
@@ -162,13 +166,104 @@ const sdfMaterials = (
 
 const occlusionPass = new OcclusionPass()
 const getOcclusionMaterial = reflected<
-  (texture: ReturnType<typeof createShaderTexture>, tightMesh: boolean) => NodeMaterial
+  (texture: ReturnType<typeof createShaderTexture>, tightMesh: boolean) => Sprite2DMaterial
 >(occlusionPass, '_getOrCreateOcclusionMaterial')
 const occlusionTexture = shaderTexture()
+const occlusionTightTexture = shaderTexture()
+registerCompilerAtlas(occlusionTightTexture)
 const occlusionMaterials = [
   ['occlusion-synth-quad', getOcclusionMaterial.call(occlusionPass, occlusionTexture, false)],
-  ['occlusion-tight-mesh', getOcclusionMaterial.call(occlusionPass, occlusionTexture, true)],
-] satisfies Array<[string, NodeMaterial]>
+  ['occlusion-tight-mesh', getOcclusionMaterial.call(occlusionPass, occlusionTightTexture, true)],
+] satisfies Array<[string, Sprite2DMaterial]>
+
+const fixedHrc = new HierarchicalRadianceCascades({
+  cascadeResolution: 64,
+  baseRayCount: 4,
+  compositionMode: 'holographic',
+  holographicTraversal: 'dda-fixed',
+  holographicFinalResolutionScale: 4,
+  ddaPixelSize: 4,
+  ddaQuantizationBits: 6,
+  ddaTransferRange: 4,
+  ddaRadianceRange: 1,
+  filterRadius: 0,
+  filterStrength: 0,
+  mipBlur: 0,
+  mipStrength: 0,
+})
+fixedHrc.init(64, 64, shaderTexture() as DataTexture, uniform(1))
+fixedHrc.setSdfTexture(shaderTexture())
+fixedHrc.setOcclusionTexture(shaderTexture())
+const ensureFixedDirect = reflected<(level: number) => NodeMaterial | null>(
+  fixedHrc,
+  '_ensureHolographicDirectTransferMaterial'
+)
+const ensureFixedRecursive = reflected<(level: number) => NodeMaterial | null>(
+  fixedHrc,
+  '_ensureHolographicRecursiveTransferMaterial'
+)
+const ensureFixedRadiance = reflected<(level: number) => NodeMaterial | null>(
+  fixedHrc,
+  '_ensureHolographicRadianceMaterial'
+)
+const ensureFixedFinal = reflected<(sourceTexture: Texture) => void>(
+  fixedHrc,
+  '_ensureHolographicFinalRadianceMaterial'
+)
+const fixedHrcMaterials = {
+  direct: ensureFixedDirect.call(fixedHrc, 0)!,
+  recursive: ensureFixedRecursive.call(fixedHrc, 3)!,
+  radiance: ensureFixedRadiance.call(fixedHrc, 0)!,
+  final: (() => {
+    ensureFixedFinal.call(fixedHrc, fixedHrc.holographicRadianceAtlasTextures[0]!)
+    return reflected<NodeMaterial>(fixedHrc, '_finalRadianceMaterial')
+  })(),
+}
+fixedHrc.ddaPaletteBands = 8
+const ensureFixedPalette = reflected<() => void>(fixedHrc, '_ensureFilterRadianceMaterial')
+ensureFixedPalette.call(fixedHrc)
+const fixedHrcPaletteMaterial = reflected<NodeMaterial>(fixedHrc, '_filterRadianceMaterial')
+
+const fixedRc = new RadianceCascades({
+  traversal: 'dda-fixed',
+  cascadeCount: 4,
+  baseRayCount: 16,
+  cascadeResolution: 0,
+  maxAutoCascadeResolution: 512,
+  maxTransportDistance: 256,
+  filterRadius: 1.25,
+  filterStrength: 0.85,
+  mipBlur: 0,
+  mipStrength: 0,
+  ddaPixelSize: 2,
+  ddaHierarchyLevel: 2,
+  ddaQuantizationBits: 8,
+  ddaRadianceRange: 8,
+  ddaBleedThreshold: 0.65,
+  ddaPaletteBands: 0,
+  includeAmbient: false,
+  includeAnalyticLights: false,
+})
+fixedRc.init(640, 360, shaderTexture() as DataTexture, uniform(1))
+fixedRc.setProcessingSize(640, 360)
+fixedRc.setWorldBounds(new Vector2(640, 360), new Vector2(0, 0))
+fixedRc.setTransportBounds(new Vector2(896, 616), new Vector2(-128, -128))
+const fixedRcOcclusionTexture = shaderTexture()
+const fixedRcOcclusionImage = fixedRcOcclusionTexture.image as { width: number; height: number }
+fixedRcOcclusionImage.width = 448
+fixedRcOcclusionImage.height = 308
+fixedRc.setOcclusionTexture(fixedRcOcclusionTexture)
+const fixedRcCascadeMaterials = reflected<NodeMaterial[]>(fixedRc, '_cascadeMaterials')
+const fixedRcDdaHierarchy = reflected<object>(fixedRc, '_ddaHierarchy')
+const fixedRcDdaHierarchyMaterials = reflected<Array<{ material: NodeMaterial }>>(fixedRcDdaHierarchy, '_levels').map(
+  ({ material }) => material
+)
+const ensureFixedRcFinal = reflected<() => void>(fixedRc, '_ensureFinalRadianceMaterial')
+ensureFixedRcFinal.call(fixedRc)
+const fixedRcFinalMaterial = reflected<NodeMaterial>(fixedRc, '_finalRadianceMaterial')
+const ensureFixedRcFilter = reflected<() => void>(fixedRc, '_ensureFilterRadianceMaterial')
+ensureFixedRcFilter.call(fixedRc)
+const fixedRcFilterMaterial = reflected<NodeMaterial>(fixedRc, '_filterRadianceMaterial')
 
 const CompilerPass = createPassEffect({
   name: 'compiler-pass',
@@ -179,25 +274,25 @@ const CompilerPass = createPassEffect({
       input.mul(vec4(uniforms.amount, 1, 1, 1)),
 })
 
-function occlusionGeometry() {
-  const geometry = new PlaneGeometry(1, 1)
-  geometry.setAttribute(
-    'instanceUV',
-    new BufferAttribute(new Float32Array([0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1]), 4)
-  )
-  geometry.setAttribute(
-    'instanceSystem',
-    new BufferAttribute(new Float32Array([1, 1, 7, 0, 1, 1, 7, 0, 1, 1, 7, 0, 1, 1, 7, 0]), 4)
-  )
-  return geometry
-}
-
 afterAll(async () => {
   try {
     await validateShaderSources([...shaders.values()])
+    const exportDirectory = process.env.THREE_FLATLAND_SHADER_EXPORT_DIR
+    if (exportDirectory) {
+      mkdirSync(exportDirectory, { recursive: true })
+      for (const shader of shaders.values()) {
+        const filename = `${shader.label}-${shader.stage}.${shader.backend === 'wgsl' ? 'wgsl' : 'glsl'}`.replace(
+          /[^a-zA-Z0-9._-]/g,
+          '-'
+        )
+        writeFileSync(`${exportDirectory}/${filename}`, shader.output)
+      }
+    }
   } finally {
     sdfGenerator.dispose()
     occlusionPass.dispose()
+    fixedRc.dispose()
+    fixedHrc.dispose()
     for (const material of disposableMaterials) material.dispose()
     for (const texture of disposableTextures) texture.dispose()
   }
@@ -425,12 +520,81 @@ describe.each<ShaderBackend>(['wgsl', 'glsl'])('%s core TSL compatibility', (bac
   })
 
   it.each(occlusionMaterials)('compiles the %s pass', (label, material) => {
-    const geometry = occlusionGeometry()
+    const batch = new SpriteBatch(material, 1)
     try {
-      const mesh = new Mesh(geometry, material)
-      capture(label, backend, material, mesh)
+      batch.writeSystemFlags(0, 7)
+      const program = capture(label, backend, material, batch)
+      expectInstanceTransformBeforeProjection(program.vertexShader)
+      expectSingleInstanceMatrixBinding(backend, program.vertexShader)
+      if (backend === 'wgsl') {
+        expect(program.vertexShader, 'packed system flags must be decoded before fragment interpolation').toMatch(
+          /&\s*4(?!\d)/
+        )
+        expect(program.fragmentShader, 'fragment shader must consume the decoded 0/1 cast varying').toContain(
+          'vSystemFlag4'
+        )
+        expect(program.fragmentShader, 'fragment shader must not decode the packed cast bit').not.toMatch(/&\s*4(?!\d)/)
+      }
     } finally {
-      geometry.dispose()
+      batch.dispose()
     }
+  })
+
+  it('compiles packed fixed-point DDA HRC transport and final reconstruction', () => {
+    const directProgram = capture('hrc-dda-fixed-direct', backend, fixedHrcMaterials.direct)
+    capture('hrc-dda-fixed-recursive', backend, fixedHrcMaterials.recursive)
+    capture('hrc-dda-fixed-radiance', backend, fixedHrcMaterials.radiance)
+    const finalProgram = capture('hrc-dda-fixed-final', backend, fixedHrcMaterials.final)
+    const finalLoops = finalProgram.fragmentShader.match(/\bloop\b|\bfor\s*\(/g) ?? []
+    expect(finalLoops, 'HRC rotations must remain one runtime loop instead of four inlined wedge graphs').toHaveLength(
+      6
+    )
+    expect(
+      finalProgram.fragmentShader.length,
+      'fixed-point HRC final reconstruction must stay below the audited shader-size ceiling'
+    ).toBeLessThan(60_000)
+    expect(directProgram.fragmentShader, 'DDA T0 must use its five-cell geometric traversal bound').toMatch(
+      /<\s*5(?:\.0)?\s*;/
+    )
+    expect(finalProgram.fragmentShader, 'DDA final reconstruction must use its local seven-cell wedge bound').toMatch(
+      /<\s*7(?:\.0)?\s*;/
+    )
+  })
+
+  it('compiles the production packed fixed-point DDA RC pass set', () => {
+    expect(fixedRcDdaHierarchyMaterials).toHaveLength(2)
+    for (let level = 0; level < fixedRcDdaHierarchyMaterials.length; level++) {
+      const hierarchyProgram = capture(
+        `rc-dda-fixed-hierarchy-${level + 1}`,
+        backend,
+        fixedRcDdaHierarchyMaterials[level]!
+      )
+      const fetches =
+        hierarchyProgram.fragmentShader.match(backend === 'wgsl' ? /textureLoad\s*\(/g : /texelFetch\s*\(/g) ?? []
+      expect(fetches, 'leaf masks use eight exact source loads; OR reductions use four child loads').toHaveLength(
+        level === 0 ? 8 : 4
+      )
+      expect(hierarchyProgram.fragmentShader, 'the conservative hierarchy must never sample averaged mips').not.toMatch(
+        /textureSampleLevel\s*\(|textureLod\s*\(/
+      )
+    }
+    expect(fixedRcCascadeMaterials).toHaveLength(4)
+    for (let cascade = 0; cascade < fixedRcCascadeMaterials.length; cascade++) {
+      const cascadeProgram = capture(`rc-dda-fixed-cascade-${cascade}`, backend, fixedRcCascadeMaterials[cascade]!)
+      expect(
+        cascadeProgram.fragmentShader,
+        'emissive-only DDA must compile out analytic circle intersections'
+      ).not.toMatch(/sqrt\s*\(/)
+    }
+    const finalProgram = capture('rc-dda-fixed-final', backend, fixedRcFinalMaterial)
+    expect(
+      finalProgram.fragmentShader,
+      'DDA final resolve must crop the guarded cascade field to its 328x188 output grid'
+    ).toMatch(/vec2(?:<f32>)?\(\s*328(?:\.0)?,\s*188(?:\.0)?\s*\)/)
+    capture('rc-dda-fixed-filter', backend, fixedRcFilterMaterial)
+  })
+
+  it('compiles DDA palette snapping for both shader backends', () => {
+    capture('hrc-dda-fixed-palette', backend, fixedHrcPaletteMaterial)
   })
 })

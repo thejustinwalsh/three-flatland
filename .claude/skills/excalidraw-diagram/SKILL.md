@@ -209,7 +209,7 @@ After generating the JSON, you MUST run the render-view-fix loop until the diagr
 
 ## Large / Comprehensive Diagram Strategy
 
-**For comprehensive or technical diagrams, you MUST build the JSON one section at a time.** Do NOT attempt to generate the entire file in a single pass. This is a hard constraint — Claude Code has a ~32,000 token output limit per response, and a comprehensive diagram easily exceeds that in one shot. Even if it didn't, generating everything at once leads to worse quality. Section-by-section is better in every way.
+**For comprehensive or technical diagrams, you MUST build the JSON one section at a time.** Do NOT attempt to generate the entire file in a single pass. Large diagrams can exceed an agent's response limits, and generating everything at once leads to worse quality. Section-by-section is more reliable.
 
 ### The Section-by-Section Workflow
 
@@ -493,10 +493,10 @@ You cannot judge a diagram from JSON alone. After generating or editing the Exca
 ### How to Render
 
 ```bash
-cd .claude/skills/excalidraw-diagram/references && uv run python render_excalidraw.py <path-to-file.excalidraw>
+cd .agents/skills/excalidraw-diagram/references && uv run python render_excalidraw.py <path-to-file.excalidraw>
 ```
 
-This outputs a PNG next to the `.excalidraw` file. Then use the **Read tool** on the PNG to actually view it.
+This outputs a PNG next to the `.excalidraw` file. Then inspect the rendered PNG with the available image-viewing tool.
 
 Flags:
 - `--svg --output <path>.svg` — emit embeddable SVG markup (self-contained: baked background + embedded fonts) instead of a PNG raster. Use this for the final deliverable when the diagram is embedded in a web page.
@@ -579,7 +579,7 @@ The loop is done when the self-validation gate above passes AND:
 ### First-Time Setup
 If the render script hasn't been set up yet:
 ```bash
-cd .claude/skills/excalidraw-diagram/references
+cd .agents/skills/excalidraw-diagram/references
 uv sync
 uv run playwright install chromium
 ```

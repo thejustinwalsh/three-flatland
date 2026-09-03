@@ -2,6 +2,7 @@ import {
   RenderTarget,
   type Scene,
   type Camera,
+  OrthographicCamera,
   type Material,
   type Mesh,
   type Object3D,
@@ -9,16 +10,24 @@ import {
   type ColorRepresentation,
   Color,
   NearestFilter,
+  NearestMipmapNearestFilter,
   LinearFilter,
+  LinearMipmapLinearFilter,
+  type Vector2,
 } from 'three'
-import { MeshBasicNodeMaterial } from 'three/webgpu'
-import type { WebGPURenderer } from 'three/webgpu'
+import type { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
 import { beginDebugPass, endDebugPass, registerDebugTexture, unregisterDebugTexture } from '../debug/debug-sink'
 import { Fn, vec2, vec4, float, select, attribute, uv, texture as sampleTexture } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
-import { readCastShadowFlag, readFlip, readRotatedFrameFlag } from '../materials/instanceAttributes'
+import {
+  readCastShadowFlag,
+  readEffectEnabledFlag,
+  readFlip,
+  readRotatedFrameFlag,
+} from '../materials/instanceAttributes'
 import { synthQuadNodes } from '../materials/synthQuadNodes'
 import { Sprite2DMaterial } from '../materials/Sprite2DMaterial'
+import { EMISSIVE_EFFECT_NAME } from '../materials/EmissiveEffect'
 
 /**
  * Optional construction knobs for {@link OcclusionPass}.
@@ -50,6 +59,8 @@ export interface OcclusionPassOptions {
    * anti-aliased silhouette.
    */
   linearFilter?: boolean
+  /** Build an averaged mip chain for conservative hierarchical grid traversal. */
+  generateMipmaps?: boolean
 }
 
 /**
@@ -58,18 +69,10 @@ export interface OcclusionPassOptions {
  *
  * Owns:
  * - A {@link RenderTarget} sized to `resolutionScale * viewport`.
- * - No material — renders the host scene with the scene's own sprite
- *   materials. The SDF JFA consumes the RT's alpha channel only, so sprite
- *   color output is discarded downstream. This keeps per-sprite opt-out
- *   (eventually via `castShadow`) bindable through the existing material
- *   path without requiring a scene-wide override material that loses
- *   per-object texture bindings in TSL.
- *
- * **Limitation (deliberate):** every rendered mesh currently contributes
- * its alpha to the SDF seed. A follow-up commit propagates the Object3D
- * `castShadow` flag through the batched sprite attribute buffers so
- * non-casters write alpha = 0 from inside the sprite material. Tracked in
- * `planning/experiments/SDF-Shadow-Plumbing.md` as the T2 follow-up.
+ * - A per-texture Sprite2DMaterial variant that preserves the production
+ *   batch vertex path while outputting a binary caster silhouette. The SDF
+ *   JFA consumes its alpha channel; RGB mirrors alpha so debug viewers show
+ *   the mask without relying on channel-display metadata.
  *
  * @internal
  */
@@ -79,8 +82,11 @@ export class OcclusionPass {
   private _resolutionScale: number
   private _clearColor: Color
   private _clearAlpha: number
+  private _linearFilter: boolean
+  private _mipmapsEnabled: boolean
 
   private _rt: RenderTarget
+  private _retiredRTs: RenderTarget[] = []
   private _width = 1
   private _height = 1
 
@@ -116,6 +122,7 @@ export class OcclusionPass {
    * outer call's material-restore data.
    */
   private _rendering = false
+  private _captureCamera = new OrthographicCamera()
 
   constructor(options: OcclusionPassOptions = {}) {
     // Default half-res. Quarters fill cost across every RT-sized pass
@@ -129,14 +136,10 @@ export class OcclusionPass {
     this._resolutionScale = options.resolutionScale ?? 0.5
     this._clearColor = new Color(options.clearColor ?? 0x000000)
     this._clearAlpha = options.clearAlpha ?? 0
+    this._linearFilter = options.linearFilter ?? false
+    this._mipmapsEnabled = options.generateMipmaps ?? false
 
-    this._rt = new RenderTarget(this._width, this._height, {
-      depthBuffer: false,
-      stencilBuffer: false,
-    })
-    const filter = options.linearFilter ? LinearFilter : NearestFilter
-    this._rt.texture.minFilter = filter
-    this._rt.texture.magFilter = filter
+    this._rt = this._createRenderTarget()
 
     registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
       display: 'alpha',
@@ -150,15 +153,14 @@ export class OcclusionPass {
     return this._rt
   }
 
-  /**
-   * Read-only — set at construction only. Treated as a static config
-   * value so the shadow pipeline doesn't need teardown/rebuild logic
-   * for runtime scale changes. Viewport resizes take the cheap
-   * `resize()` path (RTs set new dimensions, JFA pass count
-   * recomputed) without touching material / node graphs.
-   */
   get resolutionScale(): number {
     return this._resolutionScale
+  }
+
+  set resolutionScale(value: number) {
+    this._assertUsable('resolutionScale')
+    if (!Number.isFinite(value) || value <= 0) return
+    this._resolutionScale = value
   }
 
   get width(): number {
@@ -167,6 +169,38 @@ export class OcclusionPass {
 
   get height(): number {
     return this._height
+  }
+
+  setMipmapsEnabled(enabled: boolean): boolean {
+    this._assertUsable('setMipmapsEnabled')
+    if (enabled === this._mipmapsEnabled) return false
+    const retired = this._rt
+    this._mipmapsEnabled = enabled
+    this._rt = this._createRenderTarget()
+    this._retiredRTs.push(retired)
+    unregisterDebugTexture('occlusion.mask')
+    registerDebugTexture('occlusion.mask', this._rt, 'rgba8', {
+      display: 'alpha',
+      label: 'Occlusion mask',
+    })
+    return true
+  }
+
+  private _createRenderTarget(): RenderTarget {
+    const target = new RenderTarget(this._width, this._height, {
+      depthBuffer: false,
+      stencilBuffer: false,
+    })
+    target.texture.minFilter = this._linearFilter
+      ? this._mipmapsEnabled
+        ? LinearMipmapLinearFilter
+        : LinearFilter
+      : this._mipmapsEnabled
+        ? NearestMipmapNearestFilter
+        : NearestFilter
+    target.texture.magFilter = this._linearFilter ? LinearFilter : NearestFilter
+    target.texture.generateMipmaps = this._mipmapsEnabled
+    return target
   }
 
   /**
@@ -200,7 +234,13 @@ export class OcclusionPass {
    * Saves and restores renderer render target and scene.background so the
    * caller's subsequent main-scene render sees no side effects.
    */
-  render(renderer: WebGPURenderer, scene: Scene, camera: Camera): void {
+  render(
+    renderer: WebGPURenderer,
+    scene: Scene,
+    camera: Camera,
+    captureWorldSize?: Vector2,
+    captureWorldOffset?: Vector2
+  ): void {
     this._assertUsable('render')
     if (this._rendering) return
     this._rendering = true
@@ -226,7 +266,7 @@ export class OcclusionPass {
       renderer.setClearColor(this._clearColor.getHex(), this._clearAlpha)
       renderer.clear(true, false, false)
       beginDebugPass('occluder', renderer)
-      renderer.render(scene, camera)
+      renderer.render(scene, this._captureCameraFor(camera, captureWorldSize, captureWorldOffset))
       endDebugPass(renderer)
     } finally {
       // Restore original materials in reverse order so the arrays can clear
@@ -246,6 +286,19 @@ export class OcclusionPass {
       renderer.setRenderTarget(prevRT)
       this._rendering = false
     }
+  }
+
+  private _captureCameraFor(camera: Camera, worldSize?: Vector2, worldOffset?: Vector2): Camera {
+    if (!(camera instanceof OrthographicCamera) || !worldSize || !worldOffset) return camera
+
+    this._captureCamera.copy(camera, false)
+    this._captureCamera.left = worldOffset.x - camera.position.x
+    this._captureCamera.right = worldOffset.x + worldSize.x - camera.position.x
+    this._captureCamera.bottom = worldOffset.y - camera.position.y
+    this._captureCamera.top = worldOffset.y + worldSize.y - camera.position.y
+    this._captureCamera.updateProjectionMatrix()
+    this._captureCamera.updateMatrixWorld(true)
+    return this._captureCamera
   }
 
   /**
@@ -286,21 +339,26 @@ export class OcclusionPass {
     const texture = current.getTexture()
     if (!texture) return
 
-    const occlusion = this._getOrCreateOcclusionMaterial(texture, current._tightMesh)
+    const emissiveBitIndex = current._effectBitIndex.get(EMISSIVE_EFFECT_NAME)
+    const occlusion = this._getOrCreateOcclusionMaterial(texture, current._tightMesh, emissiveBitIndex)
     this._swappedMeshes.push(mesh)
     this._swappedOriginals.push(current)
     mesh.material = occlusion
   }
 
-  private _getOrCreateOcclusionMaterial(texture: Texture, tightMesh: boolean): MeshBasicNodeMaterial {
+  private _getOrCreateOcclusionMaterial(
+    texture: Texture,
+    tightMesh: boolean,
+    emissiveBitIndex?: number
+  ): MeshBasicNodeMaterial {
     this._assertUsable('getOcclusionMaterial')
     // Keyed by (texture, geometry strategy): the occlusion shader must
     // mirror the source material's vertex path — vertexIndex synthesis
     // for synth-quad batches, geometry position/uv for tight-mesh ones.
-    const key = `${texture.id}:${tightMesh ? 'tight' : 'synth'}`
+    const key = `${texture.id}:${tightMesh ? 'tight' : 'synth'}:${emissiveBitIndex ?? -1}`
     const cached = this._occlusionMaterials.get(key)
     if (cached) return cached
-    const material = buildOcclusionMaterial(texture, tightMesh)
+    const material = buildOcclusionMaterial(texture, tightMesh, emissiveBitIndex)
     this._occlusionMaterials.set(key, material)
     return material
   }
@@ -310,6 +368,7 @@ export class OcclusionPass {
     this._disposed = true
 
     const materials = Array.from(this._occlusionMaterials.values())
+    const retiredRTs = this._retiredRTs.splice(0)
     this._occlusionMaterials.clear()
     let firstError: unknown
     let didError = false
@@ -326,6 +385,7 @@ export class OcclusionPass {
 
     runCleanup(() => unregisterDebugTexture('occlusion.mask'))
     runCleanup(() => this._rt.dispose())
+    for (const target of retiredRTs) runCleanup(() => target.dispose())
     for (const material of materials) runCleanup(() => material.dispose())
     if (didError) throw firstError
   }
@@ -344,10 +404,11 @@ export class OcclusionPass {
  *   2. Sample the alpha channel of the atlas at the remapped UV.
  *   3. Read `castsShadow` (bit 2 of `instanceSystem.z`) per instance; multiply
  *      sampled alpha by 1 when set, 0 when clear.
- *   4. Output `vec4(0, 0, 0, alpha * castMask)`.
+ *   4. Output occupancy in alpha and an emitter-caster marker in red.
  *
- * Output RGB is deliberately zero — the SDF JFA seed pass only consumes
- * alpha, so no color bandwidth is spent on the occlusion silhouette.
+ * The red marker lets integer DDA cross an emitter's non-emissive outline to
+ * reach its source pixels while keeping that silhouette opaque to unrelated
+ * light.
  *
  * **Maintenance note:** the UV remap mirrors the logic in
  * `Sprite2DMaterial._buildBaseColor`. If the instance attribute shape
@@ -355,14 +416,19 @@ export class OcclusionPass {
  * in lockstep — there is no shared helper yet. Revisit if we grow a
  * second consumer of the same UV math.
  */
-function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicNodeMaterial {
-  const material = new MeshBasicNodeMaterial({ transparent: true })
+function buildOcclusionMaterial(texture: Texture, tightMesh = false, emissiveBitIndex?: number): MeshBasicNodeMaterial {
+  // Keep Sprite2DMaterial's custom setupPosition ordering. The synth-quad
+  // path assigns position from vertexIndex, and Three's stock NodeMaterial
+  // applies the instance matrix *before* a custom positionNode, which then
+  // overwrites the transform and collapses every batch instance onto the
+  // shared unit quad. Sprite2DMaterial deliberately reverses that order.
+  const material = new Sprite2DMaterial({ map: texture, transparent: true, lit: false, effectTier: 0 })
   // The occlusion pass re-renders SpriteBatch/TileLayer meshes. Its
   // vertex path must mirror the source material's geometry strategy:
   // synth-quad meshes are index-only (synthesize from vertexIndex);
   // tight-mesh envelopes carry real position/uv attributes.
   const synth = tightMesh ? null : synthQuadNodes()
-  if (synth) material.positionNode = synth.position
+  material.positionNode = synth?.position ?? null
   material.colorNode = Fn(() => {
     const instanceUV = attribute<'vec4'>('instanceUV', 'vec4')
     const flip = readFlip()
@@ -394,7 +460,10 @@ function buildOcclusionMaterial(texture: Texture, tightMesh = false): MeshBasicN
     // contribute nothing to the destination, giving us the same
     // "no overwrite" semantics as Discard without the stall.
     const casterAlpha = select(effectiveAlpha.greaterThan(float(0.01)), float(1), float(0))
-    return vec4(float(0), float(0), float(0), casterAlpha)
+    const emitterEnabled =
+      emissiveBitIndex === undefined ? float(0) : select(readEffectEnabledFlag(emissiveBitIndex), float(1), float(0))
+    const emitterCaster = casterAlpha.mul(emitterEnabled)
+    return vec4(emitterCaster, casterAlpha, casterAlpha, casterAlpha)
   })() as Node<'vec4'>
 
   return material

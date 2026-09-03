@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { OcclusionPass } from './OcclusionPass'
-import { NearestFilter, LinearFilter } from 'three'
+import { LinearFilter, NearestFilter, NearestMipmapNearestFilter } from 'three'
 
 describe('OcclusionPass', () => {
   it('starts at a 1×1 placeholder RT before first resize', () => {
@@ -25,6 +25,15 @@ describe('OcclusionPass', () => {
     pass.resize(1024, 512)
     expect(pass.width).toBe(256)
     expect(pass.height).toBe(128)
+    pass.dispose()
+  })
+
+  it('applies a runtime resolution scale on the next resize', () => {
+    const pass = new OcclusionPass()
+    pass.resolutionScale = 0.125
+    pass.resize(1024, 512)
+    expect(pass.width).toBe(128)
+    expect(pass.height).toBe(64)
     pass.dispose()
   })
 
@@ -80,6 +89,25 @@ describe('OcclusionPass', () => {
     expect(pass.renderTarget.texture.minFilter).toBe(LinearFilter)
     expect(pass.renderTarget.texture.magFilter).toBe(LinearFilter)
     pass.dispose()
+  })
+
+  it('builds and retires a nearest-sampled hierarchy on demand', () => {
+    const pass = new OcclusionPass()
+    const fineTarget = pass.renderTarget
+    const fineDispose = vi.spyOn(fineTarget, 'dispose')
+
+    expect(pass.setMipmapsEnabled(true)).toBe(true)
+    expect(pass.setMipmapsEnabled(true)).toBe(false)
+    expect(pass.renderTarget).not.toBe(fineTarget)
+    expect(fineDispose).not.toHaveBeenCalled()
+    expect(pass.renderTarget.texture.generateMipmaps).toBe(true)
+    expect(pass.renderTarget.texture.minFilter).toBe(NearestMipmapNearestFilter)
+
+    expect(pass.setMipmapsEnabled(false)).toBe(true)
+    expect(pass.renderTarget.texture.generateMipmaps).toBe(false)
+    expect(pass.renderTarget.texture.minFilter).toBe(NearestFilter)
+    pass.dispose()
+    expect(fineDispose).toHaveBeenCalledOnce()
   })
 
   it('dispose() does not throw', () => {

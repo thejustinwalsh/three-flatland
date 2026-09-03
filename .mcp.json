@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "side-piece": {
+      "command": "pnpm",
+      "args": [
+        "exec",
+        "side-piece-mcp"
+      ],
+      "env": {
+        "MCP_CLAUDE_DEBUG": "false"
+      }
+    }
+  }
+}

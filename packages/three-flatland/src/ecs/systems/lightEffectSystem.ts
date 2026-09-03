@@ -23,11 +23,15 @@ function runtimeContextFor(world: World): LightEffectRuntimeContext {
     context = {
       renderer: null,
       camera: null,
+      scene: null,
       lightStore: null,
       sdfGenerator: null,
+      occlusionTexture: null,
       lights: [],
       worldSize: null,
       worldOffset: null,
+      shadowCaptureWorldSize: null,
+      shadowCaptureWorldOffset: null,
     } as unknown as LightEffectRuntimeContext
     _runtimeContexts.set(world, context)
   }
@@ -51,6 +55,7 @@ export function lightEffectSystem(world: World): void {
   if (!ctx) return
   if (!ctx.effect?.enabled || !ctx.lightStore) return
   if (!ctx.renderer || !ctx.camera) return
+  if (!ctx.scene) return
 
   // Pull the live SDF handle from ShadowPipeline. Null when the active
   // effect does not declare needsShadows, which is correct — effects that
@@ -58,23 +63,28 @@ export function lightEffectSystem(world: World): void {
   const pipelineEntities = world.view(ShadowPipelines)
   const pipeline = pipelineEntities.length > 0 ? world.read(pipelineEntities[0]!, ShadowPipeline) : null
   const sdfGenerator = pipeline?.sdfGenerator ?? null
+  const occlusionTexture = pipeline?.occlusionPass?.renderTarget.texture ?? null
 
   const cam = ctx.camera
   const worldSize = ctx.worldSize
   const worldOffset = ctx.worldOffset
 
   worldSize.set(cam.right - cam.left, cam.top - cam.bottom)
-  worldOffset.set(cam.left, cam.bottom)
+  worldOffset.set(cam.position.x + cam.left, cam.position.y + cam.bottom)
 
   // Mutate this world's scratch in place — no per-frame allocation.
   const runtimeCtx = runtimeContextFor(world)
   runtimeCtx.renderer = ctx.renderer
   runtimeCtx.camera = cam
+  runtimeCtx.scene = ctx.scene
   runtimeCtx.lightStore = ctx.lightStore
   runtimeCtx.sdfGenerator = sdfGenerator
+  runtimeCtx.occlusionTexture = occlusionTexture
   runtimeCtx.lights = ctx.lights
   runtimeCtx.worldSize = worldSize
   runtimeCtx.worldOffset = worldOffset
+  runtimeCtx.shadowCaptureWorldSize = pipeline?.captureWorldSize ?? worldSize
+  runtimeCtx.shadowCaptureWorldOffset = pipeline?.captureWorldOffset ?? worldOffset
 
   // Lazy init on first render
   if (!ctx.initialized) {
@@ -90,7 +100,33 @@ export function lightEffectSystem(world: World): void {
     ctx.effect.resize(ctx.surfaceSize.x, ctx.surfaceSize.y)
     ctx.resizePending = false
   }
+}
 
-  // Per-frame update (tiling, SDF shadows, radiance cascades, etc.)
+/**
+ * Run effect-owned GPU work after the shadow pipeline captured current-frame
+ * sprite matrices. Keeping preparation and rendering in separate systems
+ * prevents radiance from sampling a one-frame-old occlusion window while the
+ * camera is scrolling.
+ */
+export function lightEffectRenderSystem(world: World): void {
+  const ctxEntities = world.view(LightingContexts)
+  if (ctxEntities.length === 0) return
+  const ctx = world.read(ctxEntities[0]!, LightingContext)
+  if (!ctx?.effect?.enabled || !ctx.lightStore || !ctx.renderer || !ctx.camera || !ctx.scene || !ctx.initialized) return
+
+  const pipelineEntities = world.view(ShadowPipelines)
+  const pipeline = pipelineEntities.length > 0 ? world.read(pipelineEntities[0]!, ShadowPipeline) : null
+  const runtimeCtx = runtimeContextFor(world)
+  runtimeCtx.renderer = ctx.renderer
+  runtimeCtx.camera = ctx.camera
+  runtimeCtx.scene = ctx.scene
+  runtimeCtx.lightStore = ctx.lightStore
+  runtimeCtx.sdfGenerator = pipeline?.sdfGenerator ?? null
+  runtimeCtx.occlusionTexture = pipeline?.occlusionPass?.renderTarget.texture ?? null
+  runtimeCtx.lights = ctx.lights
+  runtimeCtx.worldSize = ctx.worldSize
+  runtimeCtx.worldOffset = ctx.worldOffset
+  runtimeCtx.shadowCaptureWorldSize = pipeline?.captureWorldSize ?? ctx.worldSize
+  runtimeCtx.shadowCaptureWorldOffset = pipeline?.captureWorldOffset ?? ctx.worldOffset
   ctx.effect.update(runtimeCtx)
 }

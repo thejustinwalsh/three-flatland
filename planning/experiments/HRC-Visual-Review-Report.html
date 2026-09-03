@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HRC Visual Review Report</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101316;
+        --panel: #171c21;
+        --panel-2: #1e252b;
+        --text: #e8edf2;
+        --muted: #a9b3bd;
+        --line: #313b45;
+        --accent: #7cc7ff;
+        --bad: #ff9b8d;
+        --ok: #9ee6a8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.45;
+      }
+
+      main {
+        width: min(1440px, calc(100vw - 48px));
+        margin: 0 auto;
+        padding: 32px 0 64px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      h2 {
+        font-size: 20px;
+        margin-top: 36px;
+      }
+
+      h3 {
+        font-size: 15px;
+        margin-bottom: 10px;
+      }
+
+      p {
+        color: var(--muted);
+        margin: 8px 0 0;
+      }
+
+      code {
+        color: var(--accent);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.95em;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .metric,
+      .entry,
+      .shot {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .metric {
+        padding: 14px;
+      }
+
+      .metric b {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 6px;
+        font-size: 14px;
+      }
+
+      .entry {
+        margin-top: 16px;
+        padding: 18px;
+      }
+
+      .entry-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .badge.reject {
+        color: var(--bad);
+      }
+
+      .badge.reference {
+        color: var(--accent);
+      }
+
+      .badge.select {
+        color: var(--ok);
+      }
+
+      .shots {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+
+      .shot {
+        overflow: hidden;
+      }
+
+      .shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #050608;
+      }
+
+      .shot figcaption {
+        padding: 10px 12px;
+        color: var(--muted);
+        font-size: 13px;
+        border-top: 1px solid var(--line);
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .note {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      .note b {
+        color: var(--muted);
+        display: block;
+        font-size: 12px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+
+      .note span {
+        font-size: 13px;
+      }
+
+      @media (max-width: 900px) {
+        main {
+          width: min(100vw - 24px, 720px);
+        }
+
+        .summary,
+        .shots,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .entry-header {
+          display: block;
+        }
+
+        .badge {
+          margin-top: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>HRC Visual Review Report</h1>
+      <p>
+        Append-only review report for paper-aligned Holographic Radiance Cascades changes.
+        Each accepted feature should include one RC reference, up to three HRC candidates,
+        a selected candidate, the commit hash, vitexec settings, quality notes, and perf.
+      </p>
+
+      <section class="summary" aria-label="Current status">
+        <div class="metric">
+          <b>Branch</b>
+          <span><code>pr-72-radiance-cascades</code></span>
+        </div>
+        <div class="metric">
+          <b>Current Gate</b>
+          <span>RC visual parity first</span>
+        </div>
+        <div class="metric">
+          <b>Review Cadence</b>
+          <span>Stop about hourly or on regression</span>
+        </div>
+        <div class="metric">
+          <b>Candidate Count</b>
+          <span>Up to 3 screenshots per feature</span>
+        </div>
+      </section>
+
+      <h2>Baseline Comparison</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Current RC vs Holographic Baseline</h3>
+            <p>
+              Commit <code>5fb0a0ec</code> introduced the review log and stored these captures.
+              This entry records the current visual gap, not an accepted HRC quality change.
+            </p>
+          </div>
+          <span class="badge reference">baseline</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/000-reference-rc.png" alt="RC reference render" />
+            <figcaption>RC reference: clean continuous penumbrae.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/001-current-holographic.png" alt="Current HRC Holographic render" />
+            <figcaption>Current Holographic: faster, but shadow banding/repetition is visible.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Settings</b>
+            <span>comparison baseline, cap 512, intensity 0.005, warm 6.1, cool 9.7</span>
+          </div>
+          <div class="note">
+            <b>Perf</b>
+            <span>HRC estimated sample count 4,980,736</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Not RC parity. Continue paper-coordinate audit before optimization.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Perceptual</b>
+            <span>scene crop 668x425; luma MAE 0.6506; RMSE 0.6899; SSIM 0.000004; edge MAE 0.0951; profile excess peaks +6</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>RC 128x128 vs HRC 128x72; luma MAE 29.3040; RMSE 36.0992; SSIM 0.9135; edge MAE 30.6153; high-frequency MAE 1.4183</span>
+          </div>
+          <div class="note">
+            <b>Metric Source</b>
+            <span><code>window.__radianceCascadeControls.comparePerceptual()</code>, vitexec <code>--gpu</code>, June 23 2026</span>
+          </div>
+        </div>
+      </article>
+
+      <h2>Rejected Probes</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Readout Offset / Paper Resolution / Mirror-Origin Probes</h3>
+            <p>
+              These captures are kept as negative evidence. They were reverted and should not
+              be treated as accepted improvements.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/002-rejected-readout-offset.png" alt="Rejected readout offset probe" />
+            <figcaption>Rejected: readout offset without full coordinate realignment.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/003-rejected-paper-resolution.png" alt="Rejected paper-resolution probe" />
+            <figcaption>Rejected: full paper-resolution output, still structurally wrong.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/004-rejected-offset-mirror.png" alt="Rejected offset plus mirror-origin probe" />
+            <figcaption>Rejected: offset plus mirror-origin probe, no visual fix.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Commit</b>
+            <span>None. Probes were not accepted and were reverted.</span>
+          </div>
+          <div class="note">
+            <b>Perf</b>
+            <span>Readout offset: 4,980,736 samples. Full-res probes: 79,691,776 samples.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Failures point to a coordinate-system mismatch upstream, not tuning.</span>
+          </div>
+        </div>
+      </article>
+
+      <h2>Accepted Fixes</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Final Decode: Remove Mandatory Neighbor Cleanup</h3>
+            <p>
+              This entry addresses the reported HRC contact-shadow ring: shadow touching
+              the blocker, then a bright gap, then continued shadow. The root cause was
+              an always-on four-neighbor cleanup inside the Holographic final readout,
+              before optional filtering. The accepted change decodes <code>R0</code>
+              directly and leaves smoothing to the explicit filter stage.
+            </p>
+          </div>
+          <span class="badge reject">superseded</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/001-current-holographic.png" alt="HRC before final cleanup removal" />
+            <figcaption>Before: visible bright contact ring near occluder silhouettes.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/005-accepted-no-final-cleanup.png" alt="Accepted HRC render without mandatory final cleanup" />
+            <figcaption>Accepted: direct final decode removes the detached contact ring.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Change</b>
+            <span>Removed mandatory final-readout spatial cleanup; no transfer-coordinate changes retained.</span>
+          </div>
+          <div class="note">
+            <b>Canvas Perceptual</b>
+            <span>luma MAE 0.03449; RMSE 0.05590; SSIM 0.97589; edge MAE 0.02349; profile excess peaks -2</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 28.0138; RMSE 34.5007; SSIM 0.91827; edge MAE 26.7811; high-frequency MAE 1.1684</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Validation</b>
+            <span><code>typecheck</code>, focused vitest lighting tests, vitexec <code>--gpu</code> screenshot and metrics</span>
+          </div>
+          <div class="note">
+            <b>Perf</b>
+            <span>HRC estimated sample count remains 4,980,736; pass count remains 21.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Superseded. Later viewport probes showed the rectangular HRC grid, not this cleanup kernel, was the root cause of viewport-dependent ringing.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Output Grid: Square Final Fluence</h3>
+            <p>
+              HRC previously scaled its final output grid by viewport world aspect,
+              producing <code>128x72</code> at 16:9 and <code>128x80</code> at 16:10.
+              RC stayed square. This made shadow artifacts change with browser size.
+              Holographic HRC now uses the square final grid convention.
+            </p>
+          </div>
+          <span class="badge select">accepted</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/007-square-grid-viewport-invariance.png" alt="HRC square grid viewport invariance probe" />
+            <figcaption>Forced 1280x720 and 1440x900 captures both report HRC final 128x128; signed luminance diff remains the quality gate.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Change</b>
+            <span>Holographic final dimensions now use <code>finalResolution x finalResolution</code>, independent of viewport aspect.</span>
+          </div>
+          <div class="note">
+            <b>Restored</b>
+            <span>The final-readout cleanup kernel is restored; it was not the root cause once the HRC grid is square.</span>
+          </div>
+          <div class="note">
+            <b>Remaining Gap</b>
+            <span>HRC is still brighter than RC in shadow regions. Continue using signed luminance diff for RC parity work.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Reference Pass Audit</h3>
+            <p>
+              This baseline was captured after the square-grid fix and before the next
+              shader math change. It verifies the active HRC pass graph is alive, finite,
+              and measurable, while also recording that HRC is still not RC parity.
+            </p>
+          </div>
+          <span class="badge select">baseline</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/008-holographic-reference-audit.png" alt="HRC reference pass audit capture" />
+            <figcaption>Forced 1280x720 comparison baseline; filters, noise, and broad GI disabled.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Pass Graph</b>
+            <span>17 active passes: 1 scene radiance, 8 transfer, 7 radiance, 1 final readout.</span>
+          </div>
+          <div class="note">
+            <b>Samples</b>
+            <span>HRC direct-transfer samples 4,980,736 versus RC reference samples 67,108,864.</span>
+          </div>
+          <div class="note">
+            <b>Active Buffers</b>
+            <span><code>sceneRadiance</code>, <code>T0..T7</code>, <code>R0..R6</code>, and <code>finalRadiance</code> are finite and non-empty.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>luma MAE 0.05353; RMSE 0.08618; SSIM 0.94895; edge MAE 0.03111; profile excess peaks -3.</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 33.33434; RMSE 41.36446; SSIM 0.90512; edge MAE 27.78260; high-frequency MAE 1.35245.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Valid reference baseline, not accepted parity. HRC still over-brightens shadow regions versus RC.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Rejected: Paper Readout Offset Probe</h3>
+            <p>
+              The paper's <code>R0([x + 1, y], 0)</code> offset was tested again
+              after the square-grid fix, this time in each quadrant's local
+              parallel axis. It is still not valid as a standalone final-pass patch
+              on the current coordinate basis.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/009-rejected-paper-readout-offset-square-grid.png" alt="Rejected paper readout offset on square HRC grid" />
+            <figcaption>Rejected: final-radiance SSIM regressed and edge/high-frequency error increased.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>luma MAE 0.05077; RMSE 0.08460; SSIM 0.94676; edge MAE 0.03234.</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 33.34636; RMSE 42.33952; SSIM 0.88900; edge MAE 33.46918.</span>
+          </div>
+          <div class="note">
+            <b>Diagnostic</b>
+            <span>No-occluder HRC is darker than RC, but occluded HRC is brighter in shadows; this is not a single exposure-scale bug.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Locked Holographic Shipping Default</h3>
+            <p>
+              The example now opens on Holographic HRC with the current selected
+              visual target. The separable wide blur is disabled by default; broad
+              GI remains enabled through the SDF-aware wide downsample.
+            </p>
+          </div>
+          <span class="badge select">selected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/012-locked-holographic-shipping-default.png" alt="Locked Holographic HRC shipping default" />
+            <figcaption>Fresh-load 1280x720 capture with <code>algorithm=hrc</code>, <code>mode=holographic</code>, and <code>mipBlur=0</code>.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Default Settings</b>
+            <span>intensity 0.005; filter radius 0.7; filter strength 1.0; raymarch steps 64; blue noise 0; mip blur 0; mip strength 0.4.</span>
+          </div>
+          <div class="note">
+            <b>Budget</b>
+            <span>19 estimated HRC passes, 4,980,736 estimated HRC direct samples, wide filter enabled, wide blur disabled.</span>
+          </div>
+          <div class="note">
+            <b>Canvas Metrics</b>
+            <span>luma MAE 0.05109; RMSE 0.07767; SSIM 0.95838; edge MAE 0.03045; profile excess peaks 0.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>luma MAE 33.02878; RMSE 40.88525; SSIM 0.90688; edge MAE 26.15856; high-frequency MAE 1.12586.</span>
+          </div>
+          <div class="note">
+            <b>Mip Blur A/B</b>
+            <span><code>mipBlur=0.2</code> cost 21 passes for final SSIM 0.90968; <code>mipBlur=0</code> cost 19 passes for final SSIM 0.90649.</span>
+          </div>
+          <div class="note">
+            <b>Verdict</b>
+            <span>Selected for the current shipping target. Next correctness work should focus on quadrant/cardinal energy handling, not global exposure or extra blur.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>HRC Contact Shadow Hardening</h3>
+            <p>
+              This pass keeps the current Holographic budget and targets the
+              occluder-edge complaint directly. Broad GI was tested first; the
+              artifact remained, so the selected candidate changes only the
+              existing local filter and wide mix near SDF-confirmed shadow edges.
+            </p>
+          </div>
+          <span class="badge select">review</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/013-current-wide040.png" alt="Current HRC wide fill baseline" />
+            <figcaption>Baseline: <code>mipStrength=0.4</code>, 19 estimated HRC passes.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/018-edge-aware-wide-mix.png" alt="HRC edge-aware wide mix candidate" />
+            <figcaption>Selected candidate: edge-aware local luminance preservation, still 19 estimated HRC passes.</figcaption>
+          </figure>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/014-reduced-wide020.png" alt="Reduced wide fill HRC probe" />
+            <figcaption>Probe: <code>mipStrength=0.2</code>. Contact artifact remains, so broad fill is not the primary cause.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/016-centered-direct-transfer.png" alt="Rejected centered direct transfer HRC probe" />
+            <figcaption>Rejected: centered direct-transfer endpoints darkened contact but hardened the halo and regressed metrics.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Selected Budget</b>
+            <span>19 estimated HRC passes; 4,980,736 estimated direct-transfer samples; no new render target or public tuning knob.</span>
+          </div>
+          <div class="note">
+            <b>Final Radiance</b>
+            <span>SSIM 0.90679; luma MAE 33.03289; edge MAE 26.29096; high-frequency MAE 1.14499.</span>
+          </div>
+          <div class="note">
+            <b>Rejected Coordinate Probe</b>
+            <span>Centered endpoints dropped final SSIM to 0.90088 and raised edge MAE to 27.65096.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Bottom Contact Crop</b>
+            <span>Mean luma moved from 0.429784 to 0.425155; slightly darker contact shadow.</span>
+          </div>
+          <div class="note">
+            <b>Bar Shadow Crop</b>
+            <span>Mean luma moved from 0.262056 to 0.257229; shadow body darkened without changing open area.</span>
+          </div>
+          <div class="note">
+            <b>Open Area Crop</b>
+            <span>Mean luma stayed 0.903466, so broad-lit regions are not globally darkened.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Holographic Final-Resolution Scale Probe</h3>
+            <p>
+              This probe tests whether the compact HRC final grid is hiding too
+              much local shadow structure. The library default remains
+              <code>1</code>; the live example now opens at <code>2</code> as the
+              current review target.
+            </p>
+          </div>
+          <span class="badge select">review</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/019-hrc-scale1-baseline.png" alt="HRC final resolution scale 1 baseline" />
+            <figcaption>Scale 1: compact 128x128 HRC final grid, 19 passes, 4,980,736 direct samples.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/020-hrc-scale2-256.png" alt="HRC final resolution scale 2 candidate" />
+            <figcaption>Scale 2: selected review target, 256x256 HRC final grid, 21 passes, 19,922,944 direct samples.</figcaption>
+          </figure>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/021-hrc-scale4-512.png" alt="HRC final resolution scale 4 probe" />
+            <figcaption>Scale 4: 512x512 reference-scale probe, 23 passes, 79,691,776 direct samples; rejected for shipping cost/artifacts.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Scale 1 Final</b>
+            <span>SSIM 0.90679; luma MAE 33.03289; RMSE 40.88412; edge MAE 26.29096; high-frequency MAE 1.14499.</span>
+          </div>
+          <div class="note">
+            <b>Scale 2 Canvas</b>
+            <span>SSIM 0.96203; luma MAE 0.04350; RMSE 0.06899; edge MAE 0.03156; high-frequency MAE 0.002027.</span>
+          </div>
+          <div class="note">
+            <b>Scale 2 Final</b>
+            <span>SSIM 0.89636; luma MAE 31.75782; RMSE 38.80289; edge MAE 15.75619; high-frequency MAE 0.71227.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Scale 4 Final</b>
+            <span>SSIM 0.87464; luma MAE 37.66296; RMSE 45.51817; edge MAE 8.59454; high-frequency MAE 0.32191.</span>
+          </div>
+          <div class="note">
+            <b>Visual Read</b>
+            <span>Scale 2 improves contact placement and definition. Scale 4 exposes more cardinal/parity structure instead of solving it.</span>
+          </div>
+          <div class="note">
+            <b>Next Target</b>
+            <span>Amitabha-style parity/cardinal final reconstruction, then explicit emissive scene content.</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Rejected: Eight-Segment Half-Grid HRC</h3>
+            <p>
+              This probe packed real Holographic parity storage as eight logical
+              half-height segments. It deepened shadows, but introduced
+              contact/phase artifacts and regressed the current scale-2 hybrid
+              metrics, so the shader changes were reverted.
+            </p>
+          </div>
+          <span class="badge reject">rejected</span>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/024-hrc-eight-segment-half-grid.png" alt="Rejected eight-segment HRC far R0 readout" />
+            <figcaption>Eight segments with far <code>R0</code> readout: deeper shadows, but hard parity/contact artifacts.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img src="hrc-review-captures/025-hrc-eight-segment-merge0-transfer.png" alt="Rejected eight-segment HRC T0 over R0 readout" />
+            <figcaption>Eight segments with local <code>T0</code> over <code>R0</code>: did not fix edge artifacts.</figcaption>
+          </figure>
+        </div>
+        <div class="shots">
+          <figure class="shot">
+            <img src="hrc-review-captures/026-hrc-eight-segment-no-y-minus-one.png" alt="Rejected eight-segment HRC without halfY minus one" />
+            <figcaption>No <code>halfY - 1</code> offset: slightly better edge score, still worse than the accepted hybrid.</figcaption>
+          </figure>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Far R0 Metrics</b>
+            <span>Canvas SSIM 0.95094; luma MAE 0.07282. Final SSIM 0.85352; luma MAE 53.76546.</span>
+          </div>
+          <div class="note">
+            <b>T0 Over R0 Metrics</b>
+            <span>Canvas SSIM 0.95072; luma MAE 0.07636. Final SSIM 0.85711; luma MAE 55.34485.</span>
+          </div>
+          <div class="note">
+            <b>No Minus-One Metrics</b>
+            <span>Canvas SSIM 0.95148; luma MAE 0.07561. Final SSIM 0.85535; luma MAE 55.39231.</span>
+          </div>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Budget</b>
+            <span>19 estimated passes and 16,252,928 direct samples at scale 2; lower than the naive doubled-angular four-row probe.</span>
+          </div>
+          <div class="note">
+            <b>Read</b>
+            <span>The packed shape is plausible, but segment world-origin/readout alignment is still wrong near occluder contact.</span>
+          </div>
+          <div class="note">
+            <b>Action</b>
+            <span>Do not revive the four-row doubled-angular path. Prove segment world mapping before another final readout rewrite.</span>
+          </div>
+        </div>
+      </article>
+
+      <h2>Next Feature Template</h2>
+      <article class="entry">
+        <div class="entry-header">
+          <div>
+            <h3>Feature: TBD Paper-Aligned Fix</h3>
+            <p>
+              Replace this template when the next isolated change is committed. Include RC,
+              candidate A, candidate B, and candidate C when tuning is involved.
+            </p>
+          </div>
+          <span class="badge select">template</span>
+        </div>
+        <div class="notes">
+          <div class="note">
+            <b>Commit</b>
+            <span><code>TBD</code></span>
+          </div>
+          <div class="note">
+            <b>Selected Candidate</b>
+            <span>TBD</span>
+          </div>
+          <div class="note">
+            <b>Review Verdict</b>
+            <span>TBD by user review.</span>
+          </div>
+        </div>
+      </article>
+    </main>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-import { int, attribute, vec2 } from 'three/tsl'
+import { int, attribute, vec2, float, select, varying } from 'three/tsl'
 import type Node from 'three/src/nodes/core/Node.js'
 import {
   LIT_FLAG_MASK,
@@ -81,12 +81,39 @@ export function readShadowRadius(): Node<'float'> {
 // ─── Typed bit readers ────────────────────────────────────────────
 
 /**
+ * Extract a system flag in the vertex stage, then interpolate only the
+ * resulting 0/1 value into fragment shaders. Reading the packed float
+ * attribute and converting it back to an integer in a Metal/Dawn fragment
+ * shader has produced false negatives even when the CPU/GPU buffer contains
+ * the exact flag word. The vertex-stage bit path is already exercised by the
+ * pixel-perfect transform and is reliable for instanced attributes.
+ */
+function readFragmentSystemFlag(mask: number): Node<'bool'> {
+  const enabled = select(readSystemFlags().bitAnd(int(mask)).greaterThan(int(0)), float(1), float(0))
+  const fragmentFlag = varying(enabled, `vSystemFlag${mask}`)
+  return fragmentFlag.greaterThan(float(0.5))
+}
+
+/**
+ * Read one MaterialEffect enable bit through the same vertex-stage varying
+ * path as the system flags. Fragment-stage float-to-int conversion has proven
+ * unreliable on Metal/Dawn for packed instance words, so radiance and other
+ * auxiliary passes must not decode `instanceSystem.w` directly.
+ */
+export function readEffectEnabledFlag(bitIndex: number): Node<'bool'> {
+  const mask = 1 << bitIndex
+  const enabled = select(readEnableBits().bitAnd(int(mask)).greaterThan(int(0)), float(1), float(0))
+  const fragmentFlag = varying(enabled, `vEffectFlag${bitIndex}`)
+  return fragmentFlag.greaterThan(float(0.5))
+}
+
+/**
  * Read the per-instance lit flag (bit 0 of `instanceSystem.z`).
  * Used by `wrapWithLightFlags` to gate the light pipeline; custom
  * ColorTransforms can also call this directly.
  */
 export function readLitFlag(): Node<'bool'> {
-  return readSystemFlags().bitAnd(int(LIT_FLAG_MASK)).greaterThan(int(0))
+  return readFragmentSystemFlag(LIT_FLAG_MASK)
 }
 
 /**
@@ -95,7 +122,7 @@ export function readLitFlag(): Node<'bool'> {
  * calculation to skip shadow for sprites that have opted out.
  */
 export function readReceiveShadowsFlag(): Node<'bool'> {
-  return readSystemFlags().bitAnd(int(RECEIVE_SHADOWS_MASK)).greaterThan(int(0))
+  return readFragmentSystemFlag(RECEIVE_SHADOWS_MASK)
 }
 
 /**
@@ -105,7 +132,7 @@ export function readReceiveShadowsFlag(): Node<'bool'> {
  * non-casters emit alpha = 0.
  */
 export function readCastShadowFlag(): Node<'bool'> {
-  return readSystemFlags().bitAnd(int(CAST_SHADOW_MASK)).greaterThan(int(0))
+  return readFragmentSystemFlag(CAST_SHADOW_MASK)
 }
 
 /**
@@ -115,7 +142,7 @@ export function readCastShadowFlag(): Node<'bool'> {
  * frame-local UV before the atlas remap.
  */
 export function readRotatedFrameFlag(): Node<'bool'> {
-  return readSystemFlags().bitAnd(int(ROTATED_FRAME_MASK)).greaterThan(int(0))
+  return readFragmentSystemFlag(ROTATED_FRAME_MASK)
 }
 
 /** Read the projected-translation snapping flag (bit 4). */

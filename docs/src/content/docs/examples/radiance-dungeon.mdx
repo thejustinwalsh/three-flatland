@@ -1,0 +1,62 @@
+---
+title: DDA Radiance Dungeon
+description: Pixel-scaled radiance cascades in motion, with emissive sprites, hard occluders, and a scrolling pixel-perfect camera.
+template: splash
+sort: 11
+---
+
+import ExampleDetailLayout from '../../../components/ExampleDetailLayout.astro'
+import { loadExample } from '../../../utils/loadExample'
+
+export const threeFiles = loadExample('three', 'radiance-dungeon')
+export const reactFiles = loadExample('react', 'radiance-dungeon')
+
+<ExampleDetailLayout
+  slug="radiance-dungeon"
+  threeFiles={threeFiles}
+  reactFiles={reactFiles}
+>
+
+## Pixel art and lighting on one grid
+
+This dungeon runs `DdaFixedRadianceLightEffect` against animated sprite art. Torches flicker, slimes carry green emissive light, and the hero contributes a dim blue glow while the camera follows movement through two connected rooms.
+
+The source-art scale is the single source of truth. Every atlas texel occupies the same number of world units, and the DDA transport target follows the physical size of that texel:
+
+```ts
+const ART_WORLD_SCALE = 2
+
+// A 32px knight is two 16px tiles, but both use the same texel pitch.
+const TILE_SIZE = 16 * ART_WORLD_SCALE
+const KNIGHT_SIZE = 32 * ART_WORLD_SCALE
+const SLIME_SIZE = 24 * ART_WORLD_SCALE
+
+const ddaPixelSize = ART_WORLD_SCALE * camera.resolvedPixelScale
+lighting.radiance.ddaPixelSize = ddaPixelSize
+```
+
+At a camera scale of `2`, one scaled source texel covers `4×4` framebuffer pixels. The lighting target is correspondingly one quarter of the framebuffer width and height, then sampled back with nearest filtering.
+
+## Orientation-neutral framing
+
+The camera keeps a fixed source-pixel budget on the shorter canvas axis. Portrait and landscape therefore retain similar art coverage without stretching or changing the relationship between sprites and lighting cells. The longer axis simply reveals more world.
+
+Camera scrolling is snapped to the same source-art lattice. This keeps the tilemap, occlusion mask, emissive silhouettes, and DDA grid in phase while the hero moves.
+
+| Control | Action |
+|---|---|
+| **Click** | Walk the hero toward a point |
+| **WASD / arrow keys** | Move the hero directly |
+| **Space** | Toggle the nearest switchable torch |
+
+## Fixed-point transport
+
+The preset stores cascade radiance in packed fixed-point form and uses integer supercover traversal for occlusion. A small, edge-aware GI blend softens empty-grid gaps without bleeding across walls. Packed storage reduces cascade bandwidth, but long empty rays still make traversal expensive; profile the target device before treating this prototype as a mobile budget.
+
+## Further reading
+
+- [2D Lighting Guide](../../guides/lighting-setup/)
+- [2D Lighting Concepts](../../guides/lighting/)
+- [Pixel-Perfect Rendering](../../guides/pixel-perfect-rendering/)
+
+</ExampleDetailLayout>
