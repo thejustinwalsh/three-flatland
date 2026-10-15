@@ -1,0 +1,68 @@
+diff --git a/out/utils/pattern.js b/out/utils/pattern.js
+index b2924e7874dbc901ef6f261e9c508c17e9365f45..0330ed36742d185912ca916c43a22a8912134b9f 100644
+--- a/out/utils/pattern.js
++++ b/out/utils/pattern.js
+@@ -3,7 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.isAbsolute = exports.partitionAbsoluteAndRelative = exports.removeDuplicateSlashes = exports.matchAny = exports.convertPatternsToRe = exports.makeRe = exports.getPatternParts = exports.expandBraceExpansion = exports.expandPatternsWithBraceExpansion = exports.isAffectDepthOfReadingPattern = exports.endsWithSlashGlobStar = exports.hasGlobStar = exports.getBaseDirectory = exports.isPatternRelatedToParentDirectory = exports.getPatternsOutsideCurrentDirectory = exports.getPatternsInsideCurrentDirectory = exports.getPositivePatterns = exports.getNegativePatterns = exports.isPositivePattern = exports.isNegativePattern = exports.convertToNegativePattern = exports.convertToPositivePattern = exports.isDynamicPattern = exports.isStaticPattern = void 0;
+ const path = require("path");
+ const globParent = require("glob-parent");
+-const micromatch = require("micromatch");
++const picomatch = require("picomatch");
++const { expand: expandBraces } = require("brace-expansion");
+ const GLOBSTAR = '**';
+ const ESCAPE_SYMBOL = '\\';
+ const COMMON_GLOB_SYMBOLS_RE = /[*?]|^!/;
+@@ -134,7 +135,34 @@ function expandPatternsWithBraceExpansion(patterns) {
+ }
+ exports.expandPatternsWithBraceExpansion = expandPatternsWithBraceExpansion;
+ function expandBraceExpansion(pattern) {
+-    const patterns = micromatch.braces(pattern, { expand: true, nodupes: true, keepEscaping: true });
++    if (pattern.includes('\0')) {
++        throw new TypeError('Glob patterns cannot contain null bytes');
++    }
++    if (pattern.length > 4096) {
++        throw new RangeError('Glob expansion input limit exceeded');
++    }
++    // Preserve glob escapes while using the bounded, maintained expansion engine.
++    const escapes = [];
++    const protectedPattern = pattern.replace(/\\./g, (value) => `\0${escapes.push(value) - 1}\0`);
++    let depth = 0;
++    for (const character of protectedPattern) {
++        if (character === '{' && ++depth > 100) {
++            throw new RangeError('Glob expansion depth limit exceeded');
++        }
++        if (character === '}') depth = Math.max(0, depth - 1);
++    }
++    // Request one extra result to detect the engine's truncation instead of silently losing matches.
++    const expanded = expandBraces(protectedPattern, {
++        max: 1001,
++        maxLength: (protectedPattern.length + 1) * 1001,
++        maxDepth: 101,
++        maxRewrites: protectedPattern.length + 1
++    });
++    if (expanded.length > 1000) {
++        throw new RangeError('Glob expansion count limit exceeded');
++    }
++    const patterns = [...new Set(expanded.map((value) =>
++        value.replace(/\0(\d+)\0/g, (_, index) => escapes[Number(index)])))];
+     /**
+      * Sort the patterns by length so that the same depth patterns are processed side by side.
+      * `a/{b,}/{c,}/*` – `['a///*', 'a/b//*', 'a//c/*', 'a/b/c/*']`
+@@ -147,7 +175,7 @@ function expandBraceExpansion(pattern) {
+ }
+ exports.expandBraceExpansion = expandBraceExpansion;
+ function getPatternParts(pattern, options) {
+-    let { parts } = micromatch.scan(pattern, Object.assign(Object.assign({}, options), { parts: true }));
++    let { parts } = picomatch.scan(pattern, Object.assign(Object.assign({}, options), { parts: true }));
+     /**
+      * The scan method returns an empty array in some cases.
+      * See micromatch/picomatch#58 for more details.
+@@ -167,7 +195,7 @@ function getPatternParts(pattern, options) {
+ }
+ exports.getPatternParts = getPatternParts;
+ function makeRe(pattern, options) {
+-    return micromatch.makeRe(pattern, options);
++    return picomatch.makeRe(pattern, options);
+ }
+ exports.makeRe = makeRe;
+ function convertPatternsToRe(patterns, options) {

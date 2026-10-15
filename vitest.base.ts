@@ -35,6 +35,6 @@ export const baseTestConfig = defineConfig({
     // the create-three-flatland "flaky task" flags and the CI-slow timeouts
     // band-aided in 161856dc). One worker per vitest in CI keeps per-file
     // isolation (files run sequentially, fresh fork each) and ends the thrash.
-    ...(process.env.CI ? { maxWorkers: 1, minWorkers: 1 } : {}),
+    ...(process.env.CI ? { maxWorkers: 1 } : {}),
   },
 })

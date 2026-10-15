@@ -271,7 +271,7 @@ no pass will.
 
 Prose passing an audit says nothing about the page working. Before calling any page done:
 
-1. `pnpm nx build docs` exits 0, including workspace dependencies. **An HTTP 200 from the dev server is not verification** — a
+1. `pnpm nx build docs` exits 0, including workspace dependencies. **An HTTP 200 from the dev server is not verification.** A
    dev server serves a broken page happily.
 2. Code fences are balanced: even count, no two adjacent fence lines, and JSX tags closed.
 3. Look at the rendered page.

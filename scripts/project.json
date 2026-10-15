@@ -10,7 +10,18 @@
     "benchmark-*"
   ],
   "targets": {
+    "security-regressions": {
+      "description": "Verify shared cache policies cannot reuse security-blocked responses.",
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run http-cache-policy.test.ts glob-security.test.ts",
+        "cwd": "{projectRoot}"
+      },
+      "inputs": ["default", "{workspaceRoot}/patches/**/*", "{workspaceRoot}/pnpm-lock.yaml"],
+      "cache": true
+    },
     "test": {
+      "inputs": ["default", "^production", "{workspaceRoot}/patches/**/*", "{workspaceRoot}/pnpm-lock.yaml"],
       "dependsOn": [
         {
           "projects": ["three-flatland", "@three-flatland/normals", "@three-flatland/bake"],

@@ -16,7 +16,7 @@ Auditing while drafting finds almost nothing. You read what you meant rather tha
 
 - [ ] No sentence leaves you out of breath.
 - [ ] No clause makes you stumble or re-read.
-- [ ] It sounds like something a person would say to a colleague.
+- [ ] The meaning is clear on the first reading.
 
 ## 3. Audience
 

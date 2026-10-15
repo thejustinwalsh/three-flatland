@@ -1,0 +1,59 @@
+diff --git a/index.js b/index.js
+index 56c26025074cbcf218e3ec4d810662da93f8024e..342d2b31a456f5408fb3d5c0e58a31ed6f6e0243 100644
+--- a/index.js
++++ b/index.js
+@@ -395,8 +395,8 @@ module.exports = class CachePolicy {
+     evaluateRequest(req) {
+         this._assertRequestHasHeaders(req);
+ 
+-        // In all circumstances, a cache MUST NOT ignore the must-revalidate directive
+-        if (this._rescc['must-revalidate']) {
++        // A client's stale directives cannot override security-zeroed freshness.
++        if (!this._allowsStale()) {
+             return this._evaluateRequestMissResult(req);
+         }
+ 
+@@ -702,11 +702,24 @@ module.exports = class CachePolicy {
+         return this.maxAge() <= this.age();
+     }
+ 
++    /** Whether stale reuse is allowed without synchronous origin validation. */
++    _allowsStale() {
++        return this.storable() &&
++            !this._rescc['no-cache'] &&
++            !this._rescc['must-revalidate'] &&
++            this._resHeaders.vary !== '*' &&
++            (!this._isShared ||
++                (!this._rescc['proxy-revalidate'] &&
++                    (!this._resHeaders['set-cookie'] ||
++                        this._rescc.public || this._rescc.immutable)));
++    }
++
+     /**
+      * @returns {boolean} `true` if `stale-if-error` condition allows use of a stale response.
+      */
+     _useStaleIfError() {
+-        return this.maxAge() + toNumberOrZero(this._rescc['stale-if-error']) > this.age();
++        return this._allowsStale() &&
++            this.maxAge() + toNumberOrZero(this._rescc['stale-if-error']) > this.age();
+     }
+ 
+     /** See `evaluateRequest()` for a more complete solution
+@@ -714,7 +727,7 @@ module.exports = class CachePolicy {
+      */
+     useStaleWhileRevalidate() {
+         const swr = toNumberOrZero(this._rescc['stale-while-revalidate']);
+-        return swr > 0 && this.maxAge() + swr > this.age();
++        return this._allowsStale() && swr > 0 && this.maxAge() + swr > this.age();
+     }
+ 
+     /**
+@@ -855,7 +868,7 @@ module.exports = class CachePolicy {
+     revalidatedPolicy(request, response) {
+         this._assertRequestHasHeaders(request);
+ 
+-        if (this._useStaleIfError() && isErrorResponse(response)) {
++        if (this._requestMatches(request, true) && this._useStaleIfError() && isErrorResponse(response)) {
+           return {
+               policy: this,
+               modified: false,

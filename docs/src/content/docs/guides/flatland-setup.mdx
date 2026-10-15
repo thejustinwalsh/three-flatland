@@ -95,6 +95,10 @@ In React Three Fiber, register `flatland.render()` in the **render phase** (`{ p
 `flatland.add()` dispatches on type, described in [object routing](../flatland/#object-routing).
 
 ```typescript
+import { Light2D } from 'three-flatland'
+import { Mesh, PlaneGeometry } from 'three'
+import { MeshBasicNodeMaterial } from 'three/webgpu'
+
 // Sprite2D → batched via SpriteGroup
 const sprite = new Sprite2D({ texture, anchor: [0.5, 0.5] })
 flatland.add(sprite)
@@ -104,6 +108,8 @@ const light = new Light2D({ type: 'point', position: [50, 50], color: 0xff6600 }
 flatland.add(light)
 
 // Other Three.js objects → added to internal scene
+const geometry = new PlaneGeometry(10, 10)
+const material = new MeshBasicNodeMaterial({ color: 0x6699ff })
 const mesh = new Mesh(geometry, material)
 flatland.add(mesh)
 ```

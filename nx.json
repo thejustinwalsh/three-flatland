@@ -16,7 +16,11 @@
       "!{projectRoot}/test/**/*",
       "!{projectRoot}/vitest.config.*"
     ],
-    "sharedGlobals": ["{workspaceRoot}/pnpm-workspace.yaml", "{workspaceRoot}/tsconfig.json"]
+    "sharedGlobals": [
+      "{workspaceRoot}/pnpm-workspace.yaml",
+      "{workspaceRoot}/tsconfig.json",
+      "{workspaceRoot}/patches/**/*.patch"
+    ]
   },
   "targetDefaults": {
     "build": {
