@@ -21,6 +21,8 @@ describe('effect vector runtime snapshots', () => {
 
     const weakMapSet = vi.spyOn(WeakMap.prototype, 'set')
     const freeze = vi.spyOn(Object, 'freeze')
+    // Vitest registers each spy in a WeakMap. Start measuring after spy setup.
+    weakMapSet.mockClear()
     let reused = true
     let setCalls = -1
     let freezeCalls = -1
@@ -72,6 +74,8 @@ describe('effect vector runtime snapshots', () => {
     const effect = {}
     const weakMapSet = vi.spyOn(WeakMap.prototype, 'set')
     const freeze = vi.spyOn(Object, 'freeze')
+    // Vitest registers each spy in a WeakMap. Start measuring after spy setup.
+    weakMapSet.mockClear()
     let first: readonly number[] | undefined
     let unchanged: readonly number[] | undefined
     let changed: readonly number[] | undefined
