@@ -1,5 +1,9 @@
 # Release preparation: docs integration review
 
+This records the initial review. Justin subsequently authorized the useful docs integration;
+see [the 2026-10-15 integration and audit report](2026-10-15-integrated-docs-and-audit.md) for the
+expanded PR scope, corrections and remaining merge blocker.
+
 The standalone preparation branch is ready for a draft PR after the requested permission to push.
 No remaining docs-stack PR is a prerequisite for this release. No remote mutation was performed.
 

@@ -6,6 +6,8 @@ no releases or tags created, no environments approved, and no security settings 
 The [follow-up docs integration review](2026-10-14-docs-integration.md) maps every pending docs PR,
 records the independent review and final wording corrections, and distinguishes the preserved
 fully tested candidate from the focused follow-up candidate. Permission to push remains pending.
+That sentence records the initial local-review state. The subsequent authorized push and docs
+integration are covered by the [2026-10-15 report](2026-10-15-integrated-docs-and-audit.md).
 
 ## Branches and provenance
 

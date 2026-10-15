@@ -6,19 +6,19 @@ const { toc } = Astro.locals.starlightRoute;
 
 {
     toc && (
-        <starlight-toc data-min-h={toc.minHeadingLevel} data-max-h={toc.maxHeadingLevel}>
+        <flatland-toc data-min-h={toc.minHeadingLevel} data-max-h={toc.maxHeadingLevel}>
             <nav aria-labelledby="starlight__on-this-page">
                 <p id="starlight__on-this-page">{Astro.locals.t('tableOfContents.onThisPage')}</p>
                 <TableOfContentsList toc={toc.items} />
             </nav>
-        </starlight-toc>
+        </flatland-toc>
     )
 }
 
 <script src="./parts/toc/starlight-toc"></script>
 
 <style>
-    starlight-toc {
+    flatland-toc {
         scrollbar-width: none;
         padding-bottom: calc(var(--spacing) * 10);
         padding-inline: calc(var(--spacing) * 1);

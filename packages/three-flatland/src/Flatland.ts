@@ -1366,6 +1366,7 @@ export class Flatland extends Group {
   /**
    * Add a post-processing pass to the pipeline.
    * Passes are applied in insertion order (or explicit order). Automatically enables post-processing.
+   * The automatic render pipeline is initialized during the next render, if needed.
    *
    * @param passEffect - PassEffect instance to add
    * @param order - Optional explicit order (default: auto-increment)
@@ -1373,12 +1374,17 @@ export class Flatland extends Group {
    *
    * @example
    * ```typescript
-   * import { CRTEffect, VignetteEffect } from 'three-flatland'
+   * import { Flatland, createPassEffect } from 'three-flatland'
    *
-   * const crt = new CRTEffect()
-   * const vignette = new VignetteEffect()
-   * flatland.addPass(crt).addPass(vignette)
-   * crt.curvature = 0.3  // zero-cost uniform update
+   * const MultiplyPass = createPassEffect({
+   *   name: 'multiply',
+   *   schema: { factor: 1 },
+   *   pass: ({ uniforms }) => (input) => input.mul(uniforms.factor),
+   * })
+   * const flatland = new Flatland()
+   * const effect = new MultiplyPass()
+   * flatland.addPass(effect)
+   * effect.factor = 0.5
    * ```
    */
   addPass(passEffect: PassEffect, order?: number): this {

@@ -18,7 +18,7 @@ three-flatland provides loaders for common 2D asset formats. All loaders share a
 
 The default preset is `pixel-art` — `NearestFilter`, no mipmaps, clamp wrap. If you're shipping pixel art (most three-flatland projects), you don't have to configure anything.
 
-## Available Loaders
+## Available loaders
 
 | Loader | Format | Use Case |
 |--------|--------|----------|
@@ -60,7 +60,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
   </TabItem>
 </Tabs>
 
-### Multiple Textures
+### Multiple textures
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -92,7 +92,7 @@ Load textures with automatic preset application. Works seamlessly with R3F's `us
   </TabItem>
 </Tabs>
 
-### Override Presets
+### Override presets
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -158,7 +158,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
   </TabItem>
 </Tabs>
 
-### Multiple Spritesheets
+### Multiple spritesheets
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -182,7 +182,7 @@ Load spritesheets exported from [TexturePacker](https://www.codeandweb.com/textu
   </TabItem>
 </Tabs>
 
-### Supported Formats
+### Supported formats
 
 - **JSON Hash** (TexturePacker default) - Frames as object properties
 - **JSON Array** - Frames as array with `filename` property
@@ -301,7 +301,7 @@ Load projects from [LDtk](https://ldtk.io/). See the [Tilemaps guide](../tilemap
 - IntGrid collision data
 - Tile flip flags
 
-## Baked Normal Pipeline
+## Baked normal pipeline
 
 three-flatland's lighting wants per-fragment **normal vectors** (for N·L diffuse) and an **elevation** scalar (for elevation-aware wall caps in `DefaultLightEffect`). Authoring a normal-map atlas alongside the diffuse atlas covers the easy case; for tilemaps, where per-tile orientation is decided in the level editor, `LDtkLoader` goes a step further and *bakes* a per-tileset normal atlas at load time from per-tile custom data.
 
@@ -311,7 +311,7 @@ Both `SpriteSheetLoader` and `LDtkLoader` accept a `normals: true` option. The r
 
 The atlas encoding is RGB+A: R/G hold the tangent-space normal XY in `[0, 1]` (decoded to `[-1, 1]` at sample time, with Z reconstructed as `sqrt(1 − x² − y²)`), B holds elevation in `[0, 1]`, and A passes through the source alpha.
 
-### Resolution Strategy
+### Resolution strategy
 
 Both loaders use the same resolution path for the baked atlas:
 
@@ -415,7 +415,7 @@ The atlas lands on each tileset as `tileset.normalMap`:
 
 The blue (elevation) channel feeds `DefaultLightEffect`'s elevation-aware diffuse — wall caps physically sit *above* `lightHeight` in the lighting math, so torches geometrically miss them. See the [Shadows guide](../shadows/#elevation-aware-shadows) for the elevation-channel story.
 
-### Wiring to the Lighting System
+### Wiring to the lighting system
 
 Once the normal map is loaded, attach a `NormalMapProvider` MaterialEffect to the consuming `Sprite2D` / `AnimatedSprite2D` / `TileMap2D`. The provider feeds the `normal` and `elevation` channels into the active `LightEffect` (typically `DefaultLightEffect`).
 
@@ -507,11 +507,11 @@ Once the normal map is loaded, attach a `NormalMapProvider` MaterialEffect to th
 
 For the broader lighting story, see the [Lighting guide](../lighting/) (presets and Light2D types) and the [Shadows guide](../shadows/) (elevation-aware shaping and the SDF trace). For the `NormalMapProvider` MaterialEffect in context with the rest of the effect system, see [Pass Effects](../pass-effects/#the-three-effect-layers).
 
-## Texture Presets
+## Texture presets
 
 All loaders use a unified texture configuration system. Presets control filtering, wrapping, and mipmaps.
 
-### Available Presets
+### Available presets
 
 | Preset | Filtering | Wrap | Mipmaps | Best For |
 |--------|-----------|------|---------|----------|
@@ -519,7 +519,7 @@ All loaders use a unified texture configuration system. Presets control filterin
 | `'smooth'` | Linear | Clamp | On | HD sprites, smooth graphics |
 | `'none'` | — | — | — | Full manual control |
 
-### Configuration Hierarchy
+### Configuration hierarchy
 
 Texture options follow a hierarchy (highest to lowest priority):
 
@@ -539,7 +539,7 @@ const texture = useLoader(TextureLoader, '/sprite.png', (loader) => {
 
 Each level overrides the ones below it. `TextureConfig` follows the library-wide `FlatlandConfig` until it receives its own override. If nothing is set, `'pixel-art'` is used.
 
-### Global Configuration
+### Global configuration
 
 Set the coordinated library-wide preset, or specialize only texture loading:
 
@@ -560,7 +560,7 @@ const mapData = await TiledLoader.load('/maps/level.json');
 TextureConfig.reset();
 ```
 
-### Per-Loader Configuration
+### Per-Loader configuration
 
 Override the default for a specific loader type:
 
@@ -582,7 +582,7 @@ const sprites = await SpriteSheetLoader.load('/sprites/ui.json');      // smooth
 const mapData = await TiledLoader.load('/maps/dungeon.json');          // pixel-art
 ```
 
-### Per-Instance Configuration
+### Per-Instance configuration
 
 Override for a specific load call:
 
@@ -621,7 +621,7 @@ Override for a specific load call:
   </TabItem>
 </Tabs>
 
-### Full Manual Control
+### Full manual control
 
 Use `'none'` for complete control via `.then()`:
 
@@ -639,7 +639,7 @@ const sheet = await SpriteSheetLoader.load('/sprites/tiles.json', {
 });
 ```
 
-### Common Patterns
+### Common patterns
 
 **Pixel Art Game (default)**
 ```typescript

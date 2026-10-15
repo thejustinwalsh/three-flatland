@@ -86,7 +86,7 @@ Peer dependencies: `three ^0.185.1`. For React: `@react-three/fiber 10.0.0-alpha
 
 `@three-flatland/skia/react` is browser-only on R3F alpha.3. Its upstream Inspector reads `localStorage` during module evaluation, so place the import behind your framework's client boundary rather than evaluating it during SSR.
 
-### WASM Setup
+### WASM setup
 
 Skia ships ~1 MB WASM binaries (one for WebGL, one for WebGPU). **Vite handles this automatically** in dev — no config needed. For production builds or other bundlers, copy the WASM to your public directory:
 
@@ -205,7 +205,7 @@ The root node that owns the render target and walks children to draw. Two modes:
   </TabItem>
 </Tabs>
 
-### Render Pipeline
+### Render pipeline
 
 SkiaCanvas does not auto-render. Call `render()` each frame — it automatically marks the canvas dirty and draws:
 
@@ -242,11 +242,11 @@ SkiaCanvas does not auto-render. Call `render()` each frame — it automatically
   </TabItem>
 </Tabs>
 
-## Drawing Nodes :badge[Alpha]{variant=caution}
+## Drawing nodes :badge[Alpha]{variant=caution}
 
 All nodes extend `SkiaNode` (which extends Three.js `Object3D`) and accept inline paint props.
 
-### Common Paint Props
+### Common paint props
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -258,7 +258,7 @@ All nodes extend `SkiaNode` (which extends Three.js `Object3D`) and accept inlin
 | `blendMode` | `BlendMode` | Compositing blend mode |
 | `paint` | `SkiaPaint` | Explicit paint (overrides all above) |
 
-### Shape Nodes
+### Shape nodes
 
 ```tsx
 {/* Rectangle with rounded corners */}
@@ -323,7 +323,7 @@ Uses standard Object3D `position`, `scale`, and `rotation.z` (radians). The `deg
 | `clipRect` | `[x, y, w, h]` clip rectangle |
 | `backdropBlur` | Frosted glass effect |
 
-## Font Loading
+## Font loading
 
 :::tip[Performance note]
 The typeface is cached by URL, and sized fonts are cached internally on the typeface — so calling `.atSize(14)` and `.atSize(32)` from many components shares a single font fetch and a single set of size objects. No need to memoize.
@@ -364,7 +364,7 @@ The typeface is cached by URL, and sized fonts are cached internally on the type
 
 The typeface resolves the `SkiaContext` lazily — if no context is available when `atSize()` is called, it falls back to the global `SkiaContext.instance` singleton. Inside a `<SkiaCanvas>` subtree, this is always available.
 
-## Custom Paints
+## Custom paints
 
 For gradients, shaders, and effects beyond flat fill/stroke, create a `SkiaPaint`:
 
@@ -393,7 +393,7 @@ useFrame(({ elapsed }) => {
 return <skiaRect paint={paint} x={0} y={0} width={200} height={50} />
 ```
 
-## Path Operations
+## Path operations
 
 Create paths programmatically and perform boolean operations:
 
@@ -410,7 +410,7 @@ pathNode.path = result
 
 Operations: `difference`, `intersect`, `union`, `xor`, `reverse-difference`.
 
-## Texture Attachment (React)
+## Texture attachment (React)
 
 `attachSkiaTexture` is an R3F attach helper that grabs `.texture` from a `SkiaCanvas` and assigns it to the parent material's `map`:
 
@@ -425,7 +425,7 @@ import { SkiaCanvas, attachSkiaTexture } from '@three-flatland/skia/react'
 </meshBasicMaterial>
 ```
 
-## Next Steps
+## Next steps
 
 - [Skia Example](../../examples/skia/) — Full interactive demo
 - [Sprites Guide](../sprites/) — Three-flatland 2D sprites

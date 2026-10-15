@@ -17,7 +17,7 @@ export const reactFiles = loadExample('react', 'lighting')
   reactFiles={reactFiles}
 >
 
-## Interactive Lighting Demo
+## Interactive lighting demo
 
 This example demonstrates dynamic 2D lighting using `DefaultLightEffect` (Forward+ tiled culling): flickering torch lights, an animated hero and slime sprites, and a click-to-walk hero exploring an LDtk dungeon. Walk the hero up to a switchable torch and toggle it to watch the lit area change:
 
@@ -27,7 +27,7 @@ This example demonstrates dynamic 2D lighting using `DefaultLightEffect` (Forwar
 | **WASD / arrow keys** | Move the hero directly |
 | **Space** | Toggle the nearest switchable torch on/off |
 
-## Lighting Setup
+## Lighting setup
 
 The scene uses `DefaultLightEffect` (Forward+ tiled culling) for efficient per-tile light culling:
 
@@ -85,7 +85,7 @@ flatland.add(knight)
 const indicator = new Sprite2D({ texture: circleTexture, lit: false })
 ```
 
-## React: Declarative Lighting
+## React: declarative lighting
 
 In React, use `attachLighting` to wire the LightEffect to Flatland, `attachEffect` for normal providers, and `light2D` JSX elements for lights:
 
@@ -114,7 +114,7 @@ extend({ Flatland, Sprite2D, Light2D, DefaultLightEffect, NormalMapProvider })
 </flatland>
 ```
 
-## Further Reading
+## Further reading
 
 - [2D Lighting Guide](../../guides/lighting-setup/) — Full reference for `DefaultLightEffect`, normal providers, and shadow controls
 - [2D Lighting Concept](../../guides/lighting/) — How Forward+ tiling and the slot budget work

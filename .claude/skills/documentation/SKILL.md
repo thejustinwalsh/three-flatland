@@ -5,7 +5,7 @@ description: Use when authoring, restructuring, splitting, or auditing any docs 
 
 # Documentation
 
-Docs are part of the product. This skill governs their **structure and quality**; for the *voice* of the prose, **REQUIRED SUB-SKILL: marketing-voice**.
+Docs are part of the product. This skill governs their **structure and quality**; for how the sentences read, **REQUIRED SUB-SKILL: technical-writing**, which follows the Google developer documentation style guide.
 
 ## The backbone rule
 

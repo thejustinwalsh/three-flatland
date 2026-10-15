@@ -113,4 +113,6 @@ export class StarlightTOC extends HTMLElement {
   }
 }
 
-customElements.define('starlight-toc', StarlightTOC)
+// The upstream mobile ToC also loads and registers its own starlight-toc.
+// Keep the theme's desktop implementation independent of that registration.
+customElements.define('flatland-toc', StarlightTOC)

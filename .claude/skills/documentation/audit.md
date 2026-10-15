@@ -24,7 +24,8 @@ Loaded by the `documentation` skill when auditing existing docs. Run **all four 
 
 ## Audit Process
 
-The audit has three layers — accuracy, engagement, and machine-readability. Run all three. Skipping engagement keeps docs technically correct but flat. Skipping LLM is silent debt.
+The audit has four layers: accuracy, reader usability, machine-readability and JSDoc. Run all four.
+Apply `technical-writing` throughout; examples of an engaging presentation do not override its prose rules.
 
 ### Layer 1 — Accuracy (the original audit)
 
@@ -49,7 +50,8 @@ The audit has three layers — accuracy, engagement, and machine-readability. Ru
 - [ ] **R3F `extend()`** — every JSX element from a custom class needs `extend({ ClassName })`
 - [ ] **R3F imports** — from `@react-three/fiber/webgpu`, not `@react-three/fiber`
 - [ ] **`syncKey="framework"`** on every code-sample Tabs block — preserves user's framework choice across pages
-- [ ] **Modern React async** — `use()` + Suspense, NOT `useEffect` + `useState` for data loading. See [react-best-practices.md](react-best-practices.md)
+- [ ] **Modern React async** — `useLoader` for Three.js assets, `use()` for other asynchronous data,
+      with Suspense. Avoid `useEffect` + `useState` loading wrappers. See [react-best-practices.md](react-best-practices.md).
 - [ ] **Three.js / React parity** — both frameworks demonstrate the same outcome; no framework left half-implemented
 - [ ] **Cross-link paths** — relative paths resolve correctly. From `/guides/X.mdx`, sibling pages are `../sibling/`, showcases are `../../showcases/Y/`. Anchor fragments must match the actual heading slug.
 
@@ -59,12 +61,12 @@ Every prose page (not auto-generated API pages) is graded against eight criteria
 
 | # | Criterion | What good looks like |
 |---|-----------|----------------------|
-| 1 | **Hook in 30s** | First non-frontmatter line states what the page lets the reader *do*, not what the API *is*. ("Render thousands of sprites with a single draw call." not "SpriteGroup is a class that...") |
+| 1 | **Purpose in 30s** | The opening states the procedure's result, the explanation's topic/decision, or the reference's scope. Match the page type rather than forcing a procedural hook onto an explanation. |
 | 2 | **One visual** | At minimum a static rendered output. Ideally a `<Compare>`, `<Example>`, mermaid diagram, or annotated image. Pure-prose pages fail this criterion. |
 | 3 | **Framework parity** | Three.js + R3F tabs with `syncKey="framework"`; shared explanatory prose pulled out of tabs |
 | 4 | **Signature callout** | At least one `:::tip[Performance note]` (the three-flatland signature) where applicable. Not every page needs one — but a perf-relevant page that has none is suspect. |
 | 5 | **Type purity (Diátaxis)** | Page is unambiguously ONE type — tutorial, how-to, reference, or explanation (`diataxis.md`). **Name the type, then flag any content that violates that type's must-not list**: a Concept/explanation carrying setup steps or a constructor-options table, a how-to carrying a full properties table, a tutorial stopping to explain theory. A clean layout / "progressive disclosure" does **not** excuse mixing — a page serving multiple types is a split candidate regardless of polish, and "comprehensive" is the tell, not the defense. This is a hard fail, not a soft criterion: when violated, the page fix is a split (per the `diataxis.md` split recipe), not a rewrite-in-place. |
-| 6 | **One human sentence** | A "you don't need to remember this" / "this is the part that bites you" / "leave it alone unless..." moment. Disarms the reader. Permission to be a person. |
+| 6 | **Reader orientation** | State relevant prerequisites, limits or a concrete decision the reader can make. Use plain factual prose; do not add wit, idioms, personification or a performed voice. |
 | 7 | **Cross-links** | Links to (a) the matching `examples/` entry, (b) the relevant API reference page, (c) prerequisite concept page. Missing any of the three is a finding. |
 | 8 | **Public API is JSDoc'd** | Every public class / function / option referenced on the page has a `/** ... */` block in source with `@param` / `@returns` / `@example` where useful. The auto-generated API page is only as good as the JSDoc. |
 
@@ -133,7 +135,7 @@ A new public API ships with JSDoc, *or* the audit logs it as a finding. **Do not
 | Anchor fragments | Anchor doesn't match actual heading slug | Heading "X — Y" → slug `#x--y` (em-dash collapses to double hyphen) |
 | Version pins | Two pages disagree on three.js / R3F minimum | Pick a single source of truth (usually `installation.mdx`) and propagate |
 | Malformed fragments | `../page#section/` (slash after fragment) | Rewrite as `../page/#section` |
-| React async | `useEffect` + `useState` for data loading | Use `use()` + Suspense pattern instead |
+| React async | `useEffect` + `useState` loading wrappers | Use `useLoader` for Three.js assets or `use()` for other async data, with Suspense |
 | React async | `if (!data) return null` guards | Wrap with `<Suspense fallback={...}>` |
 
 ---
