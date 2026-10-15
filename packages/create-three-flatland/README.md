@@ -44,8 +44,12 @@ npm create three-flatland@latest my-app -- --template react
 | Flag | Meaning |
 | --- | --- |
 | `-t, --template <name>` | Template to scaffold: `three` \| `react` |
-| `--overwrite` | Scaffold into a non-empty target directory |
+| `--overwrite` | Delete all existing target contents except `.git`, then scaffold |
 | `--help` | Show usage |
+
+> **Destructive option:** `--overwrite` removes existing files and directories, including untracked work and configuration. Only `.git` is preserved. Back up the target before using it.
+
+Run `pnpm create three-flatland --help` for usage.
 
 ## Templates
 

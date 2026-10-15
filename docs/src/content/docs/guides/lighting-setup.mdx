@@ -9,7 +9,7 @@ import light2dTypes from '../../../assets/diagrams/light2d-types.svg?raw';
 
 This guide covers the practical side of 2D lighting: adding `Light2D` sources, picking a `LightEffect` preset, animating and dragging lights, and tuning per-tile slot allocation for dense scenes. For the mental model behind Forward+ tiling, the slot budget, and the SDF shadow pass, see [2D Lighting](../lighting/).
 
-## Basic Setup
+## Basic setup
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -119,11 +119,11 @@ This guide covers the practical side of 2D lighting: adding `Light2D` sources, p
 All sprites receive lighting by default when a `LightEffect` is active. Set `lit: false` on sprites that should render at full brightness (e.g., UI elements, light indicators).
 :::
 
-## Light2D Types
+## Light2D types
 
 <Diagram caption="The four Light2D types and their emission shapes — point (radial falloff), directional (parallel rays), spot (soft-edged cone), and ambient (uniform fill)" src={light2dTypes} />
 
-### Point Light
+### Point light
 
 Radiates light from a position with distance-based falloff:
 
@@ -138,7 +138,7 @@ const torch = new Light2D({
 })
 ```
 
-### Directional Light
+### Directional light
 
 Parallel rays from a direction (like sunlight):
 
@@ -151,7 +151,7 @@ const sun = new Light2D({
 })
 ```
 
-### Spot Light
+### Spot light
 
 Cone of light from a position in a direction:
 
@@ -168,7 +168,7 @@ const spotlight = new Light2D({
 })
 ```
 
-### Ambient Light
+### Ambient light
 
 Uniform illumination — affects all lit sprites equally:
 
@@ -180,7 +180,7 @@ const ambient = new Light2D({
 })
 ```
 
-## LightEffect Presets
+## LightEffect presets
 
 `@three-flatland/presets` ships a lighting preset for the recommended rendering path:
 
@@ -216,7 +216,7 @@ lighting.shadowMaxDistance = 300
 
 For the full `DefaultLightEffect` schema (uniforms vs compile-time constants, removed fields, the `categoryQuotas` accessor), see the [Pass Effects guide](../pass-effects/#defaultlighteffect-schema).
 
-## Animating Lights
+## Animating lights
 
 Update Light2D properties at any time — they sync to the GPU automatically each frame:
 
@@ -242,7 +242,7 @@ function animate(delta: number) {
 }
 ```
 
-## Draggable Lights
+## Draggable lights
 
 Make lights interactive by converting screen coordinates to world space:
 
@@ -270,7 +270,7 @@ canvas.addEventListener('mouseup', () => {
 })
 ```
 
-## Light2D Properties
+## Light2D properties
 
 :::note[`type` vs `lightType`]
 The constructor option is `type` (`new Light2D({ type: 'point' })`); the instance property and the R3F prop are `lightType` (`<light2D lightType="point" />`). Both set the same thing — the constructor just uses the shorter key.
@@ -292,7 +292,7 @@ The constructor option is `type` (`new Light2D({ type: 'point' })`); the instanc
 | `category` | `string \| undefined` | `undefined` | Bucket tag for fill-light quotas |
 | `position2D` | `Vector2` | `(0, 0)` | 2D position helper |
 
-## Shadow Casting, Importance & Categories
+## Shadow casting, importance & categories
 
 Three Light2D fields control how lights compete for per-tile slots in dense scenes: `castsShadow` splits lights into heroes and fills, `importance` biases the rank score, and `category` buckets fills into independent quotas. They do nothing in small scenes; they make dense scenes readable. For why the slot budget exists and when these knobs start to matter, see [Tiled lighting and the slot budget](../lighting/#tiled-lighting-and-the-slot-budget).
 
@@ -426,7 +426,7 @@ In the `examples/react/lighting/` demo, the slime-quota slider drives `categoryQ
 - **Score-ranked eviction within a quota is intuitive.** When a category's quota is full and another fill of that category enters range, the closer / brighter one wins the slot. Tweaking individual fill `intensity` indirectly affects who survives in saturated tiles.
 - **Fills are cheap to leave on.** `light.enabled = false` is a zero-cost cull (rejected before per-tile upload), but a `castsShadow: false` fill that's just dim and far away is also nearly free — Forward+ won't even rank it into a tile it can't reach. Don't over-engineer toggling.
 
-## Normal Providers
+## Normal providers
 
 `DefaultLightEffect` supports normal-based directional diffuse shading. To enable it, add a normal provider effect to your sprites.
 
@@ -472,7 +472,7 @@ so leaving the runtime-bake fallback enabled is safe for sites where sidecars
 are always present — the bake path stays dormant.
 :::
 
-## Next Steps
+## Next steps
 
 - [2D Lighting](../lighting/) — The mental model: Forward+ tiling, the slot budget, and the SDF shadow pass
 - [Lighting Example](../../examples/lighting/) — Interactive demo with draggable lights and a live slime-quota slider

@@ -146,7 +146,7 @@ The audit treats `llms.txt` and `llms-full.txt` as first-class artifacts. Every 
 
 ---
 
-## Voice — Concrete Examples Worth Imitating
+## Presentation references
 
 > "You are not expected to remember all of this."  — React docs, after a dense section
 
@@ -158,4 +158,6 @@ The audit treats `llms.txt` and `llms-full.txt` as first-class artifacts. Every 
 
 > "Good to know: ..."  — Next.js, signature aside
 
-These all share two qualities: **the doc admits something** the reader is already thinking, and the writer has **permission to be a person**. One sentence per page in this register is a high-leverage voice change.
+These historical examples illustrate reader orientation and concise scope statements. They are not
+prose templates: `technical-writing` governs the wording, including its rules against figurative
+language, forced wit and unsupported claims. Do not require a sentence in any particular register.

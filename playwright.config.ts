@@ -14,21 +14,17 @@ import { defineConfig, devices } from '@playwright/test'
  * build-pipeline regressions where an example's `dist/` never makes it
  * into the docs output — the failure mode that bit slug-text in #69.
  *
- * The `test:smoke` scripts (see `package.json`) route through the
- * `//#test:e2e` root task in `turbo.json`, which declares `docs#build`
- * as a dependency. Turbo resolves that dep first (cache-skips when
- * inputs haven't changed) before invoking `playwright test`, so
- * `docs/dist/` is always present and fresh without an explicit chain.
- * CI's `smoke` job inherits the upstream build job's turbo cache via
- * the restore-key fallback, so the dep resolves instantly there too.
+ * The `test:smoke` script runs `nx run docs:build` before Playwright. Nx
+ * builds the docs dependency graph and reuses outputs when inputs match.
+ * CI restores the build job's Nx cache before running the smoke suite.
  *
  * Scripts:
- *   pnpm test:smoke          Build (turbo) + run the suite headless.
- *   pnpm test:smoke:ui       Build (turbo) + interactive UI mode.
- *   pnpm test:smoke:headed   Build (turbo) + headful run.
+ *   pnpm test:smoke          Build (Nx) + run the suite headless.
+ *   pnpm test:smoke:ui       Build (Nx) + interactive UI mode.
+ *   pnpm test:smoke:headed   Build (Nx) + headful run.
  *   pnpm test:smoke:install  One-time Chromium download.
  *   pnpm test:e2e            Direct Playwright invocation (skips
- *                            the turbo build dep — use sparingly).
+ *                            the Nx docs build — use sparingly).
  */
 
 const PORT = 4321

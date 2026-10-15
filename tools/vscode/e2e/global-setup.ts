@@ -17,22 +17,9 @@ const CARGO_AVAILABLE = spawnSync('cargo', ['--version'], { stdio: 'ignore' }).s
  * "not built yet" placeholder from `composeToolHtml` instead of failing
  * loudly — this step turns that into a build failure up front.
  *
- * Runs `pnpm --filter "@three-flatland/vscode..." -r run build` rather
- * than a bare `pnpm --filter … build`: the extension's own build script
- * doesn't build its `workspace:*` deps (bridge, design-system, io, image,
- * preview, schemas, three-flatland, …), which resolve to source via a
- * `"source"` package.json export condition that only tsc/vitest
- * understand — Vite/Rollup don't, so a webview build against unbuilt deps
- * fails resolving e.g. `@three-flatland/bridge/client`. The trailing
- * `...` filter suffix (pnpm's "include dependencies" selector) plus `-r`
- * builds this package's real, actual dependency closure in topological
- * order — deliberately *not* `turbo run build --filter=…`, which also
- * pulls in `@three-flatland/skia#build` (a hardcoded dependency on
- * *every* package's generic `build` task in `turbo.json`, not something
- * `@three-flatland/vscode` actually needs) and fails on machines where
- * the Zig/WASM toolchain isn't set up — a pre-existing, separately
- * tracked issue (see `.library`/memory notes on the Skia WASM build),
- * not something this harness needs to depend on or fix.
+ * Runs `pnpm nx build @three-flatland/vscode` so Nx builds the extension's
+ * workspace dependency closure in order and reuses matching build outputs.
+ * A direct package build does not build those dependencies first.
  */
 export default async function globalSetup(): Promise<void> {
   // Stale-artifact hermeticity: `tools/vscode/audio-play/` and
@@ -50,8 +37,8 @@ export default async function globalSetup(): Promise<void> {
   rmSync(path.join(EXTENSION_ROOT, 'audio-play'), { recursive: true, force: true })
   rmSync(path.join(EXTENSION_ROOT, 'bin'), { recursive: true, force: true })
 
-  console.log('[e2e] pnpm --filter "@three-flatland/vscode..." -r run build …')
-  execFileSync('pnpm', ['--filter', '@three-flatland/vscode...', '-r', 'run', 'build'], {
+  console.log('[e2e] pnpm nx build @three-flatland/vscode …')
+  execFileSync('pnpm', ['nx', 'build', '@three-flatland/vscode'], {
     cwd: REPO_ROOT,
     stdio: 'inherit',
   })
@@ -66,8 +53,7 @@ export default async function globalSetup(): Promise<void> {
   // tools/codelens-service/src/realSidecar.test.ts's own beforeAll: build
   // fresh rather than hope a prior build is lying around, warn-and-skip
   // (not fail) if cargo isn't on PATH at all — this harness doesn't own
-  // the Rust toolchain requirement, and per e2e/README.md's "CI posture"
-  // this suite isn't CI-wired yet regardless.
+  // the Rust toolchain requirement. CI installs Rust before running this suite.
   if (CARGO_AVAILABLE) {
     console.log('[e2e] cargo build (codelens-service sidecar) …')
     execFileSync('cargo', ['build'], { cwd: CODELENS_SIDECAR_DIR, stdio: 'inherit' })

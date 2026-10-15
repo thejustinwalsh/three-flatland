@@ -26,18 +26,15 @@ VSCODE_E2E_VERSION=1.94.0 pnpm --filter @three-flatland/vscode test:e2e
 
 Before launching anything, `globalSetup` (`e2e/global-setup.ts`):
 
-1. Runs `pnpm --filter "@three-flatland/vscode..." -r run build` so
-   `--extensionDevelopmentPath` always loads a fresh `dist/` — see the
-   comment in `global-setup.ts` for why this isn't a bare
-   `pnpm --filter … build` or `turbo run build`.
+1. Runs `pnpm nx build @three-flatland/vscode` so `--extensionDevelopmentPath`
+   loads a fresh `dist/` and Nx builds the workspace dependency closure first.
+   Matching inputs reuse verified cached build outputs.
 2. esbuild-bundles `e2e/host-bridge/runner.ts` to
    `e2e/host-bridge/dist/runner.cjs` — the extension-host side of the
    host-eval bridge (see below); `--extensionTestsPath` needs a real `.js`
    file, not TS/ESM source.
 
-There's no cache-skip on either step — every run rebuilds. If that becomes
-a bottleneck, make it conditional on mtimes, but correctness (never
-testing a stale bundle) comes first.
+The extension build uses Nx caching; the host-eval bridge is bundled on every run.
 
 ## Why this is hand-rolled instead of `vscode-test-playwright`
 

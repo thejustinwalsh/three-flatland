@@ -6,7 +6,8 @@
 > a `CLAUDE.md`, `AGENTS.md`, or any other doc here makes `changesets/action` (its own bundled
 > reader) throw `could not parse changeset - invalid YAML in frontmatter` and **breaks the release**.
 > Keep prose docs in this one file. Only `README.md`, `config.json`, `pre.json`, and real
-> `---`-frontmatter changesets belong in `.changeset/`.
+> `---`-frontmatter changesets belong at the root of `.changeset/`. Changesets 3 stores already-applied
+> prerelease notes under `.changeset/pre/`.
 
 ## How changesets are written
 
@@ -98,9 +99,19 @@ previous green CI result.
 `release.yml` runs after CI succeeds on `main` (or on `workflow_dispatch`). It uses `changesets/action@v1`:
 
 - **version**: `pnpm changeset:version` (runs `changeset version` then `scripts/sync-versions.ts`)
-- **publish**: `pnpm release` (runs `turbo run build && changeset publish`)
+- **publish**: `pnpm release` (builds packages, then runs `scripts/publish-with-action-output.mjs`)
 
 The repo is in **pre-release mode** (`pre.json` mode: `"pre"`, tag: `"alpha"`). All published versions carry the `-alpha.N` suffix until `changeset pre exit` is run.
+
+Changesets 3 keeps the mode and tag in `pre.json`, deriving counters from package versions.
+Applied notes move into `pre/`; pending notes stay at the root. Its automatic migration preserves
+the applied notes and replaces the older `initialVersions`/`changesets` metadata. Private packages
+are explicitly versioned through `privatePackages.version: true`, with private tagging disabled.
+
+The publish wrapper translates Changesets 3's structured `git-tag` events into the legacy
+`New tag:` lines consumed by `changesets/action@v1`. It preserves the publisher's exit status and
+does not infer releases from version numbers. Its contract tests parse fixture events without
+executing publication or creating tags.
 
 ---
 
@@ -149,6 +160,6 @@ dependency update.
 - **Alpha breaking changes use a `minor` changeset plus an explicit `BREAKING CHANGES` section.** This preserves the former generator's `--cap-major` behavior. Use `major` only when the release plan explicitly requires it.
 - **Pre-release mode is active.** `pre.json` has `mode: "pre"`, `tag: "alpha"`. All versions published via `changeset publish` will be `-alpha.N` until `changeset pre exit` is run and committed.
 - **Reserve `auto-*` names for generator output.** Hand-authored changesets use descriptive names such as `three-flatland-hierarchy-aware-batching.md`.
-- **`starlight-theme` is `private: true`** yet appears in the `linked` group and in `pre.json`. It is versioned by changesets but never published to npm. This is intentional — it is a workspace plugin.
+- **`starlight-theme` is `private: true`** yet appears in the `linked` group. The explicit private-package versioning option keeps it versioned without publishing it to npm. This is intentional — it is a workspace plugin.
 - **`@three-flatland/skia` and `@three-flatland/bake`** have no `private` flag and no `publishConfig`, so they are treated as public. Confirm this matches intent before adding a new package in the same pattern.
 - **`scripts/sync-versions.ts`** runs after `changeset version` to keep internal dependency versions in sync. If it fails, the release PR version step fails.

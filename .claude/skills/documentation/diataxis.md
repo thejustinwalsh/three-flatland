@@ -8,7 +8,7 @@ Two axes — **action ↔ cognition** (doing vs understanding) and **acquisition
 
 | Type | Serves (user need) | Must contain | Must **NOT** contain | Form |
 |------|--------------------|--------------|----------------------|------|
-| **Tutorial** | a beginner *learning by doing* | a guided lesson to one guaranteed-to-work result; you choose the path | options, alternatives, theory, exhaustive API | a lesson |
+| **Tutorial** | a beginner *learning by doing* | a guided lesson to one verified result; equivalent framework tabs follow the same steps | unrelated options, architectural alternatives, theory, exhaustive API | a lesson |
 | **How-to** | a competent user *with a goal* | the direct steps to solve one real problem | teaching, full option coverage, conceptual background | a recipe |
 | **Reference** | someone *looking something up* | dry, accurate, complete, consistently-structured facts | narrative, procedures, opinions | a map / table |
 | **Explanation** | someone asking *why* | context, discussion, trade-offs, alternatives, history | step-by-step instructions, reference tables | a discussion |
@@ -25,7 +25,7 @@ The repo's existing buckets already line up with Diátaxis — hold each page to
 | **Guides** (`guides/sprites`, `animation`, `loaders`, `lighting-setup`, …) | **How-to** | One task each. Show the *one* call the task needs; link the Reference for the rest. |
 | **API Reference** (TypeDoc) | **Reference** | Generated from JSDoc. The home for every option, signature, and field. |
 | **Getting Started → Quick Start** | **Tutorial** | The canonical first lesson — pixels on screen, guaranteed success. |
-| **Examples** | **Tutorial** (single feature) | One per *prime feature*. The page is two things: a "get it on your machine" command (a `degit`-style first-party CLI pull that drops the isolated example into a freshly-`git init`'d repo in one command) **and** a how-it's-built walkthrough with **Three.js + React code-sample tabs**. Focused on the one feature even if the example carries supporting machinery to show it off. Not reference, not explanation. |
+| **Examples** | **Tutorial** (single feature) | A verified way to run the example and a guided feature walkthrough, with equivalent **Three.js + React code-sample tabs**. Both tabs reach the same result. Supporting machinery serves that feature; do not require an unshipped example-download CLI. |
 | **Showcases** | **Explanation** | How a complete, shipped game is architected — its systems, trade-offs, and the role of third-party packages *outside* the three-flatland ecosystem. Read for understanding; the playable build + source is the artifact the page illuminates. Depth and discussion are correct here (that is what Explanation is *for*) — but it is **not** a step-by-step lesson. A genuine "build this game with me" follow-along would be a Tutorial instead, a different artifact. |
 
 The lighting/shadows split already in the repo — `lighting` (Concept/Explanation) paired with `lighting-setup` (Guide/How-to) — is the pattern. Most other features should reach the same shape.
@@ -36,7 +36,9 @@ The lighting/shadows split already in the repo — `lighting` (Concept/Explanati
 
 Both are step-by-step, so they look alike. They are not:
 
-- **Tutorial** is for someone who doesn't yet know what they're doing. You guarantee success, you choose every step, you don't offer choices. Goal: confidence and a working result. "Build your first lit scene."
+- **Tutorial** is for someone learning the task. Choose and verify every step to a working result.
+  Equivalent Three.js/React tabs show the same lesson; avoid unrelated design choices. Goal:
+  confidence and a working result. "Build your first lit scene."
 - **How-to** is for someone who knows the domain and has a specific goal. You assume competence, you address the real-world problem, you can branch. Goal: get the task done. "Add a normal-mapped point light to an existing scene."
 
 If you're writing steps and you find yourself explaining *why* or listing *every* option, you've drifted out of both — move the why to Explanation, the options to Reference.
@@ -46,7 +48,7 @@ If you're writing steps and you find yourself explaining *why* or listing *every
 1. **Name the page's one type out loud** before writing. If you can't, the page is two pages.
 2. **Write only to that type's shape.** Use the must/must-not columns as a gate on every section.
 3. **Other-type content gets a cross-link, never an inlined section.** A how-to links to the API page for the full option list; an explanation links to the how-to for setup; a tutorial links to explanation for the theory. The link carries the rest — that is *not* duplication.
-4. **Voice:** apply `marketing-voice` (calm register for all docs pages).
+4. **Prose:** apply `technical-writing` (Google developer documentation style guide).
 
 ## Mode-mixing smells (from this repo)
 

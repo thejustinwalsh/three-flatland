@@ -428,6 +428,8 @@ describe('TileMap2D retained material effects', () => {
     const direction: [number, number, number] = [0, 0, 0]
     const weakMapSet = vi.spyOn(WeakMap.prototype, 'set')
     const freeze = vi.spyOn(Object, 'freeze')
+    // Vitest registers each spy in a WeakMap. Start measuring after spy setup.
+    weakMapSet.mockClear()
     let setCallsAfterWrites = -1
     let freezeCallsAfterWrites = -1
     let setCallsAfterFirstRead = -1

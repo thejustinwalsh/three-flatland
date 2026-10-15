@@ -9,9 +9,24 @@ The ECS that coordinates batching, effects, lighting, and tilemaps is now privat
 
 Flatland's private renderer ECS grew from its earlier
 [Koota](https://github.com/pmndrs/koota) integration. Koota's typed traits, structure-of-arrays
-storage, and query model made the specialized design possible. Koota remains the recommended
+storage, queries, and systems made the specialized design possible. Koota remains the recommended
 general-purpose ECS for application and gameplay state. This migration removes a package-level
 renderer dependency; it does not replace Koota.
+
+## Apply the packaged migration recipes
+
+After upgrading `three-flatland` to `0.1.0-alpha.11`, give your coding agent this instruction:
+
+```text
+Read node_modules/three-flatland/codemods/README.md. Apply
+koota-peer-dependency-removal.md and effect-vector-whole-tuple.md to this
+application. Report skipped or ambiguous sites. Do not change application
+Koota worlds or automatically replace removed renderer ECS handles.
+```
+
+These files are agent-applied Markdown recipes, not executable commands. Review the diff and run
+your project's typecheck and tests. Run the recipes again to confirm they make no further changes.
+Continue with the manual steps below for removed APIs and behavioral changes.
 
 ## Remove the Koota peer dependency
 
@@ -83,7 +98,7 @@ const offset = new Offset()
 offset.amount = [4, 8]
 ```
 
-Replace component mutation such as `offset.amount[0] = 4`. Mutating a returned snapshot does not update the attached effect.
+Replace component mutation such as `offset.amount[0] = 4`. Snapshots are frozen. Readonly types reject component writes, and strict-mode JavaScript throws instead of updating the attached effect.
 
 ## Fix values rejected by strict validation
 

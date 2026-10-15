@@ -7,10 +7,10 @@
  *
  * 1. **Artifact (HTTP)** — `request.get` on each example's static URL,
  *    asserts 200 plus a render-surface marker. Catches the case where
- *    an example is missing from `turbo.json`'s `docs#build.dependsOn`,
- *    turbo silently skips it, `copy-examples` skips the missing `dist/`,
+ *    an example is missing from the Nx docs build dependency graph,
+ *    its build never runs and `copy-examples` skips the missing `dist/`,
  *    and the deployed iframe URL 404s. Failure message names the exact
- *    `example-{type}-<slug>#build` entry to add.
+ *    `example-{type}-<slug>:build` target to inspect.
  *
  * 2. **Direct navigation** — Playwright loads the example URL directly
  *    and verifies the live render surface: `<canvas>` mounted, exactly
@@ -32,7 +32,7 @@
  * Discovery is filesystem-driven: walks `examples/{three,react}/*` and
  * intersects with `docs/src/content/docs/examples/<slug>.mdx`. Adding a
  * new example wires it into the smoke automatically — no manual
- * inventory list to keep in sync with `turbo.json`.
+ * inventory list to keep in sync with the Nx graph.
  *
  * Prereq: `pnpm build` has been run so `docs/dist/` exists. CI's `smoke`
  * job builds before this step (see `.github/workflows/ci.yml`).

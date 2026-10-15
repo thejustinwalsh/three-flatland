@@ -7,7 +7,7 @@ import { Tabs, TabItem } from 'starlight-theme/components';
 
 This guide covers the practical side of shadows: opting sprites and tilemap tiles in or out, the self-shadow `shadowRadius` knobs, enabling elevation-aware shaping for top-down maps, and the shadow uniforms on `DefaultLightEffect`. For the pipeline itself — how the occlusion mask, the JFA-generated SDF, and the per-light sphere-trace fit together — see [Shadows & Occlusion](../shadows/).
 
-## Opting In and Out
+## Opting in and out
 
 Three flags control who participates in the shadow pipeline. All three are zero-cost runtime toggles — flipping them takes effect on the next frame with no shader rebuild.
 
@@ -66,7 +66,7 @@ const uiPanel = new Sprite2D({ texture: uiTex })
 uiPanel.receiveShadows = false
 ```
 
-## Tilemap Occluders
+## Tilemap occluders
 
 Tilemap walls are the bulk of static occluders in most scenes. Rather than tagging tiles one-by-one, mark whole categories of tiles by their LDtk `obj.type`:
 
@@ -124,14 +124,14 @@ sprite.shadowRadius = 28  // tighter than auto-derived ~64
 lighting.shadowStartOffsetScale = 1.2
 ```
 
-## Enabling Elevation-Aware Shadows
+## Enabling Elevation-Aware shadows
 
 `DefaultLightEffect` shapes light by elevation automatically once a sprite provides a per-fragment `elevation` channel — wall caps stop receiving direct light because they sit above the torch in the lighting math. The mechanism and the `L = normalize(vec3(toLight2D, lightHeight - elevation))` math live in [Elevation-Aware Shadows](../shadows/#elevation-aware-shadows). To turn it on:
 
 1. Attach a `NormalMapProvider` with a baked normal map whose blue channel encodes elevation (see [Lighting → NormalMapProvider](../lighting-setup/#normalmapprovider)).
 2. Use `DefaultLightEffect`, which declares `requires: ['normal', 'elevation']`.
 
-The fastest way to get a normal map with a populated elevation channel is `LDtkLoader`'s [Baked Normal Pipeline](../loaders/#baked-normal-pipeline) — tagging tiles with `tileDir` / `tileCap*` / `tileElevation` custom data produces a per-tileset atlas where wall caps bake at elevation 1 and faces at the configured face elevation. The elevation channel is populated via the same offline pipeline `flatland-bake` ships — see the [Baking guide](../baking/) for running it ahead of time.
+`LDtkLoader`'s [baked normal pipeline](../loaders/#baked-normal-pipeline) populates the elevation channel — tagging tiles with `tileDir` / `tileCap*` / `tileElevation` custom data produces a per-tileset atlas where wall caps bake at elevation 1 and faces at the configured face elevation. The elevation channel is populated via the same offline pipeline `flatland-bake` ships — see the [Baking guide](../baking/) for running it ahead of time.
 
 Tune `lightHeight` to taste — `0.75` reads as "torches sit above the floor, below the wall caps." Raising it to `1.5` lights everything (sun-like); lowering toward `0` makes torches barely scrape the floor and dramatically extends shadows.
 
@@ -165,7 +165,7 @@ lighting.shadowMaxDistance = 300  // fade shadows beyond 300 world units
 
 `shadowPixelSize` is purely cosmetic — it produces blocky pixel-art shadow silhouettes by snapping the trace origin to a coarse grid. It does not reduce GPU cost; every fragment still traces. Use it for retro aesthetics, not for performance.
 
-## Performance Knobs
+## Performance knobs
 
 The per-light trace is gated on the GPU so most fragments skip it cheaply (see [the gating conditions](../shadows/#performance) in the concept page for the full mechanism). The two knobs you control directly:
 
@@ -176,7 +176,7 @@ Setting `castsShadow: false` on cosmetic fill lights (slime auras, particle glow
 - Per-sprite `castsShadow` controls the silhouette mask, which is rendered once per frame regardless of light count. Adding more caster sprites grows the mask render cost; adding more lights grows the trace cost.
 - The OcclusionPass renders its silhouette mask at half of the active `LightEffect` processing surface. Set `lighting.resolutionScale = 0.5` to halve all effect-owned surface dimensions; the shadow mask then becomes one quarter of the physical drawing-buffer dimensions. This can improve low-end performance or deliberately produce a blockier result without changing camera framing or canvas DPR.
 
-## Next Steps
+## Next steps
 
 - [Shadows & Occlusion](../shadows/) — The mental model: occlusion mask, JFA-generated SDF, and the per-light trace
 - [Lighting guide](../lighting-setup/) — `Light2D` types, presets, and the hero/fill split

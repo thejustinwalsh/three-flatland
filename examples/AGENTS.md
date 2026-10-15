@@ -43,9 +43,9 @@ All examples use WebGPU:
 - Plain Three.js: `new WebGPURenderer(…)` from `three/webgpu`
 - R3F: `<Canvas>` from `@react-three/fiber/webgpu`
 
-Headless Chromium launched without GPU flags will not expose WebGPU and examples
-will fail to initialize or render a black canvas. You must pass `--gpu` to vitexec
-(see below) to get Chromium's hardware-accelerated headless mode.
+Headless Chromium may not expose WebGPU without GPU flags. `WebGPURenderer` can still render
+through Three.js's WebGL 2 node backend; the release smoke suites exercise that compatibility path.
+Pass `--gpu` to vitexec (see below) when verifying hardware WebGPU behavior.
 
 ---
 
@@ -80,7 +80,7 @@ that was started with the appropriate GPU flags.
 
 ### Which vite config to pass
 
-vitexec starts its own Vite dev server on port 5173. The MPA vite config
+vitexec starts an isolated Vite dev server on an available port. The MPA vite config
 (`examples/vite.config.ts`) requires `@three-flatland/devtools` to be built first
 and serves the MPA from the workspace root — it works but is heavier. The
 per-example `vite.config.ts` is lighter and handles `BASE_URL` and asset paths
@@ -94,7 +94,7 @@ correctly for that one example. Choose based on what you are testing:
 
 ### Port: vitexec vs the running MPA server
 
-vitexec always starts its **own** server (port 5173 by default). If you have the MPA
+vitexec starts its **own** temporary server; do not assume a fixed port. If you have the MPA
 server already running on 5174 and want vitexec to use it, there is no `--url` flag —
 start vitexec from the per-example directory using that example's `vite.config.ts`
 instead. For React examples the MPA config is needed because R3F dedupe and the

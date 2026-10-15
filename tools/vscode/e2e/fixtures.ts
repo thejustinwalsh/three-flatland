@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
@@ -5,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron, test as base, expect } from '@playwright/test'
 import type { ElectronApplication, Frame, Page } from '@playwright/test'
 import { downloadAndUnzipVSCode } from '@vscode/test-electron'
+import type * as VSCode from 'vscode'
 import { HostBridgeClient } from './host-bridge/client'
 
 export { expect }
@@ -36,7 +38,7 @@ type Fixtures = {
    * parameters.
    */
   evaluateInVSCode: <R, Arg = undefined>(
-    fn: (vscodeModule: typeof import('vscode'), arg: Arg) => R | Promise<R>,
+    fn: (vscodeModule: typeof VSCode, arg: Arg) => R | Promise<R>,
     arg?: Arg
   ) => Promise<R>
   /**
@@ -69,6 +71,26 @@ type WorkerFixtures = {
 /** Remove an Electron fixture directory while tolerating late process writes. */
 export async function removeFixtureDirectory(directory: string): Promise<void> {
   await fs.rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+}
+
+// New macOS VS Code builds name the binary Code, while test-electron can still
+// return the older Electron path. The bundle metadata is authoritative.
+async function resolveTestExecutable(downloadedPath: string): Promise<string> {
+  try {
+    await fs.access(downloadedPath)
+    return downloadedPath
+  } catch (error) {
+    if (process.platform !== 'darwin') throw error
+  }
+  const binaryDirectory = path.dirname(downloadedPath)
+  const infoPlist = path.join(binaryDirectory, '..', 'Info.plist')
+  const binary = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', infoPlist], {
+    encoding: 'utf8',
+  }).trim()
+  if (!binary || path.basename(binary) !== binary) throw new Error(`Invalid CFBundleExecutable in ${infoPlist}`)
+  const executable = path.join(binaryDirectory, binary)
+  await fs.access(executable)
+  return executable
 }
 
 async function launchWindow(vscodeInstallPath: string): Promise<CachedWindow> {
@@ -238,12 +260,13 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
   // setup", test shown failing in 2ms). A warm cache makes this instant;
   // the budget only exists so the cold path never races a wall clock.
   vscodeInstallPath: [
+    // eslint-disable-next-line no-empty-pattern -- Playwright infers fixture dependencies from the object pattern.
     async ({}, use) => {
       const installPath = await downloadAndUnzipVSCode({
         cachePath: VSCODE_TEST_ROOT,
         version: process.env.VSCODE_E2E_VERSION ?? 'stable',
       })
-      await use(installPath)
+      await use(await resolveTestExecutable(installPath))
     },
     { scope: 'worker', timeout: 300_000 },
   ],
@@ -254,6 +277,7 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
   // closes whatever's in the box. That's the ONLY teardown: `_sharedWindow`
   // below never closes a window mid-run, it resets the existing one.
   _windowCache: [
+    // eslint-disable-next-line no-empty-pattern -- Playwright infers fixture dependencies from the object pattern.
     async ({}, use) => {
       const state: { current?: CachedWindow } = {}
       await use(state)

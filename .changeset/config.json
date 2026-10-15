@@ -1,5 +1,5 @@
 {
-  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [],
@@ -31,5 +31,6 @@
     "example-three-skia",
     "flatland-template-three",
     "flatland-template-react"
-  ]
+  ],
+  "privatePackages": { "version": true, "tag": false }
 }

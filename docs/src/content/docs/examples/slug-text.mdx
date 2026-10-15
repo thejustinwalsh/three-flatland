@@ -14,7 +14,7 @@ export const reactFiles = loadExample('react', 'slug-text')
 
 <ExampleDetailLayout slug="slug-text" threeFiles={threeFiles} reactFiles={reactFiles}>
 
-## What This Example Shows
+## What this example shows
 
 This example demonstrates [`@three-flatland/slug`](../../guides/slug-text/) — GPU-accelerated text rendering that stays crisp at any zoom. Glyphs are evaluated as quadratic Bezier curves per-pixel in the fragment shader; there's no SDF atlas, no bitmap textures, no resolution ceiling.
 
@@ -27,7 +27,7 @@ This example demonstrates [`@three-flatland/slug`](../../guides/slug-text/) — 
 | Decorations             | Underline / strikethrough / super-sub via `StyleSpan[]`                               |
 | Canvas2D compare        | Onion / split / diff modes against `CanvasRenderingContext2D` for visual parity check |
 
-## Loading a Font
+## Loading a font
 
 `SlugFontLoader.load()` is the single entry point. It tries baked data (a single `.slug.glb`) first and falls back to runtime parsing of TTF/OTF/WOFF — opentype.js is dynamic-imported only on the runtime path, so baked-only bundles ship without it.
 
@@ -52,7 +52,7 @@ This example demonstrates [`@three-flatland/slug`](../../guides/slug-text/) — 
   </TabItem>
 </Tabs>
 
-## Rendering Text
+## Rendering text
 
 `SlugText` extends `InstancedMesh` — each glyph is an instanced quad evaluated per-pixel by the Slug fragment shader. Set `.text`, `.fontSize`, `.align` etc. and call `.update(camera)` once per frame.
 
@@ -141,7 +141,7 @@ Pass an `outline` option (or set `.outline` at runtime) to add a stroked outline
   </TabItem>
 </Tabs>
 
-## Multi-font Fallback
+## Multi-font fallback
 
 `SlugFontStack` composes multiple fonts and resolves missing codepoints per-character. `SlugStackText` renders one `InstancedMesh` per backing font, all parented under a `Group`.
 
@@ -180,7 +180,7 @@ Pass an `outline` option (or set `.outline` at runtime) to add a stroked outline
   </TabItem>
 </Tabs>
 
-## Further Reading
+## Further reading
 
 - [Slug Text Guide](../../guides/slug-text/) — Full API reference and patterns (measurement, decorations, pre-baking).
 - [TSL Nodes](../tsl-nodes/) — Custom shader effects via Three Shader Language.

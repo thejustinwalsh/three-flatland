@@ -10,7 +10,46 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components'
   `package.json` until you're ready to migrate.
 </Aside>
 
-## Package Manager
+## Scaffold a new project
+
+`create-three-flatland` generates a Vite starter with a running WebGPU sprite scene, linting, unit and
+Playwright tests, and agent guidance files.
+
+<Tabs syncKey="pkg">
+  <TabItem label="npm" icon="simple-icons:npm">
+    ```bash
+    npm create three-flatland@latest
+    ```
+  </TabItem>
+  <TabItem label="pnpm" icon="simple-icons:pnpm">
+    ```bash
+    pnpm create three-flatland
+    ```
+  </TabItem>
+  <TabItem label="yarn" icon="simple-icons:yarn">
+    ```bash
+    yarn create three-flatland
+    ```
+  </TabItem>
+  <TabItem label="bun" icon="simple-icons:bun">
+    ```bash
+    bun create three-flatland
+    ```
+  </TabItem>
+</Tabs>
+
+The CLI prompts for the target directory and template. Available templates are `three` (plain
+Three.js) and `react` (React Three Fiber). For non-interactive use:
+
+```bash
+pnpm create three-flatland my-app --template react
+pnpm create three-flatland --help
+```
+
+`-t, --template <name>` selects a template. `--overwrite` **deletes every existing file and directory
+in the target except `.git`** before scaffolding. Back up existing work before using this option.
+
+## Install in an existing project
 
 <Tabs syncKey="pkg">
   <TabItem label="npm" icon="simple-icons:npm">
@@ -53,29 +92,29 @@ import { Tabs, TabItem, Aside } from 'starlight-theme/components'
   </TabItem>
 </Tabs>
 
-### React Three Fiber (Optional)
+### React Three Fiber (optional)
 
 React is not required. If you're using React Three Fiber, add the additional dependencies:
 
 <Tabs syncKey="pkg">
   <TabItem label="npm" icon="simple-icons:npm">
     ```bash
-    npm install three-flatland @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
+    npm install three-flatland three @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
     ```
   </TabItem>
   <TabItem label="pnpm" icon="simple-icons:pnpm">
     ```bash
-    pnpm add three-flatland @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
+    pnpm add three-flatland three @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
     ```
   </TabItem>
   <TabItem label="yarn" icon="simple-icons:yarn">
     ```bash
-    yarn add three-flatland @react-three/fiber@10.0.0-alpha.3 three react@~19.2.0 react-dom@~19.2.0
+    yarn add three-flatland three @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
     ```
   </TabItem>
   <TabItem label="bun" icon="simple-icons:bun">
     ```bash
-    bun add three-flatland @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
+    bun add three-flatland three @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
     ```
   </TabItem>
   <TabItem label="agents" icon="lucide:sparkles">
@@ -85,7 +124,7 @@ React is not required. If you're using React Three Fiber, add the additional dep
 
     Read the API reference: https://tjw.dev/three-flatland/llms-full.txt
 
-    Install: npm install three-flatland @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
+    Install: npm install three-flatland three @react-three/fiber@10.0.0-alpha.3 react@~19.2.0 react-dom@~19.2.0
     Requires: React ~19.2.0, R3F 10.0.0-alpha.3
     Import from: "three-flatland/react" (re-exports core + JSX type augmentation)
     Canvas import: import { Canvas, extend, useFrame, useThree } from "@react-three/fiber/webgpu"
@@ -111,6 +150,13 @@ React is not required. If you're using React Three Fiber, add the additional dep
 
 ## TypeScript
 
-three-flatland is written in TypeScript and ships with full type definitions. No additional `@types` packages are required.
+three-flatland ships its own type definitions. Three.js uses separate declarations; add them to an existing TypeScript project:
+
+```bash
+pnpm add -D @types/three@^0.185.4
+```
+
+React TypeScript projects also need their usual `@types/react` and `@types/react-dom` development dependencies.
+The generated starters already include the declarations required by their template.
 
 See the [LLMs page](/three-flatland/llm-prompts/) for more prompts and machine-readable documentation.

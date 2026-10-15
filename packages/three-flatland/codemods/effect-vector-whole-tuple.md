@@ -2,14 +2,14 @@
 title: 'Effect vectors require whole-tuple assignment'
 slug: 'effect-vector-whole-tuple'
 package: 'three-flatland'
-version: 'next'
+version: '0.1.0-alpha.11'
 type: 'breaking'
 audience: 'consumers'
 ---
 
 # Effect vectors require whole-tuple assignment
 
-Vector fields on `MaterialEffect`, `LightEffect`, and `PassEffect` instances now return read-only tuple snapshots. Mutating a component changes only that snapshot; assign a complete tuple to publish through the effect's live backing storage.
+Vector fields on `MaterialEffect`, `LightEffect`, and `PassEffect` instances now return read-only tuple snapshots. The snapshots are frozen: readonly types reject component writes, which throw in strict-mode JavaScript and are ignored outside strict mode. Assign a complete tuple to publish through the effect's live backing storage.
 
 ## Migration
 
