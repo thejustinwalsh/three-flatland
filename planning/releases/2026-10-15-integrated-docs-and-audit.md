@@ -1,5 +1,8 @@
 # Integrated documentation and dependency audit — 2026-10-15
 
+> Historical audit snapshot. Justin authorized the broader remediation after this report.
+> See [the security remediation and validation report](2026-10-15-security-remediation.md) for the current result.
+
 ## Review and merge status
 
 [PR #246](https://github.com/thejustinwalsh/three-flatland/pull/246) combines the reviewed release
