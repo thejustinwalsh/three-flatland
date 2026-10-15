@@ -7,7 +7,11 @@ import { Tabs, TabItem } from 'starlight-theme/components';
 
 This guide shows you how to create your first sprite using three-flatland. Two minutes from copy-paste to "there's a thing on the screen."
 
+To create a new project, use the [scaffolder](../installation/#scaffold-a-new-project).
+
 ## Create a Sprite
+
+Place a sprite image at `public/sprite.png` in your Vite project before running these examples.
 
 <Tabs syncKey="framework">
   <TabItem label="Three.js" icon="simple-icons:threedotjs">
@@ -92,7 +96,7 @@ This guide shows you how to create your first sprite using three-flatland. Two m
 </Tabs>
 
 :::caution[The `await renderer.init()` line is not optional]
-WebGPU initialization is async. Forgetting `await renderer.init()` before the first render is the single most common bug in fresh three-flatland projects. If you see a blank canvas with no errors, this is almost always why.
+WebGPU initialization is async. In the Three.js setup above, await `renderer.init()` before calling `renderer.render()`. Rendering before initialization throws an error; check the browser console if the canvas stays blank.
 :::
 
 ## Next Steps

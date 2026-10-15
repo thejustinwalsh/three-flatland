@@ -54,16 +54,17 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
   </TabItem>
   <TabItem label="React" icon="simple-icons:react">
     ```tsx
-    import { useRef } from 'react'
-    import { Canvas, extend, useFrame, useThree } from '@react-three/fiber/webgpu'
-    import { Flatland, Sprite2D, Sprite2DMaterial } from 'three-flatland/react'
+    import { Suspense, useRef } from 'react'
+    import { Canvas, extend, useFrame, useLoader, useThree } from '@react-three/fiber/webgpu'
+    import { Flatland, Sprite2D, TextureLoader } from 'three-flatland/react'
     import type { Flatland as FlatlandType } from 'three-flatland/react'
     import type { WebGPURenderer } from 'three/webgpu'
 
-    extend({ Flatland, Sprite2D, Sprite2DMaterial })
+    extend({ Flatland, Sprite2D, TextureLoader })
 
     function Scene() {
       const flatlandRef = useRef<FlatlandType>(null)
+      const texture = useLoader(TextureLoader, '/sprites/hero.png')
       const renderer = useThree((state) => state.renderer)
 
       // Render in the 'render' phase so R3F skips its own render
@@ -81,7 +82,9 @@ Use `Flatland` when you want a complete 2D rendering setup. Use `SpriteGroup` wh
     export default function App() {
       return (
         <Canvas renderer={{ antialias: false }}>
-          <Scene />
+          <Suspense fallback={null}>
+            <Scene />
+          </Suspense>
         </Canvas>
       )
     }

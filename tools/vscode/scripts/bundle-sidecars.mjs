@@ -20,8 +20,8 @@
 // ever produces the CURRENT machine's codelens-service binary. In CI, one
 // matrix leg per target OS runs `--codelens-only` natively and uploads
 // just its own `bin/<platform>-<arch>/`; a separate job downloads all
-// five, runs `--audio-play-only` once (audio-play's output is
-// platform-independent, so building it 5× would be pure waste), and
+// six, runs `--audio-play-only` once (audio-play's output is
+// platform-independent, so building it 6× would be pure waste), and
 // packages the merged tree into the one universal VSIX. Locally (no
 // flags), both run together for normal dev-mode convenience — that only
 // ever produces the current platform's codelens-service binary, which is
@@ -60,7 +60,7 @@ const CODELENS_SIDECAR_DIR = join(REPO_ROOT, 'tools', 'codelens-service', 'sidec
 const AUDIO_PLAY_DIR = join(REPO_ROOT, 'tools', 'audio-play')
 
 // Matches sidecarManager.ts's `${process.platform}-${process.arch}` and
-// vsce's own `--target` platform naming — same 5 targets task #24 scoped.
+// vsce's own `--target` platform naming — same six targets built by the reusable VSIX workflow.
 const PLATFORM_DIR = `${process.platform}-${process.arch}`
 const BINARY_NAME = process.platform === 'win32' ? 'codelens-service.exe' : 'codelens-service'
 
@@ -77,8 +77,8 @@ function bundleCodelensService() {
 }
 
 async function bundleAudioPlay() {
-  console.log('[bundle-sidecars] pnpm --filter @three-flatland/audio-play build')
-  execFileSync('pnpm', ['--filter', '@three-flatland/audio-play', 'build'], {
+  console.log('[bundle-sidecars] pnpm nx build @three-flatland/audio-play')
+  execFileSync('pnpm', ['nx', 'build', '@three-flatland/audio-play'], {
     cwd: REPO_ROOT,
     stdio: 'inherit',
   })

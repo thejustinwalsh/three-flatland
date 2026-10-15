@@ -10,5 +10,5 @@ the recommended general-purpose ECS for application and gameplay state.
 
 **BREAKING CHANGES**
 
-- Renderer world, entity, and trait properties now expose opaque compatibility handles instead of Koota types. Direct ECS access through these implementation details is unsupported.
+- Remove renderer world, entity, and trait properties, including the temporary opaque compatibility handles. Keep gameplay identity in application-owned state and update rendering through public objects; see the migration guide and packaged codemods.
 - `SpriteBatch` slot allocation and release methods are private, and numeric sort layers must be finite signed 32-bit integers.

@@ -98,7 +98,7 @@ previous green CI result.
 `release.yml` runs after CI succeeds on `main` (or on `workflow_dispatch`). It uses `changesets/action@v1`:
 
 - **version**: `pnpm changeset:version` (runs `changeset version` then `scripts/sync-versions.ts`)
-- **publish**: `pnpm release` (runs `turbo run build && changeset publish`)
+- **publish**: `pnpm release` (runs `nx run-many -t build && changeset publish`)
 
 The repo is in **pre-release mode** (`pre.json` mode: `"pre"`, tag: `"alpha"`). All published versions carry the `-alpha.N` suffix until `changeset pre exit` is run.
 

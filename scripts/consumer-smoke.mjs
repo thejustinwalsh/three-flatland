@@ -52,6 +52,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve, extname } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { materializeConsumerExample } from './lib/consumer-smoke-layout.mjs'
+import { publicPackages, verifyPackedFiles, verifyPackedManifest, workspacePackages } from './lib/release-packages.mjs'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const args = process.argv.slice(2)
@@ -92,18 +93,6 @@ const run = (cmd, cmdArgs, cwd, extraEnv) =>
 
 // ── 1. Discover publishable packages + build + pack them ────────────────────
 
-function publishablePackages() {
-  const out = []
-  for (const dir of readdirSync(join(ROOT, 'packages'))) {
-    const p = join(ROOT, 'packages', dir, 'package.json')
-    if (!existsSync(p)) continue
-    const pkg = JSON.parse(readFileSync(p, 'utf8'))
-    if (pkg.private === true || !pkg.scripts?.build) continue
-    out.push({ dir, name: pkg.name, version: pkg.version })
-  }
-  return out
-}
-
 // Resolve scope FIRST. Everything below — building 10 packages, packing them,
 // standing up Verdaccio, publishing tarballs — is pure waste if the selection
 // is empty, so decide before paying for any of it. (`discoverExamples` and
@@ -125,19 +114,15 @@ if (ONLY) {
   console.log(`consumer-smoke: FULL sweep — all ${CONSUMERS.length} consumers`)
 }
 
-const PKGS = publishablePackages()
+const WORKSPACES = workspacePackages(ROOT)
+const PKGS = publicPackages(WORKSPACES)
 
 console.log(`consumer smoke — ${PKGS.length} publishable packages`)
 
-// CI runs this only after the build job is green, so packages are built. Locally
-// it's a cache hit if already built. A package that can't build here (skia's
-// wasm can't compile on macOS — it packs from the committed libs) is skipped.
+// A green consumer check must prove fresh artifacts from every public workspace.
+// Skia's build already reuses its committed, freshness-checked WASM on macOS.
 console.log('• ensuring packages are built (nx cache hit if already built)…')
-try {
-  run('pnpm', ['nx', 'run-many', '-t', 'build', ...PKGS.flatMap((p) => ['-p', p.name])], ROOT)
-} catch {
-  console.warn('  ⚠ some package builds failed — packing what built')
-}
+run('pnpm', ['nx', 'run-many', '-t', 'build', ...PKGS.filter((p) => p.scripts?.build).flatMap((p) => ['-p', p.name])], ROOT)
 
 const TARBALL_DIR = mkdtempSync(join(tmpdir(), 'wc-tarballs-'))
 console.log(`• pnpm pack → ${TARBALL_DIR}`)
@@ -146,21 +131,28 @@ const versionOf = Object.fromEntries(PKGS.map((p) => [p.name, p.version]))
 const unpackable = []
 for (const p of PKGS) {
   try {
-    run('pnpm', ['pack', '--pack-destination', TARBALL_DIR], join(ROOT, 'packages', p.dir))
+    run('pnpm', ['pack', '--pack-destination', TARBALL_DIR], p.dir)
     // Match the EXACT filename (<stem>-<version>.tgz), not a prefix: `three-flatland-`
     // is a prefix of `three-flatland-devtools-`, `three-flatland-nodes-`, … so a
     // `.startsWith()` find would grab the wrong package's tarball depending on the
     // (filesystem-dependent) readdir order — green on macOS, wrong on Linux CI.
     const stem = p.name.replace('@', '').replace('/', '-')
     const expected = `${stem}-${p.version}.tgz`
-    if (existsSync(join(TARBALL_DIR, expected))) tarballs[p.name] = join(TARBALL_DIR, expected)
-    else unpackable.push(p.name)
-  } catch {
+    const tgz = join(TARBALL_DIR, expected)
+    if (!existsSync(tgz)) throw new Error(`pack did not produce ${expected}`)
+    const manifest = JSON.parse(run('tar', ['-xOzf', tgz, 'package/package.json'], ROOT))
+    verifyPackedManifest(manifest, p, WORKSPACES)
+    verifyPackedFiles(manifest, run('tar', ['-tzf', tgz], ROOT).split('\n'))
+    tarballs[p.name] = tgz
+  } catch (err) {
     unpackable.push(p.name)
-    console.warn(`  ⚠ could not pack ${p.name} — examples needing it will be skipped`)
+    console.error(`  ✗ could not pack/verify ${p.name}: ${err.stderr || err.message}`)
   }
 }
-const UNPACKABLE = new Set(unpackable)
+if (unpackable.length) {
+  rmSync(TARBALL_DIR, { recursive: true, force: true })
+  throw new Error(`Release artifacts failed: ${unpackable.join(', ')}`)
+}
 
 // ── 2. Local Verdaccio registry seeded with the packed tarballs ─────────────
 
@@ -560,21 +552,6 @@ if (WANTS_SCAFFOLD) {
 for (const ex of CONSUMERS) {
   const id = ex.kind === 'scaffold' ? `scaffold/${ex.slug}` : `${ex.type}/${ex.slug}`
   const dest = ex.kind === 'scaffold' ? join(WORK, `${ex.type}-${ex.slug}`) : join(WORK, 'examples', ex.type, ex.slug)
-  // Skip consumers that need a flatland package we couldn't pack/publish — else
-  // npm would 404 (our packages don't proxy npmjs) and the failure would be
-  // about the harness, not the consumer. For a scaffold, the template manifest is
-  // what the generated project's manifest is derived from, plus the CLI itself.
-  const exDeps = (() => {
-    const p = JSON.parse(readFileSync(join(ex.dir, 'package.json'), 'utf8'))
-    return { ...p.dependencies, ...p.devDependencies }
-  })()
-  const needed = Object.keys(exDeps).concat(ex.kind === 'scaffold' ? [CLI_PKG] : [])
-  const missing = needed.filter((d) => UNPACKABLE.has(d))
-  if (missing.length) {
-    results.push({ id, build: 'skip' })
-    console.log(`  – [${id}] skipped (needs unpublished ${missing.join(', ')})`)
-    continue
-  }
   let failureStage = 'setup'
   try {
     if (ex.kind === 'scaffold') {
@@ -640,6 +617,10 @@ for (const ex of CONSUMERS) {
         run('npm', ['run', 'test:e2e'], dest)
       }
     }
+    // Example rendering reads only dist/. Reclaim each installed dependency
+    // tree immediately instead of retaining 24 copies until the end of the run.
+    // Scaffolds keep theirs for the live dev-server check below.
+    if (ex.kind === 'example') rmSync(join(dest, 'node_modules'), { recursive: true, force: true })
     results.push({ id, dest, kind: ex.kind, build: 'ok' })
     console.log(`  ✓ [${id}] built and verified against the published packages`)
   } catch (err) {
@@ -982,7 +963,6 @@ if (assertionFailures.length) {
   console.log(`  ✗ ${assertionFailures.length} assertion(s) failed:`)
   for (const a of assertionFailures) console.log(`      - ${a}`)
 }
-if (unpackable.length) console.log(`  (unpublished packages: ${unpackable.join(', ')})`)
 if (failed.length || assertionFailures.length) {
   console.log(`\nWorkdir kept for inspection: ${WORK}`)
   console.log(`Verdaccio log: ${regLog}`)
@@ -1001,7 +981,7 @@ const renderSummary = NO_RENDER
     ? ' + render (prod dist, scaffold e2e, and live scaffold dev servers)'
     : ' + render (prod dist)'
 console.log(
-  'All packable consumers install + build' +
+  'All selected consumers install + build' +
     (ranScaffold ? ' + scaffold unit tests' : '') +
     renderSummary +
     ' from the local registry. ✓'
