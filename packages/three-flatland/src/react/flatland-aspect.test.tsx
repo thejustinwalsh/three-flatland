@@ -1,15 +1,28 @@
 import { act, createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrthographicCamera, Vector2, Vector4, type Color } from 'three'
-import { createRoot, extend } from '@react-three/fiber/webgpu'
+import { createRoot, extend, unmountComponentAtNode } from '@react-three/fiber/webgpu'
 import type { WebGPURenderer } from 'three/webgpu'
 import { Flatland } from '../Flatland'
 
 extend({ Flatland })
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-afterEach(() => {
-  vi.unstubAllGlobals()
+const testCanvases = new Set<OffscreenCanvas>()
+
+afterEach(async () => {
+  try {
+    for (const canvas of testCanvases) await unmountTestRoot(canvas)
+  } finally {
+    testCanvases.clear()
+    try {
+      // React act() does not await Flatland's lazy devtools module graph.
+      // Keep the environment and its globals alive until those imports finish.
+      await vi.dynamicImportSettled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  }
 })
 
 /** Creates a headless R3F root with mutable renderer surface dimensions. */
@@ -44,6 +57,7 @@ async function createTestRoot(width: number, height: number) {
   }
   const canvas = { width: 0, height: 0 } as OffscreenCanvas
   const root = createRoot(canvas)
+  testCanvases.add(canvas)
   await root.configure({
     renderer,
     frameloop: 'never',
@@ -52,12 +66,13 @@ async function createTestRoot(width: number, height: number) {
   return { renderer, root, surface }
 }
 
-/** Unmounts a test root inside React's asynchronous act boundary. */
-async function unmountTestRoot(root: ReturnType<typeof createRoot>): Promise<void> {
+/** Flushes the React unmount and waits for R3F's deferred root cleanup. */
+async function unmountTestRoot(canvas: OffscreenCanvas): Promise<void> {
+  let unmounted!: Promise<void>
   await act(async () => {
-    root.unmount()
-    await Promise.resolve()
+    unmounted = new Promise<void>((resolve) => unmountComponentAtNode(canvas, () => resolve()))
   })
+  await unmounted
 }
 
 describe('React Flatland surface sizing', () => {
@@ -89,8 +104,6 @@ describe('React Flatland surface sizing', () => {
     flatlandRef.current!.render(renderer as unknown as WebGPURenderer)
     expect(flatlandRef.current!.resolvedAspect).toBeCloseTo(1280 / 720)
     expect(flatlandRef.current!.camera.right).toBeCloseTo((800 * (1280 / 720)) / 2)
-
-    await unmountTestRoot(root)
   })
 
   it('restores its managed camera when a custom camera prop is removed', async () => {
@@ -113,7 +126,5 @@ describe('React Flatland surface sizing', () => {
     expect(flatlandRef.current!.camera).not.toBe(customCamera)
     expect(flatlandRef.current!.resolvedAspect).toBeCloseTo(1280 / 720)
     expect(flatlandRef.current!.camera.right).toBeCloseTo((800 * (1280 / 720)) / 2)
-
-    await unmountTestRoot(root)
   })
 })
