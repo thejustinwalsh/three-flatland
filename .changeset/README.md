@@ -96,10 +96,10 @@ previous green CI result.
 
 ## Release workflow
 
-`release.yml` runs after CI succeeds on `main` (or on `workflow_dispatch`). It uses `changesets/action@v1`:
+`release.yml` runs after CI succeeds on `main` (or on `workflow_dispatch`). It uses `changesets/action@v2.1.2`:
 
 - **version**: `pnpm changeset:version` (runs `changeset version` then `scripts/sync-versions.ts`)
-- **publish**: `pnpm release` (builds packages, then runs `scripts/publish-with-action-output.mjs`)
+- **publish**: `pnpm release` (builds packages, then runs `changeset publish`)
 
 The repo is in **pre-release mode** (`pre.json` mode: `"pre"`, tag: `"alpha"`). All published versions carry the `-alpha.N` suffix until `changeset pre exit` is run.
 
@@ -108,10 +108,12 @@ Applied notes move into `pre/`; pending notes stay at the root. Its automatic mi
 the applied notes and replaces the older `initialVersions`/`changesets` metadata. Private packages
 are explicitly versioned through `privatePackages.version: true`, with private tagging disabled.
 
-The publish wrapper translates Changesets 3's structured `git-tag` events into the legacy
-`New tag:` lines consumed by `changesets/action@v1`. It preserves the publisher's exit status and
-does not infer releases from version numbers. Its contract tests parse fixture events without
-executing publication or creating tags.
+Action v2 reads the real `pre/` archive through its Changesets 3 reader, excluding applied notes
+from the pending set. Both action references are pinned to the v2.1.2 commit. Action v1's legacy
+reader mistakes that directory for an old-format changeset and fails before the version script.
+The publish script preserves the action's `CHANGESETS_OUTPUT` path so the action can read native
+structured tag events. Compatibility tests use the action's exact reader versions and fake CLI
+executables; they never publish packages or create tags.
 
 ---
 
